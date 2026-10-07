@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mudita Hospital — Existing system discovery checklist</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 12mm 14mm;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Segoe UI", Calibri, sans-serif;
+      font-size: 10.5pt;
+      line-height: 1.35;
+      color: #111;
+      max-width: 190mm;
+      margin: 0 auto;
+      padding: 8mm 6mm 12mm;
+    }
+    h1 {
+      font-size: 16pt;
+      margin: 0 0 4pt;
+      border-bottom: 2px solid #111;
+      padding-bottom: 4pt;
+    }
+    h2 {
+      font-size: 12pt;
+      margin: 14pt 0 6pt;
+      border-bottom: 1px solid #444;
+      padding-bottom: 2pt;
+      page-break-after: avoid;
+    }
+    h3 {
+      font-size: 10.5pt;
+      margin: 10pt 0 4pt;
+      page-break-after: avoid;
+    }
+    p, li { margin: 3pt 0; }
+    .meta { color: #333; margin-bottom: 8pt; }
+    .rules {
+      background: #f3f3f3;
+      border: 1px solid #bbb;
+      padding: 6pt 8pt;
+      margin: 8pt 0;
+    }
+    .rules ul { margin: 4pt 0 0 16pt; padding: 0; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 6pt 0 10pt;
+      font-size: 9.5pt;
+      page-break-inside: avoid;
+    }
+    th, td {
+      border: 1px solid #333;
+      padding: 5pt 6pt;
+      vertical-align: top;
+      text-align: left;
+    }
+    th { background: #e8e8e8; font-weight: 600; }
+    td.write { height: 18pt; min-width: 2em; }
+    td.write-tall { height: 28pt; }
+    .check { list-style: none; margin: 4pt 0; padding: 0; }
+    .check li { margin: 2pt 0; }
+    .check li::before { content: "☐ "; }
+    .hint { font-size: 9pt; color: #333; }
+    .order {
+      background: #f7f7f7;
+      border-left: 3px solid #333;
+      padding: 6pt 8pt;
+      margin: 8pt 0;
+    }
+    .pagebreak { page-break-before: always; }
+    .summary-box {
+      border: 2px solid #111;
+      padding: 8pt 10pt;
+      margin: 8pt 0;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 9pt;
+      white-space: pre-wrap;
+      line-height: 1.45;
+    }
+    .circle { margin: 4pt 0 4pt 8pt; }
+    .footer-note {
+      margin-top: 12pt;
+      font-size: 9pt;
+      color: #444;
+      border-top: 1px solid #ccc;
+      padding-top: 6pt;
+    }
+    @media print {
+      body { padding: 0; max-width: none; }
+      .rules { background: #f0f0f0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      th { background: #e8e8e8; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Existing system discovery checklist</h1>
+  <p class="meta"><strong>Mudita Hospital</strong> — Map how the reception server PC connects to the other clinic PCs. Print, fill downstairs, bring notes back.</p>
+
+  <div class="rules">
+    <strong>Rules while you work</strong>
+    <ul>
+      <li>Prefer <strong>read-only</strong> (look, copy values, photo). Do not change passwords, uninstall, or stop services unless staff approve and you can restart them.</li>
+      <li>Redact passwords in notes; keep host, port, SID/service, and usernames.</li>
+      <li>Write the <strong>exact app names</strong> from Start Menu / desktop icons.</li>
+    </ul>
+  </div>
+
+  <div class="order">
+    <strong>Suggested order (shortest path):</strong>
+    (1) IPs + PC names → (2) Method A SQL Developer → (3) Method C5 Resource Monitor on one client →
+    (4) Method C2/C4 if still unclear → (5) Method B for confirmation → (6) Fill the summary.
+  </div>
+
+  <!-- ========== Before ========== -->
+  <h2>Before you start</h2>
+  <table>
+    <tr><th style="width:40%">Item</th><th>Write here</th></tr>
+    <tr><td>Date / time</td><td class="write"></td></tr>
+    <tr><td>Who is with you (if any)</td><td class="write"></td></tr>
+    <tr><td>Server PC name (sticker / Windows)</td><td class="write"></td></tr>
+    <tr><td>Reception PC name</td><td class="write"></td></tr>
+    <tr><td>Pharmacy PC name</td><td class="write"></td></tr>
+    <tr><td>Are all 3 on and working now? Y/N</td><td class="write"></td></tr>
+  </table>
+
+  <p class="hint">On each PC: Settings → System → About → PC name. Then Command Prompt → <code>ipconfig</code> → IPv4 Address.</p>
+
+  <table>
+    <tr><th>Role</th><th>PC name</th><th>IPv4</th></tr>
+    <tr><td>Server</td><td class="write"></td><td class="write"></td></tr>
+    <tr><td>Reception</td><td class="write"></td><td class="write"></td></tr>
+    <tr><td>Pharmacy</td><td class="write"></td><td class="write"></td></tr>
+  </table>
+  <p>Same subnet? (first 3 numbers of IP match, e.g. 192.168.1.x) Y/N ________</p>
+
+  <!-- ========== Method A ========== -->
+  <h2 class="pagebreak">Method A — SQL Developer (fastest if Oracle)</h2>
+  <p>Usually on the <strong>server</strong> PC. Start Menu → <strong>SQL Developer</strong>.</p>
+  <ol>
+    <li>Open SQL Developer.</li>
+    <li>Left side: Connections (or green +).</li>
+    <li>For each saved connection: right-click → Properties (or edit). Fill below.</li>
+    <li>If Hostname is <code>localhost</code> or <code>127.0.0.1</code> → DB lives on this PC. Clients use this PC’s LAN IPv4 instead.</li>
+    <li>Optional: Test connection (do not save password changes). Works? Y/N ________</li>
+  </ol>
+
+  <table>
+    <tr><th>Field</th><th>Connection 1</th><th>Connection 2 (if any)</th></tr>
+    <tr><td>Connection name</td><td class="write"></td><td class="write"></td></tr>
+    <tr><td>Username</td><td class="write"></td><td class="write"></td></tr>
+    <tr><td>Hostname / IP</td><td class="write"></td><td class="write"></td></tr>
+    <tr><td>Port</td><td class="write"></td><td class="write"></td></tr>
+    <tr><td>SID or Service name</td><td class="write"></td><td class="write"></td></tr>
+    <tr><td>Connection type (Basic / TNS / …)</td><td class="write"></td><td class="write"></td></tr>
+  </table>
+  <p class="hint"><strong>What this proves:</strong> Server = Oracle host; clients almost certainly use the same host/port/SID (or service).</p>
+
+  <!-- ========== Method B ========== -->
+  <h2>Method B — What is running on the server</h2>
+  <p><em>Server PC only.</em></p>
+
+  <h3>B1. Installed programs</h3>
+  <p>Settings → Apps (or Control Panel → Programs). Tick what you find:</p>
+  <ul class="check">
+    <li>Oracle (Database, Client, Instant Client, XE, …)</li>
+    <li>SQL Server / SSMS</li>
+    <li>MySQL / MariaDB</li>
+    <li>PostgreSQL</li>
+    <li>Other DB: ________________________________</li>
+    <li>Hospital / clinic / pharmacy software (exact names): ________________________________</li>
+  </ul>
+
+  <h3>B2. Windows services</h3>
+  <p>Win+R → <code>services.msc</code>. Sort by Status = Running. Note Oracle / SQL / MySQL / Postgres / vendor names:</p>
+  <table>
+    <tr><th>Service name</th><th>Status</th><th>Startup type</th></tr>
+    <tr><td class="write"></td><td class="write"></td><td class="write"></td></tr>
+    <tr><td class="write"></td><td class="write"></td><td class="write"></td></tr>
+    <tr><td class="write"></td><td class="write"></td><td class="write"></td></tr>
+    <tr><td class="write"></td><td class="write"></td><td class="write"></td></tr>
+  </table>
+
+  <h3 class="pagebreak">B3. Listening ports</h3>
+  <p>Win+R → <code>cmd</code> → run: <code>netstat -ano | findstr LISTENING</code><br />
+  Or: Task Manager → Performance → Open Resource Monitor → Network → Listening Ports.</p>
+  <table>
+    <tr><th>Port</th><th>Likely meaning</th><th>Seen? Y/N</th><th>Process name (if known)</th></tr>
+    <tr><td>1521</td><td>Oracle</td><td class="write"></td><td class="write"></td></tr>
+    <tr><td>1433</td><td>SQL Server</td><td class="write"></td><td class="write"></td></tr>
+    <tr><td>3306</td><td>MySQL</td><td class="write"></td><td class="write"></td></tr>
+    <tr><td>5432</td><td>PostgreSQL</td><td class="write"></td><td class="write"></td></tr>
+    <tr><td>8080 / 80 / 443</td><td>Web / API</td><td class="write"></td><td class="write"></td></tr>
+    <tr><td>Other: ______</td><td></td><td class="write"></td><td class="write"></td></tr>
+  </table>
+
+  <h3>B4. Shared folders</h3>
+  <p>Win+R → <code>fsmgmt.msc</code> → Shares. Ignore ADMIN$, C$, IPC$ unless relevant.</p>
+  <table>
+    <tr><th>Share name</th><th>Path</th><th>Used by clients? (guess)</th></tr>
+    <tr><td class="write"></td><td class="write"></td><td class="write"></td></tr>
+    <tr><td class="write"></td><td class="write"></td><td class="write"></td></tr>
+  </table>
+  <p>On a <strong>client</strong>, File Explorer: <code>\\SERVER-PC-NAME</code> or <code>\\SERVER-IP</code> — see a share? Y/N ___ Name: _______________</p>
+
+  <!-- ========== Method C ========== -->
+  <h2 class="pagebreak">Method C — Client apps (reception + pharmacy)</h2>
+  <p>Do this <strong>twice</strong> — once per client PC.</p>
+
+  <h3>C1. Exact software names</h3>
+  <p class="hint">Shortcut: right-click icon → Properties → copy Target and Start in.</p>
+  <table>
+    <tr><th>PC</th><th>Desktop / Start Menu name</th><th>Install folder (Start in)</th></tr>
+    <tr><td>Reception</td><td class="write-tall"></td><td class="write-tall"></td></tr>
+    <tr><td>Pharmacy</td><td class="write-tall"></td><td class="write-tall"></td></tr>
+  </table>
+
+  <h3>C2. Config files next to the app</h3>
+  <p>Open the Start in folder. Look for <code>*.ini</code>, <code>*.cfg</code>, <code>*.config</code>, <code>*.xml</code>, <code>*.properties</code>, <code>*.json</code>, <code>*.txt</code>, or folders <code>config</code> / <code>conf</code> / <code>settings</code>.</p>
+  <p class="hint">Search for: server IP, PC name, 1521, oracle, jdbc, Data Source, Host=, Server=, SID, SERVICE, \\ paths. No passwords.</p>
+  <table>
+    <tr><th style="width:35%">File path</th><th>Important lines (no passwords)</th></tr>
+    <tr><td class="write-tall"></td><td class="write-tall"></td></tr>
+    <tr><td class="write-tall"></td><td class="write-tall"></td></tr>
+    <tr><td class="write-tall"></td><td class="write-tall"></td></tr>
+  </table>
+
+  <h3>C3. AppData (if EXE folder is empty)</h3>
+  <p>Win+R → <code>%APPDATA%</code> and <code>%LOCALAPPDATA%</code> → vendor/app folder.</p>
+  <table>
+    <tr><th>Path</th><th>Host / port found</th></tr>
+    <tr><td class="write"></td><td class="write"></td></tr>
+    <tr><td class="write"></td><td class="write"></td></tr>
+  </table>
+
+  <h3>C4. ODBC</h3>
+  <p>Win+R → <code>odbcad32</code> → User DSN and System DSN → Configure (read only).</p>
+  <table>
+    <tr><th>DSN name</th><th>Driver</th><th>Server / host</th><th>Database / SID</th><th>Port</th></tr>
+    <tr><td class="write"></td><td class="write"></td><td class="write"></td><td class="write"></td><td class="write"></td></tr>
+    <tr><td class="write"></td><td class="write"></td><td class="write"></td><td class="write"></td><td class="write"></td></tr>
+  </table>
+  <p>Reception and pharmacy DSNs the same? Y/N ________</p>
+
+  <h3 class="pagebreak">C5. Live network check (app open and working)</h3>
+  <ol>
+    <li>Open the client app; log in if needed.</li>
+    <li>Task Manager → Performance → Resource Monitor → Network.</li>
+    <li>Find the app’s .exe under TCP Connections.</li>
+    <li>Write Remote Address + Remote Port:</li>
+  </ol>
+  <table>
+    <tr><th>PC</th><th>Process name</th><th>Remote IP</th><th>Remote port</th></tr>
+    <tr><td>Reception</td><td class="write"></td><td class="write"></td><td class="write"></td></tr>
+    <tr><td>Pharmacy</td><td class="write"></td><td class="write"></td><td class="write"></td></tr>
+  </table>
+  <p>Does Remote IP = server IPv4? Y/N ________</p>
+
+  <!-- ========== Method D ========== -->
+  <h2>Method D — Dependency proof (optional — ask staff first)</h2>
+  <p>Only if you may briefly interrupt.</p>
+  <ol>
+    <li>With clients working, healthy symptom / behaviour: ________________________________</li>
+    <li><strong>D1 (safest):</strong> Unplug Ethernet from <em>one client</em> only → app fails? Y/N ___</li>
+    <li><strong>D2:</strong> Staff confirms server must be on? Y/N ___ Client error when server off: ________________________________</li>
+  </ol>
+  <p class="hint">Skip stopping Oracle/SQL services unless someone who knows the system is present.</p>
+
+  <!-- ========== Method E ========== -->
+  <h2>Method E — Soft clues (~5 min)</h2>
+  <ul class="check">
+    <li>Help → About — version / vendor / DB: ________________________________</li>
+    <li>Install folder — readme / manual / install.log: ________________________________</li>
+    <li>Printers — network vs local / via server share: ________________________________</li>
+    <li>Ask staff — who installed / company / phone: ________________________________</li>
+  </ul>
+
+  <!-- ========== Summary ========== -->
+  <h2 class="pagebreak">One-page summary (fill before you leave)</h2>
+  <div class="summary-box">SERVER
+  Name: _______________  IP: _______________
+  DB product (guess/confirmed): _______________
+  Listening port(s): _______________
+  SQL Developer host/port/SID or service: _______________
+  Shares: _______________
+
+RECEPTION CLIENT
+  App name: _______________
+  Config/ODBC → host _______ port _______ SID/DB _______
+  Live connection → IP _______ port _______
+
+PHARMACY CLIENT
+  App name: _______________
+  Config/ODBC → host _______ port _______ SID/DB _______
+  Live connection → IP _______ port _______
+
+ERROR WHEN SERVER OFF (staff quote):
+  _______________________________________________</div>
+
+  <p><strong>Architecture (circle one)</strong></p>
+  <div class="circle">
+    A) Clients → Oracle/SQL on server PC (most likely)<br />
+    B) Clients → shared folder on server<br />
+    C) Clients → web/API on server (port 80/8080/443)<br />
+    D) Mix of above: ________________________________
+  </div>
+
+  <h3>What to bring back for Mudita mapping</h3>
+  <ul>
+    <li>Photos or text of SQL Developer connection fields (no password)</li>
+    <li>One client config or ODBC screen</li>
+    <li>This filled summary</li>
+    <li>Exact app names + versions from About</li>
+  </ul>
+  <p class="hint">Mudita model for comparison: server static IP + API port <strong>8080</strong> + clients enter Server IP (see DEPLOY.md / CHEATSHEET.md).</p>
+
+  <p class="footer-note">
+    Source: docs/EXISTING-SYSTEM-DISCOVERY.html — regenerate PDF with Edge headless print-to-pdf if this form changes.
+  </p>
+
+</body>
+</html>

@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mudita Hospital — Field install FAQ</title>
+  <style>
+    @page { size: A4; margin: 12mm 14mm; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Segoe UI", Calibri, sans-serif;
+      font-size: 10pt;
+      line-height: 1.32;
+      color: #111;
+      max-width: 190mm;
+      margin: 0 auto;
+      padding: 8mm 6mm 12mm;
+    }
+    h1 {
+      font-size: 16pt;
+      margin: 0 0 4pt;
+      border-bottom: 2px solid #111;
+      padding-bottom: 4pt;
+    }
+    h2 {
+      font-size: 12pt;
+      margin: 14pt 0 6pt;
+      border-bottom: 1px solid #444;
+      padding-bottom: 2pt;
+      page-break-after: avoid;
+    }
+    h3 {
+      font-size: 10.5pt;
+      margin: 10pt 0 4pt;
+      page-break-after: avoid;
+    }
+    .meta { color: #333; margin-bottom: 8pt; }
+    p, li { margin: 3pt 0; }
+    ol, ul { margin: 4pt 0 8pt 18pt; padding: 0; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 6pt 0 10pt;
+      font-size: 9.5pt;
+      page-break-inside: avoid;
+    }
+    th, td {
+      border: 1px solid #333;
+      padding: 4pt 6pt;
+      vertical-align: top;
+      text-align: left;
+    }
+    th { background: #e8e8e8; font-weight: 600; }
+    code, .mono {
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 9pt;
+    }
+    pre {
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 8.5pt;
+      background: #f5f5f5;
+      border: 1px solid #bbb;
+      padding: 6pt 8pt;
+      margin: 6pt 0 10pt;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      page-break-inside: avoid;
+    }
+    .callout {
+      background: #f3f3f3;
+      border: 1px solid #bbb;
+      padding: 6pt 8pt;
+      margin: 8pt 0;
+    }
+    .arch {
+      display: flex;
+      gap: 10pt;
+      margin: 8pt 0 12pt;
+      page-break-inside: avoid;
+    }
+    .arch-panel {
+      flex: 1;
+      border: 1px solid #333;
+      padding: 8pt;
+      background: #fafafa;
+    }
+    .arch-panel h3 {
+      margin: 0 0 6pt;
+      font-size: 10pt;
+      text-align: center;
+      border-bottom: 1px solid #999;
+      padding-bottom: 4pt;
+    }
+    .box {
+      border: 1px solid #333;
+      padding: 5pt 6pt;
+      margin: 4pt 0;
+      text-align: center;
+      background: #fff;
+      font-size: 9pt;
+    }
+    .arrow {
+      text-align: center;
+      font-size: 8.5pt;
+      color: #333;
+      margin: 2pt 0;
+    }
+    .check { list-style: none; margin-left: 0; padding: 0; }
+    .check li { margin: 2pt 0; }
+    .check li::before { content: "☐ "; }
+    .pagebreak { page-break-before: always; }
+    .footer-note {
+      margin-top: 12pt;
+      font-size: 8.5pt;
+      color: #555;
+      border-top: 1px solid #ccc;
+      padding-top: 6pt;
+    }
+    @media print {
+      body { padding: 0; max-width: none; }
+      th, .callout, .arch-panel, pre {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Mudita Hospital — Field install FAQ</h1>
+  <p class="meta">Take this to the customer site. Step-by-step commands: <strong>DEPLOY.md</strong>. Daily staff use: <strong>CHEATSHEET</strong> (PDF or Help → Print in app). Risk / continuity: <strong>RISK_AND_CONTINUITY</strong>. Crash laminate: <strong>CRASH_RESTORE_CARD</strong>.</p>
+
+  <h2>Architecture (one picture)</h2>
+  <div class="arch">
+    <div class="arch-panel">
+      <h3>Single PC (OK)</h3>
+      <div class="box"><strong>Mudita client</strong></div>
+      <div class="arrow">↓ http://127.0.0.1:8080</div>
+      <div class="box"><strong>Server API + DB</strong><br /><span class="mono">same machine</span></div>
+    </div>
+    <div class="arch-panel">
+      <h3>Typical LAN</h3>
+      <div class="box"><strong>Reception PC</strong> (client)</div>
+      <div class="arrow">↘ http://SERVER_IP:8080</div>
+      <div class="box"><strong>Server PC</strong><br /><span class="mono">API + mudita.db</span></div>
+      <div class="arrow">↗ http://SERVER_IP:8080</div>
+      <div class="box"><strong>Pharmacy PC</strong> (client)</div>
+    </div>
+  </div>
+
+  <table>
+    <tr><th>Setup</th><th>What to install</th></tr>
+    <tr>
+      <td><strong>One PC</strong> (small clinic)</td>
+      <td>Server <strong>and</strong> Client on the same machine. First-run Server IP = <code>127.0.0.1</code></td>
+    </tr>
+    <tr>
+      <td><strong>Several PCs</strong> (typical)</td>
+      <td>Server on one always-on PC; Client on each reception / pharmacy / clinic desk. Clients use the server’s LAN IP (e.g. <code>192.168.1.10</code>)</td>
+    </tr>
+  </table>
+
+  <div class="callout">
+    <strong>Important:</strong> Server and Client are <strong>two separate packages</strong>. There is no single setup that installs both. Order on site: <strong>Server first → then Client(s)</strong>.
+  </div>
+
+  <p>All patient / stock / bill data lives <strong>only on the server PC</strong>. Clients are thin windows that talk over HTTP on port <strong>8080</strong>. No internet is required after you copy installers by USB.</p>
+
+  <h2>Where does the server live?</h2>
+  <table>
+    <tr><th>Mode</th><th>Location</th></tr>
+    <tr><td><strong>Hospital install</strong></td><td><code>C:\MuditaHospital\Server\</code></td></tr>
+    <tr><td>Contents</td><td><code>mudita-api.exe</code>, <code>config.json</code>, <code>data\mudita.db</code>, <code>backups\</code>, watchdog scripts</td></tr>
+    <tr><td><strong>Autostart</strong></td><td>Windows scheduled task <strong>MuditaHospitalAPI</strong> (SYSTEM) via <code>run-watchdog.cmd</code></td></tr>
+    <tr><td><strong>Your laptop (dev)</strong></td><td>Repo <code>server\</code> → DB at <code>server\data\mudita.db</code>; run <code>.\scripts\run-server.ps1</code></td></tr>
+  </table>
+
+  <p>Hospital <code>config.json</code> uses <code>"host": "0.0.0.0"</code> so other PCs can connect. Do <strong>not</strong> leave the hospital server on <code>127.0.0.1</code> if reception/pharmacy PCs need access.</p>
+
+  <p><strong>Health check:</strong></p>
+  <ul>
+    <li>On server: <code>http://127.0.0.1:8080/api/health</code></li>
+    <li>From another PC: <code>http://SERVER_IP:8080/api/health</code> → <code>"status":"ok"</code>, <code>"db":"ok"</code></li>
+  </ul>
+
+  <h2>How do I package for USB? (before the visit)</h2>
+  <p>On your <strong>build PC</strong> (Go + Node + Rust for client build):</p>
+  <pre>cd c:\Mudita_Software\Mudita-Hospital
+.\scripts\package-server.ps1   # → dist\server-package\
+.\scripts\package-client.ps1   # → dist\client-package\</pre>
+
+  <p>Copy to USB, for example:</p>
+  <pre>USB\
+  Mudita\
+    Server\     ← entire dist\server-package\
+    Client\     ← entire dist\client-package\
+    Docs\       ← DEPLOY + FIELD_INSTALL_FAQ + CHEATSHEET
+                  + RISK_AND_CONTINUITY + CRASH_RESTORE_CARD</pre>
+
+  <h3>On the customer PC(s)</h3>
+  <ol>
+    <li><strong>Server machine</strong> — Administrator PowerShell inside <code>Server\</code>:
+      <pre>.\install-server.ps1</pre>
+      Default path: <code>C:\MuditaHospital\Server</code>. Sets firewall rule for port 8080 + startup task.
+    </li>
+    <li><strong>Each clinic PC</strong> — install the <code>.msi</code> / NSIS setup if present, <strong>or</strong> copy/run <code>MuditaHospital.exe</code>.</li>
+    <li>First client launch → enter Server IP → sign in.</li>
+  </ol>
+  <p>Deep steps: <strong>DEPLOY.md</strong>.</p>
+
+  <h2>How do I access the database as a developer?</h2>
+  <table>
+    <tr><th>Fact</th><th>Detail</th></tr>
+    <tr><td>Engine</td><td><strong>SQLite</strong> (WAL mode). No MySQL/Postgres process.</td></tr>
+    <tr><td>Dev file</td><td><code>server\data\mudita.db</code> (+ <code>-wal</code> / <code>-shm</code> while API is running)</td></tr>
+    <tr><td>Production file</td><td><code>C:\MuditaHospital\Server\data\mudita.db</code></td></tr>
+    <tr><td>Tools</td><td>DB Browser for SQLite or <code>sqlite3</code> CLI</td></tr>
+  </table>
+
+  <p><strong>Safe habits</strong></p>
+  <ul>
+    <li>Prefer <strong>Admin → Settings → Backup</strong>, then open a file under <code>backups\</code> for inspection.</li>
+    <li>To edit the live DB: stop the API first (see “Restart the API”). Opening the live file while the API writes can corrupt it.</li>
+    <li>Do not commit <code>mudita.db</code> or backup dumps with real patient data to git.</li>
+  </ul>
+
+  <h2 class="pagebreak">FAQ — customer day</h2>
+
+  <h3>Can it run on a single PC?</h3>
+  <p><strong>Yes.</strong> Install Server + Client on one machine. Server IP = <code>127.0.0.1</code>. Good for a solo desk or a pilot. When they add a second desk later, keep the same Server and only install Client on the new PC (point at the server’s LAN IP).</p>
+
+  <h3>Do I need multiple PCs?</h3>
+  <p><strong>No, not required.</strong> Recommend multiple when reception and pharmacy work at the same time on different desks. Then: one Server PC (can be the quietest / always-on machine) + Client on each desk. Prefer <strong>wired Ethernet</strong>; avoid Wi‑Fi for billing if possible.</p>
+
+  <h3>Will “setup” install server and software at the same time?</h3>
+  <p><strong>No.</strong> Two packages:</p>
+  <ol>
+    <li><code>install-server.ps1</code> → API + DB folder + autostart</li>
+    <li>Client MSI / <code>MuditaHospital.exe</code> → desktop app</li>
+  </ol>
+  <p>Install Server first so health check works before clients connect.</p>
+
+  <h3>Where will the server / data live?</h3>
+  <p>Always on the <strong>server PC disk</strong>: <code>C:\MuditaHospital\Server\data\mudita.db</code>. Clients do <strong>not</strong> store the hospital database. If the server PC dies without backups, data is at risk — USB backup weekly.</p>
+
+  <h3>What are the default logins?</h3>
+  <p>Fresh database:</p>
+  <table>
+    <tr><th>User</th><th>Password</th><th>Role</th></tr>
+    <tr><td><code>admin</code></td><td><code>admin123</code></td><td>Admin (must change password on first login)</td></tr>
+    <tr><td><code>reception</code></td><td><code>reception123</code></td><td>Reception</td></tr>
+    <tr><td><code>pharmacy</code></td><td><code>pharmacy123</code></td><td>Pharmacy</td></tr>
+  </table>
+  <p>Change passwords before leaving the site. Create real staff users under Settings → Users (Admin).</p>
+
+  <h3>What is the first-run Server IP screen?</h3>
+  <p>Client asks once for the API address. Examples:</p>
+  <ul>
+    <li>Same PC: <code>127.0.0.1</code> or “This PC”</li>
+    <li>LAN: <code>192.168.1.10</code> (whatever static IP you set on the server)</li>
+  </ul>
+  <p>Port <strong>8080</strong> is assumed. Badge should turn green: <strong>Server connected</strong>. If offline: Retry, Change server IP, check cable / power / firewall.</p>
+
+  <h3>What if the badge says Server offline?</h3>
+  <ol>
+    <li>Is the server PC on? Task <strong>MuditaHospitalAPI</strong> running?</li>
+    <li>Browser on server: <code>http://127.0.0.1:8080/api/health</code></li>
+    <li>From client PC: <code>http://SERVER_IP:8080/api/health</code></li>
+    <li>Ethernet cable / switch / wrong IP</li>
+    <li>Firewall port <strong>8080</strong> (install script usually adds the rule)</li>
+  </ol>
+
+  <h3>How do backups work?</h3>
+  <table>
+    <tr><th>Action</th><th>How</th></tr>
+    <tr><td>Backup now</td><td>Admin → Settings → <strong>Backup</strong></td></tr>
+    <tr><td>Auto</td><td>Every 24h (default) into <code>C:\MuditaHospital\Server\backups\</code></td></tr>
+    <tr><td>USB weekly</td><td>Copy that <code>backups\</code> folder to a labeled USB; keep off-site if possible</td></tr>
+    <tr><td>Restore</td><td>Admin → Backup → Restore (API restarts; wait ~5s, then Retry). <strong>Replaces live data.</strong></td></tr>
+  </table>
+  <p>Only restore backups from <strong>this</strong> hospital.</p>
+
+  <h3>How do I restart the API?</h3>
+  <p><strong>Administrator</strong> PowerShell (Access Denied usually means the task runs as SYSTEM):</p>
+  <pre>Stop-ScheduledTask -TaskName "MuditaHospitalAPI"
+Get-Process mudita-api -ErrorAction SilentlyContinue | Stop-Process -Force
+Start-ScheduledTask -TaskName "MuditaHospitalAPI"</pre>
+  <p>After a rebuild, copy the new <code>mudita-api.exe</code> into <code>C:\MuditaHospital\Server\</code> before starting the task again.</p>
+  <p>Dev laptop: stop <code>mudita-api</code> / Ctrl+C, then <code>.\scripts\run-server.ps1</code>.</p>
+
+  <h3>What is Training mode?</h3>
+  <p>Admin → Settings → <strong>Training</strong>: seeds <code>DEMO-</code> items and <code>[TRAINING]</code> sample bills for practice. Reset only removes DEMO / TRAINING rows — not real users. Prefer a practice DB or Training seed for demos; do not teach on live cash without the hospital’s OK.</p>
+
+  <h3>Language / staff cheat sheet?</h3>
+  <ul>
+    <li>App: <strong>English / မြန်မာ</strong> in the top bar.</li>
+    <li>Desk laminate: CHEATSHEET.pdf or Help → Print cheat sheet in the app (<code>?</code> key).</li>
+    <li>This file = <strong>installer / developer</strong> FAQ, not the reception laminate.</li>
+  </ul>
+
+  <h3>Is internet required?</h3>
+  <p><strong>No</strong> after USB copy. Offline LAN only. Updates = bring a new USB package later.</p>
+
+  <h3>Hardware expectations?</h3>
+  <p>Cheap Windows PCs (~2GB class) are in scope. Wired switch + static IP on the server. WebView2 is normally already on Windows 10/11 for the client.</p>
+
+  <h3>Uninstall server?</h3>
+  <p>Admin PowerShell from the package folder:</p>
+  <pre>.\uninstall-server.ps1
+# optional wipe DB/backups:
+.\uninstall-server.ps1 -RemoveData</pre>
+
+  <h2 class="pagebreak">Site checklist</h2>
+
+  <h3>Before you leave the office</h3>
+  <ul class="check">
+    <li><code>package-server.ps1</code> + <code>package-client.ps1</code> on USB</li>
+    <li>This FAQ + DEPLOY.md + CHEATSHEET + RISK_AND_CONTINUITY + CRASH_RESTORE_CARD on USB</li>
+    <li>Know the planned static IP (or confirm single-PC <code>127.0.0.1</code>)</li>
+  </ul>
+
+  <h3>Single-PC install</h3>
+  <ul class="check">
+    <li>Admin: <code>install-server.ps1</code></li>
+    <li>Health: <code>http://127.0.0.1:8080/api/health</code></li>
+    <li>Install / run client; Server IP <code>127.0.0.1</code></li>
+    <li>Admin login → change password</li>
+    <li>Backup now; show USB backup folder</li>
+    <li>Print or leave CHEATSHEET + CRASH_RESTORE_CARD (fill Server IP / support contact)</li>
+    <li>Leave-site items in RISK_AND_CONTINUITY if you will be away long</li>
+  </ul>
+
+  <h3>Multi-PC install</h3>
+  <ul class="check">
+    <li>Server: static IP + <code>install-server.ps1</code></li>
+    <li>Health from a second PC: <code>http://SERVER_IP:8080/api/health</code></li>
+    <li>Client on each desk → same Server IP</li>
+    <li>Reception + Pharmacy login smoke</li>
+    <li>Tiny OPD or restock on a client</li>
+    <li>Backup now + USB copy ritual agreed</li>
+    <li>Print CHEATSHEET + CRASH_RESTORE_CARD; fill blanks</li>
+  </ul>
+
+  <p>Full smoke list: <strong>DEPLOY.md §4</strong>.</p>
+
+  <p class="footer-note">
+    Canonical text: FIELD_INSTALL_FAQ.md · Print layout: FIELD_INSTALL_FAQ.html · Regenerate PDF with Edge headless print-to-pdf if this form changes.
+  </p>
+
+</body>
+</html>

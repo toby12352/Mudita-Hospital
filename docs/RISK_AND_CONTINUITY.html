@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mudita Hospital — Risk &amp; Continuity Answers</title>
+  <style>
+    @page { size: A4; margin: 12mm 14mm; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Segoe UI", Calibri, sans-serif;
+      font-size: 10pt;
+      line-height: 1.32;
+      color: #111;
+      max-width: 190mm;
+      margin: 0 auto;
+      padding: 8mm 6mm 12mm;
+    }
+    h1 {
+      font-size: 16pt;
+      margin: 0 0 4pt;
+      border-bottom: 2px solid #111;
+      padding-bottom: 4pt;
+    }
+    h2 {
+      font-size: 12pt;
+      margin: 14pt 0 6pt;
+      border-bottom: 1px solid #444;
+      padding-bottom: 2pt;
+      page-break-after: avoid;
+    }
+    h3 {
+      font-size: 10.5pt;
+      margin: 10pt 0 4pt;
+      page-break-after: avoid;
+    }
+    .meta { color: #333; margin-bottom: 8pt; }
+    p, li { margin: 3pt 0; }
+    ol, ul { margin: 4pt 0 8pt 18pt; padding: 0; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 6pt 0 10pt;
+      font-size: 9.5pt;
+      page-break-inside: avoid;
+    }
+    th, td {
+      border: 1px solid #333;
+      padding: 4pt 6pt;
+      vertical-align: top;
+      text-align: left;
+    }
+    th { background: #e8e8e8; font-weight: 600; }
+    code { font-family: Consolas, "Courier New", monospace; font-size: 9pt; }
+    .note {
+      background: #f3f3f3;
+      border: 1px solid #999;
+      padding: 6pt 8pt;
+      margin: 6pt 0 10pt;
+    }
+    .footer-note {
+      margin-top: 12pt;
+      font-size: 8pt;
+      color: #555;
+      border-top: 1px solid #ccc;
+      padding-top: 4pt;
+    }
+    @media print {
+      body { padding: 0; max-width: none; }
+      th, .note {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Mudita Hospital — Risk &amp; Continuity Answers</h1>
+  <p class="meta">For installers and the hospital director. Staff day-to-day: cheat sheet. Crash laminate: crash / restore card. Deploy: <code>DEPLOY.md</code>.</p>
+
+  <p>Offline LAN clinic app: one always-on Windows <strong>server PC</strong> holds all data (<code>C:\MuditaHospital\Server\data\mudita.db</code>); clinic PCs run thin clients over HTTP port <strong>8080</strong>. No internet required after install.</p>
+
+  <h2>1. Could the software fail to meet “hospital standard”?</h2>
+  <p>Built for <strong>OPD billing, OT case-cart, pharmacy stock, and cash reports</strong>—not a certified medical device, full EHR, or life-support system.</p>
+  <table>
+    <tr><th>What people often mean</th><th>Where Mudita stands</th></tr>
+    <tr><td>Reliable day-to-day billing &amp; stock for a small/mid clinic</td><td>Designed for this (watchdog, WAL SQLite, roles, print)</td></tr>
+    <tr><td>Regulatory / ISO / MoH certification</td><td><strong>Not claimed</strong></td></tr>
+    <tr><td>Clinical decision support that could kill if wrong</td><td><strong>Out of scope</strong> — clinical judgment stays with staff</td></tr>
+  </table>
+  <p class="note">Reduce risk: pilot with Training mode + shadow paper 1–2 weeks; reconcile daily cash and stock; keep paper/Excel fallback until numbers are trusted.</p>
+
+  <h2>2. Calculation off — hospital loses money?</h2>
+  <ul>
+    <li><strong>Daily cash report</strong> vs cash drawer — every day.</li>
+    <li>Low stock / near expiry vs shelf — weekly.</li>
+    <li>Audit Doctors / Services / Pharmacy prices (master-data errors are common).</li>
+    <li>Voids need a reason; OPD vs OT stock restore rules differ.</li>
+  </ul>
+  <p>Human reconciliation is the control. Backups help investigate; they do not refund cash.</p>
+
+  <h2>3. Installer overseas — app crashes?</h2>
+  <p><strong>Built-in:</strong> MuditaHospitalAPI + watchdog; clients show Server offline / Retry.</p>
+  <p><strong>Not built-in:</strong> cloud monitoring or remote control without hospital help.</p>
+  <ol>
+    <li>Server on? Green Server connected?</li>
+    <li><code>http://127.0.0.1:8080/api/health</code> on server</li>
+    <li>Restart scheduled task (FIELD_INSTALL_FAQ)</li>
+    <li>Admin → Restore from backup / USB</li>
+    <li>Call support with photos</li>
+  </ol>
+  <p>Agree remote desktop (if allowed) before long absence.</p>
+
+  <h2>4. How long without developer supervision (one trained staff)?</h2>
+  <table>
+    <tr><th>Horizon</th><th>Realistic if…</th></tr>
+    <tr><td>Days–weeks</td><td>Bill / restock / print; server on; backups run</td></tr>
+    <tr><td>1–3 months</td><td>Weekly USB copy done; Admin known; cheat sheet laminated</td></tr>
+    <tr><td>Longer</td><td>Second trained person + written restore steps + support on call</td></tr>
+  </table>
+  <p>One trained person is a single point of failure. Knowledge and backup discipline expire — the app does not.</p>
+
+  <h2>5. Help without being on site?</h2>
+  <table>
+    <tr><th>Method</th><th>Works?</th></tr>
+    <tr><td>Phone / chat + screenshots + FAQ steps</td><td>Yes</td></tr>
+    <tr><td>Remote desktop if hospital allows</td><td>Yes — best for restore/reinstall</td></tr>
+    <tr><td>Mudita over the internet</td><td><strong>No</strong> — offline LAN; no cloud admin</td></tr>
+  </table>
+
+  <h2>6. Non-technical users?</h2>
+  <p><strong>Yes</strong> for desk work after short training (EN/မြန်မာ, Help, cheat sheet). <strong>No</strong> for zero training — Server IP, roles, OT reconcile, Backup/Restore need onboarding (~half-day desk; Admin longer).</p>
+
+  <h2>7. Trained person quits before replacement is trained?</h2>
+  <ul>
+    <li>Laminate cheat sheet at every desk.</li>
+    <li>Two Admins (or sealed emergency password with director).</li>
+    <li>Training mode (<code>DEMO-</code> / <code>[TRAINING]</code>) for practice.</li>
+    <li>Handoff: Server IP, USB location, support contact on crash card.</li>
+  </ul>
+
+  <h2>8. Data gap?</h2>
+  <p>Missed entry, void, wrong adjust, or backup gap. Detect with cash/stock counts. Restore only recovers what was <strong>backed up</strong>. Physical recount is the stock safety net.</p>
+
+  <h2>9. Software destroyed/uninstalled — still need data?</h2>
+  <ul>
+    <li><code>uninstall-server.ps1</code> without <code>-RemoveData</code> can leave data.</li>
+    <li><code>-RemoveData</code> wipes DB/backups — avoid unless intentional.</li>
+    <li>Survival: USB <code>backups\</code> → reinstall server → Restore. Clients never store the hospital DB.</li>
+  </ul>
+
+  <h2>10. Data lost somehow?</h2>
+  <p><strong>Only from backups</strong> (24h auto + weekly USB). No cloud replica. If every copy is gone, history cannot be recovered. Prevention is mandatory.</p>
+
+  <h2>11. Transfer to a new device?</h2>
+  <ol>
+    <li>Backup now; copy <code>backups\</code> to USB.</li>
+    <li>Install server on new PC; set static IP.</li>
+    <li>Admin → Restore; update every client Server IP; smoke-check.</li>
+  </ol>
+
+  <h2>12. Secure unless someone physically steals it?</h2>
+  <p><strong>No — do not use that mental model.</strong></p>
+  <p><strong>Have:</strong> role logins, hashed passwords, sessions, idle lock, Admin-only backup; LAN-only by default.</p>
+  <p><strong>Do not have today:</strong> HTTPS/TLS on LAN; encryption at rest for <code>mudita.db</code>; protection against unchanged defaults or USB walk-away.</p>
+  <p class="note">Trust model: closed wired LAN + changed passwords + locked server + confidential USB + locked Windows accounts. Clinic-grade LAN security — not “only physical theft.”</p>
+
+  <h2>Bottom line</h2>
+  <table>
+    <tr><th>Concern</th><th>Verdict</th></tr>
+    <tr><td>Hospital “standard”</td><td>LAN clinic ops if piloted; not certified clinical system</td></tr>
+    <tr><td>Money errors</td><td>Daily cash + stock counts + price audits</td></tr>
+    <tr><td>Overseas / crash</td><td>Coachable; remote if allowed; leave restore card</td></tr>
+    <tr><td>Unsupervised life</td><td>Months with 2+ people + USB habit</td></tr>
+    <tr><td>Remote help</td><td>Phone yes; in-app cloud no</td></tr>
+    <tr><td>Non-tech users</td><td>Yes after short training</td></tr>
+    <tr><td>Staff turnover</td><td>Handoff + second Admin + Training mode</td></tr>
+    <tr><td>Data gaps / loss</td><td>Only what’s backed up; USB mandatory</td></tr>
+    <tr><td>Security</td><td>Not “only physical steal”</td></tr>
+  </table>
+
+  <h2>Leave-site checklist</h2>
+  <ol>
+    <li>Pilot 1–2 weeks parallel with paper; daily cash match</li>
+    <li>Change defaults; named users; two Admins</li>
+    <li>Demonstrate Backup → USB → Restore; staff repeat once</li>
+    <li>Leave cheat sheet + crash card + contact</li>
+    <li>Agree remote tool (if any) and who powers the server</li>
+    <li>Lock USB backups; label hospital + date</li>
+    <li>Fill blanks on the crash card</li>
+  </ol>
+
+  <p class="footer-note">Source: <code>docs/RISK_AND_CONTINUITY.md</code> · PDF: <code>RISK_AND_CONTINUITY.pdf</code> · Crash card: <code>CRASH_RESTORE_CARD.pdf</code>. Regenerate PDF with Edge headless print-to-pdf if this form changes.</p>
+
+</body>
+</html>

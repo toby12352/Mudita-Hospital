@@ -1,0 +1,46 @@
+# Dependencies
+node_modules/
+vendor/
+
+# Build outputs
+dist/
+build/
+bin/
+*.exe
+!scripts/*.ps1
+*.dll
+*.so
+*.dylib
+client/dist/
+
+# Go
+server/tmp/
+*.test
+
+# SQLite
+*.db
+*.db-wal
+*.db-shm
+data/
+
+# Tauri / Rust
+client/src-tauri/target/
+client/src-tauri/gen/
+client/src-tauri/WixTools/
+
+# Env / local config overrides
+.env
+.env.*
+!.env.example
+server/config.local.json
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*

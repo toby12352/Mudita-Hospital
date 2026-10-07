@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mudita Hospital — Crash / restore card</title>
+  <style>
+    @page { size: A4; margin: 10mm 12mm; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Segoe UI", Calibri, sans-serif;
+      font-size: 10pt;
+      line-height: 1.28;
+      color: #111;
+      max-width: 190mm;
+      margin: 0 auto;
+      padding: 6mm 4mm 8mm;
+    }
+    h1 {
+      font-size: 14pt;
+      margin: 0 0 2pt;
+      border-bottom: 2px solid #111;
+      padding-bottom: 3pt;
+    }
+    .meta { color: #333; margin: 0 0 8pt; font-size: 9pt; }
+    h2 {
+      font-size: 10.5pt;
+      margin: 8pt 0 3pt;
+      border-bottom: 1px solid #555;
+      padding-bottom: 1pt;
+      page-break-after: avoid;
+    }
+    ol, ul { margin: 2pt 0 4pt 16pt; padding: 0; }
+    li { margin: 1pt 0; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 4pt 0 6pt;
+      font-size: 9pt;
+    }
+    th, td {
+      border: 1px solid #333;
+      padding: 3pt 5pt;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { background: #e8e8e8; font-weight: 600; }
+    .blank { letter-spacing: 0.05em; }
+    .warn {
+      background: #f3f3f3;
+      border: 1px solid #999;
+      padding: 5pt 7pt;
+      margin: 4pt 0 6pt;
+      font-size: 9pt;
+    }
+    code, pre {
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 8.5pt;
+    }
+    pre {
+      background: #f5f5f5;
+      border: 1px solid #ccc;
+      padding: 5pt 7pt;
+      margin: 3pt 0 5pt;
+      white-space: pre-wrap;
+    }
+    .footer-note {
+      margin-top: 6pt;
+      font-size: 8pt;
+      color: #555;
+      border-top: 1px solid #ccc;
+      padding-top: 4pt;
+    }
+    @media print {
+      body { padding: 0; max-width: none; }
+      th, .warn, pre {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Mudita Hospital — Crash / restore card</h1>
+  <p class="meta">Print and keep at the <strong>server PC</strong> and with the director. Full risk answers: <code>RISK_AND_CONTINUITY.md</code>.</p>
+
+  <h2>1. Fill in at install</h2>
+  <table>
+    <tr><th style="width:40%">Item</th><th>Write here</th></tr>
+    <tr><td>Server IP</td><td class="blank">______________________________</td></tr>
+    <tr><td>Server PC location</td><td class="blank">______________________________</td></tr>
+    <tr><td>Backup USB location</td><td class="blank">______________________________</td></tr>
+    <tr><td>Support contact (phone)</td><td class="blank">______________________________</td></tr>
+    <tr><td>Second Admin name</td><td class="blank">______________________________</td></tr>
+    <tr><td>Remote tool (if any)</td><td class="blank">______________________________</td></tr>
+  </table>
+
+  <h2>2. When the app will not work</h2>
+  <ol>
+    <li>Is the <strong>server PC</strong> powered on and plugged into Ethernet?</li>
+    <li>On a clinic PC: does the badge say <strong>Server connected</strong>? If offline → <strong>Retry</strong>, then check Server IP (table above).</li>
+    <li>On the <strong>server PC</strong>, open a browser: <code>http://127.0.0.1:8080/api/health</code> — expect <code>"status":"ok"</code> and <code>"db":"ok"</code>.</li>
+    <li>Restart the API (Administrator PowerShell):</li>
+  </ol>
+  <pre>Stop-ScheduledTask -TaskName "MuditaHospitalAPI"
+Get-Process mudita-api -ErrorAction SilentlyContinue | Stop-Process -Force
+Start-ScheduledTask -TaskName "MuditaHospitalAPI"</pre>
+  <ol start="5">
+    <li>Wait ~10 seconds; Retry on clients.</li>
+    <li>If still broken: call support with photos of the badge and the health page.</li>
+  </ol>
+
+  <h2>3. Backup (every week — Admin)</h2>
+  <ol>
+    <li>Admin → Settings → <strong>Backup</strong> → Backup now (also auto every 24h into <code>C:\MuditaHospital\Server\backups\</code>).</li>
+    <li>Copy the whole <code>backups\</code> folder to the <strong>labeled USB</strong>.</li>
+    <li>Keep the USB locked away (treat like patient / cash records).</li>
+  </ol>
+
+  <h2>4. Restore (replaces live data — Admin only)</h2>
+  <ol>
+    <li>Use a backup from <strong>this</strong> hospital only.</li>
+    <li>Admin → Settings → <strong>Backup</strong> → Restore on the chosen file.</li>
+    <li>Wait ~5–10 seconds; clients <strong>Retry</strong>.</li>
+    <li>Confirm a known bill or stock count still looks right.</li>
+  </ol>
+  <p class="warn"><strong>Do not</strong> run <code>uninstall-server.ps1 -RemoveData</code> unless the director ordered a full wipe. Reinstall without wiping, then Restore from USB.</p>
+
+  <h2>5. New server PC</h2>
+  <ol>
+    <li>Backup now on old PC; copy <code>backups\</code> to USB.</li>
+    <li>Install server on new PC; set static IP; write new IP above.</li>
+    <li>Restore from USB backup.</li>
+    <li>Point every client at the new Server IP; check health + one tiny bill.</li>
+  </ol>
+
+  <h2>6. Daily money / stock safety</h2>
+  <ul>
+    <li>End of day: <strong>Reports → Daily cash</strong> vs cash drawer.</li>
+    <li>Weekly: low stock / near expiry vs shelf when possible.</li>
+    <li>Two people should know Admin (or sealed emergency password with director).</li>
+  </ul>
+
+  <h2>7. Leave-site checklist (installer + staff)</h2>
+  <ul>
+    <li>☐ Pilot / daily cash match agreed</li>
+    <li>☐ Default passwords changed; two Admins (or sealed envelope)</li>
+    <li>☐ Backup → USB → Restore demonstrated; staff repeated once</li>
+    <li>☐ This card + cheat sheet printed; support number filled in</li>
+    <li>☐ Remote tool (if any) and who powers the server agreed</li>
+    <li>☐ USB backups locked up; labeled with hospital name + date</li>
+  </ul>
+
+  <p class="footer-note">Source: <code>docs/CRASH_RESTORE_CARD.md</code> · PDF: <code>CRASH_RESTORE_CARD.pdf</code> · Deeper answers: <code>RISK_AND_CONTINUITY.pdf</code>. Regenerate PDF with Edge headless print-to-pdf if this form changes.</p>
+
+</body>
+</html>

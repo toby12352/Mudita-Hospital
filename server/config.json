@@ -1,0 +1,7 @@
+{
+  "host": "127.0.0.1",
+  "port": 8080,
+  "db_path": "data/mudita.db",
+  "backup_dir": "backups",
+  "backup_interval_hours": 24
+}
