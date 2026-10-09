@@ -57,8 +57,9 @@ On your **build PC** (Go + Node + Rust for client build):
 
 ```powershell
 cd c:\Mudita_Software\Mudita-Hospital
-.\scripts\package-server.ps1   # → dist\server-package\
-.\scripts\package-client.ps1   # → dist\client-package\
+.\scripts\package-server.ps1      # → dist\server-package\
+.\scripts\package-client.ps1      # → dist\client-package\
+.\scripts\package-dashboard.ps1   # → dist\dashboard-package\
 ```
 
 Copy to USB, for example:
@@ -68,6 +69,7 @@ USB\
   Mudita\
     Server\     ← entire dist\server-package\
     Client\     ← entire dist\client-package\
+    Dashboard\  ← entire dist\dashboard-package\
     Docs\       ← DEPLOY.md + FIELD_INSTALL_FAQ.md + CHEATSHEET.md
                   + RISK_AND_CONTINUITY.md + CRASH_RESTORE_CARD.md
                   (+ .html print layouts if useful)
@@ -86,6 +88,8 @@ USB\
 2. **Each clinic PC** — install the `.msi` / NSIS setup if present, **or** copy/run `MuditaHospital.exe`.
 
 3. First client launch → enter Server IP → sign in.
+
+4. **Director PC** (optional) — install the dashboard `.msi` / NSIS setup if present, **or** copy/run `MuditaDashboard.exe`. First launch → same Server IP → **Admin** login only.
 
 Deep steps: [DEPLOY.md](./DEPLOY.md).
 
@@ -219,7 +223,7 @@ Admin PowerShell from the package folder:
 
 ### Before you leave the office
 
-- [ ] `package-server.ps1` + `package-client.ps1` on USB  
+- [ ] `package-server.ps1` + `package-client.ps1` + `package-dashboard.ps1` on USB  
 - [ ] This FAQ + DEPLOY.md + CHEATSHEET.md + RISK_AND_CONTINUITY + CRASH_RESTORE_CARD on USB  
 - [ ] Know the planned static IP (or confirm single-PC `127.0.0.1`)
 
@@ -229,6 +233,7 @@ Admin PowerShell from the package folder:
 - [ ] Health: `http://127.0.0.1:8080/api/health`  
 - [ ] Install / run client; Server IP `127.0.0.1`  
 - [ ] Admin login → change password  
+- [ ] (Optional) Install / run dashboard; Admin login  
 - [ ] Backup now; show USB backup folder  
 - [ ] Print or leave CHEATSHEET + CRASH_RESTORE_CARD (fill Server IP / support contact)  
 - [ ] Leave-site items in [RISK_AND_CONTINUITY.md](./RISK_AND_CONTINUITY.md) if you will be away long  
@@ -240,6 +245,7 @@ Admin PowerShell from the package folder:
 - [ ] Client on each desk → same Server IP  
 - [ ] Reception + Pharmacy login smoke  
 - [ ] Tiny OPD or restock on a client  
+- [ ] (Optional) Dashboard on director PC → Admin login  
 - [ ] Backup now + USB copy ritual agreed  
 - [ ] Print CHEATSHEET + CRASH_RESTORE_CARD; fill blanks  
 

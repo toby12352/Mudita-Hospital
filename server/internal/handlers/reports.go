@@ -18,7 +18,7 @@ type Reports struct {
 }
 
 type cashLine struct {
-	Source     string `json:"source"` // OPD | OT
+	Source     string `json:"source"` // OPD | OT | Pharmacy
 	BillNo     string `json:"bill_no"`
 	Patient    string `json:"patient"`
 	Doctor     string `json:"doctor"`
@@ -28,13 +28,15 @@ type cashLine struct {
 }
 
 type cashReport struct {
-	Date       string     `json:"date"`
-	OPDCount   int        `json:"opd_count"`
-	OPDTotal   int64      `json:"opd_total_mmk"`
-	OTCount    int        `json:"ot_count"`
-	OTTotal    int64      `json:"ot_total_mmk"`
-	GrandTotal int64      `json:"grand_total_mmk"`
-	Lines      []cashLine `json:"lines"`
+	Date           string     `json:"date"`
+	OPDCount       int        `json:"opd_count"`
+	OPDTotal       int64      `json:"opd_total_mmk"`
+	OTCount        int        `json:"ot_count"`
+	OTTotal        int64      `json:"ot_total_mmk"`
+	PharmacyCount  int        `json:"pharmacy_count"`
+	PharmacyTotal  int64      `json:"pharmacy_total_mmk"`
+	GrandTotal     int64      `json:"grand_total_mmk"`
+	Lines          []cashLine `json:"lines"`
 }
 
 type lowStockRow struct {
@@ -114,6 +116,7 @@ func (h *Reports) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func canCashReport(role string) bool {
 	return auth.HasPermission(role, auth.PermOPD) ||
 		auth.HasPermission(role, auth.PermOT) ||
+		auth.HasPermission(role, auth.PermPharmacy) ||
 		auth.HasPermission(role, auth.PermSettings)
 }
 
@@ -211,7 +214,33 @@ func buildDailyCash(db *sql.DB, date string) (*cashReport, error) {
 		return nil, err
 	}
 
-	rep.GrandTotal = rep.OPDTotal + rep.OTTotal
+	phRows, err := db.Query(`
+		SELECT b.bill_no, b.patient_name, '', b.total_mmk,
+		       COALESCE(b.paid_at, ''), COALESCE(u.display_name, '')
+		FROM pharmacy_bills b
+		LEFT JOIN users u ON u.id = b.paid_by_user_id
+		WHERE b.status = 'paid' AND date(b.paid_at) = date(?)
+		ORDER BY b.paid_at ASC, b.id ASC
+	`, date)
+	if err != nil {
+		return nil, err
+	}
+	defer phRows.Close()
+	for phRows.Next() {
+		var line cashLine
+		line.Source = "Pharmacy"
+		if err := phRows.Scan(&line.BillNo, &line.Patient, &line.Doctor, &line.TotalMMK, &line.PaidAt, &line.PaidByName); err != nil {
+			return nil, err
+		}
+		rep.Lines = append(rep.Lines, line)
+		rep.PharmacyCount++
+		rep.PharmacyTotal += line.TotalMMK
+	}
+	if err := phRows.Err(); err != nil {
+		return nil, err
+	}
+
+	rep.GrandTotal = rep.OPDTotal + rep.OTTotal + rep.PharmacyTotal
 	return rep, nil
 }
 
@@ -342,8 +371,11 @@ func renderCashReportHTML(hosp *hospitalSettings, rep *cashReport) string {
 	b.WriteString(html.EscapeString(rep.Date))
 	b.WriteString("</h2>")
 	b.WriteString(fmt.Sprintf(
-		"<p class=\"summary\">OPD: %d bills · %s MMK &nbsp;|&nbsp; OT: %d bills · %s MMK &nbsp;|&nbsp; <strong>Total: %s MMK</strong></p>",
-		rep.OPDCount, formatMMK(rep.OPDTotal), rep.OTCount, formatMMK(rep.OTTotal), formatMMK(rep.GrandTotal),
+		"<p class=\"summary\">OPD: %d · %s MMK &nbsp;|&nbsp; Pharmacy: %d · %s MMK &nbsp;|&nbsp; OT: %d · %s MMK &nbsp;|&nbsp; <strong>Total: %s MMK</strong></p>",
+		rep.OPDCount, formatMMK(rep.OPDTotal),
+		rep.PharmacyCount, formatMMK(rep.PharmacyTotal),
+		rep.OTCount, formatMMK(rep.OTTotal),
+		formatMMK(rep.GrandTotal),
 	))
 	b.WriteString("<table><thead><tr><th>Source</th><th>Bill</th><th>Patient</th><th>Doctor</th><th>Paid</th><th class=\"num\">MMK</th></tr></thead><tbody>")
 	for _, line := range rep.Lines {

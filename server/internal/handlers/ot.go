@@ -60,6 +60,7 @@ type otCaseWriteRequest struct {
 	PatientAgeYears *int64       `json:"patient_age_years,omitempty"`
 	PatientGender   string       `json:"patient_gender"`
 	DoctorID        *int64       `json:"doctor_id,omitempty"`
+	DoctorName      string       `json:"doctor_name"`
 	ProcedureName   string       `json:"procedure_name"`
 	Notes           string       `json:"notes"`
 	Items           []otCaseItem `json:"items"`
@@ -294,7 +295,7 @@ func (h *OT) createCase(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 
-	doctorName, doctorID, err := resolveDoctor(tx, req.DoctorID, "")
+	doctorName, doctorID, err := resolveDoctor(tx, req.DoctorID, req.DoctorName)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
@@ -404,7 +405,7 @@ func (h *OT) updateCase(w http.ResponseWriter, r *http.Request, path string) {
 		return
 	}
 
-	doctorName, doctorID, err := resolveDoctor(tx, req.DoctorID, "")
+	doctorName, doctorID, err := resolveDoctor(tx, req.DoctorID, req.DoctorName)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return

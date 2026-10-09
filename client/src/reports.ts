@@ -18,6 +18,8 @@ export type CashReport = {
   opd_total_mmk: number;
   ot_count: number;
   ot_total_mmk: number;
+  pharmacy_count: number;
+  pharmacy_total_mmk: number;
   grand_total_mmk: number;
   lines: CashLine[];
 };

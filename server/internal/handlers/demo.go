@@ -37,19 +37,21 @@ func (h *Demo) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Demo) status(w http.ResponseWriter, r *http.Request) {
-	var doctors, services, items, opdBills, otBills int
+	var doctors, services, items, opdBills, otBills, phBills int
 	_ = h.DB.QueryRow(`SELECT COUNT(1) FROM doctors WHERE name LIKE '%[TRAINING]%' OR name LIKE 'Dr Demo%'`).Scan(&doctors)
 	_ = h.DB.QueryRow(`SELECT COUNT(1) FROM services WHERE code LIKE 'DEMO-%'`).Scan(&services)
 	_ = h.DB.QueryRow(`SELECT COUNT(1) FROM items WHERE code LIKE 'DEMO-%'`).Scan(&items)
 	_ = h.DB.QueryRow(`SELECT COUNT(1) FROM opd_bills WHERE patient_name LIKE '%[TRAINING]%'`).Scan(&opdBills)
 	_ = h.DB.QueryRow(`SELECT COUNT(1) FROM ot_bills WHERE patient_name LIKE '%[TRAINING]%'`).Scan(&otBills)
+	_ = h.DB.QueryRow(`SELECT COUNT(1) FROM pharmacy_bills WHERE patient_name LIKE '%[TRAINING]%'`).Scan(&phBills)
 	writeJSON(w, http.StatusOK, map[string]any{
-		"training_doctors":  doctors,
-		"training_services": services,
-		"training_items":    items,
-		"training_opd_bills": opdBills,
-		"training_ot_bills":  otBills,
-		"seeded":            doctors > 0 || services > 0 || items > 0,
+		"training_doctors":         doctors,
+		"training_services":        services,
+		"training_items":           items,
+		"training_opd_bills":       opdBills,
+		"training_ot_bills":        otBills,
+		"training_pharmacy_bills":  phBills,
+		"seeded":                   doctors > 0 || services > 0 || items > 0,
 	})
 }
 
@@ -102,6 +104,13 @@ func (h *Demo) seed(w http.ResponseWriter, r *http.Request) {
 	}
 	created["opd_bills"] = billN
 
+	phN, err := ensureTrainingPharmacyBill(tx, uid, itemIDs)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	created["pharmacy_bills"] = phN
+
 	if err := tx.Commit(); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "commit failed"})
 		return
@@ -136,6 +145,17 @@ func (h *Demo) reset(w http.ResponseWriter, r *http.Request) {
 		_, _ = tx.Exec(`DELETE FROM bill_stock_allocs WHERE bill_id = ?`, id)
 		_, _ = tx.Exec(`DELETE FROM bill_lines WHERE bill_id = ?`, id)
 		_, _ = tx.Exec(`DELETE FROM opd_bills WHERE id = ?`, id)
+	}
+
+	phIDs, err := queryIDs(tx, `SELECT id FROM pharmacy_bills WHERE patient_name LIKE '%[TRAINING]%'`)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "list pharmacy bills failed"})
+		return
+	}
+	for _, id := range phIDs {
+		_, _ = tx.Exec(`DELETE FROM pharmacy_bill_stock_allocs WHERE bill_id = ?`, id)
+		_, _ = tx.Exec(`DELETE FROM pharmacy_bill_lines WHERE bill_id = ?`, id)
+		_, _ = tx.Exec(`DELETE FROM pharmacy_bills WHERE id = ?`, id)
 	}
 
 	otBillIDs, err := queryIDs(tx, `SELECT id FROM ot_bills WHERE patient_name LIKE '%[TRAINING]%'`)
@@ -181,10 +201,11 @@ func (h *Demo) reset(w http.ResponseWriter, r *http.Request) {
 	}
 
 	audit.WriteAudit(h.DB, &uid, "demo_reset", "training", nil, map[string]any{
-		"opd_bills": len(opdIDs),
-		"ot_bills":  len(otBillIDs),
-		"ot_cases":  len(otCaseIDs),
-		"items":     len(itemIDs),
+		"opd_bills":       len(opdIDs),
+		"pharmacy_bills":  len(phIDs),
+		"ot_bills":        len(otBillIDs),
+		"ot_cases":        len(otCaseIDs),
+		"items":           len(itemIDs),
 	})
 
 	// Re-seed clean training set
@@ -273,10 +294,20 @@ func ensureTrainingItems(tx *sql.Tx, actorUID int64) ([]int64, int, error) {
 		var id int64
 		err := tx.QueryRow(`SELECT id FROM items WHERE code = ?`, s.code).Scan(&id)
 		if err == sql.ErrNoRows {
+			units := categoryUnitDefaults(s.category)
+			chargeInt := 0
+			if units.ChargeFullStockUnit {
+				chargeInt = 1
+			}
 			res, err := tx.Exec(`
-				INSERT INTO items (code, name, category, pack_size, buy_price_mmk, sell_price_mmk, reorder_level, active)
-				VALUES (?, ?, ?, 1, ?, ?, ?, 1)
-			`, s.code, s.name, s.category, s.buy, s.sell, s.reorder)
+				INSERT INTO items (
+					code, name, category, pack_size,
+					purchase_unit, stock_unit, billing_unit, units_per_purchase, billing_per_stock, charge_full_stock_unit,
+					buy_price_mmk, sell_price_mmk, reorder_level, active
+				) VALUES (?, ?, ?, 10, ?, ?, ?, 10, ?, ?, ?, ?, ?, 1)
+			`, s.code, s.name, s.category,
+				units.PurchaseUnit, units.StockUnit, units.BillingUnit, units.BillingPerStock, chargeInt,
+				s.buy, s.sell, s.reorder)
 			if err != nil {
 				return nil, 0, fmt.Errorf("item %s: %w", s.code, err)
 			}
@@ -331,14 +362,7 @@ func ensureTrainingOpdBill(tx *sql.Tx, actorUID, doctorID, serviceID int64, item
 	var svcPrice int64
 	_ = tx.QueryRow(`SELECT code, name, price_mmk FROM services WHERE id = ?`, serviceID).Scan(&svcCode, &svcName, &svcPrice)
 
-	itemQty := int64(2)
-	var itemCode, itemName string
-	var itemPrice, itemID int64
-	if len(itemIDs) > 0 {
-		itemID = itemIDs[0]
-		_ = tx.QueryRow(`SELECT code, name, sell_price_mmk FROM items WHERE id = ?`, itemID).Scan(&itemCode, &itemName, &itemPrice)
-	}
-	total := svcPrice + itemPrice*itemQty
+	total := svcPrice
 
 	res, err := tx.Exec(`
 		INSERT INTO opd_bills (
@@ -358,21 +382,75 @@ func ensureTrainingOpdBill(tx *sql.Tx, actorUID, doctorID, serviceID int64, item
 	if err != nil {
 		return 0, fmt.Errorf("opd line service: %w", err)
 	}
-	if itemID > 0 {
-		lineTotal := itemPrice * itemQty
-		lres, err := tx.Exec(`
-			INSERT INTO bill_lines (bill_id, line_type, ref_id, code, description, qty, unit_price_mmk, line_total_mmk, sort_order)
-			VALUES (?, 'item', ?, ?, ?, ?, ?, ?, 1)
-		`, billID, itemID, itemCode, itemName, itemQty, itemPrice, lineTotal)
-		if err != nil {
-			return 0, fmt.Errorf("opd line item: %w", err)
-		}
-		lineID, _ := lres.LastInsertId()
-		// Deduct FEFO for realism (may leave training item low-stock)
-		if _, err := fefoDeductSale(tx, billID, lineID, itemID, itemQty, actorUID); err != nil {
-			// If stock insufficient, leave bill without stock alloc (still counts for cash report)
-			_ = err
-		}
+	_ = itemIDs
+	_ = billID
+	return 1, nil
+}
+
+func ensureTrainingPharmacyBill(tx *sql.Tx, actorUID int64, itemIDs []int64) (int, error) {
+	var n int
+	err := tx.QueryRow(`
+		SELECT COUNT(1) FROM pharmacy_bills
+		WHERE patient_name LIKE '%[TRAINING]%' AND status = 'paid' AND date(paid_at) = date('now')
+	`).Scan(&n)
+	if err != nil {
+		return 0, err
+	}
+	if n > 0 || len(itemIDs) == 0 {
+		return 0, nil
+	}
+
+	billNo, err := nextPharmacyBillNo(tx)
+	if err != nil {
+		return 0, fmt.Errorf("pharmacy bill seq: %w", err)
+	}
+
+	itemID := itemIDs[0]
+	var itemCode, itemName, stockUnit, billingUnit string
+	var itemPrice, billingPerStock int64
+	var chargeFull int
+	_ = tx.QueryRow(`
+		SELECT code, name, sell_price_mmk, stock_unit, billing_unit, billing_per_stock, charge_full_stock_unit
+		FROM items WHERE id = ?
+	`, itemID).Scan(&itemCode, &itemName, &itemPrice, &stockUnit, &billingUnit, &billingPerStock, &chargeFull)
+	if billingPerStock < 1 {
+		billingPerStock = 1
+	}
+	billingQty := int64(2)
+	if billingUnit == "" {
+		billingUnit = "Piece"
+	}
+	if stockUnit == "" {
+		stockUnit = "Piece"
+	}
+	stockQty, msg := billingToStockQty(billingQty, billingPerStock, chargeFull == 1)
+	if msg != "" {
+		stockQty = billingQty
+	}
+	lineTotal := lineChargeMMK(billingQty, stockQty, billingPerStock, itemPrice, chargeFull == 1)
+
+	res, err := tx.Exec(`
+		INSERT INTO pharmacy_bills (
+			bill_no, patient_name, patient_phone, patient_gender,
+			description, status, total_mmk, paid_at, paid_by_user_id, created_by_user_id
+		) VALUES (?, 'Training Patient [TRAINING]', '', '', 'Training pharmacy seed', 'paid', ?, datetime('now'), ?, ?)
+	`, billNo, lineTotal, actorUID, actorUID)
+	if err != nil {
+		return 0, fmt.Errorf("pharmacy bill: %w", err)
+	}
+	billID, _ := res.LastInsertId()
+	lres, err := tx.Exec(`
+		INSERT INTO pharmacy_bill_lines (
+			bill_id, item_id, code, description, billing_qty, billing_unit,
+			stock_qty, stock_unit, unit_price_mmk, line_total_mmk, sort_order
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+	`, billID, itemID, itemCode, itemName, billingQty, billingUnit, stockQty, stockUnit, itemPrice, lineTotal)
+	if err != nil {
+		return 0, fmt.Errorf("pharmacy line: %w", err)
+	}
+	lineID, _ := lres.LastInsertId()
+	if _, err := fefoDeductPharmacySale(tx, billID, lineID, itemID, stockQty, actorUID); err != nil {
+		_ = err
 	}
 	return 1, nil
 }

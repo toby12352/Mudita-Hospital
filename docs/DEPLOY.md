@@ -95,12 +95,20 @@ If the badge says **Server offline**:
 
 **Mudita Dashboard** is a separate Tauri app for **Admin only** (analytics, daily cash reconciliation, bulk master-data / CSV). Reception and Pharmacy stay on the clinic client.
 
-1. From the repo (dev): `.\scripts\run-dashboard.ps1` — Vite port **1421**, product id `com.mudita.hospital.dashboard`.
-2. First launch: enter the same Server IP as the clinic client (`:8080`). Sessions use distinct keys (`mudita_dash_*`) so both apps can run on one PC.
-3. Sign in with an **Admin** account. Non-Admin logins are rejected.
-4. Bulk price / CSV changes write `audit_logs` and need typed confirm + reason. They do **not** replace USB weekly backups — still copy `backups\` off the server.
+1. Build:
+
+   ```powershell
+   .\scripts\package-dashboard.ps1
+   ```
+
+2. Copy `dist\dashboard-package\` (MSI / setup / `MuditaDashboard.exe`) to the director PC and install or run.
+3. **First launch:** enter the same Server IP as the clinic client (`:8080`). Sessions use distinct keys (`mudita_dash_*`) so both apps can run on one PC.
+4. Sign in with an **Admin** account. Non-Admin logins are rejected.
+5. Bulk price / CSV changes write `audit_logs` and need typed confirm + reason. They do **not** replace USB weekly backups — still copy `backups\` off the server.
 
 Dashboard never opens SQLite directly; reinstalling the app does not lose hospital data.
+
+Dev from the repo: `.\scripts\run-dashboard.ps1` (Vite port **1421**, product id `com.mudita.hospital.dashboard`).
 
 ## 3. Backup & restore
 
@@ -120,6 +128,7 @@ Restore replaces the live database. Only restore from backups created on this ho
 - [ ] Client first-run IP → green **Server connected**
 - [ ] Admin login works; Reception login works
 - [ ] Create a tiny OPD draft or pharmacy restock on client
+- [ ] (Optional) Dashboard first-run IP → Admin login → overview loads
 - [ ] Admin **Backup now**; see a new `.db` under `backups\`
 - [ ] (Optional) Restore that backup; after restart, data matches
 - [ ] Unplug client cable → **Server offline**; plug back → Retry → connected

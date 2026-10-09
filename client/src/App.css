@@ -54,6 +54,9 @@ body {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
+  min-height: 100vh;
+  min-height: 100dvh;
+  box-sizing: border-box;
 }
 
 .shell-wide {
@@ -131,6 +134,7 @@ body {
   border-radius: 12px;
   background: var(--bg-panel);
   border: 1px solid var(--border);
+  margin-top: auto;
 }
 
 .status-dot {
@@ -225,6 +229,17 @@ body {
   gap: 0.35rem;
   font-size: 0.92rem;
   color: var(--muted);
+}
+
+.field.checkbox-field {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  padding-top: 1.4rem;
+}
+
+.field.checkbox-field input[type="checkbox"] {
+  width: auto;
 }
 
 .field input,
@@ -597,6 +612,11 @@ body {
   gap: 0.35rem;
   align-items: center;
   font-size: 0.88rem;
+}
+
+.bill-lines.pharmacy-bill .bill-lines-head,
+.bill-lines.pharmacy-bill .bill-lines-row {
+  grid-template-columns: 5rem 1fr 5.5rem 5rem 5rem 5.5rem 2.2rem;
 }
 
 .bill-lines-head {

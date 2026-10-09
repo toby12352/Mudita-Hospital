@@ -85,6 +85,7 @@ export type OtCaseWrite = {
   patient_age_years?: number | null;
   patient_gender: string;
   doctor_id?: number | null;
+  doctor_name?: string;
   procedure_name: string;
   notes: string;
   items: OtCaseItem[];

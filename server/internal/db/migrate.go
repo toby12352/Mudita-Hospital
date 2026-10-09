@@ -385,6 +385,116 @@ CREATE TABLE IF NOT EXISTS ot_bill_lines (
 CREATE INDEX IF NOT EXISTS idx_ot_bill_lines_bill ON ot_bill_lines(bill_id);
 `,
 	},
+	{
+		Name: "007_pharmacy_units_billing",
+		SQL: `
+-- Dual-unit fields on items (stock ledger stays in stock_unit).
+ALTER TABLE items ADD COLUMN purchase_unit TEXT NOT NULL DEFAULT 'Box';
+ALTER TABLE items ADD COLUMN stock_unit TEXT NOT NULL DEFAULT 'Piece';
+ALTER TABLE items ADD COLUMN billing_unit TEXT NOT NULL DEFAULT 'Piece';
+ALTER TABLE items ADD COLUMN units_per_purchase INTEGER NOT NULL DEFAULT 1 CHECK (units_per_purchase >= 1);
+ALTER TABLE items ADD COLUMN billing_per_stock INTEGER NOT NULL DEFAULT 1 CHECK (billing_per_stock >= 1);
+ALTER TABLE items ADD COLUMN charge_full_stock_unit INTEGER NOT NULL DEFAULT 0;
+
+-- Migrate pack_size → units_per_purchase; set category-based unit defaults.
+UPDATE items SET units_per_purchase = pack_size WHERE pack_size >= 1;
+
+UPDATE items SET
+  purchase_unit = 'Box',
+  stock_unit = 'Tablet',
+  billing_unit = 'Tablet',
+  billing_per_stock = 1,
+  charge_full_stock_unit = 0
+WHERE category = 'Tablet';
+
+UPDATE items SET
+  purchase_unit = 'Box',
+  stock_unit = 'Vial',
+  billing_unit = 'mL',
+  billing_per_stock = 1,
+  charge_full_stock_unit = 1
+WHERE category = 'Injection';
+
+UPDATE items SET
+  purchase_unit = 'Bottle',
+  stock_unit = 'Bottle',
+  billing_unit = 'mL',
+  billing_per_stock = 1,
+  charge_full_stock_unit = 0
+WHERE category = 'Syrup';
+
+UPDATE items SET
+  purchase_unit = 'Box',
+  stock_unit = 'Piece',
+  billing_unit = 'Piece',
+  billing_per_stock = 1,
+  charge_full_stock_unit = 0
+WHERE category IN ('OT', 'OPD', 'Other');
+
+CREATE TABLE IF NOT EXISTS pharmacy_bill_number_seq (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  next_num INTEGER NOT NULL DEFAULT 1
+);
+
+INSERT OR IGNORE INTO pharmacy_bill_number_seq (id, next_num) VALUES (1, 1);
+
+CREATE TABLE IF NOT EXISTS pharmacy_bills (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  bill_no TEXT NOT NULL UNIQUE,
+  patient_id INTEGER REFERENCES patients(id) ON DELETE SET NULL,
+  patient_name TEXT NOT NULL,
+  patient_phone TEXT NOT NULL DEFAULT '',
+  patient_age_years INTEGER,
+  patient_gender TEXT NOT NULL DEFAULT '',
+  description TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'draft'
+    CHECK (status IN ('draft', 'paid', 'void')),
+  total_mmk INTEGER NOT NULL DEFAULT 0 CHECK (total_mmk >= 0),
+  paid_at TEXT,
+  paid_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  voided_at TEXT,
+  voided_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  void_reason TEXT NOT NULL DEFAULT '',
+  created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_pharmacy_bills_status ON pharmacy_bills(status);
+CREATE INDEX IF NOT EXISTS idx_pharmacy_bills_created ON pharmacy_bills(created_at);
+CREATE INDEX IF NOT EXISTS idx_pharmacy_bills_bill_no ON pharmacy_bills(bill_no);
+CREATE INDEX IF NOT EXISTS idx_pharmacy_bills_patient_name ON pharmacy_bills(patient_name);
+
+CREATE TABLE IF NOT EXISTS pharmacy_bill_lines (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  bill_id INTEGER NOT NULL REFERENCES pharmacy_bills(id) ON DELETE CASCADE,
+  item_id INTEGER NOT NULL REFERENCES items(id),
+  code TEXT NOT NULL DEFAULT '',
+  description TEXT NOT NULL,
+  billing_qty INTEGER NOT NULL DEFAULT 1 CHECK (billing_qty > 0),
+  billing_unit TEXT NOT NULL DEFAULT 'Piece',
+  stock_qty INTEGER NOT NULL DEFAULT 1 CHECK (stock_qty > 0),
+  stock_unit TEXT NOT NULL DEFAULT 'Piece',
+  unit_price_mmk INTEGER NOT NULL DEFAULT 0 CHECK (unit_price_mmk >= 0),
+  line_total_mmk INTEGER NOT NULL DEFAULT 0 CHECK (line_total_mmk >= 0),
+  sort_order INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_pharmacy_bill_lines_bill ON pharmacy_bill_lines(bill_id);
+
+CREATE TABLE IF NOT EXISTS pharmacy_bill_stock_allocs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  bill_id INTEGER NOT NULL REFERENCES pharmacy_bills(id) ON DELETE CASCADE,
+  bill_line_id INTEGER NOT NULL REFERENCES pharmacy_bill_lines(id) ON DELETE CASCADE,
+  item_id INTEGER NOT NULL REFERENCES items(id),
+  batch_id INTEGER NOT NULL REFERENCES item_batches(id),
+  qty INTEGER NOT NULL CHECK (qty > 0)
+);
+
+CREATE INDEX IF NOT EXISTS idx_pharmacy_bill_stock_allocs_bill ON pharmacy_bill_stock_allocs(bill_id);
+CREATE INDEX IF NOT EXISTS idx_pharmacy_bill_stock_allocs_line ON pharmacy_bill_stock_allocs(bill_line_id);
+`,
+	},
 }
 
 // Migrate applies pending migrations inside a transaction per migration.

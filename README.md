@@ -9,18 +9,20 @@ Offline LAN hospital desktop system (OPD, OT case-cart, pharmacy).
 | Path | Role |
 |------|------|
 | `server/` | Go HTTP API, SQLite DB, `config.json` |
-| `client/` | Tauri 2 + React + Vite desktop shell |
+| `client/` | Tauri 2 + React + Vite desktop shell (clinic) |
+| `dashboard/` | Tauri 2 + React Admin analytics desktop shell |
 | `docs/` | Deploy guide, field install FAQ, staff cheat sheet, risk/continuity, crash card |
 | `scripts/` | Local run + package/install helpers |
 | `deploy/server/` | Server package templates (LAN `config.json`, watchdog) |
-| `dist/` | Output of `package-server.ps1` / `package-client.ps1` (gitignored) |
+| `dist/` | Output of `package-server.ps1` / `package-client.ps1` / `package-dashboard.ps1` (gitignored) |
 
 ## Ports (local dev)
 
 | Service | Default | Config |
 |---------|---------|--------|
 | API | `http://127.0.0.1:8080` | `server/config.json` or `MUDITA_HOST` / `MUDITA_PORT` |
-| Vite (Tauri UI) | `http://localhost:1420` | `client/vite.config.ts` |
+| Vite (clinic client) | `http://localhost:1420` | `client/vite.config.ts` |
+| Vite (dashboard) | `http://localhost:1421` | `dashboard/vite.config.ts` |
 | SQLite | `server/data/mudita.db` | `db_path` in config / `MUDITA_DB_PATH` |
 
 ## Prerequisites
@@ -207,6 +209,7 @@ Client API base: first-run **Server IP** screen (stored in `localStorage`); opti
 | Package server | `.\scripts\package-server.ps1` → `dist\server-package\` |
 | Install on server PC | Admin PowerShell: `.\install-server.ps1` (startup task + firewall 8080) |
 | Package client | `.\scripts\package-client.ps1` → `dist\client-package\` |
+| Package dashboard | `.\scripts\package-dashboard.ps1` → `dist\dashboard-package\` |
 | Ops guide | [`docs/DEPLOY.md`](docs/DEPLOY.md) |
 | Field install FAQ | [`docs/FIELD_INSTALL_FAQ.md`](docs/FIELD_INSTALL_FAQ.md) |
 | Risk & continuity | [`docs/RISK_AND_CONTINUITY.pdf`](docs/RISK_AND_CONTINUITY.pdf) ([md](docs/RISK_AND_CONTINUITY.md)) |

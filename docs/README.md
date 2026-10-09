@@ -25,6 +25,7 @@ Reopen the terminal, then `go version` / `node -v`. Packaging scripts still find
 ```powershell
 .\scripts\package-server.ps1
 .\scripts\package-client.ps1
+.\scripts\package-dashboard.ps1
 ```
 
 Dev run helpers: `.\scripts\run-server.ps1`, `.\scripts\run-client.ps1`, `.\scripts\run-dashboard.ps1` (Admin analytics app — see [DEPLOY.md](./DEPLOY.md) §2b).

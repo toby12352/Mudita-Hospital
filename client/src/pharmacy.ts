@@ -1,4 +1,6 @@
-import { apiFetch } from "./api";
+import { apiFetch, getApiBase } from "./api";
+import { getStoredToken } from "./auth";
+import { fetchAndPreviewPrint } from "./print";
 
 export const ITEM_CATEGORIES = [
   "Injection",
@@ -10,6 +12,128 @@ export const ITEM_CATEGORIES = [
 ] as const;
 
 export type ItemCategory = (typeof ITEM_CATEGORIES)[number];
+
+export const UNIT_OPTIONS = [
+  "Box",
+  "Carton",
+  "Bottle",
+  "Vial",
+  "Ampoule",
+  "Piece",
+  "Tablet",
+  "Capsule",
+  "Tube",
+  "Cylinder",
+  "Bag",
+  "Each",
+  "mL",
+  "g",
+  "oz",
+] as const;
+
+export type UnitName = (typeof UNIT_OPTIONS)[number];
+
+export type ItemUnits = {
+  purchase_unit: string;
+  stock_unit: string;
+  billing_unit: string;
+  units_per_purchase: number;
+  billing_per_stock: number;
+  charge_full_stock_unit: boolean;
+};
+
+export function categoryUnitPresets(category: string): ItemUnits {
+  switch (category) {
+    case "Tablet":
+      return {
+        purchase_unit: "Box",
+        stock_unit: "Tablet",
+        billing_unit: "Tablet",
+        units_per_purchase: 10,
+        billing_per_stock: 1,
+        charge_full_stock_unit: false,
+      };
+    case "Injection":
+      return {
+        purchase_unit: "Box",
+        stock_unit: "Vial",
+        billing_unit: "mL",
+        units_per_purchase: 10,
+        billing_per_stock: 10,
+        charge_full_stock_unit: true,
+      };
+    case "Syrup":
+      return {
+        purchase_unit: "Bottle",
+        stock_unit: "Bottle",
+        billing_unit: "mL",
+        units_per_purchase: 1,
+        billing_per_stock: 100,
+        charge_full_stock_unit: false,
+      };
+    case "OT":
+      return {
+        purchase_unit: "Box",
+        stock_unit: "Piece",
+        billing_unit: "Piece",
+        units_per_purchase: 50,
+        billing_per_stock: 1,
+        charge_full_stock_unit: false,
+      };
+    default:
+      return {
+        purchase_unit: "Box",
+        stock_unit: "Piece",
+        billing_unit: "Piece",
+        units_per_purchase: 1,
+        billing_per_stock: 1,
+        charge_full_stock_unit: false,
+      };
+  }
+}
+
+/** Convert billing qty → whole stock units to deduct. */
+export function billingToStockQty(
+  billingQty: number,
+  billingPerStock: number,
+  chargeFull: boolean,
+): { stockQty: number; error?: string } {
+  if (billingQty <= 0) return { stockQty: 0, error: "qty must be > 0" };
+  const bps = Math.max(1, billingPerStock || 1);
+  if (chargeFull) {
+    return { stockQty: Math.ceil(billingQty / bps) };
+  }
+  if (billingQty % bps !== 0) {
+    return {
+      stockQty: 0,
+      error: `qty must be a multiple of ${bps} (one ${"stock unit"})`,
+    };
+  }
+  return { stockQty: billingQty / bps };
+}
+
+export function lineChargeFromBilling(
+  billingQty: number,
+  stockQty: number,
+  billingPerStock: number,
+  sellPerBilling: number,
+  chargeFull: boolean,
+): number {
+  if (chargeFull) {
+    return stockQty * Math.max(1, billingPerStock) * sellPerBilling;
+  }
+  return billingQty * sellPerBilling;
+}
+
+export function formatUnitsPreview(u: ItemUnits): string {
+  return `1 ${u.purchase_unit} = ${u.units_per_purchase} ${u.stock_unit} · 1 ${u.stock_unit} = ${u.billing_per_stock} ${u.billing_unit}`;
+}
+
+export function formatRestockExample(u: ItemUnits): string {
+  const boxes = 2;
+  const stock = boxes * Math.max(1, u.units_per_purchase);
+  return `Restock ${boxes} ${u.purchase_unit} → +${stock} ${u.stock_unit} in stock · Bill in ${u.billing_unit}`;
+}
 
 /** User-facing label for stock location codes (API still uses MAIN, etc.). */
 export function formatLocationLabel(code: string): string {
@@ -62,8 +186,11 @@ export function formatHistoryDateTime(raw: string): string {
   });
 }
 
-function itemWord(qty: number): string {
-  return Math.abs(qty) === 1 ? "item" : "items";
+function unitWord(n: number, unit: string): string {
+  const u = unit.trim() || "item";
+  if (Math.abs(n) === 1) return u;
+  if (u === "Piece" || u === "Each") return u === "Each" ? "Each" : "Pieces";
+  return u;
 }
 
 function damageVerb(reason: string): string | null {
@@ -77,17 +204,20 @@ function damageVerb(reason: string): string | null {
   return null;
 }
 
-/** Human line: "+12: Added 12 items more on Oct 7, 2026 3:30 PM" (reason shown separately). */
-export function formatStockHistoryLine(m: {
-  movement_type: string;
-  qty_delta: number;
-  reason: string;
-  location_code: string;
-  created_at: string;
-}): string {
+/** Human line: "+12: Added 12 Vial more on Oct 7, 2026 3:30 PM" */
+export function formatStockHistoryLine(
+  m: {
+    movement_type: string;
+    qty_delta: number;
+    reason: string;
+    location_code: string;
+    created_at: string;
+  },
+  stockUnit = "item",
+): string {
   const n = Math.abs(m.qty_delta);
   const signed = `${m.qty_delta > 0 ? "+" : ""}${m.qty_delta}`;
-  const items = itemWord(n);
+  const items = unitWord(n, stockUnit);
   const when = formatHistoryDateTime(m.created_at);
   const reason = (m.reason || "").trim();
 
@@ -169,6 +299,12 @@ export type PharmacyItem = {
   name: string;
   category: ItemCategory | string;
   pack_size: number;
+  purchase_unit: string;
+  stock_unit: string;
+  billing_unit: string;
+  units_per_purchase: number;
+  billing_per_stock: number;
+  charge_full_stock_unit: boolean;
   buy_price_mmk: number;
   sell_price_mmk: number;
   reorder_level: number;
@@ -193,6 +329,39 @@ export type StockMovement = {
   reason: string;
   actor_user_id: number | null;
   created_at: string;
+  stock_unit?: string;
+};
+
+export type PharmacyBillLine = {
+  id?: number;
+  item_id: number;
+  code: string;
+  description: string;
+  billing_qty: number;
+  billing_unit: string;
+  stock_qty: number;
+  stock_unit: string;
+  unit_price_mmk: number;
+  line_total_mmk: number;
+  sort_order: number;
+};
+
+export type PharmacyBill = {
+  id: number;
+  bill_no: string;
+  patient_id?: number | null;
+  patient_name: string;
+  patient_phone: string;
+  patient_age_years?: number | null;
+  patient_gender: string;
+  description: string;
+  status: string;
+  total_mmk: number;
+  paid_at?: string | null;
+  void_reason?: string;
+  created_at: string;
+  updated_at: string;
+  lines?: PharmacyBillLine[];
 };
 
 export async function listPharmacyItems(q = ""): Promise<PharmacyItem[]> {
@@ -212,18 +381,27 @@ export async function getPharmacyItem(id: number): Promise<PharmacyItem> {
   return apiFetch<PharmacyItem>(`/api/pharmacy/items/${id}`);
 }
 
-export async function createPharmacyItem(body: {
+export type PharmacyItemWrite = {
   code: string;
   name: string;
   category: string;
-  pack_size: number;
+  purchase_unit: string;
+  stock_unit: string;
+  billing_unit: string;
+  units_per_purchase: number;
+  billing_per_stock: number;
+  charge_full_stock_unit: boolean;
   buy_price_mmk: number;
   sell_price_mmk: number;
   reorder_level: number;
   initial_qty?: number;
+  initial_qty_unit?: "purchase" | "stock";
   batch_no?: string;
   expiry_date?: string;
-}): Promise<PharmacyItem> {
+  active?: boolean;
+};
+
+export async function createPharmacyItem(body: PharmacyItemWrite): Promise<PharmacyItem> {
   return apiFetch<PharmacyItem>("/api/pharmacy/items", {
     method: "POST",
     body: JSON.stringify(body),
@@ -232,16 +410,7 @@ export async function createPharmacyItem(body: {
 
 export async function updatePharmacyItem(
   id: number,
-  body: {
-    code: string;
-    name: string;
-    category: string;
-    pack_size: number;
-    buy_price_mmk: number;
-    sell_price_mmk: number;
-    reorder_level: number;
-    active: boolean;
-  },
+  body: PharmacyItemWrite & { active: boolean },
 ): Promise<PharmacyItem> {
   return apiFetch<PharmacyItem>(`/api/pharmacy/items/${id}`, {
     method: "PUT",
@@ -257,6 +426,7 @@ export async function restockItem(
   id: number,
   body: {
     qty: number;
+    qty_unit?: "purchase" | "stock";
     batch_no?: string;
     expiry_date?: string;
     buy_price_mmk?: number;
@@ -289,4 +459,70 @@ export async function listStockMovements(opts?: {
   const qs = params.toString() ? `?${params}` : "";
   const res = await apiFetch<{ movements: StockMovement[] }>(`/api/pharmacy/movements${qs}`);
   return res.movements;
+}
+
+export async function listPharmacyBills(q = "", status = ""): Promise<PharmacyBill[]> {
+  const params = new URLSearchParams();
+  if (q) params.set("q", q);
+  if (status) params.set("status", status);
+  const qs = params.toString() ? `?${params}` : "";
+  const res = await apiFetch<{ bills: PharmacyBill[] }>(`/api/pharmacy/bills${qs}`);
+  return res.bills;
+}
+
+export async function getPharmacyBill(id: number): Promise<PharmacyBill> {
+  return apiFetch<PharmacyBill>(`/api/pharmacy/bills/${id}`);
+}
+
+export async function createPharmacyBill(body: {
+  patient_name: string;
+  patient_phone?: string;
+  patient_age_years?: number | null;
+  patient_gender?: string;
+  description?: string;
+  lines: PharmacyBillLine[];
+  save_patient?: boolean;
+}): Promise<PharmacyBill> {
+  return apiFetch<PharmacyBill>("/api/pharmacy/bills", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function updatePharmacyBill(
+  id: number,
+  body: {
+    patient_name: string;
+    patient_phone?: string;
+    patient_age_years?: number | null;
+    patient_gender?: string;
+    description?: string;
+    lines: PharmacyBillLine[];
+    save_patient?: boolean;
+  },
+): Promise<PharmacyBill> {
+  return apiFetch<PharmacyBill>(`/api/pharmacy/bills/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function payPharmacyBill(id: number): Promise<PharmacyBill> {
+  return apiFetch<PharmacyBill>(`/api/pharmacy/bills/${id}/pay`, { method: "POST", body: "{}" });
+}
+
+export async function voidPharmacyBill(id: number, reason: string): Promise<PharmacyBill> {
+  return apiFetch<PharmacyBill>(`/api/pharmacy/bills/${id}/void`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export async function printPharmacyBill(id: number): Promise<void> {
+  return fetchAndPreviewPrint(
+    `/api/pharmacy/bills/${id}/print`,
+    getApiBase,
+    getStoredToken,
+    { title: "Pharmacy receipt", receipt: true },
+  );
 }

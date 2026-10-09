@@ -36,11 +36,11 @@ export function cheatSheetHTML(): string {
     <h2>2. OPD bill (cash) / ပြင်ပဘေလ်</h2>
     <ul>
       <li>Home → <strong>OPD</strong> → New bill.</li>
-      <li>Patient name → doctor → type item/service <strong>code</strong> → Enter to add line.</li>
-      <li class="my">လူနာအမည် → ဆရာဝန် → ကုဒ်ရိုက် → Enter ဖြင့် လိုင်းထည့်။</li>
-      <li><strong>Pay cash</strong> (stock drops) → <strong>Print</strong> (in-app preview).</li>
+      <li>Patient name → doctor → add <strong>service</strong> or consultation (no medicines here).</li>
+      <li class="my">လူနာအမည် → ဆရာဝန် → ဝန်ဆောင်မှု / consultation။ ဆေးသည် Pharmacy Billing တွင်။</li>
+      <li><strong>Pay cash</strong> → <strong>Print</strong> (in-app preview).</li>
       <li>First receipt: printer <strong>EPSON TM-T82 Receipt</strong>, paper <strong>80 mm</strong>.</li>
-      <li>Void needs a reason (restores stock if paid).</li>
+      <li>Void needs a reason.</li>
     </ul>
   </section>
   <section>
@@ -54,26 +54,33 @@ export function cheatSheetHTML(): string {
     </ul>
   </section>
   <section>
-    <h2>4. Pharmacy / ဆေးဆိုင်</h2>
+    <h2>4. Pharmacy Billing / ဆေးဆိုင် ဘေလ်</h2>
     <ul>
-      <li>Home → <strong>Pharmacy</strong> → search code/name.</li>
-      <li>New item: code, category, prices, reorder, first batch + expiry.</li>
-      <li><strong>Restock</strong> existing code (cannot restock unknown code).</li>
+      <li>Home → <strong>Pharmacy Billing</strong> → New bill → add medicines by code.</li>
+      <li>Enter qty in <strong>billing units</strong> (e.g. mL); system converts to stock units.</li>
+      <li><strong>Pay cash</strong> deducts stock (FEFO) → Print. Void restores stock.</li>
+    </ul>
+  </section>
+  <section>
+    <h2>5. Pharmacy Stock / ဆေးဆိုင် စတော့</h2>
+    <ul>
+      <li>Home → <strong>Pharmacy Stock</strong> → set purchase / stock / billing units + conversion.</li>
+      <li><strong>Restock</strong> in boxes or stock units (cannot restock unknown code).</li>
       <li class="my">မသိသော ကုဒ်ကို restock မရ — အရင် item ဖန်တီးပါ။</li>
       <li>Reports → Low stock / Near expiry.</li>
     </ul>
   </section>
   <section>
-    <h2>5. Reports / အစီရင်ခံစာ</h2>
+    <h2>6. Reports / အစီရင်ခံစာ</h2>
     <ul>
-      <li><strong>Daily cash</strong> — paid OPD + OT for a date (Reception/Admin).</li>
+      <li><strong>Daily cash</strong> — paid OPD + Pharmacy + OT for a date.</li>
       <li><strong>Low stock</strong> — In Stock ≤ reorder (Pharmacy/Admin).</li>
       <li><strong>Near expiry</strong> — batches within N days.</li>
       <li>Use <strong>Print</strong> on each report for the day book.</li>
     </ul>
   </section>
   <section>
-    <h2>6. Daily ops / နေ့စဉ်</h2>
+    <h2>7. Daily ops / နေ့စဉ်</h2>
     <ul>
       <li>Morning: check Server connected (green).</li>
       <li>Admin → Settings → <strong>Backup</strong> (or USB copy weekly — see DEPLOY.md).</li>

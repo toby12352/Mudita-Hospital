@@ -800,7 +800,10 @@ func normalizeBillLines(in []opdBillLine) ([]opdBillLine, int64, string) {
 	var total int64
 	for i, l := range in {
 		l.LineType = strings.TrimSpace(strings.ToLower(l.LineType))
-		if l.LineType != "service" && l.LineType != "item" && l.LineType != "consultation" {
+		if l.LineType == "item" {
+			return nil, 0, "pharmacy items belong on Pharmacy Billing, not OPD"
+		}
+		if l.LineType != "service" && l.LineType != "consultation" {
 			return nil, 0, "invalid line_type"
 		}
 		l.Description = strings.TrimSpace(l.Description)

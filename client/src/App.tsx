@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import brandLogo from "./assets/logo.png";
 import {
   fetchHealth,
@@ -41,30 +41,45 @@ import {
 } from "./masterData";
 import {
   ITEM_CATEGORIES,
+  UNIT_OPTIONS,
   adjustItem,
+  billingToStockQty,
+  categoryUnitPresets,
+  createPharmacyBill,
   createPharmacyItem,
   deactivatePharmacyItem,
   findItemByCode,
   formatItemCode,
   formatLocationLabel,
+  formatRestockExample,
   formatStockHistoryLine,
   formatStockHistoryReason,
+  formatUnitsPreview,
+  getPharmacyBill,
   getPharmacyItem,
+  lineChargeFromBilling,
+  listPharmacyBills,
   listPharmacyItems,
   listStockMovements,
+  payPharmacyBill,
+  printPharmacyBill,
   restockItem,
+  updatePharmacyBill,
   updatePharmacyItem,
+  voidPharmacyBill,
+  type PharmacyBill,
+  type PharmacyBillLine,
   type PharmacyItem,
   type StockMovement,
 } from "./pharmacy";
 import {
   createOpdBill,
-  findOpdItemByCode,
   findOpdServiceByCode,
   formatMMK,
   getOpdBill,
   listOpdBills,
   listOpdDoctors,
+  listOpdServices,
   payOpdBill,
   printOpdBill,
   updateOpdBill,
@@ -72,7 +87,9 @@ import {
   type OpdBill,
   type OpdBillLine,
   type OpdDoctor,
+  type OpdService,
 } from "./opd";
+import { Typeahead } from "./Typeahead";
 import {
   createOtBillFromCase,
   createOtCase,
@@ -116,7 +133,7 @@ import { openCheatSheetPrint } from "./cheatsheet";
 import "./App.css";
 
 type ConnState = "checking" | "ok" | "offline";
-type View = "home" | "settings" | "pharmacy" | "opd" | "ot" | "reports";
+type View = "home" | "settings" | "pharmacy" | "pharmacy_billing" | "opd" | "ot" | "reports";
 type SettingsTab = "hospital" | "doctors" | "services" | "users" | "backup" | "training";
 type PharmacyTab = "items" | "movements";
 
@@ -311,17 +328,17 @@ function App() {
           </div>
         </header>
         <LanguageSwitcher locale={locale} onChange={setLocale} t={t} />
+        <LoginForm
+          onSubmit={handleLogin}
+          error={authError}
+          disabled={conn === "offline"}
+          t={t}
+        />
         <ServerBadge
           conn={conn}
           detail={detail}
           onChangeServer={openServerSetup}
           onRetry={() => setApiEpoch((n) => n + 1)}
-          t={t}
-        />
-        <LoginForm
-          onSubmit={handleLogin}
-          error={authError}
-          disabled={conn === "offline"}
           t={t}
         />
       </main>
@@ -350,14 +367,16 @@ function App() {
     view === "settings"
       ? "settings"
       : view === "pharmacy"
-        ? "pharmacy"
-        : view === "opd"
-          ? "opd"
-          : view === "ot"
-            ? "ot"
-            : view === "reports"
-              ? "reports"
-              : "home";
+        ? "pharmacyStock"
+        : view === "pharmacy_billing"
+          ? "pharmacyBilling"
+          : view === "opd"
+            ? "opd"
+            : view === "ot"
+              ? "ot"
+              : view === "reports"
+                ? "reports"
+                : "home";
 
   const canReports =
     hasPermission(permissions, "opd") ||
@@ -389,14 +408,6 @@ function App() {
         </div>
       </header>
 
-      <ServerBadge
-        conn={conn}
-        detail={detail}
-        onChangeServer={openServerSetup}
-        onRetry={() => setApiEpoch((n) => n + 1)}
-        t={t}
-      />
-
       {view === "home" ? (
         <HomeTiles
           canSettings={hasPermission(permissions, "settings")}
@@ -406,6 +417,7 @@ function App() {
           canReports={canReports}
           onOpenSettings={() => setView("settings")}
           onOpenPharmacy={() => setView("pharmacy")}
+          onOpenPharmacyBilling={() => setView("pharmacy_billing")}
           onOpenOPD={() => setView("opd")}
           onOpenOT={() => setView("ot")}
           onOpenReports={() => setView("reports")}
@@ -427,6 +439,9 @@ function App() {
           onBack={() => setView("home")}
         />
       ) : null}
+      {view === "pharmacy_billing" ? (
+        <PharmacyBillingPanel onBack={() => setView("home")} />
+      ) : null}
       {view === "opd" ? <OpdPanel onBack={() => setView("home")} /> : null}
       {view === "ot" ? <OtPanel onBack={() => setView("home")} /> : null}
       {view === "reports" ? (
@@ -434,6 +449,7 @@ function App() {
           canCash={
             hasPermission(permissions, "opd") ||
             hasPermission(permissions, "ot") ||
+            hasPermission(permissions, "pharmacy") ||
             hasPermission(permissions, "settings")
           }
           canStock={
@@ -443,6 +459,13 @@ function App() {
           t={t}
         />
       ) : null}
+      <ServerBadge
+        conn={conn}
+        detail={detail}
+        onChangeServer={openServerSetup}
+        onRetry={() => setApiEpoch((n) => n + 1)}
+        t={t}
+      />
       {helpOpen ? <HelpOverlay onClose={() => setHelpOpen(false)} t={t} /> : null}
     </main>
   );
@@ -764,6 +787,7 @@ function HomeTiles({
   canReports,
   onOpenSettings,
   onOpenPharmacy,
+  onOpenPharmacyBilling,
   onOpenOPD,
   onOpenOT,
   onOpenReports,
@@ -777,6 +801,7 @@ function HomeTiles({
   canReports: boolean;
   onOpenSettings: () => void;
   onOpenPharmacy: () => void;
+  onOpenPharmacyBilling: () => void;
   onOpenOPD: () => void;
   onOpenOT: () => void;
   onOpenReports: () => void;
@@ -809,10 +834,20 @@ function HomeTiles({
         type="button"
         className="tile"
         disabled={!canPharmacy}
-        onClick={onOpenPharmacy}
-        title={canPharmacy ? "Open pharmacy" : "Pharmacy / Admin only"}
+        onClick={onOpenPharmacyBilling}
+        title={canPharmacy ? "Open pharmacy billing" : "Pharmacy / Admin only"}
       >
-        <span className="tile-title">{t("pharmacy")}</span>
+        <span className="tile-title">{t("pharmacyBilling")}</span>
+        <span className="tile-sub">{canPharmacy ? t("tilePharmacyBillingSub") : t("noAccess")}</span>
+      </button>
+      <button
+        type="button"
+        className="tile"
+        disabled={!canPharmacy}
+        onClick={onOpenPharmacy}
+        title={canPharmacy ? "Open stock maintenance" : "Pharmacy / Admin only"}
+      >
+        <span className="tile-title">{t("pharmacyStock")}</span>
         <span className="tile-sub">{canPharmacy ? t("tilePharmacySub") : t("noAccess")}</span>
       </button>
       <button
@@ -862,9 +897,6 @@ function OpdPanel({ onBack }: { onBack: () => void }) {
   const [patientGender, setPatientGender] = useState("");
   const [doctorId, setDoctorId] = useState("");
   const [doctorName, setDoctorName] = useState("");
-  const [doctorSuggestOpen, setDoctorSuggestOpen] = useState(false);
-  const [doctorHighlight, setDoctorHighlight] = useState(-1);
-  const doctorBlurRef = useRef<number | null>(null);
   const [description, setDescription] = useState("");
   const [lines, setLines] = useState<OpdBillLine[]>([]);
   const [codeInput, setCodeInput] = useState("");
@@ -872,17 +904,6 @@ function OpdPanel({ onBack }: { onBack: () => void }) {
 
   const total = lines.reduce((s, l) => s + l.qty * l.unit_price_mmk, 0);
   const isDraft = billStatus === "draft";
-  const doctorSuggestions = (() => {
-    const q = doctorName.trim().toLowerCase();
-    if (!q) return doctors.slice(0, 8);
-    return doctors
-      .filter(
-        (d) =>
-          d.name.toLowerCase().includes(q) ||
-          (d.specialty || "").toLowerCase().includes(q),
-      )
-      .slice(0, 8);
-  })();
 
   async function reloadList(search = q, status = statusFilter) {
     setBills(await listOpdBills(search, status));
@@ -915,8 +936,6 @@ function OpdPanel({ onBack }: { onBack: () => void }) {
     setPatientGender("");
     setDoctorId("");
     setDoctorName("");
-    setDoctorSuggestOpen(false);
-    setDoctorHighlight(-1);
     setDescription("");
     setLines([]);
     setCodeInput("");
@@ -945,8 +964,6 @@ function OpdPanel({ onBack }: { onBack: () => void }) {
       setPatientGender(b.patient_gender);
       setDoctorId(b.doctor_id != null ? String(b.doctor_id) : "");
       setDoctorName(b.doctor_name || "");
-      setDoctorSuggestOpen(false);
-      setDoctorHighlight(-1);
       setDescription(b.description);
       setLines(
         (b.lines ?? []).map((l) => ({
@@ -993,8 +1010,22 @@ function OpdPanel({ onBack }: { onBack: () => void }) {
   function pickDoctor(d: OpdDoctor) {
     setDoctorId(String(d.id));
     setDoctorName(d.name);
-    setDoctorSuggestOpen(false);
-    setDoctorHighlight(-1);
+  }
+
+  function addOpdService(svc: OpdService) {
+    setLines((prev) => [
+      ...prev,
+      {
+        line_type: "service",
+        ref_id: svc.id,
+        code: svc.code,
+        description: svc.name,
+        qty: 1,
+        unit_price_mmk: svc.price_mmk,
+        line_total_mmk: svc.price_mmk,
+      },
+    ]);
+    setCodeInput("");
   }
 
   async function saveDraft() {
@@ -1028,62 +1059,19 @@ function OpdPanel({ onBack }: { onBack: () => void }) {
     if (!code) return;
     setError(null);
     try {
-      const item = await findOpdItemByCode(code);
-      if (item) {
-        setLines((prev) => {
-          const idx = prev.findIndex(
-            (l) => l.line_type === "item" && l.ref_id === item.id,
-          );
-          if (idx >= 0) {
-            const next = [...prev];
-            const qty = next[idx].qty + 1;
-            next[idx] = {
-              ...next[idx],
-              qty,
-              line_total_mmk: qty * next[idx].unit_price_mmk,
-            };
-            return next;
-          }
-          return [
-            ...prev,
-            {
-              line_type: "item",
-              ref_id: item.id,
-              code: item.code,
-              description: item.name,
-              qty: 1,
-              unit_price_mmk: item.sell_price_mmk,
-              line_total_mmk: item.sell_price_mmk,
-            },
-          ];
-        });
-        setCodeInput("");
-        if (item.stock_main <= 0) {
-          setOkMsg(`${item.code} added — stock on hand is 0 (pay will fail until restocked)`);
-        }
-        return;
-      }
       const svc = await findOpdServiceByCode(code);
       if (svc) {
-        setLines((prev) => [
-          ...prev,
-          {
-            line_type: "service",
-            ref_id: svc.id,
-            code: svc.code,
-            description: svc.name,
-            qty: 1,
-            unit_price_mmk: svc.price_mmk,
-            line_total_mmk: svc.price_mmk,
-          },
-        ]);
-        setCodeInput("");
+        addOpdService(svc);
         return;
       }
-      setError(`No item or service with code “${code}”`);
+      setError(`No service with code “${code}” (medicines: use Pharmacy Billing)`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Lookup failed");
     }
+  }
+
+  async function loadOpdServiceSuggestions(term: string): Promise<OpdService[]> {
+    return (await listOpdServices(term)).slice(0, 8);
   }
 
   function addConsultation() {
@@ -1232,21 +1220,36 @@ function OpdPanel({ onBack }: { onBack: () => void }) {
           </button>
         </div>
         <p className="hint">
-          Reception OPD: draft bill → add codes (Enter) → Pay cash (stock deduct) → Print. Void
-          restores stock.
+          Reception OPD: draft bill → add services / consultation → Pay cash → Print. Medicines are
+          billed under Pharmacy Billing.
         </p>
         <div className="list-toolbar">
-          <label className="field grow">
-            Search
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") void reloadList().catch((err) => setError(String(err)));
-              }}
-              placeholder="Bill no / patient / phone"
-            />
-          </label>
+          <Typeahead
+            label="Search"
+            value={q}
+            onChange={setQ}
+            placeholder="Bill no / patient / phone"
+            loadSuggestions={async (term) => listOpdBills(term, statusFilter)}
+            getKey={(b) => b.id}
+            renderOption={(b) => (
+              <>
+                <span className="typeahead-title">
+                  {b.bill_no} — {b.patient_name}
+                </span>
+                <span className="typeahead-sub">
+                  {b.status.toUpperCase()}
+                  {b.patient_phone ? ` · ${b.patient_phone}` : ""}
+                </span>
+              </>
+            )}
+            onPick={(b) => {
+              setQ(b.bill_no);
+              void openBill(b.id);
+            }}
+            onSubmitWithoutPick={() =>
+              void reloadList().catch((err) => setError(String(err)))
+            }
+          />
           <label className="field">
             Status
             <select
@@ -1359,94 +1362,37 @@ function OpdPanel({ onBack }: { onBack: () => void }) {
               <option value="Other">Other</option>
             </select>
           </label>
-          <div className="field grow typeahead">
-            <span>Doctor</span>
-            <input
-              value={doctorName}
-              disabled={!isDraft}
-              autoComplete="off"
-              role="combobox"
-              aria-expanded={doctorSuggestOpen}
-              aria-autocomplete="list"
-              aria-controls="opd-doctor-suggestions"
-              onChange={(e) => {
-                setDoctorName(e.target.value);
-                setDoctorId("");
-                setDoctorSuggestOpen(true);
-                setDoctorHighlight(-1);
-              }}
-              onFocus={() => {
-                if (isDraft) setDoctorSuggestOpen(true);
-              }}
-              onBlur={() => {
-                if (doctorBlurRef.current != null) window.clearTimeout(doctorBlurRef.current);
-                doctorBlurRef.current = window.setTimeout(() => {
-                  setDoctorSuggestOpen(false);
-                }, 150);
-              }}
-              onKeyDown={(e) => {
-                if (!isDraft || !doctorSuggestOpen || doctorSuggestions.length === 0) return;
-                if (e.key === "ArrowDown") {
-                  e.preventDefault();
-                  setDoctorHighlight((h) => (h + 1) % doctorSuggestions.length);
-                  return;
-                }
-                if (e.key === "ArrowUp") {
-                  e.preventDefault();
-                  setDoctorHighlight((h) =>
-                    h <= 0 ? doctorSuggestions.length - 1 : h - 1,
-                  );
-                  return;
-                }
-                if (e.key === "Escape") {
-                  e.preventDefault();
-                  setDoctorSuggestOpen(false);
-                  return;
-                }
-                if (e.key === "Enter") {
-                  if (doctorHighlight >= 0 && doctorSuggestions[doctorHighlight]) {
-                    e.preventDefault();
-                    pickDoctor(doctorSuggestions[doctorHighlight]);
-                  } else {
-                    setDoctorSuggestOpen(false);
-                  }
-                }
-              }}
-            />
-            {isDraft && doctorSuggestOpen && doctorSuggestions.length > 0 ? (
-              <ul
-                id="opd-doctor-suggestions"
-                className="typeahead-menu"
-                role="listbox"
-              >
-                {doctorSuggestions.map((d, i) => (
-                  <li key={d.id} role="presentation">
-                    <button
-                      type="button"
-                      role="option"
-                      aria-selected={i === doctorHighlight}
-                      className={`typeahead-option${i === doctorHighlight ? " active" : ""}`}
-                      onMouseEnter={() => setDoctorHighlight(i)}
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        if (doctorBlurRef.current != null) {
-                          window.clearTimeout(doctorBlurRef.current);
-                          doctorBlurRef.current = null;
-                        }
-                        pickDoctor(d);
-                      }}
-                    >
-                      <span className="typeahead-title">{d.name}</span>
-                      <span className="typeahead-sub">
-                        {d.specialty || "General"} · consult{" "}
-                        {formatMMK(d.consultation_mmk)} MMK
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-          </div>
+          <Typeahead
+            label="Doctor"
+            value={doctorName}
+            disabled={!isDraft}
+            placeholder="Name or specialty"
+            onChange={(v) => {
+              setDoctorName(v);
+              setDoctorId("");
+            }}
+            loadSuggestions={async (term) => {
+              const q = term.trim().toLowerCase();
+              if (!q) return doctors.slice(0, 8);
+              return doctors
+                .filter(
+                  (d) =>
+                    d.name.toLowerCase().includes(q) ||
+                    (d.specialty || "").toLowerCase().includes(q),
+                )
+                .slice(0, 8);
+            }}
+            getKey={(d) => d.id}
+            renderOption={(d) => (
+              <>
+                <span className="typeahead-title">{d.name}</span>
+                <span className="typeahead-sub">
+                  {d.specialty || "General"} · consult {formatMMK(d.consultation_mmk)} MMK
+                </span>
+              </>
+            )}
+            onPick={pickDoctor}
+          />
         </div>
         <label className="field">
           Description / note
@@ -1459,21 +1405,27 @@ function OpdPanel({ onBack }: { onBack: () => void }) {
 
         {isDraft ? (
           <div className="list-toolbar">
-            <label className="field grow">
-              Code (item / service) — Enter to add
-              <input
-                value={codeInput}
-                onChange={(e) => setCodeInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    void addByCode();
-                  }
-                }}
-                placeholder="e.g. PARA500 or DRESS"
-                autoComplete="off"
-              />
-            </label>
+            <Typeahead
+              label="Service — type code or name"
+              value={codeInput}
+              onChange={setCodeInput}
+              placeholder="e.g. Dressing"
+              loadSuggestions={loadOpdServiceSuggestions}
+              getKey={(s) => s.id}
+              renderOption={(s) => (
+                <>
+                  <span className="typeahead-title">
+                    {s.code} — {s.name}
+                  </span>
+                  <span className="typeahead-sub">Service · {formatMMK(s.price_mmk)} MMK</span>
+                </>
+              )}
+              onPick={(s) => {
+                setError(null);
+                addOpdService(s);
+              }}
+              onSubmitWithoutPick={() => void addByCode()}
+            />
             <button type="button" className="btn ghost" onClick={() => void addByCode()}>
               Add
             </button>
@@ -1587,6 +1539,7 @@ function OtPanel({ onBack }: { onBack: () => void }) {
   const [patientAge, setPatientAge] = useState("");
   const [patientGender, setPatientGender] = useState("");
   const [doctorId, setDoctorId] = useState("");
+  const [doctorName, setDoctorName] = useState("");
   const [procedureName, setProcedureName] = useState("");
   const [notes, setNotes] = useState("");
   const [items, setItems] = useState<OtCaseItem[]>([]);
@@ -1630,6 +1583,7 @@ function OtPanel({ onBack }: { onBack: () => void }) {
     setPatientAge("");
     setPatientGender("");
     setDoctorId("");
+    setDoctorName("");
     setProcedureName("");
     setNotes("");
     setItems([]);
@@ -1648,6 +1602,7 @@ function OtPanel({ onBack }: { onBack: () => void }) {
     setPatientAge(c.patient_age_years != null ? String(c.patient_age_years) : "");
     setPatientGender(c.patient_gender);
     setDoctorId(c.doctor_id != null ? String(c.doctor_id) : "");
+    setDoctorName(c.doctor_name || "");
     setProcedureName(c.procedure_name);
     setNotes(c.notes);
     setItems(
@@ -1684,6 +1639,11 @@ function OtPanel({ onBack }: { onBack: () => void }) {
     }
   }
 
+  function pickOtDoctor(d: OtDoctor) {
+    setDoctorId(String(d.id));
+    setDoctorName(d.name);
+  }
+
   function buildWrite() {
     const age = patientAge.trim() ? Number(patientAge) : null;
     return {
@@ -1692,6 +1652,7 @@ function OtPanel({ onBack }: { onBack: () => void }) {
       patient_age_years: age != null && !Number.isNaN(age) ? age : null,
       patient_gender: patientGender,
       doctor_id: doctorId ? Number(doctorId) : null,
+      doctor_name: doctorName.trim(),
       procedure_name: procedureName.trim(),
       notes: notes.trim(),
       items: items.map((it) => ({
@@ -1708,40 +1669,46 @@ function OtPanel({ onBack }: { onBack: () => void }) {
     };
   }
 
+  function addOtItem(item: PharmacyItem) {
+    setItems((prev) => {
+      const idx = prev.findIndex((p) => p.item_id === item.id);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = { ...next[idx], qty_issued: next[idx].qty_issued + 1 };
+        return next;
+      }
+      return [
+        ...prev,
+        {
+          item_id: item.id,
+          code: item.code,
+          name: item.name,
+          sell_price_mmk: item.sell_price_mmk,
+          qty_issued: 1,
+          qty_used: 0,
+          qty_returned: 0,
+          qty_wasted: 0,
+          qty_kept_on_floor: 0,
+        },
+      ];
+    });
+    setCodeInput("");
+    setOkMsg(
+      `Added ${item.code} (In Stock ${item.stock_main} ${item.stock_unit || "units"})`,
+    );
+  }
+
   async function addByCode() {
     const code = codeInput.trim();
     if (!code) return;
     setError(null);
     try {
-      const item = await findOpdItemByCode(code);
+      const item = await findItemByCode(code);
       if (!item) {
         setError(`Unknown item code: ${code}`);
         return;
       }
-      setItems((prev) => {
-        const idx = prev.findIndex((p) => p.item_id === item.id);
-        if (idx >= 0) {
-          const next = [...prev];
-          next[idx] = { ...next[idx], qty_issued: next[idx].qty_issued + 1 };
-          return next;
-        }
-        return [
-          ...prev,
-          {
-            item_id: item.id,
-            code: item.code,
-            name: item.name,
-            sell_price_mmk: item.sell_price_mmk,
-            qty_issued: 1,
-            qty_used: 0,
-            qty_returned: 0,
-            qty_wasted: 0,
-            qty_kept_on_floor: 0,
-          },
-        ];
-      });
-      setCodeInput("");
-      setOkMsg(`Added ${item.code} (In Stock ${item.stock_main})`);
+      addOtItem(item);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Lookup failed");
     }
@@ -1975,17 +1942,32 @@ function OtPanel({ onBack }: { onBack: () => void }) {
           (Used/Returned/Wasted/Floor) → OT bill → Pay cash → Print.
         </p>
         <div className="list-toolbar">
-          <label className="field grow">
-            Search
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") void reloadList().catch((err) => setError(String(err)));
-              }}
-              placeholder="Case no / patient / procedure"
-            />
-          </label>
+          <Typeahead
+            label="Search"
+            value={q}
+            onChange={setQ}
+            placeholder="Case no / patient / procedure"
+            loadSuggestions={async (term) => listOtCases(term, statusFilter)}
+            getKey={(c) => c.id}
+            renderOption={(c) => (
+              <>
+                <span className="typeahead-title">
+                  {c.case_no} — {c.patient_name}
+                </span>
+                <span className="typeahead-sub">
+                  {c.status.toUpperCase()}
+                  {c.procedure_name ? ` · ${c.procedure_name}` : ""}
+                </span>
+              </>
+            )}
+            onPick={(c) => {
+              setQ(c.case_no);
+              void openCase(c.id);
+            }}
+            onSubmitWithoutPick={() =>
+              void reloadList().catch((err) => setError(String(err)))
+            }
+          />
           <label className="field">
             Status
             <select
@@ -2200,22 +2182,37 @@ function OtPanel({ onBack }: { onBack: () => void }) {
               <option value="Other">Other</option>
             </select>
           </label>
-          <label className="field grow">
-            Doctor (OT fee)
-            <select
-              value={doctorId}
-              disabled={!isDraft}
-              onChange={(e) => setDoctorId(e.target.value)}
-            >
-              <option value="">—</option>
-              {doctors.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name}
-                  {d.specialty ? ` (${d.specialty})` : ""} — OT {formatMMK(d.ot_fee_mmk)} MMK
-                </option>
-              ))}
-            </select>
-          </label>
+          <Typeahead
+            label="Doctor (OT fee)"
+            value={doctorName}
+            disabled={!isDraft}
+            placeholder="Name or specialty"
+            onChange={(v) => {
+              setDoctorName(v);
+              setDoctorId("");
+            }}
+            loadSuggestions={async (term) => {
+              const q = term.trim().toLowerCase();
+              if (!q) return doctors.slice(0, 8);
+              return doctors
+                .filter(
+                  (d) =>
+                    d.name.toLowerCase().includes(q) ||
+                    (d.specialty || "").toLowerCase().includes(q),
+                )
+                .slice(0, 8);
+            }}
+            getKey={(d) => d.id}
+            renderOption={(d) => (
+              <>
+                <span className="typeahead-title">{d.name}</span>
+                <span className="typeahead-sub">
+                  {d.specialty || "General"} · OT {formatMMK(d.ot_fee_mmk)} MMK
+                </span>
+              </>
+            )}
+            onPick={pickOtDoctor}
+          />
         </div>
         <label className="field">
           Procedure
@@ -2233,21 +2230,30 @@ function OtPanel({ onBack }: { onBack: () => void }) {
 
         {isDraft ? (
           <div className="list-toolbar">
-            <label className="field grow">
-              Item code — Enter to add to cart
-              <input
-                value={codeInput}
-                onChange={(e) => setCodeInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    void addByCode();
-                  }
-                }}
-                placeholder="e.g. PARA500"
-                autoComplete="off"
-              />
-            </label>
+            <Typeahead
+              label="Pharmacy item — type code or name"
+              value={codeInput}
+              onChange={setCodeInput}
+              placeholder="e.g. PARA500 or Paracetamol"
+              loadSuggestions={async (term) => listPharmacyItems(term)}
+              getKey={(item) => item.id}
+              renderOption={(item) => (
+                <>
+                  <span className="typeahead-title">
+                    {item.code} — {item.name}
+                  </span>
+                  <span className="typeahead-sub">
+                    {item.stock_unit || "Item"} · {formatMMK(item.sell_price_mmk)} MMK · In Stock{" "}
+                    {item.stock_main.toLocaleString()} {item.stock_unit || ""}
+                  </span>
+                </>
+              )}
+              onPick={(item) => {
+                setError(null);
+                addOtItem(item);
+              }}
+              onSubmitWithoutPick={() => void addByCode()}
+            />
             <button type="button" className="btn ghost" onClick={() => void addByCode()}>
               Add
             </button>
@@ -2406,14 +2412,25 @@ function OtPanel({ onBack }: { onBack: () => void }) {
           ) : null}
           {isReconciled ? (
             <>
-              <label className="field">
-                Optional service code
-                <input
-                  value={extraServiceCode}
-                  onChange={(e) => setExtraServiceCode(e.target.value)}
-                  placeholder="e.g. DRESS"
-                />
-              </label>
+              <Typeahead
+                label="Optional service"
+                value={extraServiceCode}
+                onChange={setExtraServiceCode}
+                placeholder="Code or name (e.g. Dressing)"
+                loadSuggestions={async (term) => listOpdServices(term)}
+                getKey={(svc) => svc.id}
+                renderOption={(svc) => (
+                  <>
+                    <span className="typeahead-title">
+                      {svc.code} — {svc.name}
+                    </span>
+                    <span className="typeahead-sub">
+                      Service · {formatMMK(svc.price_mmk)} MMK
+                    </span>
+                  </>
+                )}
+                onPick={(svc) => setExtraServiceCode(svc.code)}
+              />
               <button type="button" className="btn primary" disabled={busy} onClick={() => void doCreateBill()}>
                 Create OT bill
               </button>
@@ -2434,6 +2451,533 @@ function OtPanel({ onBack }: { onBack: () => void }) {
           >
             Print pick list
           </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function PharmacyBillingPanel({ onBack }: { onBack: () => void }) {
+  const [mode, setMode] = useState<"list" | "edit">("list");
+  const [q, setQ] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [bills, setBills] = useState<PharmacyBill[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [okMsg, setOkMsg] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const [billId, setBillId] = useState<number | null>(null);
+  const [billNo, setBillNo] = useState("");
+  const [billStatus, setBillStatus] = useState("draft");
+  const [patientName, setPatientName] = useState("");
+  const [patientPhone, setPatientPhone] = useState("");
+  const [patientAge, setPatientAge] = useState("");
+  const [patientGender, setPatientGender] = useState("");
+  const [description, setDescription] = useState("");
+  const [lines, setLines] = useState<PharmacyBillLine[]>([]);
+  const [codeInput, setCodeInput] = useState("");
+  const [pendingItem, setPendingItem] = useState<PharmacyItem | null>(null);
+  const [billingQtyInput, setBillingQtyInput] = useState("1");
+
+  const isDraft = billStatus === "draft";
+  const total = lines.reduce((s, l) => s + l.line_total_mmk, 0);
+
+  async function reloadList(search = q, status = statusFilter) {
+    setBills(await listPharmacyBills(search, status));
+  }
+
+  useEffect(() => {
+    void reloadList().catch((e) => setError(String(e)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function openNew() {
+    setBillId(null);
+    setBillNo("");
+    setBillStatus("draft");
+    setPatientName("");
+    setPatientPhone("");
+    setPatientAge("");
+    setPatientGender("");
+    setDescription("");
+    setLines([]);
+    setCodeInput("");
+    setPendingItem(null);
+    setBillingQtyInput("1");
+    setError(null);
+    setOkMsg(null);
+    setMode("edit");
+  }
+
+  async function openBill(id: number) {
+    setBusy(true);
+    setError(null);
+    try {
+      const b = await getPharmacyBill(id);
+      setBillId(b.id);
+      setBillNo(b.bill_no);
+      setBillStatus(b.status);
+      setPatientName(b.patient_name);
+      setPatientPhone(b.patient_phone || "");
+      setPatientAge(b.patient_age_years != null ? String(b.patient_age_years) : "");
+      setPatientGender(b.patient_gender || "");
+      setDescription(b.description || "");
+      setLines(b.lines ?? []);
+      setPendingItem(null);
+      setMode("edit");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Load failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function buildBody() {
+    const age = patientAge.trim() ? Number(patientAge) : null;
+    return {
+      patient_name: patientName.trim(),
+      patient_phone: patientPhone.trim(),
+      patient_age_years: age != null && !Number.isNaN(age) ? age : null,
+      patient_gender: patientGender,
+      description: description.trim(),
+      lines,
+      save_patient: false,
+    };
+  }
+
+  function addLineFromItem(item: PharmacyItem, billingQty: number) {
+    const { stockQty, error: convErr } = billingToStockQty(
+      billingQty,
+      item.billing_per_stock || 1,
+      !!item.charge_full_stock_unit,
+    );
+    if (convErr) {
+      setError(`${item.code}: ${convErr}`);
+      return;
+    }
+    const sell = item.sell_price_mmk;
+    const lineTotal = lineChargeFromBilling(
+      billingQty,
+      stockQty,
+      item.billing_per_stock || 1,
+      sell,
+      !!item.charge_full_stock_unit,
+    );
+    setLines((prev) => [
+      ...prev,
+      {
+        item_id: item.id,
+        code: item.code,
+        description: item.name,
+        billing_qty: billingQty,
+        billing_unit: item.billing_unit || "Piece",
+        stock_qty: stockQty,
+        stock_unit: item.stock_unit || "Piece",
+        unit_price_mmk: sell,
+        line_total_mmk: lineTotal,
+        sort_order: prev.length,
+      },
+    ]);
+    setCodeInput("");
+    setPendingItem(null);
+    setBillingQtyInput("1");
+    setError(null);
+    if (item.stock_main < stockQty) {
+      setOkMsg(
+        `${item.code}: needs ${stockQty} ${item.stock_unit} but In Stock is ${item.stock_main}`,
+      );
+    }
+  }
+
+  async function saveDraft() {
+    setBusy(true);
+    setError(null);
+    setOkMsg(null);
+    try {
+      const body = buildBody();
+      if (!body.patient_name) throw new Error("Patient name required");
+      if (body.lines.length === 0) throw new Error("Add at least one medicine");
+      const b = billId
+        ? await updatePharmacyBill(billId, body)
+        : await createPharmacyBill(body);
+      setBillId(b.id);
+      setBillNo(b.bill_no);
+      setBillStatus(b.status);
+      setLines(b.lines ?? []);
+      setOkMsg(`Saved ${b.bill_no}`);
+      await reloadList();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function doPay() {
+    if (!billId) {
+      setError("Save the bill first");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const b = await payPharmacyBill(billId);
+      setBillStatus(b.status);
+      setOkMsg(`Paid ${b.bill_no}`);
+      await reloadList();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Pay failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function doVoid() {
+    if (!billId) return;
+    const reason = window.prompt("Void reason?");
+    if (!reason?.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const b = await voidPharmacyBill(billId, reason.trim());
+      setBillStatus(b.status);
+      setOkMsg(`Voided ${b.bill_no}`);
+      await reloadList();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Void failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function doPrint() {
+    if (!billId) {
+      setError("Save the bill first");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await printPharmacyBill(billId);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Print failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const preview =
+    pendingItem && Number(billingQtyInput) > 0
+      ? (() => {
+          const bq = Number(billingQtyInput) || 0;
+          const { stockQty, error: err } = billingToStockQty(
+            bq,
+            pendingItem.billing_per_stock || 1,
+            !!pendingItem.charge_full_stock_unit,
+          );
+          if (err) return err;
+          const charge = lineChargeFromBilling(
+            bq,
+            stockQty,
+            pendingItem.billing_per_stock || 1,
+            pendingItem.sell_price_mmk,
+            !!pendingItem.charge_full_stock_unit,
+          );
+          return `${bq} ${pendingItem.billing_unit} → deduct ${stockQty} ${pendingItem.stock_unit} · charge ${formatMMK(charge)} MMK`;
+        })()
+      : null;
+
+  if (mode === "list") {
+    return (
+      <section className="settings-panel">
+        <div className="btn-row">
+          <button type="button" className="btn ghost" onClick={onBack}>
+            ← Back
+          </button>
+          <button type="button" className="btn primary" onClick={openNew}>
+            New bill
+          </button>
+        </div>
+        <p className="hint">
+          Pharmacy Billing: draft → add medicines (billing units) → Pay cash (FEFO stock deduct) →
+          Print. Void restores stock.
+        </p>
+        <div className="list-toolbar">
+          <Typeahead
+            label="Search"
+            value={q}
+            onChange={setQ}
+            placeholder="Bill no / patient / phone"
+            loadSuggestions={async (term) => listPharmacyBills(term, statusFilter)}
+            getKey={(b) => b.id}
+            renderOption={(b) => (
+              <>
+                <span className="typeahead-title">
+                  {b.bill_no} — {b.patient_name}
+                </span>
+                <span className="typeahead-sub">
+                  {b.status.toUpperCase()}
+                  {b.patient_phone ? ` · ${b.patient_phone}` : ""}
+                </span>
+              </>
+            )}
+            onPick={(b) => {
+              setQ(b.bill_no);
+              void openBill(b.id);
+            }}
+            onSubmitWithoutPick={() =>
+              void reloadList().catch((err) => setError(String(err)))
+            }
+          />
+          <label className="field">
+            Status
+            <select
+              value={statusFilter}
+              onChange={(e) => {
+                setStatusFilter(e.target.value);
+                void reloadList(q, e.target.value).catch((err) => setError(String(err)));
+              }}
+            >
+              <option value="">All</option>
+              <option value="draft">Draft</option>
+              <option value="paid">Paid</option>
+              <option value="void">Void</option>
+            </select>
+          </label>
+          <button
+            type="button"
+            className="btn ghost"
+            onClick={() => void reloadList().catch((e) => setError(String(e)))}
+          >
+            Search
+          </button>
+        </div>
+        {error ? <p className="form-error">{error}</p> : null}
+        <ul className="data-list">
+          {bills.length === 0 ? <li className="empty-row">No bills yet</li> : null}
+          {bills.map((b) => (
+            <li key={b.id}>
+              <div>
+                <p className="row-title">
+                  {b.bill_no} · {b.patient_name}
+                </p>
+                <p className="row-sub">
+                  {b.status.toUpperCase()} · {formatMMK(b.total_mmk)} MMK
+                </p>
+              </div>
+              <button type="button" className="btn ghost" onClick={() => void openBill(b.id)}>
+                Open
+              </button>
+            </li>
+          ))}
+        </ul>
+      </section>
+    );
+  }
+
+  return (
+    <section className="settings-panel">
+      <div className="btn-row">
+        <button
+          type="button"
+          className="btn ghost"
+          onClick={() => {
+            setMode("list");
+            void reloadList();
+          }}
+        >
+          ← Bills
+        </button>
+        {billNo ? (
+          <span className="hint">
+            {billNo} · {billStatus.toUpperCase()}
+          </span>
+        ) : null}
+      </div>
+
+      {!billNo ? <h2 className="section-title">Create Pharmacy Bill</h2> : null}
+
+      <div className="card-form">
+        <div className="field-row">
+          <label className="field grow">
+            Patient name *
+            <input
+              value={patientName}
+              disabled={!isDraft}
+              onChange={(e) => setPatientName(e.target.value)}
+              autoFocus
+            />
+          </label>
+          <label className="field">
+            Phone
+            <input
+              value={patientPhone}
+              disabled={!isDraft}
+              onChange={(e) => setPatientPhone(e.target.value)}
+            />
+          </label>
+        </div>
+        <div className="field-row">
+          <label className="field">
+            Age
+            <input
+              value={patientAge}
+              disabled={!isDraft}
+              inputMode="numeric"
+              onChange={(e) => setPatientAge(e.target.value)}
+            />
+          </label>
+          <label className="field">
+            Gender
+            <select
+              value={patientGender}
+              disabled={!isDraft}
+              onChange={(e) => setPatientGender(e.target.value)}
+            >
+              <option value="">—</option>
+              <option value="M">M</option>
+              <option value="F">F</option>
+              <option value="Other">Other</option>
+            </select>
+          </label>
+        </div>
+        <label className="field">
+          Note
+          <input
+            value={description}
+            disabled={!isDraft}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+        </label>
+
+        {isDraft ? (
+          <>
+            <div className="list-toolbar">
+              <Typeahead
+                label="Medicine — code or name"
+                value={codeInput}
+                onChange={(v) => {
+                  setCodeInput(v);
+                  setPendingItem(null);
+                }}
+                placeholder="e.g. PARA500"
+                loadSuggestions={async (term) => listPharmacyItems(term)}
+                getKey={(item) => item.id}
+                renderOption={(item) => (
+                  <>
+                    <span className="typeahead-title">
+                      {item.code} — {item.name}
+                    </span>
+                    <span className="typeahead-sub">
+                      Bill in {item.billing_unit} · In Stock {item.stock_main} {item.stock_unit} ·{" "}
+                      {formatMMK(item.sell_price_mmk)} MMK/{item.billing_unit}
+                    </span>
+                  </>
+                )}
+                onPick={(item) => {
+                  setPendingItem(item);
+                  setCodeInput(item.code);
+                  setBillingQtyInput("1");
+                  setError(null);
+                }}
+                onSubmitWithoutPick={async () => {
+                  const found = await findItemByCode(codeInput);
+                  if (!found) {
+                    setError(`Unknown code “${codeInput.trim()}”`);
+                    return;
+                  }
+                  setPendingItem(found);
+                }}
+              />
+              <label className="field">
+                Qty ({pendingItem?.billing_unit || "billing"})
+                <input
+                  type="number"
+                  min={1}
+                  value={billingQtyInput}
+                  disabled={!pendingItem}
+                  onChange={(e) => setBillingQtyInput(e.target.value)}
+                />
+              </label>
+              <button
+                type="button"
+                className="btn ghost"
+                disabled={!pendingItem}
+                onClick={() => {
+                  if (!pendingItem) return;
+                  addLineFromItem(pendingItem, Number(billingQtyInput) || 1);
+                }}
+              >
+                Add
+              </button>
+            </div>
+            {preview ? <p className="hint">{preview}</p> : null}
+          </>
+        ) : null}
+
+        <div className="bill-lines pharmacy-bill">
+          <div className="bill-lines-head">
+            <span>Code</span>
+            <span>Description</span>
+            <span className="num">Qty</span>
+            <span className="num">Stock</span>
+            <span className="num">Price</span>
+            <span className="num">Amount</span>
+            <span />
+          </div>
+          {lines.length === 0 ? <p className="empty-row">No lines yet</p> : null}
+          {lines.map((l, i) => (
+            <div key={`${l.code}-${i}`} className="bill-lines-row">
+              <span>{l.code || "—"}</span>
+              <span>{l.description}</span>
+              <span className="num">
+                {l.billing_qty} {l.billing_unit}
+              </span>
+              <span className="num">
+                {l.stock_qty} {l.stock_unit}
+              </span>
+              <span className="num">{formatMMK(l.unit_price_mmk)}</span>
+              <span className="num">{formatMMK(l.line_total_mmk)}</span>
+              <span>
+                {isDraft ? (
+                  <button
+                    type="button"
+                    className="btn ghost danger"
+                    onClick={() => setLines((prev) => prev.filter((_, j) => j !== i))}
+                  >
+                    ×
+                  </button>
+                ) : null}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        <p className="bill-total">Total: {formatMMK(total)} MMK</p>
+        {error ? <p className="form-error">{error}</p> : null}
+        {okMsg ? <p className="form-ok">{okMsg}</p> : null}
+
+        <div className="btn-row">
+          {isDraft ? (
+            <button type="button" className="btn primary" disabled={busy} onClick={() => void saveDraft()}>
+              {busy ? "Saving…" : billId ? "Update draft" : "Save draft"}
+            </button>
+          ) : null}
+          {isDraft && billId ? (
+            <button type="button" className="btn primary" disabled={busy} onClick={() => void doPay()}>
+              Pay cash
+            </button>
+          ) : null}
+          {billId ? (
+            <button type="button" className="btn ghost" disabled={busy} onClick={() => void doPrint()}>
+              Print
+            </button>
+          ) : null}
+          {billId && billStatus !== "void" ? (
+            <button type="button" className="btn ghost danger" disabled={busy} onClick={() => void doVoid()}>
+              Void
+            </button>
+          ) : null}
         </div>
       </div>
     </section>
@@ -2491,8 +3035,8 @@ function PharmacyPanel({
         </button>
       </div>
       <p className="hint">
-        Pharmacy stock: search items → restock or adjust → item history. Create a new catalog
-        item when the code is unknown.
+        Stock maintenance: set purchase / stock / billing units → restock (boxes or pieces) →
+        history. Medicines are sold on Pharmacy Billing.
       </p>
       <div className="tabs-bar">
         <nav className="tabs" aria-label="Pharmacy sections">
@@ -2533,46 +3077,85 @@ function PharmacyItemForm({
   onSaved: () => void;
   onCancel: () => void;
 }) {
+  const presets = categoryUnitPresets(editing?.category ?? "Tablet");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [code, setCode] = useState(editing?.code ?? "");
   const [name, setName] = useState(editing?.name ?? "");
   const [category, setCategory] = useState<string>(editing?.category ?? "Tablet");
-  const [packSize, setPackSize] = useState(editing ? String(editing.pack_size) : "1");
-  const [buy, setBuy] = useState(editing ? String(editing.buy_price_mmk) : "0");
+  const [purchaseUnit, setPurchaseUnit] = useState(editing?.purchase_unit ?? presets.purchase_unit);
+  const [stockUnit, setStockUnit] = useState(editing?.stock_unit ?? presets.stock_unit);
+  const [billingUnit, setBillingUnit] = useState(editing?.billing_unit ?? presets.billing_unit);
+  const [unitsPerPurchase, setUnitsPerPurchase] = useState(
+    String(editing?.units_per_purchase ?? editing?.pack_size ?? presets.units_per_purchase),
+  );
+  const [billingPerStock, setBillingPerStock] = useState(
+    String(editing?.billing_per_stock ?? presets.billing_per_stock),
+  );
+  const [chargeFull, setChargeFull] = useState(
+    editing?.charge_full_stock_unit ?? presets.charge_full_stock_unit,
+  );
+  const uppInit = editing?.units_per_purchase ?? editing?.pack_size ?? 1;
+  const [buyPurchase, setBuyPurchase] = useState(
+    editing ? String((editing.buy_price_mmk || 0) * Math.max(1, uppInit)) : "0",
+  );
   const [sell, setSell] = useState(editing ? String(editing.sell_price_mmk) : "0");
   const [reorder, setReorder] = useState(editing ? String(editing.reorder_level) : "0");
   const [initialQty, setInitialQty] = useState("0");
+  const [initialQtyUnit, setInitialQtyUnit] = useState<"purchase" | "stock">("purchase");
   const [batchNo, setBatchNo] = useState("");
   const [expiry, setExpiry] = useState("");
+
+  const units = {
+    purchase_unit: purchaseUnit,
+    stock_unit: stockUnit,
+    billing_unit: billingUnit,
+    units_per_purchase: Number(unitsPerPurchase) || 1,
+    billing_per_stock: Number(billingPerStock) || 1,
+    charge_full_stock_unit: chargeFull,
+  };
+
+  function applyCategory(cat: string) {
+    setCategory(cat);
+    const p = categoryUnitPresets(cat);
+    setPurchaseUnit(p.purchase_unit);
+    setStockUnit(p.stock_unit);
+    setBillingUnit(p.billing_unit);
+    setUnitsPerPurchase(String(p.units_per_purchase));
+    setBillingPerStock(String(p.billing_per_stock));
+    setChargeFull(p.charge_full_stock_unit);
+  }
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
     try {
+      const upp = Math.max(1, Number(unitsPerPurchase) || 1);
+      const buyPerPurchase = Number(buyPurchase) || 0;
+      const buyPerStock = Math.max(0, Math.round(buyPerPurchase / upp));
+      const body = {
+        code: code.trim(),
+        name: name.trim(),
+        category,
+        purchase_unit: purchaseUnit,
+        stock_unit: stockUnit,
+        billing_unit: billingUnit,
+        units_per_purchase: upp,
+        billing_per_stock: Math.max(1, Number(billingPerStock) || 1),
+        charge_full_stock_unit: chargeFull,
+        buy_price_mmk: buyPerStock,
+        sell_price_mmk: Number(sell) || 0,
+        reorder_level: Number(reorder) || 0,
+      };
       if (editing) {
-        await updatePharmacyItem(editing.id, {
-          code: code.trim(),
-          name: name.trim(),
-          category,
-          pack_size: Number(packSize) || 1,
-          buy_price_mmk: Number(buy) || 0,
-          sell_price_mmk: Number(sell) || 0,
-          reorder_level: Number(reorder) || 0,
-          active: true,
-        });
+        await updatePharmacyItem(editing.id, { ...body, active: true });
       } else {
         const qty = Number(initialQty) || 0;
         await createPharmacyItem({
-          code: code.trim(),
-          name: name.trim(),
-          category,
-          pack_size: Number(packSize) || 1,
-          buy_price_mmk: Number(buy) || 0,
-          sell_price_mmk: Number(sell) || 0,
-          reorder_level: Number(reorder) || 0,
+          ...body,
           initial_qty: qty > 0 ? qty : undefined,
+          initial_qty_unit: initialQtyUnit,
           batch_no: batchNo.trim() || undefined,
           expiry_date: expiry.trim() || undefined,
         });
@@ -2594,7 +3177,11 @@ function PharmacyItemForm({
         </label>
         <label className="field">
           Category
-          <select value={category} onChange={(e) => setCategory(e.target.value)} disabled={busy}>
+          <select
+            value={category}
+            onChange={(e) => applyCategory(e.target.value)}
+            disabled={busy}
+          >
             {ITEM_CATEGORIES.map((c) => (
               <option key={c} value={c}>
                 {c}
@@ -2613,19 +3200,101 @@ function PharmacyItemForm({
           placeholder="e.g. Paracetamol 500mg"
         />
       </label>
+
+      <p className="hint">Units — how you buy, store, and bill this item</p>
       <div className="field-row">
         <label className="field">
-          Pack size (units/box)
+          Purchase unit
+          <select value={purchaseUnit} onChange={(e) => setPurchaseUnit(e.target.value)} disabled={busy}>
+            {UNIT_OPTIONS.map((u) => (
+              <option key={u} value={u}>
+                {u}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          Stock unit (inventory)
+          <select value={stockUnit} onChange={(e) => setStockUnit(e.target.value)} disabled={busy}>
+            {UNIT_OPTIONS.map((u) => (
+              <option key={u} value={u}>
+                {u}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          Billing unit (patient)
+          <select value={billingUnit} onChange={(e) => setBillingUnit(e.target.value)} disabled={busy}>
+            {UNIT_OPTIONS.map((u) => (
+              <option key={u} value={u}>
+                {u}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <div className="field-row">
+        <label className="field">
+          {stockUnit}s per {purchaseUnit}
           <input
             type="number"
             min={1}
-            value={packSize}
-            onChange={(e) => setPackSize(e.target.value)}
+            value={unitsPerPurchase}
+            onChange={(e) => setUnitsPerPurchase(e.target.value)}
             disabled={busy}
           />
         </label>
         <label className="field">
-          Reorder level
+          {billingUnit}s per {stockUnit}
+          <input
+            type="number"
+            min={1}
+            value={billingPerStock}
+            onChange={(e) => setBillingPerStock(e.target.value)}
+            disabled={busy}
+          />
+        </label>
+        <label className="field checkbox-field">
+          <span>Charge full {stockUnit}</span>
+          <input
+            type="checkbox"
+            checked={chargeFull}
+            onChange={(e) => setChargeFull(e.target.checked)}
+            disabled={busy}
+          />
+        </label>
+      </div>
+      <p className="hint">
+        {formatUnitsPreview(units)}
+        <br />
+        {formatRestockExample(units)}
+        {chargeFull ? ` · Partial use still deducts 1 ${stockUnit}` : ""}
+      </p>
+
+      <div className="field-row">
+        <label className="field">
+          Buy per {purchaseUnit} (MMK)
+          <input
+            type="number"
+            min={0}
+            value={buyPurchase}
+            onChange={(e) => setBuyPurchase(e.target.value)}
+            disabled={busy}
+          />
+        </label>
+        <label className="field">
+          Sell per {billingUnit} (MMK)
+          <input
+            type="number"
+            min={0}
+            value={sell}
+            onChange={(e) => setSell(e.target.value)}
+            disabled={busy}
+          />
+        </label>
+        <label className="field">
+          Reorder level ({stockUnit})
           <input
             type="number"
             min={0}
@@ -2635,33 +3304,15 @@ function PharmacyItemForm({
           />
         </label>
       </div>
-      <div className="field-row">
-        <label className="field">
-          Buy (MMK)
-          <input
-            type="number"
-            min={0}
-            value={buy}
-            onChange={(e) => setBuy(e.target.value)}
-            disabled={busy}
-          />
-        </label>
-        <label className="field">
-          Sell (MMK)
-          <input
-            type="number"
-            min={0}
-            value={sell}
-            onChange={(e) => setSell(e.target.value)}
-            disabled={busy}
-          />
-        </label>
-      </div>
+      <p className="hint">
+        Stored buy ≈ {Math.max(0, Math.round((Number(buyPurchase) || 0) / Math.max(1, Number(unitsPerPurchase) || 1)))}{" "}
+        MMK per {stockUnit}
+      </p>
       {!editing ? (
         <>
           <div className="field-row">
             <label className="field">
-              Initial qty (In Stock)
+              Initial qty
               <input
                 type="number"
                 min={0}
@@ -2669,6 +3320,17 @@ function PharmacyItemForm({
                 onChange={(e) => setInitialQty(e.target.value)}
                 disabled={busy}
               />
+            </label>
+            <label className="field">
+              Qty unit
+              <select
+                value={initialQtyUnit}
+                onChange={(e) => setInitialQtyUnit(e.target.value as "purchase" | "stock")}
+                disabled={busy}
+              >
+                <option value="purchase">{purchaseUnit}</option>
+                <option value="stock">{stockUnit}</option>
+              </select>
             </label>
             <label className="field">
               Batch no
@@ -2715,6 +3377,7 @@ function PharmacyItemsTab({
   const [itemMovements, setItemMovements] = useState<StockMovement[]>([]);
 
   const [restockQty, setRestockQty] = useState("");
+  const [restockQtyUnit, setRestockQtyUnit] = useState<"purchase" | "stock">("purchase");
   const [restockBatch, setRestockBatch] = useState("");
   const [restockExpiry, setRestockExpiry] = useState("");
   const [restockBuy, setRestockBuy] = useState("");
@@ -2722,13 +3385,6 @@ function PharmacyItemsTab({
   const [adjustDelta, setAdjustDelta] = useState("");
   const [adjustReason, setAdjustReason] = useState("");
   const [codeLookup, setCodeLookup] = useState("");
-
-  const [suggestions, setSuggestions] = useState<PharmacyItem[]>([]);
-  const [suggestOpen, setSuggestOpen] = useState(false);
-  const [highlight, setHighlight] = useState(-1);
-  const skipSuggestRef = useRef(false);
-  const suggestSeqRef = useRef(0);
-  const blurCloseRef = useRef<number | null>(null);
 
   async function reload(search = q) {
     setList(await listPharmacyItems(search.trim()));
@@ -2742,9 +3398,11 @@ function PharmacyItemsTab({
 
   function resetRestockFields(item: PharmacyItem) {
     setRestockQty("");
+    setRestockQtyUnit("purchase");
     setRestockBatch("");
     setRestockExpiry("");
-    setRestockBuy(String(item.buy_price_mmk));
+    const upp = Math.max(1, item.units_per_purchase || item.pack_size || 1);
+    setRestockBuy(String((item.buy_price_mmk || 0) * upp));
     setRestockSell(String(item.sell_price_mmk));
     setAdjustDelta("");
     setAdjustReason("");
@@ -2784,15 +3442,7 @@ function PharmacyItemsTab({
     }
   }
 
-  function closeSuggestions() {
-    setSuggestOpen(false);
-    setSuggestions([]);
-    setHighlight(-1);
-  }
-
-  async function selectSuggestion(item: PharmacyItem) {
-    skipSuggestRef.current = true;
-    closeSuggestions();
+  async function selectSearchItem(item: PharmacyItem) {
     clearPanel();
     setQ(item.code);
     setError(null);
@@ -2801,6 +3451,22 @@ function PharmacyItemsTab({
       await reload(item.code);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Search failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function selectLookupItem(item: PharmacyItem) {
+    setCodeLookup(item.code);
+    setError(null);
+    setBusy(true);
+    try {
+      clearPanel();
+      setQ(item.code);
+      await reload(item.code);
+      await openRestock(item.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Lookup failed");
     } finally {
       setBusy(false);
     }
@@ -2820,35 +3486,6 @@ function PharmacyItemsTab({
       cancelled = true;
     };
   }, []);
-
-  useEffect(() => {
-    if (skipSuggestRef.current) {
-      skipSuggestRef.current = false;
-      return;
-    }
-    const term = q.trim();
-    if (!term) {
-      closeSuggestions();
-      return;
-    }
-    const seq = ++suggestSeqRef.current;
-    const timer = window.setTimeout(() => {
-      void (async () => {
-        try {
-          const data = await listPharmacyItems(term);
-          if (seq !== suggestSeqRef.current) return;
-          const next = data.slice(0, 8);
-          setSuggestions(next);
-          setSuggestOpen(next.length > 0);
-          setHighlight(next.length > 0 ? 0 : -1);
-        } catch {
-          if (seq !== suggestSeqRef.current) return;
-          closeSuggestions();
-        }
-      })();
-    }, 250);
-    return () => window.clearTimeout(timer);
-  }, [q]);
 
   async function onDeactivate(id: number) {
     setBusy(true);
@@ -2893,16 +3530,20 @@ function PharmacyItemsTab({
     try {
       const qty = Number(restockQty);
       if (!qty || qty <= 0) throw new Error("Restock qty must be > 0");
+      const upp = Math.max(1, panelItem.units_per_purchase || panelItem.pack_size || 1);
       const body: {
         qty: number;
+        qty_unit?: "purchase" | "stock";
         batch_no?: string;
         expiry_date?: string;
         buy_price_mmk?: number;
         sell_price_mmk?: number;
-      } = { qty };
+      } = { qty, qty_unit: restockQtyUnit };
       if (restockBatch.trim()) body.batch_no = restockBatch.trim();
       if (restockExpiry.trim()) body.expiry_date = restockExpiry.trim();
-      if (restockBuy.trim() !== "") body.buy_price_mmk = Number(restockBuy) || 0;
+      if (restockBuy.trim() !== "") {
+        body.buy_price_mmk = Math.round((Number(restockBuy) || 0) / upp);
+      }
       if (restockSell.trim() !== "") body.sell_price_mmk = Number(restockSell) || 0;
       const item = await restockItem(panelItem.id, body);
       resetRestockFields(item);
@@ -2939,128 +3580,63 @@ function PharmacyItemsTab({
     }
   }
 
+  function renderPharmacyOption(item: PharmacyItem) {
+    return (
+      <>
+        <span className="typeahead-title">
+          {formatItemCode(item.code)} — {item.name}
+          {!item.active ? " (inactive)" : ""}
+        </span>
+        <span className="typeahead-sub">
+          {item.category} · In Stock {item.stock_main.toLocaleString()} {item.stock_unit || ""}
+          {item.low_stock && item.active ? " · low stock" : ""}
+        </span>
+      </>
+    );
+  }
+
   return (
     <div className="settings-stack">
       <div className="card-form">
         <div className="list-toolbar">
-          <label className="field grow">
-            <span>Quick ID/Code lookup (restock target)</span>
-            <input
-              value={codeLookup}
-              onChange={(e) => setCodeLookup(e.target.value)}
-              placeholder="Exact ID/Code"
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  void onFindByCode();
-                }
-              }}
-            />
-          </label>
+          <Typeahead
+            label="Quick ID/Code lookup (restock target)"
+            value={codeLookup}
+            onChange={setCodeLookup}
+            placeholder="Code or name"
+            loadSuggestions={async (term) => listPharmacyItems(term)}
+            getKey={(item) => item.id}
+            renderOption={renderPharmacyOption}
+            optionClassName={(item) => (!item.active ? "inactive" : "")}
+            onPick={(item) => void selectLookupItem(item)}
+            onSubmitWithoutPick={() => void onFindByCode()}
+          />
           <button type="button" className="btn ghost" disabled={busy} onClick={() => void onFindByCode()}>
             Find
           </button>
         </div>
         <div className="list-toolbar">
-          <div className="field grow typeahead">
-            <span>Search items</span>
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="ID/Code or name"
-              autoComplete="off"
-              role="combobox"
-              aria-expanded={suggestOpen}
-              aria-autocomplete="list"
-              aria-controls="pharmacy-item-suggestions"
-              onFocus={() => {
-                if (suggestions.length > 0) setSuggestOpen(true);
-              }}
-              onBlur={() => {
-                if (blurCloseRef.current != null) window.clearTimeout(blurCloseRef.current);
-                blurCloseRef.current = window.setTimeout(() => {
-                  setSuggestOpen(false);
-                }, 150);
-              }}
-              onKeyDown={(e) => {
-                if (suggestOpen && suggestions.length > 0) {
-                  if (e.key === "ArrowDown") {
-                    e.preventDefault();
-                    setHighlight((h) => (h + 1) % suggestions.length);
-                    return;
-                  }
-                  if (e.key === "ArrowUp") {
-                    e.preventDefault();
-                    setHighlight((h) => (h <= 0 ? suggestions.length - 1 : h - 1));
-                    return;
-                  }
-                  if (e.key === "Escape") {
-                    e.preventDefault();
-                    setSuggestOpen(false);
-                    return;
-                  }
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    const pick =
-                      highlight >= 0 ? suggestions[highlight] : suggestions[0];
-                    if (pick) void selectSuggestion(pick);
-                    return;
-                  }
-                }
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  setSuggestOpen(false);
-                  clearPanel();
-                  void reload(q).catch((err) =>
-                    setError(err instanceof Error ? err.message : "Search failed"),
-                  );
-                }
-              }}
-            />
-            {suggestOpen && suggestions.length > 0 ? (
-              <ul
-                id="pharmacy-item-suggestions"
-                className="typeahead-menu"
-                role="listbox"
-              >
-                {suggestions.map((item, i) => (
-                  <li key={item.id} role="presentation">
-                    <button
-                      type="button"
-                      role="option"
-                      aria-selected={i === highlight}
-                      className={`typeahead-option${i === highlight ? " active" : ""}${
-                        !item.active ? " inactive" : ""
-                      }`}
-                      onMouseEnter={() => setHighlight(i)}
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        if (blurCloseRef.current != null) {
-                          window.clearTimeout(blurCloseRef.current);
-                          blurCloseRef.current = null;
-                        }
-                        void selectSuggestion(item);
-                      }}
-                    >
-                      <span className="typeahead-title">
-                        {formatItemCode(item.code)} — {item.name}
-                        {!item.active ? " (inactive)" : ""}
-                      </span>
-                      <span className="typeahead-sub">
-                        {item.category} · In Stock {item.stock_main.toLocaleString()}
-                        {item.low_stock && item.active ? " · low stock" : ""}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-          </div>
+          <Typeahead
+            label="Search items"
+            value={q}
+            onChange={setQ}
+            placeholder="ID/Code or name"
+            loadSuggestions={async (term) => listPharmacyItems(term)}
+            getKey={(item) => item.id}
+            renderOption={renderPharmacyOption}
+            optionClassName={(item) => (!item.active ? "inactive" : "")}
+            onPick={(item) => void selectSearchItem(item)}
+            onSubmitWithoutPick={() => {
+              clearPanel();
+              void reload(q).catch((err) =>
+                setError(err instanceof Error ? err.message : "Search failed"),
+              );
+            }}
+          />
           <button
             type="button"
             className="btn ghost"
             onClick={() => {
-              setSuggestOpen(false);
               clearPanel();
               void reload(q).catch((err) =>
                 setError(err instanceof Error ? err.message : "Search failed"),
@@ -3084,8 +3660,9 @@ function PharmacyItemsTab({
                   ) : null}
                 </p>
                 <p className="row-sub">
-                  {item.category} · In Stock {item.stock_main.toLocaleString()} · sell{" "}
-                  {item.sell_price_mmk.toLocaleString()} MMK
+                  {item.category} · In Stock {item.stock_main.toLocaleString()}{" "}
+                  {item.stock_unit || "units"} · sell {item.sell_price_mmk.toLocaleString()} MMK/
+                  {item.billing_unit || "unit"}
                 </p>
               </div>
               <div className="btn-row">
@@ -3134,16 +3711,20 @@ function PharmacyItemsTab({
           <div className="btn-row">
             <h2 className="section-title">
               Restock · {formatItemCode(panelItem.code)} · In Stock{" "}
-              {panelItem.stock_main.toLocaleString()}
+              {panelItem.stock_main.toLocaleString()} {panelItem.stock_unit || ""}
             </h2>
             <button type="button" className="btn ghost" onClick={clearPanel} disabled={busy}>
               Close
             </button>
           </div>
-          <p className="hint">{panelItem.name}</p>
+          <p className="hint">
+            {panelItem.name} · 1 {panelItem.purchase_unit || "Box"} ={" "}
+            {panelItem.units_per_purchase || panelItem.pack_size || 1}{" "}
+            {panelItem.stock_unit || "units"}
+          </p>
 
           <form className="nested-form" onSubmit={(e) => void onRestock(e)}>
-            <h3 className="section-title">Restock (PURCHASE)</h3>
+            <h3 className="section-title">Restock</h3>
             <div className="field-row">
               <label className="field">
                 <span>Qty</span>
@@ -3157,6 +3738,17 @@ function PharmacyItemsTab({
                 />
               </label>
               <label className="field">
+                <span>Unit</span>
+                <select
+                  value={restockQtyUnit}
+                  onChange={(e) => setRestockQtyUnit(e.target.value as "purchase" | "stock")}
+                  disabled={busy}
+                >
+                  <option value="purchase">{panelItem.purchase_unit || "Box"}</option>
+                  <option value="stock">{panelItem.stock_unit || "Piece"}</option>
+                </select>
+              </label>
+              <label className="field">
                 <span>Batch no</span>
                 <input
                   value={restockBatch}
@@ -3165,6 +3757,16 @@ function PharmacyItemsTab({
                 />
               </label>
             </div>
+            {restockQty && Number(restockQty) > 0 ? (
+              <p className="hint">
+                Will add{" "}
+                {restockQtyUnit === "purchase"
+                  ? Number(restockQty) *
+                    Math.max(1, panelItem.units_per_purchase || panelItem.pack_size || 1)
+                  : Number(restockQty)}{" "}
+                {panelItem.stock_unit || "units"} to In Stock
+              </p>
+            ) : null}
             <div className="field-row">
               <label className="field">
                 <span>Expiry</span>
@@ -3176,7 +3778,10 @@ function PharmacyItemsTab({
                 />
               </label>
               <label className="field">
-                <span>Buy / Sell (optional)</span>
+                <span>
+                  Buy/{panelItem.purchase_unit || "Box"} · Sell/{panelItem.billing_unit || "unit"}{" "}
+                  (optional)
+                </span>
                 <div className="field-row tight">
                   <input
                     type="number"
@@ -3184,7 +3789,7 @@ function PharmacyItemsTab({
                     value={restockBuy}
                     onChange={(e) => setRestockBuy(e.target.value)}
                     disabled={busy}
-                    aria-label="Buy price"
+                    aria-label="Buy price per purchase unit"
                   />
                   <input
                     type="number"
@@ -3192,7 +3797,7 @@ function PharmacyItemsTab({
                     value={restockSell}
                     onChange={(e) => setRestockSell(e.target.value)}
                     disabled={busy}
-                    aria-label="Sell price"
+                    aria-label="Sell price per billing unit"
                   />
                 </div>
               </label>
@@ -3284,7 +3889,9 @@ function PharmacyItemsTab({
               return (
                 <li key={m.id}>
                   <div>
-                    <p className="row-title">{formatStockHistoryLine(m)}</p>
+                    <p className="row-title">
+                      {formatStockHistoryLine(m, panelItem.stock_unit || m.stock_unit || "item")}
+                    </p>
                     {reasonLine ? <p className="row-sub">{reasonLine}</p> : null}
                   </div>
                 </li>
@@ -3327,22 +3934,37 @@ function PharmacyMovementsTab() {
         <h2 className="section-title">Item History</h2>
         <p className="hint">What changed in stock — restock, sales, OT, adjustments. Newest first.</p>
         <div className="list-toolbar">
-          <label className="field grow">
-            <span>Filter</span>
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="ID/Code, name, or note"
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  void reload(q).catch((err) =>
-                    setError(err instanceof Error ? err.message : "Search failed"),
-                  );
-                }
-              }}
-            />
-          </label>
+          <Typeahead
+            label="Filter"
+            value={q}
+            onChange={setQ}
+            placeholder="ID/Code, name, or note"
+            loadSuggestions={async (term) =>
+              listStockMovements({ q: term.trim() || undefined })
+            }
+            getKey={(m) => m.id}
+            renderOption={(m) => (
+              <>
+                <span className="typeahead-title">
+                  {formatItemCode(m.item_code)} — {m.item_name}
+                </span>
+                <span className="typeahead-sub">
+                  {formatStockHistoryLine(m, m.stock_unit || "item")}
+                </span>
+              </>
+            )}
+            onPick={(m) => {
+              setQ(m.item_code);
+              void reload(m.item_code).catch((err) =>
+                setError(err instanceof Error ? err.message : "Search failed"),
+              );
+            }}
+            onSubmitWithoutPick={() =>
+              void reload(q).catch((err) =>
+                setError(err instanceof Error ? err.message : "Search failed"),
+              )
+            }
+          />
           <button
             type="button"
             className="btn ghost"
@@ -3366,7 +3988,9 @@ function PharmacyMovementsTab() {
                   <p className="row-title">
                     {formatItemCode(m.item_code)} — {m.item_name}
                   </p>
-                  <p className="row-sub">{formatStockHistoryLine(m)}</p>
+                  <p className="row-sub">
+                    {formatStockHistoryLine(m, m.stock_unit || "item")}
+                  </p>
                   {reasonLine ? <p className="row-sub">{reasonLine}</p> : null}
                 </div>
               </li>
@@ -3764,7 +4388,9 @@ function ReportsPanel({
         <div className="report-block">
           <p className="hint">
             {t("opdBills")}: {cash.opd_count} · {formatMMK(cash.opd_total_mmk)} {t("mmk")} ·{" "}
-            {t("otBills")}: {cash.ot_count} · {formatMMK(cash.ot_total_mmk)} {t("mmk")} ·{" "}
+            {t("pharmacyBills")}: {cash.pharmacy_count ?? 0} ·{" "}
+            {formatMMK(cash.pharmacy_total_mmk ?? 0)} {t("mmk")} · {t("otBills")}: {cash.ot_count} ·{" "}
+            {formatMMK(cash.ot_total_mmk)} {t("mmk")} ·{" "}
             <strong>
               {t("grandTotal")}: {formatMMK(cash.grand_total_mmk)} {t("mmk")}
             </strong>
@@ -4120,22 +4746,39 @@ function DoctorsTab() {
 
       <div className="card-form">
         <div className="list-toolbar">
-          <label className="field grow">
-            <span>Search doctors</span>
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  void reload(q).catch((err) =>
-                    setError(err instanceof Error ? err.message : "Search failed"),
-                  );
-                }
-              }}
-              placeholder="Name or specialty"
-            />
-          </label>
+          <Typeahead
+            label="Search doctors"
+            value={q}
+            onChange={setQ}
+            placeholder="Name or specialty"
+            loadSuggestions={async (term) => listDoctors(term.trim())}
+            getKey={(d) => d.id}
+            renderOption={(d) => (
+              <>
+                <span className="typeahead-title">
+                  {d.name}
+                  {!d.active ? " (inactive)" : ""}
+                </span>
+                <span className="typeahead-sub">
+                  {d.specialty || "General"} · Consult{" "}
+                  {d.fees.consultation_mmk.toLocaleString()} · OT{" "}
+                  {d.fees.ot_mmk.toLocaleString()} MMK
+                </span>
+              </>
+            )}
+            optionClassName={(d) => (!d.active ? "inactive" : "")}
+            onPick={(d) => {
+              setQ(d.name);
+              void reload(d.name).catch((err) =>
+                setError(err instanceof Error ? err.message : "Search failed"),
+              );
+            }}
+            onSubmitWithoutPick={() =>
+              void reload(q).catch((err) =>
+                setError(err instanceof Error ? err.message : "Search failed"),
+              )
+            }
+          />
           <button
             type="button"
             className="btn ghost"
@@ -4312,22 +4955,37 @@ function ServicesTab() {
 
       <div className="card-form">
         <div className="list-toolbar">
-          <label className="field grow">
-            <span>Search services</span>
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Code or name"
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  void reload(q).catch((err) =>
-                    setError(err instanceof Error ? err.message : "Search failed"),
-                  );
-                }
-              }}
-            />
-          </label>
+          <Typeahead
+            label="Search services"
+            value={q}
+            onChange={setQ}
+            placeholder="Code or name"
+            loadSuggestions={async (term) => listServices(term.trim())}
+            getKey={(s) => s.id}
+            renderOption={(s) => (
+              <>
+                <span className="typeahead-title">
+                  {s.code} — {s.name}
+                  {!s.active ? " (inactive)" : ""}
+                </span>
+                <span className="typeahead-sub">
+                  {s.price_mmk.toLocaleString()} MMK · non-stock
+                </span>
+              </>
+            )}
+            optionClassName={(s) => (!s.active ? "inactive" : "")}
+            onPick={(s) => {
+              setQ(s.code);
+              void reload(s.code).catch((err) =>
+                setError(err instanceof Error ? err.message : "Search failed"),
+              );
+            }}
+            onSubmitWithoutPick={() =>
+              void reload(q).catch((err) =>
+                setError(err instanceof Error ? err.message : "Search failed"),
+              )
+            }
+          />
           <button
             type="button"
             className="btn ghost"
@@ -4490,22 +5148,35 @@ function UsersTab() {
 
       <div className="card-form">
         <div className="list-toolbar">
-          <label className="field grow">
-            <span>Search users</span>
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Username or name"
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  void reload(q).catch((err) =>
-                    setError(err instanceof Error ? err.message : "Search failed"),
-                  );
-                }
-              }}
-            />
-          </label>
+          <Typeahead
+            label="Search users"
+            value={q}
+            onChange={setQ}
+            placeholder="Username or name"
+            loadSuggestions={async (term) => listUsers(term.trim())}
+            getKey={(u) => u.id}
+            renderOption={(u) => (
+              <>
+                <span className="typeahead-title">
+                  {u.username} · {u.role}
+                  {!u.active ? " (inactive)" : ""}
+                </span>
+                <span className="typeahead-sub">{u.display_name}</span>
+              </>
+            )}
+            optionClassName={(u) => (!u.active ? "inactive" : "")}
+            onPick={(u) => {
+              setQ(u.username);
+              void reload(u.username).catch((err) =>
+                setError(err instanceof Error ? err.message : "Search failed"),
+              );
+            }}
+            onSubmitWithoutPick={() =>
+              void reload(q).catch((err) =>
+                setError(err instanceof Error ? err.message : "Search failed"),
+              )
+            }
+          />
           <button
             type="button"
             className="btn ghost"
