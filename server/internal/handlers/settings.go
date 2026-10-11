@@ -20,6 +20,7 @@ type hospitalSettings struct {
 	HospitalName string `json:"hospital_name"`
 	Address      string `json:"address"`
 	Phone        string `json:"phone"`
+	Phone2       string `json:"phone2"`
 	LogoPath     string `json:"logo_path"`
 	UpdatedAt    string `json:"updated_at,omitempty"`
 }
@@ -55,6 +56,7 @@ func (s *Settings) put(w http.ResponseWriter, r *http.Request) {
 	req.HospitalName = strings.TrimSpace(req.HospitalName)
 	req.Address = strings.TrimSpace(req.Address)
 	req.Phone = strings.TrimSpace(req.Phone)
+	req.Phone2 = strings.TrimSpace(req.Phone2)
 	req.LogoPath = strings.TrimSpace(req.LogoPath)
 	if req.HospitalName == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "hospital_name required"})
@@ -63,9 +65,9 @@ func (s *Settings) put(w http.ResponseWriter, r *http.Request) {
 
 	_, err := s.DB.Exec(`
 		UPDATE hospital_settings
-		SET hospital_name = ?, address = ?, phone = ?, logo_path = ?, updated_at = datetime('now')
+		SET hospital_name = ?, address = ?, phone = ?, phone2 = ?, logo_path = ?, updated_at = datetime('now')
 		WHERE id = 1
-	`, req.HospitalName, req.Address, req.Phone, req.LogoPath)
+	`, req.HospitalName, req.Address, req.Phone, req.Phone2, req.LogoPath)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "update failed"})
 		return
@@ -89,11 +91,26 @@ func (s *Settings) put(w http.ResponseWriter, r *http.Request) {
 func loadHospitalSettings(db *sql.DB) (*hospitalSettings, error) {
 	var hs hospitalSettings
 	err := db.QueryRow(`
-		SELECT hospital_name, address, phone, logo_path, updated_at
+		SELECT hospital_name, address, phone, phone2, logo_path, updated_at
 		FROM hospital_settings WHERE id = 1
-	`).Scan(&hs.HospitalName, &hs.Address, &hs.Phone, &hs.LogoPath, &hs.UpdatedAt)
+	`).Scan(&hs.HospitalName, &hs.Address, &hs.Phone, &hs.Phone2, &hs.LogoPath, &hs.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
 	return &hs, nil
+}
+
+// hospitalPhones joins non-empty phone fields for bill headers.
+func hospitalPhones(hosp *hospitalSettings) string {
+	if hosp == nil {
+		return ""
+	}
+	parts := make([]string, 0, 2)
+	if p := strings.TrimSpace(hosp.Phone); p != "" {
+		parts = append(parts, p)
+	}
+	if p := strings.TrimSpace(hosp.Phone2); p != "" {
+		parts = append(parts, p)
+	}
+	return strings.Join(parts, " / ")
 }

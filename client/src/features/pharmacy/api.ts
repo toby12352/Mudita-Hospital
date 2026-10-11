@@ -1,6 +1,6 @@
-import { apiFetch, getApiBase } from "./api";
-import { getStoredToken } from "./auth";
-import { fetchAndPreviewPrint } from "./print";
+import { apiFetch, getApiBase } from "@/shared/api";
+import { getStoredToken } from "@/shared/auth";
+import { fetchAndPreviewPrint } from "@/shared/print";
 
 export const ITEM_CATEGORIES = [
   "Injection",
@@ -13,126 +13,89 @@ export const ITEM_CATEGORIES = [
 
 export type ItemCategory = (typeof ITEM_CATEGORIES)[number];
 
-export const UNIT_OPTIONS = [
-  "Box",
-  "Carton",
-  "Bottle",
-  "Vial",
-  "Ampoule",
-  "Piece",
-  "Tablet",
-  "Capsule",
-  "Tube",
-  "Cylinder",
-  "Bag",
-  "Each",
-  "mL",
-  "g",
-  "oz",
-] as const;
+export const PACK_L1_UNITS = ["Box", "Bottle"] as const;
+export const PACK_L2_UNITS = ["Strip", "Card"] as const;
+export const PACK_L3_UNITS = ["Tablet", "Capsule", "mL"] as const;
 
-export type UnitName = (typeof UNIT_OPTIONS)[number];
+export type PackL1Unit = (typeof PACK_L1_UNITS)[number];
+export type PackL2Unit = (typeof PACK_L2_UNITS)[number];
+export type PackL3Unit = (typeof PACK_L3_UNITS)[number];
 
-export type ItemUnits = {
-  purchase_unit: string;
-  stock_unit: string;
-  billing_unit: string;
-  units_per_purchase: number;
-  billing_per_stock: number;
-  charge_full_stock_unit: boolean;
+export type ItemPack = {
+  pack_l1_qty: number;
+  pack_l1_unit: string;
+  pack_l2_qty: number;
+  pack_l2_unit: string;
+  pack_l3_qty: number;
+  pack_l3_unit: string;
 };
 
-export function categoryUnitPresets(category: string): ItemUnits {
-  switch (category) {
-    case "Tablet":
-      return {
-        purchase_unit: "Box",
-        stock_unit: "Tablet",
-        billing_unit: "Tablet",
-        units_per_purchase: 10,
-        billing_per_stock: 1,
-        charge_full_stock_unit: false,
-      };
-    case "Injection":
-      return {
-        purchase_unit: "Box",
-        stock_unit: "Vial",
-        billing_unit: "mL",
-        units_per_purchase: 10,
-        billing_per_stock: 10,
-        charge_full_stock_unit: true,
-      };
-    case "Syrup":
-      return {
-        purchase_unit: "Bottle",
-        stock_unit: "Bottle",
-        billing_unit: "mL",
-        units_per_purchase: 1,
-        billing_per_stock: 100,
-        charge_full_stock_unit: false,
-      };
-    case "OT":
-      return {
-        purchase_unit: "Box",
-        stock_unit: "Piece",
-        billing_unit: "Piece",
-        units_per_purchase: 50,
-        billing_per_stock: 1,
-        charge_full_stock_unit: false,
-      };
-    default:
-      return {
-        purchase_unit: "Box",
-        stock_unit: "Piece",
-        billing_unit: "Piece",
-        units_per_purchase: 1,
-        billing_per_stock: 1,
-        charge_full_stock_unit: false,
-      };
-  }
+export function defaultItemPack(): ItemPack {
+  return {
+    pack_l1_qty: 1,
+    pack_l1_unit: "Box",
+    pack_l2_qty: 10,
+    pack_l2_unit: "Strip",
+    pack_l3_qty: 10,
+    pack_l3_unit: "Tablet",
+  };
 }
 
-/** Convert billing qty → whole stock units to deduct. */
-export function billingToStockQty(
-  billingQty: number,
-  billingPerStock: number,
-  chargeFull: boolean,
-): { stockQty: number; error?: string } {
-  if (billingQty <= 0) return { stockQty: 0, error: "qty must be > 0" };
-  const bps = Math.max(1, billingPerStock || 1);
-  if (chargeFull) {
-    return { stockQty: Math.ceil(billingQty / bps) };
-  }
-  if (billingQty % bps !== 0) {
-    return {
-      stockQty: 0,
-      error: `qty must be a multiple of ${bps} (one ${"stock unit"})`,
-    };
-  }
-  return { stockQty: billingQty / bps };
+export function tabletsPerBox(p: ItemPack): number {
+  return Math.max(1, p.pack_l2_qty || 1) * Math.max(1, p.pack_l3_qty || 1);
 }
 
-export function lineChargeFromBilling(
-  billingQty: number,
-  stockQty: number,
-  billingPerStock: number,
-  sellPerBilling: number,
-  chargeFull: boolean,
-): number {
-  if (chargeFull) {
-    return stockQty * Math.max(1, billingPerStock) * sellPerBilling;
-  }
-  return billingQty * sellPerBilling;
+/** Total L3 units from mixed box/strip/tablet sale quantities. */
+export function totalTablets(
+  boxQty: number,
+  stripQty: number,
+  tabletQty: number,
+  stripsPerBox: number,
+  tabsPerStrip: number,
+): { total: number; error?: string } {
+  const b = Math.max(0, boxQty || 0);
+  const s = Math.max(0, stripQty || 0);
+  const t = Math.max(0, tabletQty || 0);
+  if (b === 0 && s === 0 && t === 0) return { total: 0, error: "quantity required" };
+  const l2 = Math.max(1, stripsPerBox || 1);
+  const l3 = Math.max(1, tabsPerStrip || 1);
+  return { total: b * l2 * l3 + s * l3 + t };
 }
 
-export function formatUnitsPreview(u: ItemUnits): string {
-  return `1 ${u.purchase_unit} = ${u.units_per_purchase} ${u.stock_unit} · 1 ${u.stock_unit} = ${u.billing_per_stock} ${u.billing_unit}`;
+export function lineChargeFromPack(
+  boxQty: number,
+  stripQty: number,
+  tabletQty: number,
+  stripsPerBox: number,
+  tabsPerStrip: number,
+  sellPerTablet: number,
+): { total: number; charge: number; error?: string } {
+  const { total, error } = totalTablets(boxQty, stripQty, tabletQty, stripsPerBox, tabsPerStrip);
+  if (error) return { total: 0, charge: 0, error };
+  return { total, charge: total * (sellPerTablet || 0) };
 }
 
-export function formatRestockExample(u: ItemUnits): string {
-  const boxes = 2;
-  const stock = boxes * Math.max(1, u.units_per_purchase);
-  return `Restock ${boxes} ${u.purchase_unit} → +${stock} ${u.stock_unit} in stock · Bill in ${u.billing_unit}`;
+export function formatPackPreview(p: ItemPack): string {
+  return `1 ${p.pack_l1_unit} = ${p.pack_l2_qty} ${p.pack_l2_unit} · 1 ${p.pack_l2_unit} = ${p.pack_l3_qty} ${p.pack_l3_unit}`;
+}
+
+export function packFromItem(item: {
+  pack_l1_qty?: number;
+  pack_l1_unit?: string;
+  pack_l2_qty?: number;
+  pack_l2_unit?: string;
+  pack_l3_qty?: number;
+  pack_l3_unit?: string;
+}): ItemPack {
+  const d = defaultItemPack();
+  return {
+    pack_l1_qty: item.pack_l1_qty ?? d.pack_l1_qty,
+    pack_l1_unit: item.pack_l1_unit || d.pack_l1_unit,
+    pack_l2_qty: item.pack_l2_qty ?? d.pack_l2_qty,
+    pack_l2_unit: item.pack_l2_unit || d.pack_l2_unit,
+    pack_l3_qty: item.pack_l3_qty ?? d.pack_l3_qty,
+    pack_l3_unit: item.pack_l3_unit || d.pack_l3_unit,
+  };
 }
 
 /** User-facing label for stock location codes (API still uses MAIN, etc.). */
@@ -298,15 +261,22 @@ export type PharmacyItem = {
   code: string;
   name: string;
   category: ItemCategory | string;
+  dosage: string;
   pack_size: number;
+  pack_l1_qty: number;
+  pack_l1_unit: string;
+  pack_l2_qty: number;
+  pack_l2_unit: string;
+  pack_l3_qty: number;
+  pack_l3_unit: string;
   purchase_unit: string;
   stock_unit: string;
   billing_unit: string;
   units_per_purchase: number;
   billing_per_stock: number;
   charge_full_stock_unit: boolean;
-  buy_price_mmk: number;
-  sell_price_mmk: number;
+  buy_price_mmk: number; // per box
+  sell_price_mmk: number; // per L3
   reorder_level: number;
   active: boolean;
   stock_main: number;
@@ -337,6 +307,9 @@ export type PharmacyBillLine = {
   item_id: number;
   code: string;
   description: string;
+  box_qty?: number;
+  strip_qty?: number;
+  tablet_qty?: number;
   billing_qty: number;
   billing_unit: string;
   stock_qty: number;
@@ -384,19 +357,18 @@ export async function getPharmacyItem(id: number): Promise<PharmacyItem> {
 export type PharmacyItemWrite = {
   code: string;
   name: string;
-  category: string;
-  purchase_unit: string;
-  stock_unit: string;
-  billing_unit: string;
-  units_per_purchase: number;
-  billing_per_stock: number;
-  charge_full_stock_unit: boolean;
+  dosage?: string;
+  category?: string;
+  pack_l1_qty: number;
+  pack_l1_unit: string;
+  pack_l2_qty: number;
+  pack_l2_unit: string;
+  pack_l3_qty: number;
+  pack_l3_unit: string;
   buy_price_mmk: number;
   sell_price_mmk: number;
-  reorder_level: number;
   initial_qty?: number;
   initial_qty_unit?: "purchase" | "stock";
-  batch_no?: string;
   expiry_date?: string;
   active?: boolean;
 };
@@ -427,7 +399,6 @@ export async function restockItem(
   body: {
     qty: number;
     qty_unit?: "purchase" | "stock";
-    batch_no?: string;
     expiry_date?: string;
     buy_price_mmk?: number;
     sell_price_mmk?: number;

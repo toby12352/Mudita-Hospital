@@ -12,9 +12,11 @@ Offline LAN hospital desktop system (OPD, OT case-cart, pharmacy).
 | `client/` | Tauri 2 + React + Vite desktop shell (clinic) |
 | `dashboard/` | Tauri 2 + React Admin analytics desktop shell |
 | `docs/` | Deploy guide, field install FAQ, staff cheat sheet, risk/continuity, crash card |
+| `docs/standards/` | Developer standards (architecture, frontend/backend, feature playbook) — see [docs/standards/README.md](docs/standards/README.md) |
 | `scripts/` | Local run + package/install helpers |
 | `deploy/server/` | Server package templates (LAN `config.json`, watchdog) |
 | `dist/` | Output of `package-server.ps1` / `package-client.ps1` / `package-dashboard.ps1` (gitignored) |
+| `AGENTS.md` | Short pointer for AI/human agents → standards index |
 
 ## Ports (local dev)
 

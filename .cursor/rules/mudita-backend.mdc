@@ -1,0 +1,29 @@
+---
+description: Go API, handlers, auth, migrations, SQLite conventions
+globs: server/**/*
+alwaysApply: false
+---
+
+# Backend
+
+Full guide: `@docs/standards/BACKEND.md` · Conventions: `@docs/standards/CONVENTIONS.md` · Playbook: `@docs/standards/ADDING_A_FEATURE.md`
+
+## Layout
+
+- Keep code under `server/internal/` — no new `pkg/` or layer-folders (`models/`, `controllers/`)
+- Register routes in `main.go`; one `ServeHTTP` handler type per domain
+- Path/method switch after `TrimPrefix`; wrap with `RequirePermission` (public only for health + login)
+
+## Must follow
+
+- Schema changes **only** via named migrations in `internal/db/migrate.go`
+- Errors: JSON `{"error":"…"}`; money `*_mmk`; JSON `snake_case`
+- New capability → `Perm*` + role map in `internal/auth/roles.go`
+- Audit money-moving / sensitive mutations; receipts HTML on the server
+- Split large domains into same-package files (e.g. `pharmacy_bills.go`) around ~800–1000 lines — not a new framework
+- `gofmt`; avoid `util`/`common` dumping grounds
+- Prefer nearest domain template: OPD (simple bills), OT (workflows), Pharmacy (stock)
+
+## Stack
+
+Go stdlib `net/http` ServeMux + SQLite WAL. Do not add Gin/Echo/chi or an ORM without an explicit decision.

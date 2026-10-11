@@ -294,20 +294,27 @@ func ensureTrainingItems(tx *sql.Tx, actorUID int64) ([]int64, int, error) {
 		var id int64
 		err := tx.QueryRow(`SELECT id FROM items WHERE code = ?`, s.code).Scan(&id)
 		if err == sql.ErrNoRows {
-			units := categoryUnitDefaults(s.category)
-			chargeInt := 0
-			if units.ChargeFullStockUnit {
-				chargeInt = 1
+			pack := defaultItemPack()
+			pack.L2Qty = 1
+			pack.L3Qty = 10
+			if s.category == "Injection" {
+				pack.L3Unit = "mL"
+			} else if s.category == "OT" {
+				pack.L3Unit = "Tablet"
 			}
+			units := packToItemUnits(pack)
+			buyPerBox := s.buy * units.UnitsPerPurchase // seed buy was per L3; store per box
 			res, err := tx.Exec(`
 				INSERT INTO items (
-					code, name, category, pack_size,
+					code, name, category, dosage, pack_size,
+					pack_l1_qty, pack_l1_unit, pack_l2_qty, pack_l2_unit, pack_l3_qty, pack_l3_unit,
 					purchase_unit, stock_unit, billing_unit, units_per_purchase, billing_per_stock, charge_full_stock_unit,
 					buy_price_mmk, sell_price_mmk, reorder_level, active
-				) VALUES (?, ?, ?, 10, ?, ?, ?, 10, ?, ?, ?, ?, ?, 1)
-			`, s.code, s.name, s.category,
-				units.PurchaseUnit, units.StockUnit, units.BillingUnit, units.BillingPerStock, chargeInt,
-				s.buy, s.sell, s.reorder)
+				) VALUES (?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?, 1)
+			`, s.code, s.name, s.category, units.UnitsPerPurchase,
+				pack.L1Qty, pack.L1Unit, pack.L2Qty, pack.L2Unit, pack.L3Qty, pack.L3Unit,
+				units.PurchaseUnit, units.StockUnit, units.BillingUnit, units.UnitsPerPurchase,
+				buyPerBox, s.sell, s.reorder)
 			if err != nil {
 				return nil, 0, fmt.Errorf("item %s: %w", s.code, err)
 			}

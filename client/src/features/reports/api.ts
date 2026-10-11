@@ -1,6 +1,6 @@
-import { apiFetch, getApiBase } from "./api";
-import { getStoredToken } from "./auth";
-import { fetchAndPreviewPrint } from "./print";
+import { apiFetch, getApiBase } from "@/shared/api";
+import { getStoredToken } from "@/shared/auth";
+import { fetchAndPreviewPrint } from "@/shared/print";
 
 export type CashLine = {
   source: string;

@@ -63,6 +63,29 @@ body {
   max-width: 52rem;
 }
 
+.shell-app {
+  padding-top: 0;
+  max-width: 64rem;
+}
+
+.app-chrome {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: var(--bg);
+  padding-top: 1rem;
+  margin-bottom: 0.25rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.app-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
 .brand .eyebrow,
 .topbar .eyebrow {
   margin: 0 0 0.35rem;
@@ -114,6 +137,166 @@ body {
   justify-content: space-between;
   align-items: center;
   gap: 1rem;
+  padding-bottom: 0.75rem;
+}
+
+.app-nav {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 0.25rem;
+  width: 100%;
+  padding: 0.15rem 0 0.35rem;
+}
+
+.app-nav-item {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  justify-content: center;
+}
+
+.app-nav-btn {
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--ink);
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  padding: 0.5rem 0.5rem;
+  cursor: pointer;
+  white-space: nowrap;
+  width: 100%;
+  text-align: center;
+}
+
+.app-nav-btn:hover,
+.app-nav-btn:focus-visible,
+.app-nav-item.open > .app-nav-btn {
+  background: var(--accent-soft);
+  color: var(--accent);
+  outline: none;
+}
+
+.app-nav-btn.active {
+  background: var(--accent);
+  color: var(--accent-ink);
+  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.18);
+}
+
+.app-nav-btn.active:hover,
+.app-nav-btn.active:focus-visible,
+.app-nav-item.open > .app-nav-btn.active {
+  background: var(--accent);
+  color: var(--accent-ink);
+  outline: none;
+}
+
+.app-nav-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.app-nav-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 14rem;
+  margin: 0;
+  padding: 0.35rem;
+  list-style: none;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(26, 31, 46, 0.12);
+  z-index: 60;
+  display: none;
+}
+
+.app-nav-item.open > .app-nav-menu {
+  display: block;
+}
+
+.app-nav-menu button {
+  font: inherit;
+  font-size: 0.9rem;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  padding: 0.55rem 0.7rem;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.app-nav-menu button:hover,
+.app-nav-menu button:focus-visible {
+  background: var(--accent-soft);
+  color: var(--accent);
+  outline: none;
+}
+
+.app-nav-menu button.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 650;
+}
+
+.app-nav-menu button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.home-howto {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.home-howto h2 {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 650;
+}
+
+.home-howto ol {
+  margin: 0;
+  padding-left: 1.25rem;
+  color: var(--ink);
+}
+
+.home-howto li {
+  margin: 0.35rem 0;
+}
+
+.home-howto-section {
+  padding: 1.1rem 1.15rem;
+  border-radius: 12px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+}
+
+.home-howto-section h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1.05rem;
+}
+
+.video-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 10rem;
+  border-radius: 10px;
+  border: 2px dashed var(--border-strong);
+  background: var(--bg-input);
+  color: var(--muted);
+  text-align: center;
+  padding: 1.5rem;
+  font-size: 0.95rem;
 }
 
 .user-chip {
@@ -223,6 +406,33 @@ body {
   border: 1px solid var(--border);
 }
 
+.form-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.form-section + .form-section {
+  margin-top: 0.35rem;
+  padding-top: 1.1rem;
+  border-top: 1px solid var(--border);
+}
+
+.form-section-title {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.form-section-desc {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
 .field {
   display: flex;
   flex-direction: column;
@@ -265,6 +475,16 @@ body {
   gap: 0.75rem;
 }
 
+.field-row.cols-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+@media (max-width: 40rem) {
+  .field-row.cols-3 {
+    grid-template-columns: 1fr;
+  }
+}
+
 .field.grow {
   flex: 1;
 }
@@ -303,11 +523,41 @@ body {
   border-color: var(--border-strong);
 }
 
+.btn.print {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+  font-size: 1.05rem;
+  padding: 0.75rem 1.75rem;
+  min-width: 10rem;
+  box-shadow: 0 2px 0 rgba(26, 31, 46, 0.18);
+  transition:
+    background 0.12s ease,
+    box-shadow 0.12s ease,
+    transform 0.12s ease,
+    filter 0.12s ease;
+}
+
+.btn.print:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.btn.print:active:not(:disabled) {
+  filter: brightness(0.88);
+  box-shadow: inset 0 2px 4px rgba(26, 31, 46, 0.28);
+  transform: translateY(1px) scale(0.98);
+}
+
 .btn-row {
   display: flex;
   gap: 0.75rem;
   flex-wrap: wrap;
   align-items: center;
+}
+
+.btn-row-print {
+  justify-content: center;
+  margin-top: 0.25rem;
 }
 
 .btn-row .section-title {
@@ -846,4 +1096,270 @@ body {
   max-width: 100%;
   min-height: 120mm;
   height: min(70vh, 40rem);
+}
+
+/* Date picker — dark calendar popover (stock expiry). */
+.field-compact {
+  width: auto;
+  max-width: 100%;
+  align-self: flex-start;
+}
+
+.date-picker {
+  position: relative;
+  display: inline-block;
+  width: auto;
+  max-width: 100%;
+}
+
+.date-picker-input-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  width: 11.5rem;
+  max-width: 100%;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding-right: 0.35rem;
+}
+
+.date-picker-input {
+  flex: 1;
+  min-width: 0;
+  width: 7.5rem;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  outline: none !important;
+  padding: 0.55rem 0.65rem;
+  font: inherit;
+  color: var(--ink);
+}
+
+.field .date-picker-input-wrap {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.date-picker-input:focus {
+  outline: none;
+}
+
+.date-picker-input-wrap:focus-within {
+  border-color: var(--accent-border);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.date-picker-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.date-picker-icon-btn:hover:not(:disabled) {
+  background: var(--accent-soft);
+}
+
+.date-picker-icon-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.date-picker-popover {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 0.35rem);
+  left: 0;
+  width: min(17.5rem, 100vw - 2rem);
+  padding: 0.75rem;
+  border-radius: 12px;
+  background: #2c2f36;
+  color: #f5f5f5;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+}
+
+.date-picker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.65rem;
+}
+
+.date-picker-month {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.date-picker-nav {
+  width: 1.85rem;
+  height: 1.85rem;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #f5f5f5;
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.date-picker-nav:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.date-picker-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0.15rem;
+  margin-bottom: 0.35rem;
+  text-align: center;
+  font-size: 0.72rem;
+  color: rgba(245, 245, 245, 0.55);
+}
+
+.date-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0.15rem;
+}
+
+.date-picker-cell {
+  aspect-ratio: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #f5f5f5;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 0;
+}
+
+.date-picker-cell:not(.empty):hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.date-picker-cell.selected {
+  background: #ffffff;
+  color: #2c2f36;
+  font-weight: 650;
+}
+
+.date-picker-cell.empty {
+  cursor: default;
+  pointer-events: none;
+}
+
+.field-row.pack-size-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  justify-content: flex-start;
+  gap: 0.75rem 1rem;
+  width: auto;
+}
+
+.pack-size-group {
+  width: auto;
+  flex: 0 0 auto;
+}
+
+.pack-size-controls {
+  display: flex;
+  align-items: stretch;
+  gap: 0.4rem;
+}
+
+.pack-size-controls input {
+  font: inherit;
+  color: var(--ink);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.65rem 0.75rem;
+  width: 4.5rem;
+  flex: 0 0 auto;
+}
+
+.pack-size-controls select {
+  font: inherit;
+  color: var(--ink);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.65rem 0.75rem;
+  width: auto;
+  min-width: 7.5rem;
+  flex: 0 0 auto;
+}
+
+.pack-size-controls input:focus,
+.pack-size-controls select:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  background: var(--bg-panel);
+}
+
+.pack-star {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.6rem;
+  padding: 0 0.15rem 0.1rem;
+  font-weight: 650;
+  color: var(--muted);
+  user-select: none;
+  flex: 0 0 auto;
+}
+
+@media (max-width: 40rem) {
+  .field-row.pack-size-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .field-row.pack-size-row .pack-star {
+    min-height: auto;
+    padding: 0.15rem 0;
+    align-self: center;
+  }
+}
+
+.qty-triple {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.4rem;
+}
+
+.qty-triple-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  flex: 1 1 4.5rem;
+  min-width: 4rem;
+}
+
+.qty-triple-cell input {
+  width: 100%;
+}
+
+.qty-triple-star {
+  align-self: center;
+  padding-bottom: 0.45rem;
+  font-weight: 650;
+  color: var(--muted);
 }

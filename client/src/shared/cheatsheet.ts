@@ -1,6 +1,6 @@
 /** One-page staff cheat sheet (EN + MY). Printable HTML for laminate. */
 
-import { openPrintPreview } from "./print";
+import { openPrintPreview } from "@/shared/print";
 
 export function cheatSheetHTML(): string {
   return `<!DOCTYPE html>

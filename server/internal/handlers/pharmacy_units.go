@@ -9,15 +9,29 @@ var allowedUnits = map[string]bool{
 	"Box": true, "Carton": true, "Bottle": true, "Vial": true, "Ampoule": true,
 	"Piece": true, "Tablet": true, "Capsule": true, "Tube": true, "Cylinder": true,
 	"Bag": true, "Each": true, "mL": true, "g": true, "oz": true,
+	"Strip": true, "Card": true,
 }
 
+var packL1Units = map[string]bool{"Box": true, "Bottle": true}
+var packL2Units = map[string]bool{"Strip": true, "Card": true}
+var packL3Units = map[string]bool{"Tablet": true, "Capsule": true, "mL": true}
+
 type itemUnits struct {
-	PurchaseUnit         string
-	StockUnit            string
-	BillingUnit          string
-	UnitsPerPurchase     int64
-	BillingPerStock      int64
-	ChargeFullStockUnit  bool
+	PurchaseUnit        string
+	StockUnit           string
+	BillingUnit         string
+	UnitsPerPurchase    int64
+	BillingPerStock     int64
+	ChargeFullStockUnit bool
+}
+
+type itemPack struct {
+	L1Qty  int64
+	L1Unit string
+	L2Qty  int64
+	L2Unit string
+	L3Qty  int64
+	L3Unit string
 }
 
 func categoryUnitDefaults(category string) itemUnits {
@@ -56,6 +70,86 @@ func normalizeUnitName(raw string) string {
 
 func validateUnitName(u string) bool {
 	return allowedUnits[u]
+}
+
+func defaultItemPack() itemPack {
+	return itemPack{
+		L1Qty: 1, L1Unit: "Box",
+		L2Qty: 1, L2Unit: "Strip",
+		L3Qty: 1, L3Unit: "Tablet",
+	}
+}
+
+func resolveItemPack(l1Qty, l2Qty, l3Qty *int64, l1Unit, l2Unit, l3Unit string) (itemPack, string) {
+	p := defaultItemPack()
+	if l1Qty != nil {
+		p.L1Qty = *l1Qty
+	}
+	if l2Qty != nil {
+		p.L2Qty = *l2Qty
+	}
+	if l3Qty != nil {
+		p.L3Qty = *l3Qty
+	}
+	if u := normalizeUnitName(l1Unit); u != "" {
+		p.L1Unit = u
+	}
+	if u := normalizeUnitName(l2Unit); u != "" {
+		p.L2Unit = u
+	}
+	if u := normalizeUnitName(l3Unit); u != "" {
+		p.L3Unit = u
+	}
+	if p.L1Qty < 1 {
+		return p, "pack_l1_qty must be >= 1"
+	}
+	if p.L2Qty < 1 {
+		return p, "pack_l2_qty must be >= 1"
+	}
+	if p.L3Qty < 1 {
+		return p, "pack_l3_qty must be >= 1"
+	}
+	if !packL1Units[p.L1Unit] {
+		return p, "invalid pack_l1_unit (Box or Bottle)"
+	}
+	if !packL2Units[p.L2Unit] {
+		return p, "invalid pack_l2_unit (Strip or Card)"
+	}
+	if !packL3Units[p.L3Unit] {
+		return p, "invalid pack_l3_unit (Tablet, Capsule, or mL)"
+	}
+	return p, ""
+}
+
+// tabletsPerBox is L3 units contained in one L1 unit (box/bottle).
+func tabletsPerBox(p itemPack) int64 {
+	return p.L2Qty * p.L3Qty
+}
+
+// totalTabletsFromPackQtys converts mixed box/strip/tablet sale qty into L3 units.
+func totalTabletsFromPackQtys(boxQty, stripQty, tabletQty int64, p itemPack) (int64, string) {
+	if boxQty < 0 || stripQty < 0 || tabletQty < 0 {
+		return 0, "pack quantities must be >= 0"
+	}
+	if boxQty == 0 && stripQty == 0 && tabletQty == 0 {
+		return 0, "quantity required"
+	}
+	total := boxQty*tabletsPerBox(p) + stripQty*p.L3Qty + tabletQty
+	if total <= 0 {
+		return 0, "quantity must be > 0"
+	}
+	return total, ""
+}
+
+func packToItemUnits(p itemPack) itemUnits {
+	return itemUnits{
+		PurchaseUnit:        p.L1Unit,
+		StockUnit:           p.L3Unit,
+		BillingUnit:         p.L3Unit,
+		UnitsPerPurchase:    tabletsPerBox(p),
+		BillingPerStock:     1,
+		ChargeFullStockUnit: false,
+	}
 }
 
 func resolveItemUnits(category string, purchase, stock, billing string, upp, bps *int64, chargeFull *bool, packSizeFallback int64) (itemUnits, string) {

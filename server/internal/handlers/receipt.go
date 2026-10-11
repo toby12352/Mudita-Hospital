@@ -93,9 +93,9 @@ func renderThermalReceiptHTML(hosp *hospitalSettings, bill receiptBill) string {
 		b.WriteString(html.EscapeString(hosp.Address))
 		b.WriteString(`</p>`)
 	}
-	if hosp.Phone != "" {
+	if phones := hospitalPhones(hosp); phones != "" {
 		b.WriteString(`<p class="tel center">Tel: `)
-		b.WriteString(html.EscapeString(hosp.Phone))
+		b.WriteString(html.EscapeString(phones))
 		b.WriteString(`</p>`)
 	}
 	b.WriteString(`<p class="center bold" style="margin:6px 0 0">`)
@@ -171,9 +171,9 @@ func renderThermalReceiptHTML(hosp *hospitalSettings, bill receiptBill) string {
 
 	b.WriteString(`<hr class="sep"/>`)
 	b.WriteString(`<p class="footer">Thank you</p>`)
-	if hosp.Phone != "" {
+	if phones := hospitalPhones(hosp); phones != "" {
 		b.WriteString(`<p class="footer">`)
-		b.WriteString(html.EscapeString(hosp.Phone))
+		b.WriteString(html.EscapeString(phones))
 		b.WriteString(`</p>`)
 	}
 	b.WriteString(`</body></html>`)

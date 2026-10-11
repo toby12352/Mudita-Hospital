@@ -1,0 +1,30 @@
+---
+description: Clinic and dashboard React/Tauri frontend conventions
+globs: client/**/*,dashboard/**/*
+alwaysApply: false
+---
+
+# Frontend
+
+Full guide: `@docs/standards/FRONTEND.md` · Conventions: `@docs/standards/CONVENTIONS.md` · Playbook: `@docs/standards/ADDING_A_FEATURE.md`
+
+## Layout
+
+- **Clinic target:** `app/` · `pages/{domain}/` · `features/{domain}/` · `shared/`
+- **Dashboard:** keep `pages/`, `components/`, `lib/` — do not invent a third shape
+- Domain API via named exports + `apiFetch` (`features/{domain}/api.ts`)
+- Imports: `@/` alias → `src/`
+
+## Must follow
+
+- Do **not** add new feature panels inside `app/App.tsx`; put screens under `pages/`
+- View/page string unions only — no React Router
+- Local `useState`/`useEffect` — no Redux/Zustand/React Query by default
+- New UI strings: EN + MY keys in `i18n.ts`
+- Storage: clinic `mudita_*` · dashboard `mudita_dash_*` — never mix
+- JSON types: `snake_case`, money `*_mmk`
+- Print through existing server HTML + `print.ts` overlay
+
+## Reference apps
+
+Dashboard modular layout is the clinic migration target. Copy OPD for simple bills, OT for multi-step, Pharmacy for stock.

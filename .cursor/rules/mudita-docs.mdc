@@ -1,0 +1,22 @@
+---
+description: Keep engineering standards vs field ops docs separate
+globs: docs/**/*
+alwaysApply: false
+---
+
+# Docs
+
+## Two doc families
+
+| Location | Purpose |
+|----------|---------|
+| `docs/standards/` | Engineering: architecture, frontend/backend rules, feature playbook |
+| `docs/` root (DEPLOY, FAQ, CHEATSHEET, RISK, CRASH card) | Field install and staff ops |
+
+## Must follow
+
+- Coding / structure changes → update `docs/standards/` (and root `README.md` API table when endpoints change)
+- Install / LAN / staff workflow → edit the matching ops markdown; regenerate HTML/PDF only when those artifacts are part of the task
+- Do not rewrite field PDFs or cheat sheets for pure code refactors
+- Do not move ops content into `.cursor/rules` — rules stay short and point at standards
+- Keep `docs/standards/README.md` as the onboarding index (“where do I look?”)

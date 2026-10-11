@@ -1,4 +1,4 @@
-import { apiFetch } from "./api";
+import { apiFetch } from "@/shared/api";
 
 export type BackupInfo = {
   name: string;

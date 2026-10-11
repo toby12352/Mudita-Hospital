@@ -1,0 +1,35 @@
+---
+description: Mudita Hospital core map — stack, boundaries, where standards live
+alwaysApply: true
+---
+
+# Mudita Hospital
+
+Offline LAN hospital: **Go + SQLite API** (`server/`) · **Tauri 2 + React** clinic (`client/`) · Admin dashboard (`dashboard/`).
+
+## Start here
+
+Developer standards index: `docs/standards/README.md`  
+New domain playbook: `docs/standards/ADDING_A_FEATURE.md`  
+Architecture: `docs/standards/ARCHITECTURE.md`
+
+Read only the standard that matches the task. Do not load all of `docs/` unless the task is deploy/ops.
+
+## Monorepo map
+
+| Path | Role |
+|------|------|
+| `server/` | API, SQLite, migrations, auth |
+| `client/` | Clinic desktop UI |
+| `dashboard/` | Admin analytics UI |
+| `docs/standards/` | Engineering standards |
+| `docs/` (root) | Deploy / field ops only |
+| `scripts/`, `deploy/` | Run & package |
+
+## Hard don'ts
+
+- Clients never open SQLite
+- Do not commit secrets, PHI DBs, or `dist/`
+- Do not add React Router, Redux/Zustand/React Query, or Gin/chi unless explicitly decided
+- Match the nearest existing domain (OPD / OT / Pharmacy) instead of inventing a new pattern
+- New clinic UI goes in `pages/` / `features/` — do not grow `app/App.tsx` with new panels

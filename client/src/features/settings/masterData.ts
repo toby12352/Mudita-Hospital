@@ -1,10 +1,11 @@
-import { apiFetch } from "./api";
-import type { Role } from "./auth";
+import { apiFetch } from "@/shared/api";
+import type { Role } from "@/shared/auth";
 
 export type HospitalSettings = {
   hospital_name: string;
   address: string;
   phone: string;
+  phone2: string;
   logo_path: string;
   updated_at?: string;
 };

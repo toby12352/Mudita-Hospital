@@ -437,7 +437,10 @@ func stockValueByLocation(db *sql.DB) ([]stockLocValue, int64, int64, error) {
 	rows, err := db.Query(`
 		SELECT b.location_code,
 		       COALESCE(SUM(b.qty), 0),
-		       COALESCE(SUM(b.qty * COALESCE(i.buy_price_mmk, 0)), 0)
+		       COALESCE(SUM(
+		         b.qty * COALESCE(i.buy_price_mmk, 0) * 1.0 /
+		         CASE WHEN COALESCE(i.units_per_purchase, 1) < 1 THEN 1 ELSE i.units_per_purchase END
+		       ), 0)
 		FROM item_batches b
 		JOIN items i ON i.id = b.item_id
 		WHERE i.active = 1 AND b.qty > 0
@@ -469,19 +472,27 @@ func buildExpiryBuckets(db *sql.DB, asOf string) ([]expiryBucket, int64, int, er
 	if err != nil {
 		return nil, 0, 0, err
 	}
-	// Need buy price for value — listNearExpiry lacks it; join via second query map.
-	priceByItem := map[int64]int64{}
-	priceRows, err := db.Query(`SELECT id, COALESCE(buy_price_mmk, 0) FROM items WHERE active = 1`)
+	// Need buy-per-box + tablets-per-box for value (buy is per L1).
+	type itemCost struct {
+		buyPerBox int64
+		perBox    int64
+	}
+	costByItem := map[int64]itemCost{}
+	priceRows, err := db.Query(`
+		SELECT id, COALESCE(buy_price_mmk, 0),
+		       CASE WHEN COALESCE(units_per_purchase, 1) < 1 THEN 1 ELSE units_per_purchase END
+		FROM items WHERE active = 1`)
 	if err != nil {
 		return nil, 0, 0, err
 	}
 	defer priceRows.Close()
 	for priceRows.Next() {
-		var id, price int64
-		if err := priceRows.Scan(&id, &price); err != nil {
+		var id int64
+		var c itemCost
+		if err := priceRows.Scan(&id, &c.buyPerBox, &c.perBox); err != nil {
 			return nil, 0, 0, err
 		}
-		priceByItem[id] = price
+		costByItem[id] = c
 	}
 	if err := priceRows.Err(); err != nil {
 		return nil, 0, 0, err
@@ -494,8 +505,11 @@ func buildExpiryBuckets(db *sql.DB, asOf string) ([]expiryBucket, int64, int, er
 	}
 	expired, d30, d60, d90 := acc{}, acc{}, acc{}, acc{}
 	for _, row := range list {
-		price := priceByItem[row.ItemID]
-		val := row.Qty * price
+		c := costByItem[row.ItemID]
+		if c.perBox < 1 {
+			c.perBox = 1
+		}
+		val := row.Qty * c.buyPerBox / c.perBox
 		switch {
 		case row.DaysLeft < 0:
 			expired.batches++
@@ -532,7 +546,10 @@ func listSlowMovers(db *sql.DB, slowDays int, asOf string) ([]slowMoverRow, erro
 	rows, err := db.Query(`
 		SELECT i.id, i.code, i.name,
 		       COALESCE(SUM(b.qty), 0) AS qty_on_hand,
-		       COALESCE(SUM(b.qty * COALESCE(i.buy_price_mmk, 0)), 0) AS value_mmk,
+		       COALESCE(SUM(
+		         b.qty * COALESCE(i.buy_price_mmk, 0) * 1.0 /
+		         CASE WHEN COALESCE(i.units_per_purchase, 1) < 1 THEN 1 ELSE i.units_per_purchase END
+		       ), 0) AS value_mmk,
 		       (
 		         SELECT MAX(date(m.created_at))
 		         FROM stock_movements m
@@ -816,7 +833,8 @@ func buildPharmacyMargin(db *sql.DB, from, to string) (*pharmacyMarginReport, er
 			       COALESCE(NULLIF(TRIM(bl.description), ''), COALESCE(i.name, '(item)')) AS name,
 			       COALESCE(bl.qty, 0) AS qty_sold,
 			       COALESCE(bl.line_total_mmk, 0) AS revenue_mmk,
-			       COALESCE(bl.qty, 0) * COALESCE(i.buy_price_mmk, 0) AS cogs_mmk
+			       COALESCE(bl.qty, 0) * COALESCE(i.buy_price_mmk, 0) * 1.0 /
+			         CASE WHEN COALESCE(i.units_per_purchase, 1) < 1 THEN 1 ELSE i.units_per_purchase END AS cogs_mmk
 			FROM bill_lines bl
 			JOIN opd_bills b ON b.id = bl.bill_id
 			LEFT JOIN items i ON i.id = bl.ref_id
@@ -829,7 +847,8 @@ func buildPharmacyMargin(db *sql.DB, from, to string) (*pharmacyMarginReport, er
 			       COALESCE(NULLIF(TRIM(bl.description), ''), COALESCE(i.name, '(item)')),
 			       COALESCE(bl.qty, 0),
 			       COALESCE(bl.line_total_mmk, 0),
-			       COALESCE(bl.qty, 0) * COALESCE(i.buy_price_mmk, 0)
+			       COALESCE(bl.qty, 0) * COALESCE(i.buy_price_mmk, 0) * 1.0 /
+			         CASE WHEN COALESCE(i.units_per_purchase, 1) < 1 THEN 1 ELSE i.units_per_purchase END
 			FROM ot_bill_lines bl
 			JOIN ot_bills b ON b.id = bl.bill_id
 			LEFT JOIN items i ON i.id = bl.ref_id

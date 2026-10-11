@@ -1,6 +1,6 @@
-import { apiFetch, getApiBase } from "./api";
-import { getStoredToken } from "./auth";
-import { fetchAndPreviewPrint } from "./print";
+import { apiFetch, getApiBase } from "@/shared/api";
+import { getStoredToken } from "@/shared/auth";
+import { fetchAndPreviewPrint } from "@/shared/print";
 
 export type OpdBillLine = {
   id?: number;
@@ -147,10 +147,6 @@ export async function printOpdBill(id: number): Promise<void> {
     getStoredToken,
     { title: "OPD receipt", receipt: true },
   );
-}
-
-export function formatMMK(n: number): string {
-  return n.toLocaleString("en-US");
 }
 
 export function lineTotal(qty: number, price: number): number {

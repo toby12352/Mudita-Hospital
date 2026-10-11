@@ -1,7 +1,6 @@
-import { apiFetch, getApiBase } from "./api";
-import { getStoredToken } from "./auth";
-import { formatMMK } from "./opd";
-import { fetchAndPreviewPrint } from "./print";
+import { apiFetch, getApiBase } from "@/shared/api";
+import { getStoredToken } from "@/shared/auth";
+import { fetchAndPreviewPrint } from "@/shared/print";
 
 export type OtCaseItem = {
   id?: number;
@@ -90,8 +89,6 @@ export type OtCaseWrite = {
   notes: string;
   items: OtCaseItem[];
 };
-
-export { formatMMK };
 
 export async function listOtDoctors(q = ""): Promise<OtDoctor[]> {
   const qs = q ? `?q=${encodeURIComponent(q)}` : "";

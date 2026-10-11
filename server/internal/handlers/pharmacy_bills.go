@@ -16,6 +16,9 @@ type pharmacyBillLine struct {
 	ItemID       int64  `json:"item_id"`
 	Code         string `json:"code"`
 	Description  string `json:"description"`
+	BoxQty       int64  `json:"box_qty"`
+	StripQty     int64  `json:"strip_qty"`
+	TabletQty    int64  `json:"tablet_qty"`
 	BillingQty   int64  `json:"billing_qty"`
 	BillingUnit  string `json:"billing_unit"`
 	StockQty     int64  `json:"stock_qty"`
@@ -548,19 +551,28 @@ func normalizePharmacyBillLines(db *sql.DB, in []pharmacyBillLine) ([]pharmacyBi
 			return nil, 0, fmt.Sprintf("%s is inactive", item.Code)
 		}
 
-		billingQty := l.BillingQty
-		if billingQty <= 0 {
-			return nil, 0, "billing_qty must be > 0"
+		pack := itemPackFromPharmacyItem(item)
+		boxQty, stripQty, tabletQty := l.BoxQty, l.StripQty, l.TabletQty
+		var billingQty int64
+		var msg string
+		if boxQty > 0 || stripQty > 0 || tabletQty > 0 {
+			billingQty, msg = totalTabletsFromPackQtys(boxQty, stripQty, tabletQty, pack)
+			if msg != "" {
+				return nil, 0, fmt.Sprintf("%s: %s", item.Code, msg)
+			}
+		} else if l.BillingQty > 0 {
+			// Legacy: single billing_qty treated as L3 units.
+			billingQty = l.BillingQty
+			tabletQty = l.BillingQty
+		} else {
+			return nil, 0, "quantity required"
 		}
-		stockQty, msg := billingToStockQty(billingQty, item.BillingPerStock, item.ChargeFullStockUnit)
-		if msg != "" {
-			return nil, 0, fmt.Sprintf("%s: %s", item.Code, msg)
-		}
+		stockQty := billingQty
 		sell := item.SellPriceMMK
 		if l.UnitPriceMMK > 0 {
 			sell = l.UnitPriceMMK
 		}
-		lineTotal := lineChargeMMK(billingQty, stockQty, item.BillingPerStock, sell, item.ChargeFullStockUnit)
+		lineTotal := billingQty * sell
 
 		desc := strings.TrimSpace(l.Description)
 		if desc == "" {
@@ -575,10 +587,13 @@ func normalizePharmacyBillLines(db *sql.DB, in []pharmacyBillLine) ([]pharmacyBi
 			ItemID:       item.ID,
 			Code:         code,
 			Description:  desc,
+			BoxQty:       boxQty,
+			StripQty:     stripQty,
+			TabletQty:    tabletQty,
 			BillingQty:   billingQty,
-			BillingUnit:  item.BillingUnit,
+			BillingUnit:  item.PackL3Unit,
 			StockQty:     stockQty,
-			StockUnit:    item.StockUnit,
+			StockUnit:    item.PackL3Unit,
 			UnitPriceMMK: sell,
 			LineTotalMMK: lineTotal,
 			SortOrder:    i,
@@ -604,11 +619,11 @@ func insertPharmacyBillLines(tx *sql.Tx, billID int64, lines []pharmacyBillLine)
 	for _, l := range lines {
 		if _, err := tx.Exec(`
 			INSERT INTO pharmacy_bill_lines (
-				bill_id, item_id, code, description, billing_qty, billing_unit,
-				stock_qty, stock_unit, unit_price_mmk, line_total_mmk, sort_order
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`, billID, l.ItemID, l.Code, l.Description, l.BillingQty, l.BillingUnit,
-			l.StockQty, l.StockUnit, l.UnitPriceMMK, l.LineTotalMMK, l.SortOrder); err != nil {
+				bill_id, item_id, code, description, box_qty, strip_qty, tablet_qty,
+				billing_qty, billing_unit, stock_qty, stock_unit, unit_price_mmk, line_total_mmk, sort_order
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`, billID, l.ItemID, l.Code, l.Description, l.BoxQty, l.StripQty, l.TabletQty,
+			l.BillingQty, l.BillingUnit, l.StockQty, l.StockUnit, l.UnitPriceMMK, l.LineTotalMMK, l.SortOrder); err != nil {
 			return err
 		}
 	}
@@ -617,8 +632,8 @@ func insertPharmacyBillLines(tx *sql.Tx, billID int64, lines []pharmacyBillLine)
 
 func loadPharmacyBillLinesTx(tx *sql.Tx, billID int64) ([]pharmacyBillLine, error) {
 	rows, err := tx.Query(`
-		SELECT id, item_id, code, description, billing_qty, billing_unit,
-		       stock_qty, stock_unit, unit_price_mmk, line_total_mmk, sort_order
+		SELECT id, item_id, code, description, box_qty, strip_qty, tablet_qty,
+		       billing_qty, billing_unit, stock_qty, stock_unit, unit_price_mmk, line_total_mmk, sort_order
 		FROM pharmacy_bill_lines WHERE bill_id = ? ORDER BY sort_order, id
 	`, billID)
 	if err != nil {
@@ -629,8 +644,8 @@ func loadPharmacyBillLinesTx(tx *sql.Tx, billID int64) ([]pharmacyBillLine, erro
 	for rows.Next() {
 		var l pharmacyBillLine
 		if err := rows.Scan(
-			&l.ID, &l.ItemID, &l.Code, &l.Description, &l.BillingQty, &l.BillingUnit,
-			&l.StockQty, &l.StockUnit, &l.UnitPriceMMK, &l.LineTotalMMK, &l.SortOrder,
+			&l.ID, &l.ItemID, &l.Code, &l.Description, &l.BoxQty, &l.StripQty, &l.TabletQty,
+			&l.BillingQty, &l.BillingUnit, &l.StockQty, &l.StockUnit, &l.UnitPriceMMK, &l.LineTotalMMK, &l.SortOrder,
 		); err != nil {
 			return nil, err
 		}

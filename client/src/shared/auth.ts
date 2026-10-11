@@ -1,4 +1,4 @@
-import { apiFetch, getApiBase } from "./api";
+import { apiFetch, getApiBase } from "@/shared/api";
 
 export type Role = "Admin" | "Reception" | "Pharmacy";
 

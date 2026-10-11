@@ -495,6 +495,57 @@ CREATE INDEX IF NOT EXISTS idx_pharmacy_bill_stock_allocs_bill ON pharmacy_bill_
 CREATE INDEX IF NOT EXISTS idx_pharmacy_bill_stock_allocs_line ON pharmacy_bill_stock_allocs(bill_line_id);
 `,
 	},
+	{
+		Name: "008_pharmacy_pack_dosage",
+		SQL: `
+-- Box × Strip × Tablet packaging + dosage on items.
+-- buy_price_mmk becomes per box (L1); sell_price_mmk stays per L3 unit.
+ALTER TABLE items ADD COLUMN dosage TEXT NOT NULL DEFAULT '';
+ALTER TABLE items ADD COLUMN pack_l1_qty INTEGER NOT NULL DEFAULT 1 CHECK (pack_l1_qty >= 1);
+ALTER TABLE items ADD COLUMN pack_l1_unit TEXT NOT NULL DEFAULT 'Box';
+ALTER TABLE items ADD COLUMN pack_l2_qty INTEGER NOT NULL DEFAULT 1 CHECK (pack_l2_qty >= 1);
+ALTER TABLE items ADD COLUMN pack_l2_unit TEXT NOT NULL DEFAULT 'Strip';
+ALTER TABLE items ADD COLUMN pack_l3_qty INTEGER NOT NULL DEFAULT 1 CHECK (pack_l3_qty >= 1);
+ALTER TABLE items ADD COLUMN pack_l3_unit TEXT NOT NULL DEFAULT 'Tablet';
+
+-- Legacy: no strip tier — treat prior units_per_purchase as tablets-per-box via 1 strip.
+UPDATE items SET
+  pack_l1_qty = 1,
+  pack_l1_unit = CASE WHEN purchase_unit = 'Bottle' THEN 'Bottle' ELSE 'Box' END,
+  pack_l2_qty = 1,
+  pack_l2_unit = 'Strip',
+  pack_l3_qty = CASE WHEN units_per_purchase >= 1 THEN units_per_purchase ELSE 1 END,
+  pack_l3_unit = CASE
+    WHEN stock_unit IN ('Tablet', 'Capsule', 'mL') THEN stock_unit
+    WHEN billing_unit IN ('Tablet', 'Capsule', 'mL') THEN billing_unit
+    ELSE 'Tablet'
+  END;
+
+-- Convert buy from per-stock-unit to per-box.
+UPDATE items SET buy_price_mmk = buy_price_mmk * CASE
+  WHEN units_per_purchase >= 1 THEN units_per_purchase ELSE 1 END;
+
+-- Keep derived dual-unit columns in sync for stock ledger / bills.
+UPDATE items SET
+  units_per_purchase = pack_l2_qty * pack_l3_qty,
+  pack_size = pack_l2_qty * pack_l3_qty,
+  purchase_unit = pack_l1_unit,
+  stock_unit = pack_l3_unit,
+  billing_unit = pack_l3_unit,
+  billing_per_stock = 1,
+  charge_full_stock_unit = 0;
+
+ALTER TABLE pharmacy_bill_lines ADD COLUMN box_qty INTEGER NOT NULL DEFAULT 0 CHECK (box_qty >= 0);
+ALTER TABLE pharmacy_bill_lines ADD COLUMN strip_qty INTEGER NOT NULL DEFAULT 0 CHECK (strip_qty >= 0);
+ALTER TABLE pharmacy_bill_lines ADD COLUMN tablet_qty INTEGER NOT NULL DEFAULT 0 CHECK (tablet_qty >= 0);
+`,
+	},
+	{
+		Name: "009_hospital_phone2",
+		SQL: `
+ALTER TABLE hospital_settings ADD COLUMN phone2 TEXT NOT NULL DEFAULT '';
+`,
+	},
 }
 
 // Migrate applies pending migrations inside a transaction per migration.

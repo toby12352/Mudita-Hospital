@@ -34,15 +34,22 @@ type pharmacyItem struct {
 	Code                string           `json:"code"`
 	Name                string           `json:"name"`
 	Category            string           `json:"category"`
+	Dosage              string           `json:"dosage"`
 	PackSize            int64            `json:"pack_size"`
+	PackL1Qty           int64            `json:"pack_l1_qty"`
+	PackL1Unit          string           `json:"pack_l1_unit"`
+	PackL2Qty           int64            `json:"pack_l2_qty"`
+	PackL2Unit          string           `json:"pack_l2_unit"`
+	PackL3Qty           int64            `json:"pack_l3_qty"`
+	PackL3Unit          string           `json:"pack_l3_unit"`
 	PurchaseUnit        string           `json:"purchase_unit"`
 	StockUnit           string           `json:"stock_unit"`
 	BillingUnit         string           `json:"billing_unit"`
 	UnitsPerPurchase    int64            `json:"units_per_purchase"`
 	BillingPerStock     int64            `json:"billing_per_stock"`
 	ChargeFullStockUnit bool             `json:"charge_full_stock_unit"`
-	BuyPriceMMK         int64            `json:"buy_price_mmk"`
-	SellPriceMMK        int64            `json:"sell_price_mmk"`
+	BuyPriceMMK         int64            `json:"buy_price_mmk"` // per box (L1)
+	SellPriceMMK        int64            `json:"sell_price_mmk"` // per L3 unit
 	ReorderLevel        int64            `json:"reorder_level"`
 	Active              bool             `json:"active"`
 	StockMain           int64            `json:"stock_main"`
@@ -80,49 +87,45 @@ type stockMovement struct {
 }
 
 type itemCreateRequest struct {
-	Code                string `json:"code"`
-	Name                string `json:"name"`
-	Category            string `json:"category"`
-	PackSize            *int64 `json:"pack_size,omitempty"`
-	PurchaseUnit        string `json:"purchase_unit"`
-	StockUnit           string `json:"stock_unit"`
-	BillingUnit         string `json:"billing_unit"`
-	UnitsPerPurchase    *int64 `json:"units_per_purchase,omitempty"`
-	BillingPerStock     *int64 `json:"billing_per_stock,omitempty"`
-	ChargeFullStockUnit *bool  `json:"charge_full_stock_unit,omitempty"`
-	BuyPriceMMK         *int64 `json:"buy_price_mmk,omitempty"`
-	SellPriceMMK        *int64 `json:"sell_price_mmk,omitempty"`
-	ReorderLevel        *int64 `json:"reorder_level,omitempty"`
-	InitialQty          *int64 `json:"initial_qty,omitempty"`
-	InitialQtyUnit      string `json:"initial_qty_unit"` // purchase | stock (default stock)
-	BatchNo             string `json:"batch_no"`
-	ExpiryDate          string `json:"expiry_date"`
+	Code           string `json:"code"`
+	Name           string `json:"name"`
+	Category       string `json:"category"`
+	Dosage         string `json:"dosage"`
+	PackL1Qty      *int64 `json:"pack_l1_qty,omitempty"`
+	PackL1Unit     string `json:"pack_l1_unit"`
+	PackL2Qty      *int64 `json:"pack_l2_qty,omitempty"`
+	PackL2Unit     string `json:"pack_l2_unit"`
+	PackL3Qty      *int64 `json:"pack_l3_qty,omitempty"`
+	PackL3Unit     string `json:"pack_l3_unit"`
+	BuyPriceMMK    *int64 `json:"buy_price_mmk,omitempty"` // per box
+	SellPriceMMK   *int64 `json:"sell_price_mmk,omitempty"` // per L3
+	InitialQty     *int64 `json:"initial_qty,omitempty"`    // boxes when initial_qty_unit=purchase
+	InitialQtyUnit string `json:"initial_qty_unit"`         // purchase | stock (default purchase)
+	ExpiryDate     string `json:"expiry_date"`
 }
 
 type itemUpdateRequest struct {
-	Code                string `json:"code"`
-	Name                string `json:"name"`
-	Category            string `json:"category"`
-	PackSize            *int64 `json:"pack_size,omitempty"`
-	PurchaseUnit        string `json:"purchase_unit"`
-	StockUnit           string `json:"stock_unit"`
-	BillingUnit         string `json:"billing_unit"`
-	UnitsPerPurchase    *int64 `json:"units_per_purchase,omitempty"`
-	BillingPerStock     *int64 `json:"billing_per_stock,omitempty"`
-	ChargeFullStockUnit *bool  `json:"charge_full_stock_unit,omitempty"`
-	BuyPriceMMK         *int64 `json:"buy_price_mmk,omitempty"`
-	SellPriceMMK        *int64 `json:"sell_price_mmk,omitempty"`
-	ReorderLevel        *int64 `json:"reorder_level,omitempty"`
-	Active              *bool  `json:"active,omitempty"`
+	Code         string `json:"code"`
+	Name         string `json:"name"`
+	Category     string `json:"category"`
+	Dosage       string `json:"dosage"`
+	PackL1Qty    *int64 `json:"pack_l1_qty,omitempty"`
+	PackL1Unit   string `json:"pack_l1_unit"`
+	PackL2Qty    *int64 `json:"pack_l2_qty,omitempty"`
+	PackL2Unit   string `json:"pack_l2_unit"`
+	PackL3Qty    *int64 `json:"pack_l3_qty,omitempty"`
+	PackL3Unit   string `json:"pack_l3_unit"`
+	BuyPriceMMK  *int64 `json:"buy_price_mmk,omitempty"`
+	SellPriceMMK *int64 `json:"sell_price_mmk,omitempty"`
+	Active       *bool  `json:"active,omitempty"`
 }
 
 type restockRequest struct {
-	Qty          int64  `json:"qty"`
-	QtyUnit      string `json:"qty_unit"` // purchase | stock (default stock)
-	BatchNo      string `json:"batch_no"`
+	Qty          int64  `json:"qty"`                     // boxes when qty_unit omitted/purchase
+	QtyUnit      string `json:"qty_unit"`                 // purchase | stock (default purchase)
 	ExpiryDate   string `json:"expiry_date"`
-	BuyPriceMMK  *int64 `json:"buy_price_mmk,omitempty"`
-	SellPriceMMK *int64 `json:"sell_price_mmk,omitempty"`
+	BuyPriceMMK  *int64 `json:"buy_price_mmk,omitempty"`  // per box
+	SellPriceMMK *int64 `json:"sell_price_mmk,omitempty"` // per L3
 }
 
 type adjustRequest struct {
@@ -209,7 +212,8 @@ func (h *Pharmacy) listItems(w http.ResponseWriter, r *http.Request) {
 	includeInactive := r.URL.Query().Get("all") == "1"
 
 	base := `
-		SELECT i.id, i.code, i.name, i.category, i.pack_size,
+		SELECT i.id, i.code, i.name, i.category, i.dosage, i.pack_size,
+		       i.pack_l1_qty, i.pack_l1_unit, i.pack_l2_qty, i.pack_l2_unit, i.pack_l3_qty, i.pack_l3_unit,
 		       i.purchase_unit, i.stock_unit, i.billing_unit,
 		       i.units_per_purchase, i.billing_per_stock, i.charge_full_stock_unit,
 		       i.buy_price_mmk, i.sell_price_mmk,
@@ -287,6 +291,7 @@ func (h *Pharmacy) createItem(w http.ResponseWriter, r *http.Request) {
 	}
 	req.Code = strings.ToUpper(strings.TrimSpace(req.Code))
 	req.Name = strings.TrimSpace(req.Name)
+	req.Dosage = strings.TrimSpace(req.Dosage)
 	req.Category = strings.TrimSpace(req.Category)
 	if req.Category == "" {
 		req.Category = "Other"
@@ -300,24 +305,14 @@ func (h *Pharmacy) createItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	packSize := int64(1)
-	if req.PackSize != nil {
-		if *req.PackSize < 1 {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "pack_size must be >= 1"})
-			return
-		}
-		packSize = *req.PackSize
-	}
-	units, unitErr := resolveItemUnits(
-		req.Category, req.PurchaseUnit, req.StockUnit, req.BillingUnit,
-		req.UnitsPerPurchase, req.BillingPerStock, req.ChargeFullStockUnit, packSize,
-	)
-	if unitErr != "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": unitErr})
+	pack, packErr := resolveItemPack(req.PackL1Qty, req.PackL2Qty, req.PackL3Qty, req.PackL1Unit, req.PackL2Unit, req.PackL3Unit)
+	if packErr != "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": packErr})
 		return
 	}
-	packSize = units.UnitsPerPurchase
-	buy, sell, reorder := int64(0), int64(0), int64(0)
+	units := packToItemUnits(pack)
+	packSize := units.UnitsPerPurchase
+	buy, sell := int64(0), int64(0)
 	if req.BuyPriceMMK != nil {
 		if *req.BuyPriceMMK < 0 {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "buy_price_mmk must be >= 0"})
@@ -332,13 +327,6 @@ func (h *Pharmacy) createItem(w http.ResponseWriter, r *http.Request) {
 		}
 		sell = *req.SellPriceMMK
 	}
-	if req.ReorderLevel != nil {
-		if *req.ReorderLevel < 0 {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "reorder_level must be >= 0"})
-			return
-		}
-		reorder = *req.ReorderLevel
-	}
 	initialQty := int64(0)
 	if req.InitialQty != nil {
 		if *req.InitialQty < 0 {
@@ -346,7 +334,8 @@ func (h *Pharmacy) createItem(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		initialQty = *req.InitialQty
-		if strings.EqualFold(strings.TrimSpace(req.InitialQtyUnit), "purchase") {
+		qtyUnit := strings.TrimSpace(req.InitialQtyUnit)
+		if qtyUnit == "" || strings.EqualFold(qtyUnit, "purchase") {
 			initialQty = initialQty * units.UnitsPerPurchase
 		}
 	}
@@ -354,11 +343,6 @@ func (h *Pharmacy) createItem(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "expiry_date must be YYYY-MM-DD"})
 		return
-	}
-	batchNo := strings.TrimSpace(req.BatchNo)
-	chargeInt := 0
-	if units.ChargeFullStockUnit {
-		chargeInt = 1
 	}
 
 	tx, err := h.DB.Begin()
@@ -370,13 +354,15 @@ func (h *Pharmacy) createItem(w http.ResponseWriter, r *http.Request) {
 
 	res, err := tx.Exec(`
 		INSERT INTO items (
-			code, name, category, pack_size,
+			code, name, category, dosage, pack_size,
+			pack_l1_qty, pack_l1_unit, pack_l2_qty, pack_l2_unit, pack_l3_qty, pack_l3_unit,
 			purchase_unit, stock_unit, billing_unit, units_per_purchase, billing_per_stock, charge_full_stock_unit,
 			buy_price_mmk, sell_price_mmk, reorder_level, active
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-	`, req.Code, req.Name, req.Category, packSize,
-		units.PurchaseUnit, units.StockUnit, units.BillingUnit, units.UnitsPerPurchase, units.BillingPerStock, chargeInt,
-		buy, sell, reorder)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, 0, 1)
+	`, req.Code, req.Name, req.Category, req.Dosage, packSize,
+		pack.L1Qty, pack.L1Unit, pack.L2Qty, pack.L2Unit, pack.L3Qty, pack.L3Unit,
+		units.PurchaseUnit, units.StockUnit, units.BillingUnit, units.UnitsPerPurchase,
+		buy, sell)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "unique") {
 			writeJSON(w, http.StatusConflict, map[string]string{"error": "code already exists"})
@@ -393,8 +379,8 @@ func (h *Pharmacy) createItem(w http.ResponseWriter, r *http.Request) {
 	if initialQty > 0 {
 		bres, err := tx.Exec(`
 			INSERT INTO item_batches (item_id, location_code, batch_no, expiry_date, qty)
-			VALUES (?, 'MAIN', ?, ?, ?)
-		`, itemID, batchNo, expiry, initialQty)
+			VALUES (?, 'MAIN', '', ?, ?)
+		`, itemID, expiry, initialQty)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "batch create failed"})
 			return
@@ -439,7 +425,11 @@ func (h *Pharmacy) updateItem(w http.ResponseWriter, r *http.Request, path strin
 	}
 	req.Code = strings.ToUpper(strings.TrimSpace(req.Code))
 	req.Name = strings.TrimSpace(req.Name)
+	req.Dosage = strings.TrimSpace(req.Dosage)
 	req.Category = strings.TrimSpace(req.Category)
+	if req.Category == "" {
+		req.Category = "Other"
+	}
 	if req.Code == "" || req.Name == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "code and name required"})
 		return
@@ -459,53 +449,39 @@ func (h *Pharmacy) updateItem(w http.ResponseWriter, r *http.Request, path strin
 		return
 	}
 
-	packFallback := existing.UnitsPerPurchase
-	if packFallback < 1 {
-		packFallback = existing.PackSize
+	l1Qty, l2Qty, l3Qty := req.PackL1Qty, req.PackL2Qty, req.PackL3Qty
+	if l1Qty == nil {
+		v := existing.PackL1Qty
+		l1Qty = &v
 	}
-	if req.PackSize != nil && *req.PackSize >= 1 && req.UnitsPerPurchase == nil {
-		packFallback = *req.PackSize
+	if l2Qty == nil {
+		v := existing.PackL2Qty
+		l2Qty = &v
 	}
-	upp := req.UnitsPerPurchase
-	if upp == nil {
-		v := existing.UnitsPerPurchase
-		if v < 1 {
-			v = packFallback
-		}
-		upp = &v
+	if l3Qty == nil {
+		v := existing.PackL3Qty
+		l3Qty = &v
 	}
-	bps := req.BillingPerStock
-	if bps == nil {
-		v := existing.BillingPerStock
-		if v < 1 {
-			v = int64(1)
-		}
-		bps = &v
+	l1Unit := req.PackL1Unit
+	if l1Unit == "" {
+		l1Unit = existing.PackL1Unit
 	}
-	chargePtr := req.ChargeFullStockUnit
-	if chargePtr == nil {
-		v := existing.ChargeFullStockUnit
-		chargePtr = &v
+	l2Unit := req.PackL2Unit
+	if l2Unit == "" {
+		l2Unit = existing.PackL2Unit
 	}
-	purchase := req.PurchaseUnit
-	if purchase == "" {
-		purchase = existing.PurchaseUnit
+	l3Unit := req.PackL3Unit
+	if l3Unit == "" {
+		l3Unit = existing.PackL3Unit
 	}
-	stockU := req.StockUnit
-	if stockU == "" {
-		stockU = existing.StockUnit
-	}
-	billing := req.BillingUnit
-	if billing == "" {
-		billing = existing.BillingUnit
-	}
-	units, unitErr := resolveItemUnits(req.Category, purchase, stockU, billing, upp, bps, chargePtr, packFallback)
-	if unitErr != "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": unitErr})
+	pack, packErr := resolveItemPack(l1Qty, l2Qty, l3Qty, l1Unit, l2Unit, l3Unit)
+	if packErr != "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": packErr})
 		return
 	}
+	units := packToItemUnits(pack)
 	packSize := units.UnitsPerPurchase
-	buy, sell, reorder := existing.BuyPriceMMK, existing.SellPriceMMK, existing.ReorderLevel
+	buy, sell := existing.BuyPriceMMK, existing.SellPriceMMK
 	if req.BuyPriceMMK != nil {
 		if *req.BuyPriceMMK < 0 {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "buy_price_mmk must be >= 0"})
@@ -520,13 +496,6 @@ func (h *Pharmacy) updateItem(w http.ResponseWriter, r *http.Request, path strin
 		}
 		sell = *req.SellPriceMMK
 	}
-	if req.ReorderLevel != nil {
-		if *req.ReorderLevel < 0 {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "reorder_level must be >= 0"})
-			return
-		}
-		reorder = *req.ReorderLevel
-	}
 	active := existing.Active
 	if req.Active != nil {
 		active = *req.Active
@@ -535,22 +504,20 @@ func (h *Pharmacy) updateItem(w http.ResponseWriter, r *http.Request, path strin
 	if active {
 		activeInt = 1
 	}
-	chargeInt := 0
-	if units.ChargeFullStockUnit {
-		chargeInt = 1
-	}
 
 	_, err = h.DB.Exec(`
-		UPDATE items SET code = ?, name = ?, category = ?, pack_size = ?,
+		UPDATE items SET code = ?, name = ?, category = ?, dosage = ?, pack_size = ?,
+		  pack_l1_qty = ?, pack_l1_unit = ?, pack_l2_qty = ?, pack_l2_unit = ?, pack_l3_qty = ?, pack_l3_unit = ?,
 		  purchase_unit = ?, stock_unit = ?, billing_unit = ?,
-		  units_per_purchase = ?, billing_per_stock = ?, charge_full_stock_unit = ?,
-		  buy_price_mmk = ?, sell_price_mmk = ?, reorder_level = ?, active = ?,
+		  units_per_purchase = ?, billing_per_stock = 1, charge_full_stock_unit = 0,
+		  buy_price_mmk = ?, sell_price_mmk = ?, active = ?,
 		  updated_at = datetime('now')
 		WHERE id = ?
-	`, req.Code, req.Name, req.Category, packSize,
+	`, req.Code, req.Name, req.Category, req.Dosage, packSize,
+		pack.L1Qty, pack.L1Unit, pack.L2Qty, pack.L2Unit, pack.L3Qty, pack.L3Unit,
 		units.PurchaseUnit, units.StockUnit, units.BillingUnit,
-		units.UnitsPerPurchase, units.BillingPerStock, chargeInt,
-		buy, sell, reorder, activeInt, id)
+		units.UnitsPerPurchase,
+		buy, sell, activeInt, id)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "unique") {
 			writeJSON(w, http.StatusConflict, map[string]string{"error": "code already exists"})
@@ -642,7 +609,6 @@ func (h *Pharmacy) restock(w http.ResponseWriter, r *http.Request, path string) 
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "expiry_date must be YYYY-MM-DD"})
 		return
 	}
-	batchNo := strings.TrimSpace(req.BatchNo)
 
 	existing, err := loadPharmacyItem(h.DB, id, false)
 	if err == sql.ErrNoRows {
@@ -659,7 +625,8 @@ func (h *Pharmacy) restock(w http.ResponseWriter, r *http.Request, path string) 
 	}
 
 	stockQty := req.Qty
-	if strings.EqualFold(strings.TrimSpace(req.QtyUnit), "purchase") {
+	qtyUnit := strings.TrimSpace(req.QtyUnit)
+	if qtyUnit == "" || strings.EqualFold(qtyUnit, "purchase") {
 		upp := existing.UnitsPerPurchase
 		if upp < 1 {
 			upp = 1
@@ -698,7 +665,7 @@ func (h *Pharmacy) restock(w http.ResponseWriter, r *http.Request, path string) 
 		}
 	}
 
-	batchID, err := findOrCreateBatch(tx, id, "MAIN", batchNo, expiry, stockQty)
+	batchID, err := findOrCreateBatch(tx, id, "MAIN", "", expiry, stockQty)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "batch failed"})
 		return
@@ -720,8 +687,8 @@ func (h *Pharmacy) restock(w http.ResponseWriter, r *http.Request, path string) 
 	}
 
 	audit.WriteAudit(h.DB, &uid, "restock", "item", &id, map[string]any{
-		"qty": stockQty, "qty_entered": req.Qty, "qty_unit": req.QtyUnit,
-		"batch_id": batchID, "batch_no": batchNo, "expiry_date": expiry,
+		"qty": stockQty, "qty_entered": req.Qty, "qty_unit": qtyUnit,
+		"batch_id": batchID, "expiry_date": expiry,
 	})
 
 	item, err := loadPharmacyItem(h.DB, id, true)
@@ -1017,7 +984,8 @@ func findOrCreateBatch(tx *sql.Tx, itemID int64, location, batchNo string, expir
 
 func loadPharmacyItem(db *sql.DB, id int64, withDetail bool) (pharmacyItem, error) {
 	row := db.QueryRow(`
-		SELECT i.id, i.code, i.name, i.category, i.pack_size,
+		SELECT i.id, i.code, i.name, i.category, i.dosage, i.pack_size,
+		       i.pack_l1_qty, i.pack_l1_unit, i.pack_l2_qty, i.pack_l2_unit, i.pack_l3_qty, i.pack_l3_unit,
 		       i.purchase_unit, i.stock_unit, i.billing_unit,
 		       i.units_per_purchase, i.billing_per_stock, i.charge_full_stock_unit,
 		       i.buy_price_mmk, i.sell_price_mmk,
@@ -1045,6 +1013,33 @@ func loadPharmacyItem(db *sql.DB, id int64, withDetail bool) (pharmacyItem, erro
 		item.StockByLoc[b.LocationCode] += b.Qty
 	}
 	return item, nil
+}
+
+func itemPackFromPharmacyItem(item pharmacyItem) itemPack {
+	p := itemPack{
+		L1Qty: item.PackL1Qty, L1Unit: item.PackL1Unit,
+		L2Qty: item.PackL2Qty, L2Unit: item.PackL2Unit,
+		L3Qty: item.PackL3Qty, L3Unit: item.PackL3Unit,
+	}
+	if p.L1Qty < 1 {
+		p.L1Qty = 1
+	}
+	if p.L2Qty < 1 {
+		p.L2Qty = 1
+	}
+	if p.L3Qty < 1 {
+		p.L3Qty = 1
+	}
+	if p.L1Unit == "" {
+		p.L1Unit = "Box"
+	}
+	if p.L2Unit == "" {
+		p.L2Unit = "Strip"
+	}
+	if p.L3Unit == "" {
+		p.L3Unit = "Tablet"
+	}
+	return p
 }
 
 func listItemBatches(db *sql.DB, itemID int64) ([]itemBatch, error) {
@@ -1082,7 +1077,8 @@ func scanPharmacyItem(s scanner) (pharmacyItem, error) {
 	var active int
 	var chargeFull int
 	err := s.Scan(
-		&item.ID, &item.Code, &item.Name, &item.Category, &item.PackSize,
+		&item.ID, &item.Code, &item.Name, &item.Category, &item.Dosage, &item.PackSize,
+		&item.PackL1Qty, &item.PackL1Unit, &item.PackL2Qty, &item.PackL2Unit, &item.PackL3Qty, &item.PackL3Unit,
 		&item.PurchaseUnit, &item.StockUnit, &item.BillingUnit,
 		&item.UnitsPerPurchase, &item.BillingPerStock, &chargeFull,
 		&item.BuyPriceMMK, &item.SellPriceMMK, &item.ReorderLevel, &active,
@@ -1093,8 +1089,29 @@ func scanPharmacyItem(s scanner) (pharmacyItem, error) {
 	}
 	item.Active = active == 1
 	item.ChargeFullStockUnit = chargeFull == 1
+	if item.PackL1Qty < 1 {
+		item.PackL1Qty = 1
+	}
+	if item.PackL2Qty < 1 {
+		item.PackL2Qty = 1
+	}
+	if item.PackL3Qty < 1 {
+		item.PackL3Qty = 1
+	}
+	if item.PackL1Unit == "" {
+		item.PackL1Unit = "Box"
+	}
+	if item.PackL2Unit == "" {
+		item.PackL2Unit = "Strip"
+	}
+	if item.PackL3Unit == "" {
+		item.PackL3Unit = "Tablet"
+	}
 	if item.UnitsPerPurchase < 1 {
-		item.UnitsPerPurchase = item.PackSize
+		item.UnitsPerPurchase = item.PackL2Qty * item.PackL3Qty
+		if item.UnitsPerPurchase < 1 {
+			item.UnitsPerPurchase = item.PackSize
+		}
 		if item.UnitsPerPurchase < 1 {
 			item.UnitsPerPurchase = 1
 		}
@@ -1103,13 +1120,13 @@ func scanPharmacyItem(s scanner) (pharmacyItem, error) {
 		item.BillingPerStock = 1
 	}
 	if item.PurchaseUnit == "" {
-		item.PurchaseUnit = "Box"
+		item.PurchaseUnit = item.PackL1Unit
 	}
 	if item.StockUnit == "" {
-		item.StockUnit = "Piece"
+		item.StockUnit = item.PackL3Unit
 	}
 	if item.BillingUnit == "" {
-		item.BillingUnit = item.StockUnit
+		item.BillingUnit = item.PackL3Unit
 	}
 	item.LowStock = item.StockMain <= item.ReorderLevel
 	return item, nil
