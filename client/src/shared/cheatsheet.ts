@@ -28,29 +28,30 @@ export function cheatSheetHTML(): string {
     <ul>
       <li>Open Mudita → enter <strong>Server IP</strong> once (port 8080).</li>
       <li class="my">မုဒိတာ ဖွင့် → ဆာဗာ IP တစ်ကြိမ်ထည့် (ပို့တ် 8080)။</li>
-      <li>Reception: <span class="kbd">reception</span> · Pharmacy: <span class="kbd">pharmacy</span> · Admin: <span class="kbd">admin</span></li>
+      <li>OPD: <span class="kbd">opd</span> · OT: <span class="kbd">ot</span> · Pharmacy: <span class="kbd">pharmacy</span> · Admin: <span class="kbd">admin</span> (picks one portal).</li>
       <li>Idle 15 min → auto lock. Language: EN / မြန်မာ (top bar).</li>
+      <li>History shows this desk's bills only.</li>
     </ul>
   </section>
   <section>
     <h2>2. OPD bill (cash) / ပြင်ပဘေလ်</h2>
     <ul>
-      <li>Home → <strong>OPD</strong> → New bill.</li>
+      <li>Home → <strong>OPD</strong> → Bill.</li>
       <li>Patient name → doctor → add <strong>service</strong> or consultation (no medicines here).</li>
       <li class="my">လူနာအမည် → ဆရာဝန် → ဝန်ဆောင်မှု / consultation။ ဆေးသည် Pharmacy Billing တွင်။</li>
-      <li><strong>Pay cash</strong> → <strong>Print</strong> (in-app preview).</li>
+      <li><strong>Confirm (F5)</strong> = draft. <strong>Print (F7)</strong> = save + pay + print preview.</li>
+      <li><strong>History (F9)</strong> · <strong>V.Delete (^F8)</strong> void with reason · <strong>Cancel (F10)</strong> clears form.</li>
       <li>First receipt: printer <strong>EPSON TM-T82 Receipt</strong>, paper <strong>80 mm</strong>.</li>
-      <li>Void needs a reason.</li>
     </ul>
   </section>
   <section>
-    <h2>3. OT case cart / ခွဲစိတ်ကာ့တ်</h2>
+    <h2>3. OT cupboard / ခွဲစိတ် ဆေးဗီရို</h2>
     <ul>
-      <li>Home → <strong>OT</strong> → New case → add items → <strong>Issue</strong>.</li>
-      <li>Print pick list → take upstairs.</li>
-      <li>Reconcile: Used / Returned / Wasted / Kept on floor.</li>
-      <li class="my">အသုံးပြု / ပြန်ပို့ / ပျက် / ကြမ်းပြင်ထား။</li>
-      <li>Create OT bill → Pay cash → Print.</li>
+      <li>Pharmacy: item → View → <strong>Send to OT</strong> (batch + qty). Stock moves in that step.</li>
+      <li class="my">ဆေးဆိုင်က အသုတ်နှင့် အရေအတွက်ကို OT ဆေးဗီရိုသို့ ပို့သည်။</li>
+      <li>OT cupboard: <strong>Return to pharmacy</strong> for unused qty.</li>
+      <li>New OT bill from cupboard on hand → <strong>Pay cash</strong> → Print. Pay deducts qty. Void puts it back.</li>
+      <li class="my">ဘေလ်ပေးချေမှ လက်ကျန်ကျသည်။ မသုံးသော အရေအတွက်ကို ဆေးဆိုင်သို့ ပြန်ပို့ပါ။</li>
     </ul>
   </section>
   <section>
@@ -64,19 +65,18 @@ export function cheatSheetHTML(): string {
   <section>
     <h2>5. Pharmacy Stock / ဆေးဆိုင် စတော့</h2>
     <ul>
-      <li>Home → <strong>Pharmacy Stock</strong> → set purchase / stock / billing units + conversion.</li>
+      <li><strong>Pharmacy Stock</strong> → set purchase / stock / billing units + conversion.</li>
       <li><strong>Restock</strong> in boxes or stock units (cannot restock unknown code).</li>
       <li class="my">မသိသော ကုဒ်ကို restock မရ — အရင် item ဖန်တီးပါ။</li>
-      <li>Reports → Low stock / Near expiry.</li>
+      <li>View a MAIN batch → <strong>Send to OT</strong>. Low stock / near expiry are MAIN only.</li>
     </ul>
   </section>
   <section>
     <h2>6. Reports / အစီရင်ခံစာ</h2>
     <ul>
-      <li><strong>Daily cash</strong> — paid OPD + Pharmacy + OT for a date.</li>
-      <li><strong>Low stock</strong> — In Stock ≤ reorder (Pharmacy/Admin).</li>
-      <li><strong>Near expiry</strong> — batches within N days.</li>
-      <li>Use <strong>Print</strong> on each report for the day book.</li>
+      <li><strong>This desk</strong> — history and cash are this portal's paid bills only.</li>
+      <li><strong>Admin dashboard</strong> — combined OPD + OT + pharmacy cash for the day.</li>
+      <li><strong>Low stock / near expiry</strong> — MAIN pharmacy batches (Pharmacy/Admin).</li>
     </ul>
   </section>
   <section>

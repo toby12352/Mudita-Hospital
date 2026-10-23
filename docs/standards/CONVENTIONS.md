@@ -17,9 +17,10 @@ Never send currency as floats. Never camelCase in API JSON.
 
 **Roles** (capitalized English, stored on `users.role`):
 
-- `Admin`
-- `Reception`
-- `Pharmacy`
+- `Admin` — every permission; lands on the portal picker
+- `OPD` — `opd` only (replaces Reception)
+- `OT` — `ot` only
+- `Pharmacy` — `pharmacy` only
 
 **Permissions** (lowercase keys):
 
@@ -52,7 +53,7 @@ Keep zero-padded numeric suffixes consistent with existing generators in handler
 
 ## Stock locations (pharmacy / OT)
 
-Known location codes in use: `MAIN`, `OT_RESERVED`, `OT_FLOOR`. Do not invent new location strings without migration + handler support (FEFO / movements).
+Live on-hand is `item_batches` at `MAIN` and `ot_batches` (the OT cupboard). `OT_RESERVED` and `OT_FLOOR` remain as legacy rows and are not valued. Do not invent new location strings without migration + handler support (FEFO / movements).
 
 ## File and symbol naming
 

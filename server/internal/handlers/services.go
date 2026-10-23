@@ -11,7 +11,7 @@ import (
 	"mudita-hospital/server/internal/middleware"
 )
 
-// Services handles non-stock hospital services (Admin / settings).
+// Services handles non-stock hospital services (Admin settings or OPD desk).
 type Services struct {
 	DB *sql.DB
 }
@@ -34,7 +34,7 @@ type serviceWriteRequest struct {
 }
 
 func (h *Services) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	middleware.RequirePermission(h.DB, auth.PermSettings, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	middleware.RequireAnyPermission(h.DB, []string{auth.PermSettings, auth.PermOPD}, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := strings.TrimPrefix(r.URL.Path, "/api/services")
 		path = strings.TrimSuffix(path, "/")
 		if path == "" {

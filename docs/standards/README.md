@@ -13,7 +13,8 @@ Start here when joining the codebase or opening a new Agent chat. Read only the 
 | Domain API client (TS) | `client/src/features/{opd,ot,pharmacy,reports,settings}/` |
 | HTTP handlers / SQL | `server/internal/handlers/` |
 | Auth, roles, permissions | `server/internal/auth/`, `server/internal/middleware/` |
-| Schema / migrations | `server/internal/db/migrate.go` |
+| Schema / migrations | `server/internal/db/migrate.go` — see [UPGRADES.md](./UPGRADES.md) |
+| Upgrade a live hospital install | [UPGRADES.md](./UPGRADES.md) · field steps in [FIELD_INSTALL_FAQ.md](../FIELD_INSTALL_FAQ.md) |
 | Seed users / demo data | `server/internal/db/seed.go` |
 | Route registration | `server/main.go` |
 | Deploy / LAN install | [DEPLOY.md](../DEPLOY.md) |
@@ -29,6 +30,7 @@ Start here when joining the codebase or opening a new Agent chat. Read only the 
 | [BACKEND.md](./BACKEND.md) | Handlers, auth, migrations, API shape |
 | [CONVENTIONS.md](./CONVENTIONS.md) | Naming, money, errors, roles, bill prefixes |
 | [ADDING_A_FEATURE.md](./ADDING_A_FEATURE.md) | Step-by-step playbook for a new domain |
+| [UPGRADES.md](./UPGRADES.md) | Live-hospital upgrades: additive migrations, safe ship checklist |
 
 ## Ops vs engineering docs
 

@@ -13,45 +13,54 @@ import (
 	"mudita-hospital/server/internal/middleware"
 )
 
-// OT handles case cart: draft → issue (MAIN→OT_RESERVED) → reconcile → bill → cash/print.
+// OT handles a case bill: draft cart from the OT cupboard → bill → pay (cupboard sale) → print / void.
 type OT struct {
 	DB *sql.DB
 }
 
 type otCaseItem struct {
-	ID              int64  `json:"id,omitempty"`
-	ItemID          int64  `json:"item_id"`
-	Code            string `json:"code"`
-	Name            string `json:"name"`
-	SellPriceMMK    int64  `json:"sell_price_mmk"`
-	QtyIssued       int64  `json:"qty_issued"`
-	QtyUsed         int64  `json:"qty_used"`
-	QtyReturned     int64  `json:"qty_returned"`
-	QtyWasted       int64  `json:"qty_wasted"`
-	QtyKeptOnFloor  int64  `json:"qty_kept_on_floor"`
-	SortOrder       int    `json:"sort_order"`
+	ID             int64  `json:"id,omitempty"`
+	ItemID         int64  `json:"item_id"`
+	Code           string `json:"code"`
+	Name           string `json:"name"`
+	SellPriceMMK   int64  `json:"sell_price_mmk"`
+	QtyIssued      int64  `json:"qty_issued"`
+	SaleQty        int64  `json:"sale_qty"`
+	SaleUnit       string `json:"sale_unit"`
+	QtyUsed        int64  `json:"qty_used"`
+	QtyReturned    int64  `json:"qty_returned"`
+	QtyWasted      int64  `json:"qty_wasted"`
+	QtyKeptOnFloor int64  `json:"qty_kept_on_floor"`
+	SortOrder      int    `json:"sort_order"`
+	// Joined from items on read so the cart can offer that item's units again.
+	PackL1Qty  int64  `json:"pack_l1_qty,omitempty"`
+	PackL1Unit string `json:"pack_l1_unit,omitempty"`
+	PackL2Qty  int64  `json:"pack_l2_qty,omitempty"`
+	PackL2Unit string `json:"pack_l2_unit,omitempty"`
+	PackL3Qty  int64  `json:"pack_l3_qty,omitempty"`
+	PackL3Unit string `json:"pack_l3_unit,omitempty"`
 }
 
 type otCase struct {
-	ID                   int64        `json:"id"`
-	CaseNo               string       `json:"case_no"`
-	PatientName          string       `json:"patient_name"`
-	PatientPhone         string       `json:"patient_phone"`
-	PatientAgeYears      *int64       `json:"patient_age_years,omitempty"`
-	PatientGender        string       `json:"patient_gender"`
-	DoctorID             *int64       `json:"doctor_id,omitempty"`
-	DoctorName           string       `json:"doctor_name"`
-	ProcedureName        string       `json:"procedure_name"`
-	Notes                string       `json:"notes"`
-	Status               string       `json:"status"`
-	IssuedAt             *string      `json:"issued_at,omitempty"`
-	ReconciledAt         *string      `json:"reconciled_at,omitempty"`
-	OtBillID             *int64       `json:"ot_bill_id,omitempty"`
-	CreatedByUserID      *int64       `json:"created_by_user_id,omitempty"`
-	CreatedAt            string       `json:"created_at"`
-	UpdatedAt            string       `json:"updated_at"`
-	Items                []otCaseItem `json:"items,omitempty"`
-	DoctorOTFeeMMK       int64        `json:"doctor_ot_fee_mmk,omitempty"`
+	ID              int64        `json:"id"`
+	CaseNo          string       `json:"case_no"`
+	PatientName     string       `json:"patient_name"`
+	PatientPhone    string       `json:"patient_phone"`
+	PatientAgeYears *int64       `json:"patient_age_years,omitempty"`
+	PatientGender   string       `json:"patient_gender"`
+	DoctorID        *int64       `json:"doctor_id,omitempty"`
+	DoctorName      string       `json:"doctor_name"`
+	ProcedureName   string       `json:"procedure_name"`
+	Notes           string       `json:"notes"`
+	Status          string       `json:"status"`
+	IssuedAt        *string      `json:"issued_at,omitempty"`
+	ReconciledAt    *string      `json:"reconciled_at,omitempty"`
+	OtBillID        *int64       `json:"ot_bill_id,omitempty"`
+	CreatedByUserID *int64       `json:"created_by_user_id,omitempty"`
+	CreatedAt       string       `json:"created_at"`
+	UpdatedAt       string       `json:"updated_at"`
+	Items           []otCaseItem `json:"items,omitempty"`
+	DoctorOTFeeMMK  int64        `json:"doctor_ot_fee_mmk,omitempty"`
 }
 
 type otCaseWriteRequest struct {
@@ -64,18 +73,6 @@ type otCaseWriteRequest struct {
 	ProcedureName   string       `json:"procedure_name"`
 	Notes           string       `json:"notes"`
 	Items           []otCaseItem `json:"items"`
-}
-
-type otReconcileItem struct {
-	ID             int64 `json:"id"`
-	QtyUsed        int64 `json:"qty_used"`
-	QtyReturned    int64 `json:"qty_returned"`
-	QtyWasted      int64 `json:"qty_wasted"`
-	QtyKeptOnFloor int64 `json:"qty_kept_on_floor"`
-}
-
-type otReconcileRequest struct {
-	Items []otReconcileItem `json:"items"`
 }
 
 type otBillLine struct {
@@ -124,6 +121,21 @@ type otCatalogDoctor struct {
 	OTFeeMMK  int64  `json:"ot_fee_mmk"`
 }
 
+type otCatalogItem struct {
+	ID           int64  `json:"id"`
+	Code         string `json:"code"`
+	Name         string `json:"name"`
+	SellPriceMMK int64  `json:"sell_price_mmk"`
+	StockUnit    string `json:"stock_unit"`
+	OtOnHand     int64  `json:"ot_on_hand"`
+	PackL1Qty    int64  `json:"pack_l1_qty"`
+	PackL1Unit   string `json:"pack_l1_unit"`
+	PackL2Qty    int64  `json:"pack_l2_qty"`
+	PackL2Unit   string `json:"pack_l2_unit"`
+	PackL3Qty    int64  `json:"pack_l3_qty"`
+	PackL3Unit   string `json:"pack_l3_unit"`
+}
+
 func (h *OT) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	middleware.RequirePermission(h.DB, auth.PermOT, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := strings.TrimPrefix(r.URL.Path, "/api/ot")
@@ -141,14 +153,14 @@ func (h *OT) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.catalogItems(w, r)
 		case path == "/settings" && r.Method == http.MethodGet:
 			h.catalogSettings(w, r)
+		case path == "/stock" && r.Method == http.MethodGet:
+			h.listOtStock(w, r)
+		case strings.HasPrefix(path, "/stock/") && strings.HasSuffix(path, "/return") && r.Method == http.MethodPost:
+			h.returnOtStock(w, r, path)
 		case path == "/cases" && r.Method == http.MethodGet:
 			h.listCases(w, r)
 		case path == "/cases" && r.Method == http.MethodPost:
 			h.createCase(w, r)
-		case strings.HasPrefix(path, "/cases/") && strings.HasSuffix(path, "/issue") && r.Method == http.MethodPost:
-			h.issueCase(w, r, path)
-		case strings.HasPrefix(path, "/cases/") && strings.HasSuffix(path, "/reconcile") && r.Method == http.MethodPost:
-			h.reconcileCase(w, r, path)
 		case strings.HasPrefix(path, "/cases/") && strings.HasSuffix(path, "/bill") && r.Method == http.MethodPost:
 			h.createBillFromCase(w, r, path)
 		case strings.HasPrefix(path, "/cases/") && strings.HasSuffix(path, "/pick-list") && r.Method == http.MethodGet:
@@ -220,7 +232,53 @@ func (h *OT) catalogServices(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *OT) catalogItems(w http.ResponseWriter, r *http.Request) {
-	(&OPD{DB: h.DB}).catalogItems(w, r)
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	code := strings.TrimSpace(r.URL.Query().Get("code"))
+	const cols = `
+		SELECT i.id, i.code, i.name, i.sell_price_mmk, COALESCE(i.stock_unit, 'Piece'),
+			COALESCE((SELECT SUM(b.qty) FROM ot_batches b WHERE b.item_id = i.id), 0),
+			COALESCE(i.pack_l1_qty, 1), COALESCE(i.pack_l1_unit, 'Box'),
+			COALESCE(i.pack_l2_qty, 1), COALESCE(i.pack_l2_unit, 'Strip'),
+			COALESCE(i.pack_l3_qty, 1), COALESCE(i.pack_l3_unit, 'Tablet')
+		FROM items i`
+	var rows *sql.Rows
+	var err error
+	switch {
+	case code != "":
+		rows, err = h.DB.Query(cols+`
+			WHERE i.active = 1 AND i.code = ? COLLATE NOCASE
+		`, code)
+	case q != "":
+		like := "%" + q + "%"
+		rows, err = h.DB.Query(cols+`
+			WHERE i.active = 1 AND (i.code LIKE ? OR i.name LIKE ?)
+			ORDER BY i.code COLLATE NOCASE LIMIT 50
+		`, like, like)
+	default:
+		rows, err = h.DB.Query(cols + `
+			WHERE i.active = 1
+			ORDER BY i.code COLLATE NOCASE LIMIT 100
+		`)
+	}
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "list failed"})
+		return
+	}
+	defer rows.Close()
+
+	out := make([]otCatalogItem, 0)
+	for rows.Next() {
+		var it otCatalogItem
+		if err := rows.Scan(
+			&it.ID, &it.Code, &it.Name, &it.SellPriceMMK, &it.StockUnit, &it.OtOnHand,
+			&it.PackL1Qty, &it.PackL1Unit, &it.PackL2Qty, &it.PackL2Unit, &it.PackL3Qty, &it.PackL3Unit,
+		); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "scan failed"})
+			return
+		}
+		out = append(out, it)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": out})
 }
 
 func (h *OT) catalogSettings(w http.ResponseWriter, r *http.Request) {
@@ -449,184 +507,6 @@ func (h *OT) updateCase(w http.ResponseWriter, r *http.Request, path string) {
 	writeJSON(w, http.StatusOK, c)
 }
 
-func (h *OT) issueCase(w http.ResponseWriter, r *http.Request, path string) {
-	user := middleware.UserFromContext(r.Context())
-	idPath := strings.TrimSuffix(strings.TrimPrefix(path, "/cases/"), "/issue")
-	id, ok := parseID("/" + idPath)
-	if !ok {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid id"})
-		return
-	}
-
-	tx, err := h.DB.Begin()
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "tx failed"})
-		return
-	}
-	defer tx.Rollback()
-
-	var status, caseNo string
-	err = tx.QueryRow(`SELECT status, case_no FROM ot_cases WHERE id = ?`, id).Scan(&status, &caseNo)
-	if err == sql.ErrNoRows {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
-		return
-	}
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "load failed"})
-		return
-	}
-	if status != "draft" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "only draft cases can be issued"})
-		return
-	}
-
-	items, err := loadOtCaseItemsTx(tx, id)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "items load failed"})
-		return
-	}
-	if len(items) == 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "case has no cart items"})
-		return
-	}
-
-	uid := user.ID
-	for _, it := range items {
-		if it.QtyIssued <= 0 {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "item qty must be > 0"})
-			return
-		}
-		if err := issueItemMAINToReserved(tx, id, it, uid, caseNo); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-			return
-		}
-	}
-
-	if _, err := tx.Exec(`
-		UPDATE ot_cases SET status = 'issued', issued_at = datetime('now'), issued_by_user_id = ?,
-			updated_at = datetime('now')
-		WHERE id = ?
-	`, uid, id); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "issue failed"})
-		return
-	}
-	if err := tx.Commit(); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "commit failed"})
-		return
-	}
-
-	audit.WriteAudit(h.DB, &uid, "issue", "ot_case", &id, map[string]any{"case_no": caseNo})
-	c, err := loadOtCase(h.DB, id)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "reload failed"})
-		return
-	}
-	writeJSON(w, http.StatusOK, c)
-}
-
-func (h *OT) reconcileCase(w http.ResponseWriter, r *http.Request, path string) {
-	user := middleware.UserFromContext(r.Context())
-	idPath := strings.TrimSuffix(strings.TrimPrefix(path, "/cases/"), "/reconcile")
-	id, ok := parseID("/" + idPath)
-	if !ok {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid id"})
-		return
-	}
-	var req otReconcileRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
-		return
-	}
-
-	tx, err := h.DB.Begin()
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "tx failed"})
-		return
-	}
-	defer tx.Rollback()
-
-	var status, caseNo string
-	err = tx.QueryRow(`SELECT status, case_no FROM ot_cases WHERE id = ?`, id).Scan(&status, &caseNo)
-	if err == sql.ErrNoRows {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
-		return
-	}
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "load failed"})
-		return
-	}
-	if status != "issued" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "only issued cases can be reconciled"})
-		return
-	}
-
-	items, err := loadOtCaseItemsTx(tx, id)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "items load failed"})
-		return
-	}
-	byID := map[int64]otCaseItem{}
-	for _, it := range items {
-		byID[it.ID] = it
-	}
-	if len(req.Items) != len(items) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "reconcile must include every cart item"})
-		return
-	}
-
-	uid := user.ID
-	for _, ri := range req.Items {
-		it, ok := byID[ri.ID]
-		if !ok {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown case item"})
-			return
-		}
-		sum := ri.QtyUsed + ri.QtyReturned + ri.QtyWasted + ri.QtyKeptOnFloor
-		if ri.QtyUsed < 0 || ri.QtyReturned < 0 || ri.QtyWasted < 0 || ri.QtyKeptOnFloor < 0 {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "reconcile qty cannot be negative"})
-			return
-		}
-		if sum != it.QtyIssued {
-			writeJSON(w, http.StatusBadRequest, map[string]string{
-				"error": fmt.Sprintf("%s: used+returned+wasted+kept (%d) must equal issued (%d)", it.Code, sum, it.QtyIssued),
-			})
-			return
-		}
-		if err := applyOtReconcile(tx, id, it, ri, uid, caseNo); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-			return
-		}
-		if _, err := tx.Exec(`
-			UPDATE ot_case_items SET qty_used = ?, qty_returned = ?, qty_wasted = ?, qty_kept_on_floor = ?
-			WHERE id = ?
-		`, ri.QtyUsed, ri.QtyReturned, ri.QtyWasted, ri.QtyKeptOnFloor, it.ID); err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "item update failed"})
-			return
-		}
-	}
-
-	if _, err := tx.Exec(`
-		UPDATE ot_cases SET status = 'reconciled', reconciled_at = datetime('now'),
-			reconciled_by_user_id = ?, updated_at = datetime('now')
-		WHERE id = ?
-	`, uid, id); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "reconcile failed"})
-		return
-	}
-	if err := tx.Commit(); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "commit failed"})
-		return
-	}
-
-	audit.WriteAudit(h.DB, &uid, "reconcile", "ot_case", &id, map[string]any{"case_no": caseNo})
-	c, err := loadOtCase(h.DB, id)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "reload failed"})
-		return
-	}
-	writeJSON(w, http.StatusOK, c)
-}
-
 func (h *OT) createBillFromCase(w http.ResponseWriter, r *http.Request, path string) {
 	user := middleware.UserFromContext(r.Context())
 	idPath := strings.TrimSuffix(strings.TrimPrefix(path, "/cases/"), "/bill")
@@ -654,8 +534,8 @@ func (h *OT) createBillFromCase(w http.ResponseWriter, r *http.Request, path str
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "load failed"})
 		return
 	}
-	if c.Status != "reconciled" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "only reconciled cases can create a bill"})
+	if c.Status != "draft" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "only draft cases can create a bill"})
 		return
 	}
 	if c.OtBillID != nil {
@@ -663,53 +543,10 @@ func (h *OT) createBillFromCase(w http.ResponseWriter, r *http.Request, path str
 		return
 	}
 
-	lines := make([]otBillLine, 0)
-	sort := 0
-	for _, it := range c.Items {
-		if it.QtyUsed <= 0 {
-			continue
-		}
-		lines = append(lines, otBillLine{
-			LineType: "item", RefID: &it.ItemID, Code: it.Code,
-			Description: it.Name, Qty: it.QtyUsed, UnitPriceMMK: it.SellPriceMMK,
-			LineTotalMMK: it.QtyUsed * it.SellPriceMMK, SortOrder: sort,
-		})
-		sort++
-	}
-	if c.DoctorID != nil {
-		var otFee int64
-		_ = tx.QueryRow(`
-			SELECT COALESCE(amount_mmk, 0) FROM doctor_fees WHERE doctor_id = ? AND fee_type = 'ot'
-		`, *c.DoctorID).Scan(&otFee)
-		if otFee > 0 {
-			lines = append(lines, otBillLine{
-				LineType: "ot_fee", RefID: c.DoctorID, Code: "OT-FEE",
-				Description: "Doctor OT fee — " + c.DoctorName, Qty: 1, UnitPriceMMK: otFee,
-				LineTotalMMK: otFee, SortOrder: sort,
-			})
-			sort++
-		}
-	}
-	for _, s := range req.Services {
-		s.LineType = "service"
-		s.Description = strings.TrimSpace(s.Description)
-		s.Code = strings.TrimSpace(s.Code)
-		if s.Description == "" || s.Qty <= 0 || s.UnitPriceMMK < 0 {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid service line"})
-			return
-		}
-		s.LineTotalMMK = s.Qty * s.UnitPriceMMK
-		s.SortOrder = sort
-		lines = append(lines, s)
-		sort++
-	}
-	if len(lines) == 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "nothing to bill (no used items / OT fee / services)"})
+	lines, total, errMsg := buildOtBillLines(tx, c, req.Services)
+	if errMsg != "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": errMsg})
 		return
-	}
-	var total int64
-	for _, l := range lines {
-		total += l.LineTotalMMK
 	}
 
 	billNo, err := nextOtBillNo(tx)
@@ -855,11 +692,6 @@ func (h *OT) updateBill(w http.ResponseWriter, r *http.Request, path string) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
-	lines, total, errMsg := normalizeOtBillLines(req.Lines)
-	if errMsg != "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": errMsg})
-		return
-	}
 
 	tx, err := h.DB.Begin()
 	if err != nil {
@@ -869,7 +701,8 @@ func (h *OT) updateBill(w http.ResponseWriter, r *http.Request, path string) {
 	defer tx.Rollback()
 
 	var status string
-	err = tx.QueryRow(`SELECT status FROM ot_bills WHERE id = ?`, id).Scan(&status)
+	var caseID int64
+	err = tx.QueryRow(`SELECT status, case_id FROM ot_bills WHERE id = ?`, id).Scan(&status, &caseID)
 	if err == sql.ErrNoRows {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		return
@@ -880,6 +713,21 @@ func (h *OT) updateBill(w http.ResponseWriter, r *http.Request, path string) {
 	}
 	if status != "draft" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "only draft bills can be edited"})
+		return
+	}
+	c, err := loadOtCaseTx(tx, caseID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "case load failed"})
+		return
+	}
+	services, errMsg := otBillServiceLines(req.Lines)
+	if errMsg != "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": errMsg})
+		return
+	}
+	lines, total, errMsg := buildOtBillLines(tx, c, services)
+	if errMsg != "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": errMsg})
 		return
 	}
 	if _, err := tx.Exec(`UPDATE ot_bills SET total_mmk = ?, updated_at = datetime('now') WHERE id = ?`, total, id); err != nil {
@@ -925,8 +773,13 @@ func (h *OT) payBill(w http.ResponseWriter, r *http.Request, path string) {
 	defer tx.Rollback()
 
 	var status string
-	var lineCount int
-	err = tx.QueryRow(`SELECT status FROM ot_bills WHERE id = ?`, id).Scan(&status)
+	var legacy int
+	err = tx.QueryRow(`
+		SELECT b.status, c.legacy_stock_closed
+		FROM ot_bills b
+		JOIN ot_cases c ON c.id = b.case_id
+		WHERE b.id = ?
+	`, id).Scan(&status, &legacy)
 	if err == sql.ErrNoRows {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		return
@@ -939,19 +792,34 @@ func (h *OT) payBill(w http.ResponseWriter, r *http.Request, path string) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "only draft bills can be paid"})
 		return
 	}
-	_ = tx.QueryRow(`SELECT COUNT(1) FROM ot_bill_lines WHERE bill_id = ?`, id).Scan(&lineCount)
-	if lineCount == 0 {
+	lines, err := loadOtBillLinesTx(tx, id)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "lines load failed"})
+		return
+	}
+	if len(lines) == 0 {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bill has no lines"})
 		return
 	}
-	// Stock already closed at reconcile — pay is cash only.
 	uid := user.ID
-	if _, err := tx.Exec(`
-		UPDATE ot_bills SET status = 'paid', paid_at = datetime('now'), paid_by_user_id = ?,
-			updated_at = datetime('now')
-		WHERE id = ?
-	`, uid, id); err != nil {
+	if legacy == 0 {
+		for _, line := range lines {
+			if line.LineType != "item" || line.RefID == nil {
+				continue
+			}
+			if err := fefoDeductOtSale(tx, id, line.ID, *line.RefID, line.Qty, uid); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+				return
+			}
+		}
+	}
+	n, err := execPayDraft(tx, "ot_bills", id, uid)
+	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "pay failed"})
+		return
+	}
+	if n == 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "only draft bills can be paid"})
 		return
 	}
 	if err := tx.Commit(); err != nil {
@@ -994,7 +862,8 @@ func (h *OT) voidBill(w http.ResponseWriter, r *http.Request, path string) {
 	defer tx.Rollback()
 
 	var status, billNo string
-	err = tx.QueryRow(`SELECT status, bill_no FROM ot_bills WHERE id = ?`, id).Scan(&status, &billNo)
+	var caseID int64
+	err = tx.QueryRow(`SELECT status, bill_no, case_id FROM ot_bills WHERE id = ?`, id).Scan(&status, &billNo, &caseID)
 	if err == sql.ErrNoRows {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		return
@@ -1008,6 +877,12 @@ func (h *OT) voidBill(w http.ResponseWriter, r *http.Request, path string) {
 		return
 	}
 	uid := user.ID
+	if status == "paid" {
+		if err := restoreOtBillStock(tx, id, billNo, req.Reason, uid); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+	}
 	if _, err := tx.Exec(`
 		UPDATE ot_bills SET status = 'void', voided_at = datetime('now'), voided_by_user_id = ?,
 			void_reason = ?, updated_at = datetime('now')
@@ -1016,12 +891,19 @@ func (h *OT) voidBill(w http.ResponseWriter, r *http.Request, path string) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "void failed"})
 		return
 	}
+	if _, err := tx.Exec(`
+		UPDATE ot_cases SET status = 'draft', ot_bill_id = NULL, updated_at = datetime('now')
+		WHERE id = ? AND ot_bill_id = ?
+	`, caseID, id); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "case reopen failed"})
+		return
+	}
 	if err := tx.Commit(); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "commit failed"})
 		return
 	}
 	audit.WriteAudit(h.DB, &uid, "void", "ot_bill", &id, map[string]any{
-		"bill_no": billNo, "reason": req.Reason, "was_status": status,
+		"bill_no": billNo, "reason": req.Reason, "was_status": status, "case_id": caseID,
 	})
 	bill, err := loadOtBill(h.DB, id)
 	if err != nil {
@@ -1051,226 +933,12 @@ func (h *OT) printBill(w http.ResponseWriter, r *http.Request, path string) {
 	if err != nil {
 		hosp = &hospitalSettings{HospitalName: "Mudita Hospital"}
 	}
+	var caseItems []otCaseItem
+	if c, loadErr := loadOtCase(h.DB, bill.CaseID); loadErr == nil {
+		caseItems = c.Items
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = w.Write([]byte(renderOtBillHTML(hosp, bill)))
-}
-
-// --- stock helpers ---
-
-func issueItemMAINToReserved(tx *sql.Tx, caseID int64, it otCaseItem, actorUserID int64, caseNo string) error {
-	rows, err := tx.Query(`
-		SELECT id, qty, batch_no, expiry_date FROM item_batches
-		WHERE item_id = ? AND location_code = 'MAIN' AND qty > 0
-		ORDER BY CASE WHEN expiry_date IS NULL OR expiry_date = '' THEN 1 ELSE 0 END,
-		         expiry_date ASC, id ASC
-	`, it.ItemID)
-	if err != nil {
-		return fmt.Errorf("stock query failed")
-	}
-	type take struct {
-		id      int64
-		qty     int64
-		batchNo string
-		expiry  sql.NullString
-	}
-	takes := make([]take, 0)
-	for rows.Next() {
-		var t take
-		if err := rows.Scan(&t.id, &t.qty, &t.batchNo, &t.expiry); err != nil {
-			rows.Close()
-			return fmt.Errorf("stock scan failed")
-		}
-		takes = append(takes, t)
-	}
-	rows.Close()
-
-	var total int64
-	for _, t := range takes {
-		total += t.qty
-	}
-	if total < it.QtyIssued {
-		return fmt.Errorf("insufficient MAIN stock for %s (need %d, have %d)", it.Code, it.QtyIssued, total)
-	}
-
-	remaining := it.QtyIssued
-	reason := fmt.Sprintf("OT issue %s item %s", caseNo, it.Code)
-	for _, t := range takes {
-		if remaining == 0 {
-			break
-		}
-		use := t.qty
-		if use > remaining {
-			use = remaining
-		}
-		if _, err := tx.Exec(`
-			UPDATE item_batches SET qty = qty - ?, updated_at = datetime('now') WHERE id = ?
-		`, use, t.id); err != nil {
-			return fmt.Errorf("MAIN deduct failed")
-		}
-		if _, err := tx.Exec(`
-			INSERT INTO stock_movements (item_id, batch_id, location_code, movement_type, qty_delta, reason, actor_user_id)
-			VALUES (?, ?, 'MAIN', 'ISSUE', ?, ?, ?)
-		`, it.ItemID, t.id, -use, reason, actorUserID); err != nil {
-			return fmt.Errorf("ISSUE movement failed")
-		}
-
-		var expiry *string
-		if t.expiry.Valid && t.expiry.String != "" {
-			e := t.expiry.String
-			expiry = &e
-		}
-		reservedID, err := findOrCreateBatch(tx, it.ItemID, "OT_RESERVED", t.batchNo, expiry, use)
-		if err != nil {
-			return fmt.Errorf("OT_RESERVED batch failed")
-		}
-		if _, err := tx.Exec(`
-			INSERT INTO stock_movements (item_id, batch_id, location_code, movement_type, qty_delta, reason, actor_user_id)
-			VALUES (?, ?, 'OT_RESERVED', 'TRANSFER', ?, ?, ?)
-		`, it.ItemID, reservedID, use, reason, actorUserID); err != nil {
-			return fmt.Errorf("TRANSFER movement failed")
-		}
-		if _, err := tx.Exec(`
-			INSERT INTO ot_case_issue_allocs (case_id, case_item_id, item_id, main_batch_id, reserved_batch_id, qty)
-			VALUES (?, ?, ?, ?, ?, ?)
-		`, caseID, it.ID, it.ItemID, t.id, reservedID, use); err != nil {
-			return fmt.Errorf("alloc failed")
-		}
-		remaining -= use
-	}
-	return nil
-}
-
-func applyOtReconcile(tx *sql.Tx, caseID int64, it otCaseItem, ri otReconcileItem, actorUserID int64, caseNo string) error {
-	rows, err := tx.Query(`
-		SELECT id, main_batch_id, reserved_batch_id, qty
-		FROM ot_case_issue_allocs
-		WHERE case_item_id = ?
-		ORDER BY id ASC
-	`, it.ID)
-	if err != nil {
-		return fmt.Errorf("allocs load failed")
-	}
-	type alloc struct {
-		id, mainBatchID, reservedBatchID, qty int64
-	}
-	allocs := make([]alloc, 0)
-	for rows.Next() {
-		var a alloc
-		if err := rows.Scan(&a.id, &a.mainBatchID, &a.reservedBatchID, &a.qty); err != nil {
-			rows.Close()
-			return fmt.Errorf("alloc scan failed")
-		}
-		allocs = append(allocs, a)
-	}
-	rows.Close()
-
-	needUsed, needRet, needWaste, needKept := ri.QtyUsed, ri.QtyReturned, ri.QtyWasted, ri.QtyKeptOnFloor
-	for _, a := range allocs {
-		left := a.qty
-		// Consume reserved in order: used, wasted, returned, kept.
-		take := func(n *int64) int64 {
-			if *n <= 0 || left <= 0 {
-				return 0
-			}
-			u := *n
-			if u > left {
-				u = left
-			}
-			*n -= u
-			left -= u
-			return u
-		}
-		used := take(&needUsed)
-		wasted := take(&needWaste)
-		returned := take(&needRet)
-		kept := take(&needKept)
-		consume := used + wasted + returned + kept
-		if consume == 0 {
-			continue
-		}
-		res, err := tx.Exec(`
-			UPDATE item_batches SET qty = qty - ?, updated_at = datetime('now') WHERE id = ? AND qty >= ?
-		`, consume, a.reservedBatchID, consume)
-		if err != nil {
-			return fmt.Errorf("OT_RESERVED deduct failed for %s", it.Code)
-		}
-		affected, _ := res.RowsAffected()
-		if affected == 0 {
-			return fmt.Errorf("insufficient OT_RESERVED stock for %s", it.Code)
-		}
-
-		reasonBase := fmt.Sprintf("OT reconcile %s %s", caseNo, it.Code)
-		if used > 0 {
-			if _, err := tx.Exec(`
-				INSERT INTO stock_movements (item_id, batch_id, location_code, movement_type, qty_delta, reason, actor_user_id)
-				VALUES (?, ?, 'OT_RESERVED', 'ISSUE', ?, ?, ?)
-			`, it.ItemID, a.reservedBatchID, -used, reasonBase+" used", actorUserID); err != nil {
-				return fmt.Errorf("used movement failed")
-			}
-		}
-		if wasted > 0 {
-			if _, err := tx.Exec(`
-				INSERT INTO stock_movements (item_id, batch_id, location_code, movement_type, qty_delta, reason, actor_user_id)
-				VALUES (?, ?, 'OT_RESERVED', 'WASTE', ?, ?, ?)
-			`, it.ItemID, a.reservedBatchID, -wasted, reasonBase+" waste", actorUserID); err != nil {
-				return fmt.Errorf("waste movement failed")
-			}
-		}
-		if returned > 0 {
-			if _, err := tx.Exec(`
-				INSERT INTO stock_movements (item_id, batch_id, location_code, movement_type, qty_delta, reason, actor_user_id)
-				VALUES (?, ?, 'OT_RESERVED', 'RETURN', ?, ?, ?)
-			`, it.ItemID, a.reservedBatchID, -returned, reasonBase+" return", actorUserID); err != nil {
-				return fmt.Errorf("return reserved movement failed")
-			}
-			if _, err := tx.Exec(`
-				UPDATE item_batches SET qty = qty + ?, updated_at = datetime('now') WHERE id = ?
-			`, returned, a.mainBatchID); err != nil {
-				return fmt.Errorf("MAIN restore failed")
-			}
-			if _, err := tx.Exec(`
-				INSERT INTO stock_movements (item_id, batch_id, location_code, movement_type, qty_delta, reason, actor_user_id)
-				VALUES (?, ?, 'MAIN', 'RETURN', ?, ?, ?)
-			`, it.ItemID, a.mainBatchID, returned, reasonBase+" return", actorUserID); err != nil {
-				return fmt.Errorf("return MAIN movement failed")
-			}
-		}
-		if kept > 0 {
-			var batchNo string
-			var expiry sql.NullString
-			if err := tx.QueryRow(`
-				SELECT batch_no, expiry_date FROM item_batches WHERE id = ?
-			`, a.reservedBatchID).Scan(&batchNo, &expiry); err != nil {
-				return fmt.Errorf("batch meta failed")
-			}
-			var exp *string
-			if expiry.Valid && expiry.String != "" {
-				e := expiry.String
-				exp = &e
-			}
-			if _, err := tx.Exec(`
-				INSERT INTO stock_movements (item_id, batch_id, location_code, movement_type, qty_delta, reason, actor_user_id)
-				VALUES (?, ?, 'OT_RESERVED', 'TRANSFER', ?, ?, ?)
-			`, it.ItemID, a.reservedBatchID, -kept, reasonBase+" floor", actorUserID); err != nil {
-				return fmt.Errorf("floor transfer out failed")
-			}
-			floorID, err := findOrCreateBatch(tx, it.ItemID, "OT_FLOOR", batchNo, exp, kept)
-			if err != nil {
-				return fmt.Errorf("OT_FLOOR batch failed")
-			}
-			if _, err := tx.Exec(`
-				INSERT INTO stock_movements (item_id, batch_id, location_code, movement_type, qty_delta, reason, actor_user_id)
-				VALUES (?, ?, 'OT_FLOOR', 'TRANSFER', ?, ?, ?)
-			`, it.ItemID, floorID, kept, reasonBase+" floor", actorUserID); err != nil {
-				return fmt.Errorf("floor transfer in failed")
-			}
-		}
-	}
-	if needUsed+needRet+needWaste+needKept != 0 {
-		return fmt.Errorf("alloc mismatch for %s — contact Admin", it.Code)
-	}
-	_ = caseID
-	return nil
+	_, _ = w.Write([]byte(renderOtBillHTML(hosp, bill, caseItems)))
 }
 
 // --- normalize / load helpers ---
@@ -1281,8 +949,15 @@ func normalizeOtCaseItems(in []otCaseItem) ([]otCaseItem, string) {
 		if it.ItemID <= 0 {
 			return nil, "item_id required"
 		}
-		if it.QtyIssued <= 0 {
+		it.SaleUnit = strings.TrimSpace(it.SaleUnit)
+		if it.SaleUnit != "" {
+			if it.SaleQty <= 0 {
+				return nil, "sale_qty must be > 0"
+			}
+		} else if it.QtyIssued <= 0 {
 			return nil, "qty_issued must be > 0"
+		} else {
+			it.SaleQty = 0
 		}
 		it.SortOrder = i
 		out = append(out, it)
@@ -1295,9 +970,15 @@ func enrichOtCaseItems(tx *sql.Tx, items []otCaseItem) error {
 		var code, name string
 		var price int64
 		var active int
+		var l1q, l2q, l3q int64
+		var l1u, l2u, l3u string
 		err := tx.QueryRow(`
-			SELECT code, name, sell_price_mmk, active FROM items WHERE id = ?
-		`, items[i].ItemID).Scan(&code, &name, &price, &active)
+			SELECT code, name, sell_price_mmk, active,
+				COALESCE(pack_l1_qty, 1), COALESCE(pack_l1_unit, ''),
+				COALESCE(pack_l2_qty, 1), COALESCE(pack_l2_unit, ''),
+				COALESCE(pack_l3_qty, 1), COALESCE(pack_l3_unit, '')
+			FROM items WHERE id = ?
+		`, items[i].ItemID).Scan(&code, &name, &price, &active, &l1q, &l1u, &l2q, &l2u, &l3q, &l3u)
 		if err == sql.ErrNoRows {
 			return fmt.Errorf("item not found")
 		}
@@ -1310,6 +991,22 @@ func enrichOtCaseItems(tx *sql.Tx, items []otCaseItem) error {
 		items[i].Code = code
 		items[i].Name = name
 		items[i].SellPriceMMK = price
+		if items[i].SaleUnit != "" {
+			pack := itemPack{L1Qty: l1q, L1Unit: l1u, L2Qty: l2q, L2Unit: l2u, L3Qty: l3q, L3Unit: l3u}
+			factor, canonical, ok := saleUnitFactor(pack, items[i].SaleUnit)
+			if !ok {
+				return fmt.Errorf("%s: unknown unit %s", code, items[i].SaleUnit)
+			}
+			issued := items[i].SaleQty * factor
+			if issued <= 0 || factor == 0 || issued/factor != items[i].SaleQty {
+				return fmt.Errorf("%s: quantity too large", code)
+			}
+			items[i].SaleUnit = canonical
+			items[i].QtyIssued = issued
+		} else {
+			items[i].SaleQty = 0
+			items[i].SaleUnit = ""
+		}
 	}
 	return nil
 }
@@ -1319,9 +1016,10 @@ func insertOtCaseItems(tx *sql.Tx, caseID int64, items []otCaseItem) error {
 		if _, err := tx.Exec(`
 			INSERT INTO ot_case_items (
 				case_id, item_id, code, name, sell_price_mmk, qty_issued,
-				qty_used, qty_returned, qty_wasted, qty_kept_on_floor, sort_order
-			) VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0, 0, ?)
-		`, caseID, it.ItemID, it.Code, it.Name, it.SellPriceMMK, it.QtyIssued, it.SortOrder); err != nil {
+				qty_used, qty_returned, qty_wasted, qty_kept_on_floor, sort_order,
+				sale_qty, sale_unit
+			) VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0, 0, ?, ?, ?)
+		`, caseID, it.ItemID, it.Code, it.Name, it.SellPriceMMK, it.QtyIssued, it.SortOrder, it.SaleQty, it.SaleUnit); err != nil {
 			return err
 		}
 	}
@@ -1352,9 +1050,14 @@ func nextOtBillNo(tx *sql.Tx) (string, error) {
 
 func loadOtCaseItemsTx(tx *sql.Tx, caseID int64) ([]otCaseItem, error) {
 	rows, err := tx.Query(`
-		SELECT id, item_id, code, name, sell_price_mmk, qty_issued, qty_used, qty_returned,
-			qty_wasted, qty_kept_on_floor, sort_order
-		FROM ot_case_items WHERE case_id = ? ORDER BY sort_order, id
+		SELECT c.id, c.item_id, c.code, c.name, c.sell_price_mmk, c.qty_issued, c.sale_qty, c.sale_unit,
+			c.qty_used, c.qty_returned, c.qty_wasted, c.qty_kept_on_floor, c.sort_order,
+			COALESCE(i.pack_l1_qty, 1), COALESCE(i.pack_l1_unit, ''),
+			COALESCE(i.pack_l2_qty, 1), COALESCE(i.pack_l2_unit, ''),
+			COALESCE(i.pack_l3_qty, 1), COALESCE(i.pack_l3_unit, '')
+		FROM ot_case_items c
+		LEFT JOIN items i ON i.id = c.item_id
+		WHERE c.case_id = ? ORDER BY c.sort_order, c.id
 	`, caseID)
 	if err != nil {
 		return nil, err
@@ -1364,8 +1067,9 @@ func loadOtCaseItemsTx(tx *sql.Tx, caseID int64) ([]otCaseItem, error) {
 	for rows.Next() {
 		var it otCaseItem
 		if err := rows.Scan(
-			&it.ID, &it.ItemID, &it.Code, &it.Name, &it.SellPriceMMK, &it.QtyIssued,
+			&it.ID, &it.ItemID, &it.Code, &it.Name, &it.SellPriceMMK, &it.QtyIssued, &it.SaleQty, &it.SaleUnit,
 			&it.QtyUsed, &it.QtyReturned, &it.QtyWasted, &it.QtyKeptOnFloor, &it.SortOrder,
+			&it.PackL1Qty, &it.PackL1Unit, &it.PackL2Qty, &it.PackL2Unit, &it.PackL3Qty, &it.PackL3Unit,
 		); err != nil {
 			return nil, err
 		}
@@ -1452,31 +1156,109 @@ func scanOtCase(row scannable) (otCase, error) {
 	return c, nil
 }
 
-func normalizeOtBillLines(in []otBillLine) ([]otBillLine, int64, string) {
-	out := make([]otBillLine, 0, len(in))
-	var total int64
-	for i, l := range in {
+// otBillServiceLines keeps client service rows. Item and OT-fee rows are rebuilt from the case.
+func otBillServiceLines(in []otBillLine) ([]otBillLine, string) {
+	out := make([]otBillLine, 0)
+	for _, l := range in {
 		l.LineType = strings.TrimSpace(strings.ToLower(l.LineType))
-		if l.LineType != "service" && l.LineType != "item" && l.LineType != "ot_fee" {
-			return nil, 0, "invalid line_type"
+		switch l.LineType {
+		case "item", "ot_fee":
+			continue
+		case "service":
+			out = append(out, l)
+		default:
+			return nil, "invalid line_type"
 		}
-		l.Description = strings.TrimSpace(l.Description)
-		if l.Description == "" {
-			return nil, 0, "line description required"
-		}
-		if l.Qty <= 0 {
-			return nil, 0, "line qty must be > 0"
-		}
-		if l.UnitPriceMMK < 0 {
-			return nil, 0, "unit_price_mmk invalid"
-		}
-		l.Code = strings.TrimSpace(l.Code)
-		l.LineTotalMMK = l.Qty * l.UnitPriceMMK
-		l.SortOrder = i
-		total += l.LineTotalMMK
-		out = append(out, l)
 	}
-	return out, total, ""
+	return out, ""
+}
+
+// buildOtBillLines prices cupboard item lines and the doctor OT fee from the catalog at bill time.
+// Service lines must have a ref_id and take services.price_mmk. Client prices are ignored.
+func buildOtBillLines(tx *sql.Tx, c otCase, services []otBillLine) ([]otBillLine, int64, string) {
+	lines := make([]otBillLine, 0)
+	sort := 0
+	for _, it := range c.Items {
+		if it.QtyIssued <= 0 {
+			continue
+		}
+		var code, name string
+		var price int64
+		err := tx.QueryRow(`
+			SELECT code, name, sell_price_mmk FROM items WHERE id = ?
+		`, it.ItemID).Scan(&code, &name, &price)
+		if err == sql.ErrNoRows {
+			return nil, 0, fmt.Sprintf("item %s not found", it.Code)
+		}
+		if err != nil {
+			return nil, 0, "item load failed"
+		}
+		itemID := it.ItemID
+		lines = append(lines, otBillLine{
+			LineType: "item", RefID: &itemID, Code: code,
+			Description: name, Qty: it.QtyIssued, UnitPriceMMK: price,
+			LineTotalMMK: it.QtyIssued * price, SortOrder: sort,
+		})
+		sort++
+	}
+	if c.DoctorID != nil {
+		var otFee int64
+		err := tx.QueryRow(`
+			SELECT COALESCE(amount_mmk, 0) FROM doctor_fees WHERE doctor_id = ? AND fee_type = 'ot'
+		`, *c.DoctorID).Scan(&otFee)
+		if err != nil && err != sql.ErrNoRows {
+			return nil, 0, "OT fee load failed"
+		}
+		if otFee > 0 {
+			lines = append(lines, otBillLine{
+				LineType: "ot_fee", RefID: c.DoctorID, Code: "OT-FEE",
+				Description: "Doctor OT fee — " + c.DoctorName, Qty: 1, UnitPriceMMK: otFee,
+				LineTotalMMK: otFee, SortOrder: sort,
+			})
+			sort++
+		}
+	}
+	for _, s := range services {
+		lt := strings.TrimSpace(strings.ToLower(s.LineType))
+		if lt != "" && lt != "service" {
+			return nil, 0, "invalid service line"
+		}
+		if s.RefID == nil || *s.RefID == 0 {
+			return nil, 0, "service ref_id required"
+		}
+		if s.Qty <= 0 {
+			return nil, 0, "service qty must be > 0"
+		}
+		var code, name string
+		var price int64
+		var active int
+		err := tx.QueryRow(`
+			SELECT code, name, price_mmk, active FROM services WHERE id = ?
+		`, *s.RefID).Scan(&code, &name, &price, &active)
+		if err == sql.ErrNoRows {
+			return nil, 0, "service not found"
+		}
+		if err != nil {
+			return nil, 0, "service load failed"
+		}
+		if active != 1 {
+			return nil, 0, fmt.Sprintf("service %s is inactive", code)
+		}
+		ref := *s.RefID
+		lines = append(lines, otBillLine{
+			LineType: "service", RefID: &ref, Code: code, Description: name,
+			Qty: s.Qty, UnitPriceMMK: price, LineTotalMMK: s.Qty * price, SortOrder: sort,
+		})
+		sort++
+	}
+	if len(lines) == 0 {
+		return nil, 0, "nothing to bill (no items / OT fee / services)"
+	}
+	var total int64
+	for _, l := range lines {
+		total += l.LineTotalMMK
+	}
+	return lines, total, ""
 }
 
 func insertOtBillLines(tx *sql.Tx, billID int64, lines []otBillLine) error {
@@ -1489,6 +1271,31 @@ func insertOtBillLines(tx *sql.Tx, billID int64, lines []otBillLine) error {
 		}
 	}
 	return nil
+}
+
+func loadOtBillLinesTx(tx *sql.Tx, billID int64) ([]otBillLine, error) {
+	rows, err := tx.Query(`
+		SELECT id, line_type, ref_id, code, description, qty, unit_price_mmk, line_total_mmk, sort_order
+		FROM ot_bill_lines WHERE bill_id = ? ORDER BY sort_order, id
+	`, billID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]otBillLine, 0)
+	for rows.Next() {
+		var l otBillLine
+		var ref sql.NullInt64
+		if err := rows.Scan(&l.ID, &l.LineType, &ref, &l.Code, &l.Description, &l.Qty, &l.UnitPriceMMK, &l.LineTotalMMK, &l.SortOrder); err != nil {
+			return nil, err
+		}
+		if ref.Valid {
+			v := ref.Int64
+			l.RefID = &v
+		}
+		out = append(out, l)
+	}
+	return out, rows.Err()
 }
 
 func loadOtBill(db *sql.DB, id int64) (otBill, error) {
@@ -1612,8 +1419,7 @@ th.num,td.num{text-align:right}
 	}
 	b.WriteString(`</p>`)
 	b.WriteString(`<table><thead><tr>
-<th>Code</th><th>Item</th><th class="num">Issued</th>
-<th class="num">Used</th><th class="num">Returned</th><th class="num">Wasted</th><th class="num">Floor</th>
+<th>Code</th><th>Item</th><th class="num">Qty</th>
 </tr></thead><tbody>`)
 	for _, it := range c.Items {
 		b.WriteString(`<tr><td>`)
@@ -1622,53 +1428,44 @@ th.num,td.num{text-align:right}
 		b.WriteString(html.EscapeString(it.Name))
 		b.WriteString(`</td><td class="num">`)
 		b.WriteString(fmt.Sprintf("%d", it.QtyIssued))
-		b.WriteString(`</td><td class="num">`)
-		if c.Status == "reconciled" || c.Status == "billed" {
-			b.WriteString(fmt.Sprintf("%d", it.QtyUsed))
-		} else {
-			b.WriteString(`____`)
-		}
-		b.WriteString(`</td><td class="num">`)
-		if c.Status == "reconciled" || c.Status == "billed" {
-			b.WriteString(fmt.Sprintf("%d", it.QtyReturned))
-		} else {
-			b.WriteString(`____`)
-		}
-		b.WriteString(`</td><td class="num">`)
-		if c.Status == "reconciled" || c.Status == "billed" {
-			b.WriteString(fmt.Sprintf("%d", it.QtyWasted))
-		} else {
-			b.WriteString(`____`)
-		}
-		b.WriteString(`</td><td class="num">`)
-		if c.Status == "reconciled" || c.Status == "billed" {
-			b.WriteString(fmt.Sprintf("%d", it.QtyKeptOnFloor))
-		} else {
-			b.WriteString(`____`)
-		}
 		b.WriteString(`</td></tr>`)
 	}
 	b.WriteString(`</tbody></table>`)
-	b.WriteString(`<div class="sign"><p>Issued by: ________________ &nbsp;&nbsp; Received (OT): ________________</p>`)
-	b.WriteString(`<p>Reconciled by: ________________ &nbsp;&nbsp; Date: ________________</p></div>`)
+	b.WriteString(`<div class="sign"><p>Prepared by: ________________ &nbsp;&nbsp; Date: ________________</p></div>`)
 	b.WriteString(`</body></html>`)
 	return b.String()
 }
 
-func renderOtBillHTML(hosp *hospitalSettings, bill otBill) string {
+func renderOtBillHTML(hosp *hospitalSettings, bill otBill, caseItems []otCaseItem) string {
 	dateLabel := bill.CreatedAt
 	if bill.PaidAt != nil {
 		dateLabel = *bill.PaidAt
 	}
+	used := map[int]bool{}
 	lines := make([]receiptLine, 0, len(bill.Lines))
 	for _, line := range bill.Lines {
-		lines = append(lines, receiptLine{
+		rl := receiptLine{
 			Code:        line.Code,
 			Description: line.Description,
 			Qty:         line.Qty,
 			UnitPrice:   line.UnitPriceMMK,
 			LineTotal:   line.LineTotalMMK,
-		})
+		}
+		if line.LineType == "item" && line.RefID != nil {
+			for i, it := range caseItems {
+				if used[i] || it.ItemID != *line.RefID {
+					continue
+				}
+				used[i] = true
+				if strings.TrimSpace(it.SaleUnit) != "" && it.SaleQty > 0 {
+					rl.Qty = it.SaleQty
+					rl.Unit = it.SaleUnit
+					rl.UnitPrice = line.LineTotalMMK / it.SaleQty
+				}
+				break
+			}
+		}
+		lines = append(lines, rl)
 	}
 	return renderThermalReceiptHTML(hosp, receiptBill{
 		Title:         "OT RECEIPT",

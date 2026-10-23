@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -78,35 +79,40 @@ func (h *Demo) seed(w http.ResponseWriter, r *http.Request) {
 
 	docID, n, err := ensureTrainingDoctor(tx)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		log.Printf("demo seed doctor: %v", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "training data failed"})
 		return
 	}
 	created["doctors"] = n
 
 	svcID, n, err := ensureTrainingService(tx)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		log.Printf("demo seed service: %v", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "training data failed"})
 		return
 	}
 	created["services"] = n
 
 	itemIDs, n, err := ensureTrainingItems(tx, uid)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		log.Printf("demo seed items: %v", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "training data failed"})
 		return
 	}
 	created["items"] = n
 
 	billN, err := ensureTrainingOpdBill(tx, uid, docID, svcID, itemIDs)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		log.Printf("demo seed opd bill: %v", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "training data failed"})
 		return
 	}
 	created["opd_bills"] = billN
 
 	phN, err := ensureTrainingPharmacyBill(tx, uid, itemIDs)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		log.Printf("demo seed pharmacy bill: %v", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "training data failed"})
 		return
 	}
 	created["pharmacy_bills"] = phN

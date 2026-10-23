@@ -22,14 +22,14 @@ export function HelpOverlay({ onClose, t }: { onClose: () => void; t: (k: string
           </ol>
           <h3>OT</h3>
           <ol>
-            <li>New case → Issue → print pick list</li>
-            <li>Reconcile Used / Returned / Wasted / Floor</li>
-            <li>OT bill → Pay → Print</li>
+            <li>Pharmacy sends a batch to the OT cupboard</li>
+            <li>OT bill uses cupboard on hand → Pay cash (qty drops) → Print</li>
+            <li>Return unused qty to pharmacy. Void puts paid qty back</li>
           </ol>
           <h3>Pharmacy</h3>
           <ol>
             <li>Search code → Restock (create item if unknown)</li>
-            <li>Reports → Low stock / Near expiry</li>
+            <li>View a MAIN batch → Send to OT. Low stock / near expiry are MAIN only</li>
           </ol>
           <h3>Shortcuts</h3>
           <ul>

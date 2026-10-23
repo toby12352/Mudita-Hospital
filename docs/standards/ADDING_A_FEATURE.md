@@ -17,13 +17,14 @@ Use this checklist for a **new domain** (e.g. Lab billing) or a substantial exte
 ### 1. Schema
 
 - [ ] Add a named migration in `server/internal/db/migrate.go`
+- [ ] Migration is additive and keeps existing hospital rows (see [UPGRADES.md](./UPGRADES.md))
 - [ ] Seed defaults in `seed.go` only if first-run data is required
 - [ ] Use `snake_case` columns and `*_mmk` for money
 
 ### 2. Permissions
 
 - [ ] Add `Perm*` in `server/internal/auth/roles.go` if this is a new capability
-- [ ] Assign roles (Admin / Reception / Pharmacy) deliberately
+- [ ] Assign roles (Admin / OPD / OT / Pharmacy) deliberately
 - [ ] Gate every mutating (and most read) route with `RequirePermission`
 
 ### 3. Handler + routes

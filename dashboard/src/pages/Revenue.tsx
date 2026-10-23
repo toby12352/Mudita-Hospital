@@ -30,6 +30,7 @@ type Props = {
 
 const ACCENT = "#1b6bc7";
 const OT_BLUE = "#4a90c8";
+const PHARM = "#1f7a4d";
 const MUTED = "#6b7280";
 const GRID = "rgba(26, 31, 46, 0.08)";
 
@@ -162,7 +163,14 @@ export function RevenuePage({ t }: Props) {
                 />
                 <Legend />
                 <Bar dataKey="opd_total_mmk" name={t("opdCash")} stackId="cash" fill={ACCENT} radius={[0, 0, 0, 0]} />
-                <Bar dataKey="ot_total_mmk" name={t("otCash")} stackId="cash" fill={OT_BLUE} radius={[3, 3, 0, 0]} />
+                <Bar dataKey="ot_total_mmk" name={t("otCash")} stackId="cash" fill={OT_BLUE} />
+                <Bar
+                  dataKey="pharmacy_total_mmk"
+                  name={t("pharmacyCash")}
+                  stackId="cash"
+                  fill={PHARM}
+                  radius={[3, 3, 0, 0]}
+                />
               </BarChart>
             </ResponsiveContainer>
             <ResponsiveContainer width="100%" height={160}>

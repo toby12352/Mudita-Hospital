@@ -13,6 +13,30 @@ export const ITEM_CATEGORIES = [
 
 export type ItemCategory = (typeof ITEM_CATEGORIES)[number];
 
+/** Full pharmacy unit list (parent, child, and smallest unit). */
+export const PHARMACY_UNITS = [
+  "Box",
+  "Carton",
+  "Bottle",
+  "Vial",
+  "Ampoule",
+  "Piece",
+  "Tablet",
+  "Capsule",
+  "Tube",
+  "Cylinder",
+  "Bag",
+  "Each",
+  "mL",
+  "g",
+  "oz",
+  "Strip",
+  "Card",
+] as const;
+
+export type PharmacyUnit = (typeof PHARMACY_UNITS)[number];
+
+/** @deprecated Prefer PHARMACY_UNITS — kept for callers that still filter by level. */
 export const PACK_L1_UNITS = ["Box", "Bottle"] as const;
 export const PACK_L2_UNITS = ["Strip", "Card"] as const;
 export const PACK_L3_UNITS = ["Tablet", "Capsule", "mL"] as const;
@@ -28,6 +52,26 @@ export type ItemPack = {
   pack_l2_unit: string;
   pack_l3_qty: number;
   pack_l3_unit: string;
+};
+
+/** One packing relation: parent contains packing of child. */
+export type PackRelation = {
+  parent: string;
+  packing: number;
+  child: string;
+};
+
+/** Visible pack chain after collapsing pass-through levels. */
+export type PackLevels = {
+  units: string[];
+  /** Qty of next unit inside each unit except the last. Length = units.length - 1. */
+  qtys: number[];
+};
+
+export type PackPriceSlot = {
+  unit: string;
+  buy_mmk: number;
+  sell_mmk: number;
 };
 
 export function defaultItemPack(): ItemPack {
@@ -75,8 +119,325 @@ export function lineChargeFromPack(
   return { total, charge: total * (sellPerTablet || 0) };
 }
 
+function shortUnit(unit: string): string {
+  const u = unit.trim().toLowerCase();
+  if (u === "box") return "Bx";
+  if (u === "carton") return "Ctn";
+  if (u === "strip") return "St";
+  if (u === "card") return "Crd";
+  if (u === "tablet") return "t";
+  if (u === "capsule") return "cap";
+  if (u === "ml") return "ml";
+  if (u === "bottle") return "Bot";
+  if (u === "vial") return "Vial";
+  if (u === "ampoule") return "Amp";
+  if (u === "piece") return "Pc";
+  if (u === "tube") return "Tube";
+  if (u === "cylinder") return "Cyl";
+  if (u === "bag") return "Bag";
+  if (u === "each") return "Ea";
+  if (u === "g") return "g";
+  if (u === "oz") return "oz";
+  return unit.slice(0, 3) || "u";
+}
+
+/** Collapse stored 3-level pack into visible units (1–3), hiding pass-through L3. */
+export function packLevelsFromItemPack(p: ItemPack): PackLevels {
+  const l1 = (p.pack_l1_unit || "Box").trim() || "Box";
+  const l2 = (p.pack_l2_unit || "Strip").trim() || "Strip";
+  const l3 = (p.pack_l3_unit || "Tablet").trim() || "Tablet";
+  const q2 = Math.max(1, p.pack_l2_qty || 1);
+  const q3 = Math.max(1, p.pack_l3_qty || 1);
+
+  // Single unit: Tube = Tube (stored as L1=Tube, L2=1 Tube, L3=1 Tube)
+  if (l1 === l2 && l2 === l3 && q2 === 1 && q3 === 1) {
+    return { units: [l1], qtys: [] };
+  }
+  // Two units: Box → Tablet (L3 qty 1 and L3 unit matches L2 — pass-through)
+  if (q3 === 1 && l2 === l3) {
+    return { units: [l1, l2], qtys: [q2] };
+  }
+  // Two units where L1 equals L2 (odd legacy) — treat as L1 → L3
+  if (l1 === l2 && q2 === 1) {
+    return { units: [l1, l3], qtys: [q3] };
+  }
+  return { units: [l1, l2, l3], qtys: [q2, q3] };
+}
+
+/** Expand visible relations + smallest unit into the stored three-level pack. */
+export function itemPackFromRelations(
+  relations: PackRelation[],
+  smallestUnit: string,
+): ItemPack | { error: string } {
+  const smallest = smallestUnit.trim();
+  if (!smallest) return { error: "smallest unit required" };
+  const rows = relations.filter((r) => r.parent.trim() && r.child.trim() && r.packing >= 1);
+  if (rows.length === 0) {
+    // One unit only
+    return {
+      pack_l1_qty: 1,
+      pack_l1_unit: smallest,
+      pack_l2_qty: 1,
+      pack_l2_unit: smallest,
+      pack_l3_qty: 1,
+      pack_l3_unit: smallest,
+    };
+  }
+  const last = rows[rows.length - 1];
+  if (last.child.trim() !== smallest) {
+    return { error: "last child must match smallest unit" };
+  }
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i].parent.trim() !== rows[i - 1].child.trim()) {
+      return { error: "pack chain must link parent to previous child" };
+    }
+  }
+  if (rows.length === 1) {
+    // Outer → smallest; pass-through L3
+    return {
+      pack_l1_qty: 1,
+      pack_l1_unit: rows[0].parent.trim(),
+      pack_l2_qty: Math.max(1, rows[0].packing),
+      pack_l2_unit: rows[0].child.trim(),
+      pack_l3_qty: 1,
+      pack_l3_unit: rows[0].child.trim(),
+    };
+  }
+  if (rows.length === 2) {
+    return {
+      pack_l1_qty: 1,
+      pack_l1_unit: rows[0].parent.trim(),
+      pack_l2_qty: Math.max(1, rows[0].packing),
+      pack_l2_unit: rows[0].child.trim(),
+      pack_l3_qty: Math.max(1, rows[1].packing),
+      pack_l3_unit: rows[1].child.trim(),
+    };
+  }
+  return { error: "at most two packing relations" };
+}
+
+/** Relations for the packing-size editor, derived from a stored pack. */
+export function relationsFromItemPack(p: ItemPack): {
+  smallest: string;
+  relations: PackRelation[];
+} {
+  const levels = packLevelsFromItemPack(p);
+  const smallest = levels.units[levels.units.length - 1];
+  if (levels.units.length === 1) {
+    return { smallest, relations: [] };
+  }
+  const relations: PackRelation[] = [];
+  for (let i = 0; i < levels.qtys.length; i++) {
+    relations.push({
+      parent: levels.units[i],
+      packing: levels.qtys[i],
+      child: levels.units[i + 1],
+    });
+  }
+  return { smallest, relations };
+}
+
+export function formatPackLevelsPreview(levels: PackLevels): string {
+  if (levels.units.length === 0) return "";
+  if (levels.units.length === 1) return `1 ${levels.units[0]}`;
+  const parts: string[] = [];
+  for (let i = 0; i < levels.qtys.length; i++) {
+    parts.push(`1 ${levels.units[i]} = ${levels.qtys[i]} ${levels.units[i + 1]}`);
+  }
+  return parts.join(" · ");
+}
+
 export function formatPackPreview(p: ItemPack): string {
-  return `1 ${p.pack_l1_unit} = ${p.pack_l2_qty} ${p.pack_l2_unit} · 1 ${p.pack_l2_unit} = ${p.pack_l3_qty} ${p.pack_l3_unit}`;
+  return formatPackLevelsPreview(packLevelsFromItemPack(p));
+}
+
+/** Compact packing label like 1Bx*10Crd*10t (skips pass-through levels). */
+export function formatPackCompact(p: ItemPack): string {
+  const levels = packLevelsFromItemPack(p);
+  if (levels.units.length === 1) return `1${shortUnit(levels.units[0])}`;
+  let out = `1${shortUnit(levels.units[0])}`;
+  for (let i = 0; i < levels.qtys.length; i++) {
+    out += `*${levels.qtys[i]}${shortUnit(levels.units[i + 1])}`;
+  }
+  return out;
+}
+
+/** Which billing qty inputs are meaningful (hide pass-through strip/tablet). */
+export function packBillingSlots(p: ItemPack): {
+  showL1: boolean;
+  showL2: boolean;
+  showL3: boolean;
+} {
+  const levels = packLevelsFromItemPack(p);
+  if (levels.units.length === 1) {
+    return { showL1: true, showL2: false, showL3: false };
+  }
+  if (levels.units.length === 2) {
+    // Stored as L1 → L2 with L3 pass-through: show L1 and L2 (L2 is smallest)
+    return { showL1: true, showL2: true, showL3: false };
+  }
+  return { showL1: true, showL2: true, showL3: true };
+}
+
+function roundHalfUp(n: number): number {
+  return Math.round(n);
+}
+
+/**
+ * Price rows for each visible unit.
+ * buyOuter / sellOuter are prices for the outermost unit; children divide by packing qty.
+ * When editing from stored sell_per_smallest, pass sellOuter = sell_per_smallest * unitsPerOuter.
+ */
+export function packPriceSlots(
+  levels: PackLevels,
+  buyOuter: number,
+  sellOuter: number,
+): PackPriceSlot[] {
+  if (levels.units.length === 0) return [];
+  const slots: PackPriceSlot[] = [];
+  let buy = Math.max(0, buyOuter || 0);
+  let sell = Math.max(0, sellOuter || 0);
+  slots.push({ unit: levels.units[0], buy_mmk: roundHalfUp(buy), sell_mmk: roundHalfUp(sell) });
+  for (let i = 0; i < levels.qtys.length; i++) {
+    const q = Math.max(1, levels.qtys[i]);
+    buy = buy / q;
+    sell = sell / q;
+    slots.push({
+      unit: levels.units[i + 1],
+      buy_mmk: roundHalfUp(buy),
+      sell_mmk: roundHalfUp(sell),
+    });
+  }
+  return slots;
+}
+
+/** Outer sale price reconstructed from stored sell-per-smallest. */
+export function sellOuterFromSmallest(p: ItemPack, sellPerSmallest: number): number {
+  return Math.max(0, sellPerSmallest || 0) * tabletsPerBox(p);
+}
+
+/** Which of box_qty / strip_qty / tablet_qty holds a chosen sale unit. */
+export type SaleQtySlot = "box" | "strip" | "tablet";
+
+/** One visible pack level the cashier can sell. Price is per that unit. */
+export type SaleUnit = {
+  id: string;
+  label: string;
+  /** Smallest units inside one of this unit. */
+  factor: number;
+  price_mmk: number;
+  slot: SaleQtySlot;
+};
+
+/**
+ * Visible sale units for a pack.
+ * price_mmk = sell-per-smallest × how many smallest units that level contains.
+ * Two-level packs put the smallest count in the slot packBillingSlots shows
+ * (strip for a pass-through L3, tablet when the stored smallest is L3) so the
+ * server total is not counted twice.
+ */
+export function saleUnitsFromPack(pack: ItemPack, sellPerSmallest: number): SaleUnit[] {
+  const levels = packLevelsFromItemPack(pack);
+  const sell = Math.max(0, Math.floor(sellPerSmallest || 0));
+  const l1 = (pack.pack_l1_unit || "Box").trim() || "Box";
+  const l2 = (pack.pack_l2_unit || "Strip").trim() || "Strip";
+  const l3 = (pack.pack_l3_unit || "Tablet").trim() || "Tablet";
+  const q2 = Math.max(1, pack.pack_l2_qty || 1);
+  const q3 = Math.max(1, pack.pack_l3_qty || 1);
+
+  let slots: SaleQtySlot[];
+  if (levels.units.length <= 1) {
+    slots = ["box"];
+  } else if (q3 === 1 && l2 === l3) {
+    slots = ["box", "strip"];
+  } else if (l1 === l2 && q2 === 1) {
+    slots = ["box", "tablet"];
+  } else {
+    slots = ["box", "strip", "tablet"];
+  }
+
+  const factors = new Array<number>(levels.units.length);
+  let factor = 1;
+  for (let i = levels.units.length - 1; i >= 0; i--) {
+    factors[i] = factor;
+    if (i > 0) factor *= Math.max(1, levels.qtys[i - 1] || 1);
+  }
+
+  return levels.units.map((unit, i) => ({
+    id: unit,
+    label: unit,
+    factor: factors[i] ?? 1,
+    price_mmk: sell * (factors[i] ?? 1),
+    slot: slots[i] ?? "tablet",
+  }));
+}
+
+/** One pack field set, the other two zero. */
+export function packQtysForSale(
+  unit: SaleUnit,
+  qty: number,
+): { box_qty: number; strip_qty: number; tablet_qty: number } {
+  const n = Math.max(0, Math.floor(qty) || 0);
+  return {
+    box_qty: unit.slot === "box" ? n : 0,
+    strip_qty: unit.slot === "strip" ? n : 0,
+    tablet_qty: unit.slot === "tablet" ? n : 0,
+  };
+}
+
+/**
+ * How a saved pharmacy line should appear in the grid.
+ * Exactly one of box/strip/tablet is editable in that unit.
+ * Two or more stay locked on the smallest-unit qty so a later save does not split them.
+ */
+export function pharmacyLineSaleView(line: {
+  box_qty?: number;
+  strip_qty?: number;
+  tablet_qty?: number;
+  billing_qty: number;
+  unit_price_mmk: number;
+  pack_l1_qty?: number;
+  pack_l1_unit?: string;
+  pack_l2_qty?: number;
+  pack_l2_unit?: string;
+  pack_l3_qty?: number;
+  pack_l3_unit?: string;
+}): {
+  qty: number;
+  unitId: string | null;
+  units: SaleUnit[];
+  priceMmk: number;
+  locked: boolean;
+} {
+  const units = saleUnitsFromPack(packFromItem(line), line.unit_price_mmk);
+  const slots: SaleQtySlot[] = [];
+  if ((line.box_qty ?? 0) > 0) slots.push("box");
+  if ((line.strip_qty ?? 0) > 0) slots.push("strip");
+  if ((line.tablet_qty ?? 0) > 0) slots.push("tablet");
+  const smallest = {
+    qty: line.billing_qty,
+    unitId: null as string | null,
+    units: [] as SaleUnit[],
+    priceMmk: line.unit_price_mmk,
+    locked: slots.length > 1,
+  };
+  if (slots.length !== 1) return smallest;
+  const unit = units.find((u) => u.slot === slots[0]);
+  if (!unit) return { ...smallest, locked: true };
+  const qty =
+    slots[0] === "box"
+      ? (line.box_qty ?? 0)
+      : slots[0] === "strip"
+        ? (line.strip_qty ?? 0)
+        : (line.tablet_qty ?? 0);
+  if (qty < 1) return { ...smallest, locked: true };
+  return {
+    qty,
+    unitId: unit.id,
+    units,
+    priceMmk: unit.price_mmk,
+    locked: false,
+  };
 }
 
 export function packFromItem(item: {
@@ -317,6 +678,13 @@ export type PharmacyBillLine = {
   unit_price_mmk: number;
   line_total_mmk: number;
   sort_order: number;
+  /** Joined from the item on read so a reloaded line can name its unit. */
+  pack_l1_qty?: number;
+  pack_l1_unit?: string;
+  pack_l2_qty?: number;
+  pack_l2_unit?: string;
+  pack_l3_qty?: number;
+  pack_l3_unit?: string;
 };
 
 export type PharmacyBill = {
@@ -337,9 +705,17 @@ export type PharmacyBill = {
   lines?: PharmacyBillLine[];
 };
 
-export async function listPharmacyItems(q = ""): Promise<PharmacyItem[]> {
-  const qs = q ? `?q=${encodeURIComponent(q)}&all=1` : "?all=1";
-  const res = await apiFetch<{ items: PharmacyItem[] }>(`/api/pharmacy/items${qs}`);
+export async function listPharmacyItems(
+  q = "",
+  opts?: { includeInactive?: boolean },
+): Promise<PharmacyItem[]> {
+  const params = new URLSearchParams();
+  if (q.trim()) params.set("q", q.trim());
+  if (opts?.includeInactive) params.set("all", "1");
+  const qs = params.toString();
+  const res = await apiFetch<{ items: PharmacyItem[] }>(
+    `/api/pharmacy/items${qs ? `?${qs}` : ""}`,
+  );
   return res.items;
 }
 
@@ -407,6 +783,26 @@ export async function restockItem(
   return apiFetch<PharmacyItem>(`/api/pharmacy/items/${id}/restock`, {
     method: "POST",
     body: JSON.stringify(body),
+  });
+}
+
+export type StockTransfer = {
+  id: number;
+  direction: "TO_OT" | "TO_PHARMACY";
+  item_id: number;
+  pharmacy_batch_id: number;
+  ot_batch_id: number;
+  batch_no: string;
+  expiry_date: string | null;
+  qty: number;
+  pharmacy_qty: number;
+  ot_qty: number;
+};
+
+export async function transferBatchToOt(batchId: number, qty: number): Promise<StockTransfer> {
+  return apiFetch<StockTransfer>("/api/pharmacy/transfers", {
+    method: "POST",
+    body: JSON.stringify({ batch_id: batchId, qty }),
   });
 }
 
@@ -489,11 +885,14 @@ export async function voidPharmacyBill(id: number, reason: string): Promise<Phar
   });
 }
 
-export async function printPharmacyBill(id: number): Promise<void> {
+export async function printPharmacyBill(
+  id: number,
+  opts?: { onPrinted?: () => void | Promise<void> },
+): Promise<void> {
   return fetchAndPreviewPrint(
     `/api/pharmacy/bills/${id}/print`,
     getApiBase,
     getStoredToken,
-    { title: "Pharmacy receipt", receipt: true },
+    { title: "Pharmacy receipt", receipt: true, onPrinted: opts?.onPrinted },
   );
 }

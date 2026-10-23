@@ -1,3 +1,5 @@
+import { userMessage } from "./errors";
+
 /** In-app print preview — avoids window.open (blocked in Tauri WebView2). */
 
 export type PrintPreviewOptions = {
@@ -105,7 +107,7 @@ export async function fetchAndPreviewPrint(
   });
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(text || `print failed (${res.status})`);
+    throw new Error(userMessage(text || `print failed (${res.status})`, res.status));
   }
   const html = await res.text();
   openPrintPreview(html, opts);

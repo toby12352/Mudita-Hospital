@@ -1,383 +1,176 @@
-import { useEffect, useRef, useState } from "react";
-import type { NavIntent, View } from "./types";
-
-export type NavSectionId =
-  | "home"
-  | "registration"
-  | "opd"
-  | "ot"
-  | "pharmacy"
-  | "maintenance"
-  | "settings";
+import type { NavIntent, NavSectionId, PortalId, View } from "./types";
 
 type NavAction =
   | { kind: "navigate"; view: View; intent?: NavIntent }
-  | { kind: "help" }
-  | { kind: "logout" };
+  | { kind: "back" };
 
-type MenuItem = {
-  id: string;
-  labelKey: string;
-  action: NavAction;
-  enabled: boolean;
-};
-
-type NavEntry = {
+type RadioEntry = {
   id: NavSectionId;
   labelKey: string;
   enabled: boolean;
-  /** Direct click destination (Home, or section default e.g. create-bill). */
-  action?: NavAction;
-  items?: MenuItem[];
+  action: NavAction;
 };
 
-function sectionForView(view: View, fallback: NavSectionId): NavSectionId {
-  if (view === "home") return "home";
-  if (view === "opd") return "opd";
-  if (view === "ot") return "ot";
+function sectionForView(view: View, intent: NavIntent, fallback: NavSectionId): NavSectionId {
+  if (view === "opd") {
+    const screen = intent.opdScreen ?? "bill";
+    if (screen === "doctors" || screen === "services") return "opd_maintenance";
+    return "opd";
+  }
+  if (view === "ot") {
+    const mode = intent.otMode ?? "case";
+    if (mode === "list") return "ot_history";
+    if (mode === "stock") return "ot_stock";
+    return "ot_bill";
+  }
   if (view === "pharmacy_billing") return "pharmacy";
-  if (view === "pharmacy") {
-    if (fallback === "registration" || fallback === "maintenance") return fallback;
-    return "maintenance";
-  }
-  if (view === "settings") {
-    if (fallback === "registration" || fallback === "maintenance" || fallback === "settings") {
-      return fallback;
-    }
-    return "settings";
-  }
+  if (view === "pharmacy") return "stock";
+  if (view === "settings") return "settings";
   return fallback;
 }
 
-function menuItemActive(
-  item: MenuItem,
-  view: View,
-  intent: NavIntent,
-  sectionActive: boolean,
-): boolean {
-  if (!sectionActive || item.action.kind !== "navigate") return false;
-  const a = item.action;
-  if (a.view !== view) return false;
-  if (view === "settings") {
-    return (a.intent?.settingsTab ?? "hospital") === (intent.settingsTab ?? "hospital");
-  }
-  if (view === "pharmacy") {
-    return (a.intent?.pharmacyScreen ?? "browse") === (intent.pharmacyScreen ?? "browse");
-  }
-  if (view === "opd" || view === "pharmacy_billing") {
-    return (a.intent?.billingMode ?? "list") === (intent.billingMode ?? "list");
-  }
-  if (view === "ot") {
-    return (a.intent?.otMode ?? "list") === (intent.otMode ?? "list");
-  }
-  return true;
-}
-
-export function AppNavBar({
-  view,
-  navIntent,
-  activeSection,
-  canSettings,
-  canPharmacy,
-  canOPD,
-  canOT,
-  onNavigate,
-  onHelp,
-  onLogout,
-  t,
-}: {
-  view: View;
-  navIntent: NavIntent;
-  activeSection: NavSectionId;
-  canSettings: boolean;
-  canPharmacy: boolean;
-  canOPD: boolean;
-  canOT: boolean;
-  onNavigate: (view: View, intent: NavIntent | undefined, section: NavSectionId) => void;
-  onHelp: () => void;
-  onLogout: () => void;
-  t: (k: string) => string;
-}) {
-  const [openId, setOpenId] = useState<string | null>(null);
-  const rootRef = useRef<HTMLElement>(null);
-  const currentSection = sectionForView(view, activeSection);
-
-  useEffect(() => {
-    function onDoc(e: MouseEvent) {
-      if (!rootRef.current?.contains(e.target as Node)) setOpenId(null);
-    }
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpenId(null);
-    }
-    document.addEventListener("mousedown", onDoc);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDoc);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, []);
-
-  const entries: NavEntry[] = [
-    {
-      id: "home",
-      labelKey: "home",
-      enabled: true,
-      action: { kind: "navigate", view: "home" },
-    },
-    {
-      id: "registration",
-      labelKey: "navRegistration",
-      enabled: canSettings || canPharmacy,
-      items: [
-        {
-          id: "reg-doctor",
-          labelKey: "navDoctorRegistration",
-          enabled: canSettings,
-          action: { kind: "navigate", view: "settings", intent: { settingsTab: "doctors" } },
+function entriesFor(portal: PortalId): RadioEntry[] {
+  if (portal === "opd") {
+    return [
+      {
+        id: "opd",
+        labelKey: "navOpd",
+        enabled: true,
+        action: {
+          kind: "navigate",
+          view: "opd",
+          intent: { opdScreen: "bill", billingMode: "edit" },
         },
-        {
-          id: "reg-opd-svc",
-          labelKey: "navOpdServiceRegistration",
-          enabled: canSettings,
-          action: { kind: "navigate", view: "settings", intent: { settingsTab: "services" } },
-        },
-        {
-          id: "reg-ot-svc",
-          labelKey: "navOtServiceRegistration",
-          enabled: canSettings,
-          action: { kind: "navigate", view: "settings", intent: { settingsTab: "services" } },
-        },
-        {
-          id: "reg-pharm",
-          labelKey: "navPharmacyStockRegistration",
-          enabled: canPharmacy,
-          action: {
-            kind: "navigate",
-            view: "pharmacy",
-            intent: { pharmacyScreen: "form" },
-          },
-        },
-      ],
-    },
-    {
-      id: "opd",
-      labelKey: "opd",
-      enabled: canOPD,
-      action: { kind: "navigate", view: "opd", intent: { billingMode: "edit" } },
-      items: [
-        {
-          id: "opd-new",
-          labelKey: "navCreateNewBill",
-          enabled: canOPD,
-          action: { kind: "navigate", view: "opd", intent: { billingMode: "edit" } },
-        },
-        {
-          id: "opd-hist",
-          labelKey: "navCheckHistory",
-          enabled: canOPD,
-          action: { kind: "navigate", view: "opd", intent: { billingMode: "list" } },
-        },
-      ],
-    },
-    {
-      id: "ot",
-      labelKey: "ot",
-      enabled: canOT,
-      action: { kind: "navigate", view: "ot", intent: { otMode: "case" } },
-      items: [
-        {
-          id: "ot-new",
-          labelKey: "navCreateNewBill",
-          enabled: canOT,
-          action: { kind: "navigate", view: "ot", intent: { otMode: "case" } },
-        },
-        {
-          id: "ot-hist",
-          labelKey: "navCheckHistory",
-          enabled: canOT,
-          action: { kind: "navigate", view: "ot", intent: { otMode: "list" } },
-        },
-      ],
-    },
-    {
-      id: "pharmacy",
-      labelKey: "pharmacy",
-      enabled: canPharmacy,
-      action: {
-        kind: "navigate",
-        view: "pharmacy_billing",
-        intent: { billingMode: "edit" },
       },
-      items: [
-        {
-          id: "pharm-new",
-          labelKey: "navCreateNewBill",
-          enabled: canPharmacy,
-          action: {
-            kind: "navigate",
-            view: "pharmacy_billing",
-            intent: { billingMode: "edit" },
-          },
+      {
+        id: "opd_maintenance",
+        labelKey: "navMaintenance",
+        enabled: true,
+        action: {
+          kind: "navigate",
+          view: "opd",
+          intent: { opdScreen: "doctors" },
         },
-        {
-          id: "pharm-hist",
-          labelKey: "navCheckHistory",
-          enabled: canPharmacy,
-          action: {
-            kind: "navigate",
-            view: "pharmacy_billing",
-            intent: { billingMode: "list" },
-          },
+      },
+    ];
+  }
+  if (portal === "ot") {
+    return [
+      {
+        id: "ot_bill",
+        labelKey: "navOtBill",
+        enabled: true,
+        action: { kind: "navigate", view: "ot", intent: { otMode: "case" } },
+      },
+      {
+        id: "ot_history",
+        labelKey: "navOtHistory",
+        enabled: true,
+        action: { kind: "navigate", view: "ot", intent: { otMode: "list" } },
+      },
+      {
+        id: "ot_stock",
+        labelKey: "navOtCupboard",
+        enabled: true,
+        action: { kind: "navigate", view: "ot", intent: { otMode: "stock" } },
+      },
+    ];
+  }
+  if (portal === "pharmacy") {
+    return [
+      {
+        id: "pharmacy",
+        labelKey: "navSales",
+        enabled: true,
+        action: {
+          kind: "navigate",
+          view: "pharmacy_billing",
+          intent: { billingMode: "edit" },
         },
-      ],
-    },
-    {
-      id: "maintenance",
-      labelKey: "navMaintenance",
-      enabled: canSettings || canPharmacy,
-      items: [
-        {
-          id: "mnt-pharm",
-          labelKey: "navEditPharmacyStock",
-          enabled: canPharmacy,
-          action: {
-            kind: "navigate",
-            view: "pharmacy",
-            intent: { pharmacyScreen: "browse" },
-          },
+      },
+      {
+        id: "stock",
+        labelKey: "navMaintenance",
+        enabled: true,
+        action: {
+          kind: "navigate",
+          view: "pharmacy",
+          intent: { pharmacyScreen: "browse" },
         },
-        {
-          id: "mnt-svc",
-          labelKey: "navEditServicePrice",
-          enabled: canSettings,
-          action: { kind: "navigate", view: "settings", intent: { settingsTab: "services" } },
-        },
-        {
-          id: "mnt-doc",
-          labelKey: "navEditDoctor",
-          enabled: canSettings,
-          action: { kind: "navigate", view: "settings", intent: { settingsTab: "doctors" } },
-        },
-      ],
-    },
+      },
+    ];
+  }
+  return [
     {
       id: "settings",
       labelKey: "settings",
       enabled: true,
-      action: canSettings
-        ? {
-            kind: "navigate",
-            view: "settings",
-            intent: { settingsTab: "hospital" },
-          }
-        : undefined,
-      items: [
-        {
-          id: "set-hospital",
-          labelKey: "navHospitalSettings",
-          enabled: canSettings,
-          action: {
-            kind: "navigate",
-            view: "settings",
-            intent: { settingsTab: "hospital" },
-          },
-        },
-        {
-          id: "set-help",
-          labelKey: "help",
-          enabled: true,
-          action: { kind: "help" },
-        },
-        {
-          id: "set-logout",
-          labelKey: "logOut",
-          enabled: true,
-          action: { kind: "logout" },
-        },
-      ],
+      action: { kind: "navigate", view: "settings", intent: { settingsTab: "hospital" } },
     },
   ];
+}
+
+export function AppNavBar({
+  portal,
+  showBack,
+  view,
+  navIntent,
+  activeSection,
+  onNavigate,
+  onBack,
+  t,
+}: {
+  portal: PortalId;
+  showBack: boolean;
+  view: View;
+  navIntent: NavIntent;
+  activeSection: NavSectionId;
+  onNavigate: (view: View, intent: NavIntent | undefined, section: NavSectionId) => void;
+  onBack: () => void;
+  t: (k: string) => string;
+}) {
+  const currentSection = sectionForView(view, navIntent, activeSection);
+
+  const entries: RadioEntry[] = [];
+  if (showBack) {
+    entries.push({
+      id: "portals",
+      labelKey: "navBackToPortals",
+      enabled: true,
+      action: { kind: "back" },
+    });
+  }
+  entries.push(...entriesFor(portal));
 
   function run(action: NavAction, section: NavSectionId) {
-    setOpenId(null);
-    if (action.kind === "navigate") onNavigate(action.view, action.intent, section);
-    else if (action.kind === "help") onHelp();
-    else onLogout();
+    if (action.kind === "navigate") onNavigate(action.view, action.intent ?? {}, section);
+    else onBack();
   }
 
   return (
-    <nav className="app-nav" aria-label={t("navMain")} ref={rootRef}>
-      {entries.map((entry) => {
-        const isOpen = openId === entry.id;
-        const hasMenu = !!entry.items?.length;
-        const isActive = entry.id === currentSection;
-        return (
-          <div
-            key={entry.id}
-            className={`app-nav-item${isOpen ? " open" : ""}${isActive ? " active" : ""}`}
-            onMouseEnter={() => {
-              if (hasMenu && entry.enabled) setOpenId(entry.id);
-            }}
-            onMouseLeave={(e) => {
-              setOpenId(null);
-              const active = document.activeElement;
-              if (active instanceof HTMLElement && e.currentTarget.contains(active)) {
-                active.blur();
-              }
-            }}
-            onFocus={() => {
-              if (hasMenu && entry.enabled) setOpenId(entry.id);
-            }}
-            onBlur={(e) => {
-              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
-                setOpenId(null);
-              }
-            }}
-          >
-            <button
-              type="button"
-              className={`app-nav-btn${isActive ? " active" : ""}`}
-              disabled={!entry.enabled}
-              aria-current={isActive ? "page" : undefined}
-              aria-haspopup={hasMenu ? "menu" : undefined}
-              aria-expanded={hasMenu ? isOpen : undefined}
-              onClick={() => {
-                if (!entry.enabled) return;
-                if (entry.action) {
-                  run(entry.action, entry.id);
-                  return;
-                }
-                if (hasMenu) setOpenId(isOpen ? null : entry.id);
-              }}
+    <nav className="desk-radio-bar" aria-label={t("navMain")}>
+      <div className="desk-radio-items" role="radiogroup" aria-label={t("navMain")}>
+        {entries.map((entry) => {
+          const isActive = entry.id === currentSection;
+          return (
+            <label
+              key={entry.id}
+              className={`desk-radio-item${isActive ? " active" : ""}`}
             >
-              {t(entry.labelKey)}
-            </button>
-            {hasMenu ? (
-              <ul className="app-nav-menu" role="menu">
-                {entry.items!.map((item) => {
-                  const itemActive = menuItemActive(item, view, navIntent, isActive);
-                  return (
-                    <li key={item.id} role="none">
-                      <button
-                        type="button"
-                        role="menuitem"
-                        className={itemActive ? "active" : undefined}
-                        aria-current={itemActive ? "page" : undefined}
-                        disabled={!item.enabled}
-                        onClick={() => {
-                          if (item.enabled) run(item.action, entry.id);
-                        }}
-                      >
-                        {t(item.labelKey)}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            ) : null}
-          </div>
-        );
-      })}
+              <input
+                type="radio"
+                name={`desk-nav-${portal}`}
+                checked={isActive}
+                disabled={!entry.enabled}
+                onChange={() => {
+                  if (entry.enabled) run(entry.action, entry.id);
+                }}
+              />
+              <span className="desk-radio-label">{t(entry.labelKey)}</span>
+            </label>
+          );
+        })}
+      </div>
     </nav>
   );
 }

@@ -71,9 +71,9 @@ func main() {
 	mux.Handle("/api/users/", &handlers.Users{DB: sqlDB})
 	// Pharmacy inventory (Admin + Pharmacy)
 	mux.Handle("/api/pharmacy/", &handlers.Pharmacy{DB: sqlDB})
-	// OPD billing (Admin + Reception)
+	// OPD billing (Admin + OPD)
 	mux.Handle("/api/opd/", &handlers.OPD{DB: sqlDB})
-	// OT case cart (Admin + Reception)
+	// OT case cart (Admin + OT)
 	mux.Handle("/api/ot/", &handlers.OT{DB: sqlDB})
 	// Backup / restore (Admin)
 	mux.Handle("/api/backup", &handlers.Backup{

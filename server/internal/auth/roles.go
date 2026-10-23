@@ -2,21 +2,22 @@ package auth
 
 // Role names stored on users.role.
 const (
-	RoleAdmin     = "Admin"
-	RoleReception = "Reception"
-	RolePharmacy  = "Pharmacy"
+	RoleAdmin    = "Admin"
+	RoleOPD      = "OPD"
+	RoleOT       = "OT"
+	RolePharmacy = "Pharmacy"
 )
 
 // Permission keys used by RequirePermission / UI gates.
 const (
-	PermSettings     = "settings"
-	PermManageUsers  = "manage_users"
-	PermOPD          = "opd"
-	PermOT           = "ot"
-	PermPharmacy     = "pharmacy"
+	PermSettings    = "settings"
+	PermManageUsers = "manage_users"
+	PermOPD         = "opd"
+	PermOT          = "ot"
+	PermPharmacy    = "pharmacy"
 )
 
-// rolePermissions is the Chat 2 permission map (expanded in later chats).
+// rolePermissions is the desk map. Admin has every permission; each desk has one.
 var rolePermissions = map[string]map[string]bool{
 	RoleAdmin: {
 		PermSettings:    true,
@@ -25,9 +26,11 @@ var rolePermissions = map[string]map[string]bool{
 		PermOT:          true,
 		PermPharmacy:    true,
 	},
-	RoleReception: {
+	RoleOPD: {
 		PermOPD: true,
-		PermOT:  true,
+	},
+	RoleOT: {
+		PermOT: true,
 	},
 	RolePharmacy: {
 		PermPharmacy: true,

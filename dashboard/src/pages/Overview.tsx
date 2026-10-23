@@ -24,6 +24,7 @@ type Props = {
 
 const ACCENT = "#1b6bc7";
 const OT_BLUE = "#4a90c8";
+const PHARM = "#1f7a4d";
 const MUTED = "#6b7280";
 const GRID = "rgba(26, 31, 46, 0.08)";
 
@@ -59,6 +60,8 @@ export function OverviewPage({ t }: Props) {
   const total = overview?.grand_total_mmk ?? 0;
   const opdShare = total > 0 && overview ? (overview.opd_total_mmk / total) * 100 : 0;
   const otShare = total > 0 && overview ? (overview.ot_total_mmk / total) * 100 : 0;
+  const pharmacyShare =
+    total > 0 && overview ? ((overview.pharmacy_total_mmk ?? 0) / total) * 100 : 0;
   const chartData = trends.map((p) => ({
     ...p,
     label: p.date.length >= 10 ? p.date.slice(5) : p.date,
@@ -96,6 +99,11 @@ export function OverviewPage({ t }: Props) {
           label={t("otCash")}
           value={overview ? formatMMK(overview.ot_total_mmk) : "—"}
           sub={overview ? `${overview.ot_count} ${t("bill").toLowerCase()}` : undefined}
+        />
+        <KpiCard
+          label={t("pharmacyCash")}
+          value={overview ? formatMMK(overview.pharmacy_total_mmk ?? 0) : "—"}
+          sub={overview ? `${overview.pharmacy_count ?? 0} ${t("bill").toLowerCase()}` : undefined}
         />
         <KpiCard
           label={t("billCount")}
@@ -137,11 +145,12 @@ export function OverviewPage({ t }: Props) {
       {overview && total > 0 ? (
         <section className="panel">
           <h3>
-            {t("opdCash")} / {t("otCash")}
+            {t("opdCash")} / {t("otCash")} / {t("pharmacyCash")}
           </h3>
           <div className="bar-track" aria-hidden="true">
             <div className="bar-opd" style={{ width: `${opdShare}%` }} />
             <div className="bar-ot" style={{ width: `${otShare}%` }} />
+            <div className="bar-pharmacy" style={{ width: `${pharmacyShare}%` }} />
           </div>
           <div className="split-opd-ot">
             <p className="muted">
@@ -149,6 +158,9 @@ export function OverviewPage({ t }: Props) {
             </p>
             <p className="muted">
               OT {otShare.toFixed(0)}% · {formatMMK(overview.ot_total_mmk)} {t("mmk")}
+            </p>
+            <p className="muted">
+              Pharmacy {pharmacyShare.toFixed(0)}% · {formatMMK(overview.pharmacy_total_mmk ?? 0)} {t("mmk")}
             </p>
           </div>
         </section>
@@ -182,7 +194,14 @@ export function OverviewPage({ t }: Props) {
                   contentStyle={{ borderRadius: 8, borderColor: "rgba(26,31,46,0.12)" }}
                 />
                 <Bar dataKey="opd_total_mmk" name={t("opdCash")} stackId="cash" fill={ACCENT} />
-                <Bar dataKey="ot_total_mmk" name={t("otCash")} stackId="cash" fill={OT_BLUE} radius={[3, 3, 0, 0]} />
+                <Bar dataKey="ot_total_mmk" name={t("otCash")} stackId="cash" fill={OT_BLUE} />
+                <Bar
+                  dataKey="pharmacy_total_mmk"
+                  name={t("pharmacyCash")}
+                  stackId="cash"
+                  fill={PHARM}
+                  radius={[3, 3, 0, 0]}
+                />
               </BarChart>
             </ResponsiveContainer>
           </div>

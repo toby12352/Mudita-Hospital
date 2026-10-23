@@ -16,7 +16,7 @@ export function UsersTab() {
   const [busy, setBusy] = useState(false);
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
-  const [role, setRole] = useState<"Reception" | "Pharmacy">("Reception");
+  const [role, setRole] = useState<"OPD" | "OT" | "Pharmacy">("OPD");
   const [password, setPassword] = useState("");
 
   async function reload(search = q) {
@@ -52,7 +52,7 @@ export function UsersTab() {
       setUsername("");
       setDisplayName("");
       setPassword("");
-      setRole("Reception");
+      setRole("OPD");
       await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Create failed");
@@ -90,8 +90,13 @@ export function UsersTab() {
           </label>
           <label className="field">
             <span>{t("role")}</span>
-            <select value={role} onChange={(e) => setRole(e.target.value as "Reception" | "Pharmacy")} disabled={busy}>
-              <option value="Reception">{t("roleReception")}</option>
+            <select
+              value={role}
+              onChange={(e) => setRole(e.target.value as "OPD" | "OT" | "Pharmacy")}
+              disabled={busy}
+            >
+              <option value="OPD">{t("roleOPD")}</option>
+              <option value="OT">{t("roleOT")}</option>
               <option value="Pharmacy">{t("rolePharmacy")}</option>
             </select>
           </label>

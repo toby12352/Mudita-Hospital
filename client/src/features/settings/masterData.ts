@@ -136,7 +136,7 @@ export async function listUsers(q = ""): Promise<ManagedUser[]> {
 export async function createUser(body: {
   username: string;
   display_name: string;
-  role: "Reception" | "Pharmacy";
+  role: "OPD" | "OT" | "Pharmacy";
   password: string;
 }): Promise<ManagedUser> {
   return apiFetch<ManagedUser>("/api/users", {
@@ -149,7 +149,7 @@ export async function updateUser(
   id: number,
   body: {
     display_name?: string;
-    role?: "Reception" | "Pharmacy" | "Admin";
+    role?: "OPD" | "OT" | "Pharmacy" | "Admin";
     active?: boolean;
     password?: string;
   },

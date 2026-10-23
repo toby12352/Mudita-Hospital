@@ -33,3 +33,5 @@ Read only the standard that matches the task. Do not load all of `docs/` unless 
 - Do not add React Router, Redux/Zustand/React Query, or Gin/chi unless explicitly decided
 - Match the nearest existing domain (OPD / OT / Pharmacy) instead of inventing a new pattern
 - New clinic UI goes in `pages/` / `features/` — do not grow `app/App.tsx` with new panels
+- A hospital install is live: keep `data\mudita.db`; ship code around it
+- Schema changes are new migrations that keep existing rows — read `docs/standards/UPGRADES.md` before schema or upgrade work

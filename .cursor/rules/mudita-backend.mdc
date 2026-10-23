@@ -6,7 +6,7 @@ alwaysApply: false
 
 # Backend
 
-Full guide: `@docs/standards/BACKEND.md` · Conventions: `@docs/standards/CONVENTIONS.md` · Playbook: `@docs/standards/ADDING_A_FEATURE.md`
+Full guide: `@docs/standards/BACKEND.md` · Conventions: `@docs/standards/CONVENTIONS.md` · Playbook: `@docs/standards/ADDING_A_FEATURE.md` · Upgrades: `@docs/standards/UPGRADES.md`
 
 ## Layout
 
@@ -17,6 +17,7 @@ Full guide: `@docs/standards/BACKEND.md` · Conventions: `@docs/standards/CONVEN
 ## Must follow
 
 - Schema changes **only** via named migrations in `internal/db/migrate.go`
+- Append migrations only; new columns use a default; seeds must not replace user catalogs (see UPGRADES.md)
 - Errors: JSON `{"error":"…"}`; money `*_mmk`; JSON `snake_case`
 - New capability → `Perm*` + role map in `internal/auth/roles.go`
 - Audit money-moving / sensitive mutations; receipts HTML on the server

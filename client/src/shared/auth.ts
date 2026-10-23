@@ -1,6 +1,7 @@
 import { apiFetch, getApiBase } from "@/shared/api";
+import { userMessage } from "@/shared/errors";
 
-export type Role = "Admin" | "Reception" | "Pharmacy";
+export type Role = "Admin" | "OPD" | "OT" | "Pharmacy";
 
 export type User = {
   id: number;
@@ -58,7 +59,8 @@ export async function login(username: string, password: string): Promise<LoginRe
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new Error((body as { error?: string }).error || `Login failed (${res.status})`);
+    const raw = (body as { error?: string }).error || `Login failed (${res.status})`;
+    throw new Error(userMessage(raw, res.status));
   }
   return body as LoginResult;
 }

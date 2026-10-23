@@ -189,6 +189,24 @@ After a rebuild, copy the new `mudita-api.exe` into `C:\MuditaHospital\Server\` 
 
 Dev laptop: stop `mudita-api` / Ctrl+C, then `.\scripts\run-server.ps1`.
 
+### How do I update an existing hospital?
+
+Keep `C:\MuditaHospital\Server\data\mudita.db`. Replace the program around it. Design rules: [UPGRADES.md](./standards/UPGRADES.md).
+
+1. Admin → Settings → **Backup now**; copy `backups\` to USB.
+2. Stop the API (Administrator PowerShell):
+
+   ```powershell
+   Stop-ScheduledTask -TaskName "MuditaHospitalAPI"
+   Get-Process mudita-api -ErrorAction SilentlyContinue | Stop-Process -Force
+   ```
+
+3. Copy the new `mudita-api.exe` into `C:\MuditaHospital\Server\`, **or** re-run `install-server.ps1` from the server package (it keeps existing `config.json` and does not wipe `data\`).
+4. `Start-ScheduledTask -TaskName "MuditaHospitalAPI"`. Confirm `http://127.0.0.1:8080/api/health` → `"status":"ok"`.
+5. Install or replace the clinic (and dashboard) apps on each desk. Same Server IP.
+
+Do **not** use `uninstall-server.ps1 -RemoveData`, do **not** Restore a backup as the normal update path, and do **not** copy a laptop `mudita.db` onto the hospital PC.
+
 ### What is Training mode?
 
 Admin → Settings → **Training**: seeds `DEMO-` items and `[TRAINING]` sample bills for practice. Reset only removes DEMO / TRAINING rows — not real users. Prefer a practice DB or Training seed for demos; do not teach on live cash without the hospital’s OK.

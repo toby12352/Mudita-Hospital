@@ -35,6 +35,7 @@ const BUCKET_COLORS: Record<string, string> = {
 
 function locLabel(code: string, t: (k: string) => string): string {
   if (code === "MAIN") return t("locMain");
+  if (code === "OT") return t("locOtCupboard");
   if (code === "OT_RESERVED") return t("locOtReserved");
   if (code === "OT_FLOOR") return t("locOtFloor");
   return code;

@@ -9,12 +9,12 @@ client/src/
   main.tsx              # Vite entry (stays at src root)
   vite-env.d.ts
   assets/logo.png
-  app/                  # Shell: boot, auth gates, sticky nav, help
+    app/                  # Shell: boot, auth gates, fixed desk chrome, help
     App.tsx
-    AppNavBar.tsx       # Sticky module nav + hover menus
+    AppNavBar.tsx       # Radio bar + hover menus
     types.ts            # View, NavIntent, ConnState, tab unions
     LanguageSwitcher.tsx
-    ServerBadge.tsx
+    ServerIpButton.tsx
     ServerSetupForm.tsx
     LoginForm.tsx
     ChangePasswordForm.tsx
@@ -39,6 +39,9 @@ client/src/
     i18n.ts
     format.ts           # formatMMK
     Typeahead.tsx
+    BillLineGrid.tsx  # shared blank-row cart for OPD, OT, and Pharmacy
+                      # grows through 10 committed rows then scrolls; reveals
+                      # the single added or merged row inside the cart pane
     FormSection.tsx
     cheatsheet.ts
     styles/App.css
@@ -101,14 +104,16 @@ Preserve the existing clinic/dashboard boot sequence:
 1. Server IP setup if API base not configured
 2. Health poll (~5s)
 3. Login / must-change-password
-4. Sticky dual chrome (brand bar + module nav) or dashboard nav
+4. Fixed desk chrome (brand bar + radio bar) or dashboard nav
 
 Do not bypass health or auth for convenience in production paths.
 
 ## Clinic chrome / navigation
 
-- Authenticated clinic shell: sticky `.app-chrome` (logo · language · user · Server IP) plus `.app-nav` hover menus. Home is how-to content, not module tiles.
-- Still **no React Router** — `View` + optional `NavIntent` in `app/types.ts`, remount pages with a changing `key` when the same view opens with a different intent.
+- Authenticated clinic desk: light Fluent-style chrome — radio bar (`.desk-radio-bar`) for portal sections on a white/neutral surface with accent for the active section, `#F8F9FB` work area, and a bottom status strip (`.desk-status-bar`) with F-key hints, date, and `Day (user)`. Language, help, logout, and Server IP sit on the right of the radio bar.
+- Bill screens use the light action column (`.opd-bill-rail`) with Confirm F5 (primary) / Print F7 / History F9 / V.Delete ^F8 / Cancel F10. List and Drug Setup screens omit the rail.
+- Admin chooses a portal from `PortalPicker`; desk roles land in one portal. Still **no React Router** — `View` + optional `NavIntent` in `app/types.ts`, remount pages with a changing `key` when the same view opens with a different intent.
+- Dashboard uses the same radio bar + status footer (no left sidebar).
 - UI zoom: `mudita_ui_scale` in `localStorage` via `shared/uiScale.ts`; Ctrl/Cmd `+` / `-` / `0` anywhere.
 
 ## File size guidance

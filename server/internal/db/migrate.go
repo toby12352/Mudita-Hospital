@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 )
@@ -9,6 +10,8 @@ import (
 type Migration struct {
 	Name string
 	SQL  string
+	// DisableFK turns foreign keys off for this script so a table can be rebuilt.
+	DisableFK bool
 }
 
 // migrations grow in later chats.
@@ -546,6 +549,225 @@ ALTER TABLE pharmacy_bill_lines ADD COLUMN tablet_qty INTEGER NOT NULL DEFAULT 0
 ALTER TABLE hospital_settings ADD COLUMN phone2 TEXT NOT NULL DEFAULT '';
 `,
 	},
+	{
+		Name:      "010_portal_roles",
+		DisableFK: true,
+		SQL: `
+CREATE TABLE users_new (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  display_name TEXT NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('Admin', 'OPD', 'OT', 'Pharmacy')),
+  password_hash TEXT NOT NULL,
+  must_change_password INTEGER NOT NULL DEFAULT 0,
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+INSERT INTO users_new (
+  id, username, display_name, role, password_hash, must_change_password, active, created_at, updated_at
+)
+SELECT
+  id, username, display_name,
+  CASE role WHEN 'Reception' THEN 'OPD' ELSE role END,
+  password_hash, must_change_password, active, created_at, updated_at
+FROM users;
+
+DROP TABLE users;
+ALTER TABLE users_new RENAME TO users;
+`,
+	},
+	{
+		Name: "011_ot_stock",
+		SQL: `
+-- Standing OT cupboard. Pharmacy on-hand stays on item_batches at MAIN.
+-- Copy qty already on OT_FLOOR into ot_batches. Leave those item_batches
+-- rows, and every OT_RESERVED row, unchanged. Chat 3 owns reserved stock.
+CREATE TABLE IF NOT EXISTS ot_batches (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  item_id INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+  batch_no TEXT NOT NULL DEFAULT '',
+  expiry_date TEXT,
+  qty INTEGER NOT NULL DEFAULT 0 CHECK (qty >= 0),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_ot_batches_item ON ot_batches(item_id);
+CREATE INDEX IF NOT EXISTS idx_ot_batches_expiry ON ot_batches(expiry_date);
+
+CREATE TABLE IF NOT EXISTS ot_stock_movements (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  item_id INTEGER NOT NULL REFERENCES items(id),
+  ot_batch_id INTEGER REFERENCES ot_batches(id) ON DELETE SET NULL,
+  movement_type TEXT NOT NULL
+    CHECK (movement_type IN ('OPENING', 'TRANSFER_IN', 'TRANSFER_OUT', 'SALE', 'VOID', 'ADJUST')),
+  qty_delta INTEGER NOT NULL,
+  reason TEXT NOT NULL DEFAULT '',
+  actor_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_ot_stock_movements_item ON ot_stock_movements(item_id);
+CREATE INDEX IF NOT EXISTS idx_ot_stock_movements_created ON ot_stock_movements(created_at);
+
+CREATE TABLE IF NOT EXISTS stock_transfers (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  direction TEXT NOT NULL CHECK (direction IN ('TO_OT', 'TO_PHARMACY')),
+  item_id INTEGER NOT NULL REFERENCES items(id),
+  pharmacy_batch_id INTEGER REFERENCES item_batches(id) ON DELETE SET NULL,
+  ot_batch_id INTEGER REFERENCES ot_batches(id) ON DELETE SET NULL,
+  batch_no TEXT NOT NULL DEFAULT '',
+  expiry_date TEXT,
+  qty INTEGER NOT NULL CHECK (qty > 0),
+  actor_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_stock_transfers_item ON stock_transfers(item_id);
+CREATE INDEX IF NOT EXISTS idx_stock_transfers_created ON stock_transfers(created_at);
+
+INSERT INTO ot_batches (item_id, batch_no, expiry_date, qty, created_at, updated_at)
+SELECT item_id, batch_no, expiry_date, qty, created_at, datetime('now')
+FROM item_batches
+WHERE location_code = 'OT_FLOOR' AND qty > 0;
+
+INSERT INTO ot_stock_movements (item_id, ot_batch_id, movement_type, qty_delta, reason)
+SELECT item_id, id, 'OPENING', qty, 'Copied from OT_FLOOR'
+FROM ot_batches;
+`,
+	},
+	{
+		Name: "012_ot_bill_stock",
+		SQL: `
+-- OT bills now sell from ot_batches. Issue and reconcile are gone.
+--
+-- In-progress cases:
+--   Issued (stock still in OT_RESERVED): that qty goes back to the matching
+--   MAIN batch (same item, batch number, and expiry). The case becomes a draft
+--   bill document. Its cart is unchanged. A later pay draws the OT cupboard,
+--   so pharmacy must transfer that qty before the bill can be paid.
+--   Reconciled but not yet billed: used qty was already taken out of pharmacy
+--   at reconcile, returns are already on MAIN, and floor qty was copied into
+--   ot_batches by migration 011. The cart qty becomes the used qty, the case
+--   becomes a draft, and legacy_stock_closed = 1 so pay does not deduct the
+--   cupboard a second time.
+--   Billed cases stay billed and are marked legacy_stock_closed so a void and
+--   a new bill do not deduct cupboard stock that the old reconcile already closed.
+CREATE TABLE IF NOT EXISTS ot_bill_stock_allocs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  bill_id INTEGER NOT NULL REFERENCES ot_bills(id) ON DELETE CASCADE,
+  bill_line_id INTEGER NOT NULL REFERENCES ot_bill_lines(id) ON DELETE CASCADE,
+  item_id INTEGER NOT NULL REFERENCES items(id),
+  ot_batch_id INTEGER NOT NULL REFERENCES ot_batches(id),
+  qty INTEGER NOT NULL CHECK (qty > 0)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ot_bill_stock_allocs_bill ON ot_bill_stock_allocs(bill_id);
+CREATE INDEX IF NOT EXISTS idx_ot_bill_stock_allocs_line ON ot_bill_stock_allocs(bill_line_id);
+
+ALTER TABLE ot_cases ADD COLUMN legacy_stock_closed INTEGER NOT NULL DEFAULT 0;
+
+INSERT INTO item_batches (item_id, location_code, batch_no, expiry_date, qty)
+SELECT r.item_id, 'MAIN', r.batch_no, r.expiry_date, 0
+FROM item_batches r
+WHERE r.location_code = 'OT_RESERVED' AND r.qty > 0
+  AND r.id = (
+    SELECT MIN(r2.id) FROM item_batches r2
+    WHERE r2.location_code = 'OT_RESERVED' AND r2.qty > 0
+      AND r2.item_id = r.item_id
+      AND r2.batch_no = r.batch_no
+      AND COALESCE(r2.expiry_date, '') = COALESCE(r.expiry_date, '')
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM item_batches m
+    WHERE m.location_code = 'MAIN'
+      AND m.item_id = r.item_id
+      AND m.batch_no = r.batch_no
+      AND COALESCE(m.expiry_date, '') = COALESCE(r.expiry_date, '')
+  );
+
+UPDATE item_batches
+SET qty = qty + (
+      SELECT COALESCE(SUM(r.qty), 0)
+      FROM item_batches r
+      WHERE r.location_code = 'OT_RESERVED' AND r.qty > 0
+        AND r.item_id = item_batches.item_id
+        AND r.batch_no = item_batches.batch_no
+        AND COALESCE(r.expiry_date, '') = COALESCE(item_batches.expiry_date, '')
+    ),
+    updated_at = datetime('now')
+WHERE location_code = 'MAIN'
+  AND id IN (
+    SELECT MIN(m.id)
+    FROM item_batches m
+    JOIN item_batches r
+      ON r.location_code = 'OT_RESERVED' AND r.qty > 0
+     AND r.item_id = m.item_id
+     AND r.batch_no = m.batch_no
+     AND COALESCE(r.expiry_date, '') = COALESCE(m.expiry_date, '')
+    WHERE m.location_code = 'MAIN'
+    GROUP BY r.item_id, r.batch_no, COALESCE(r.expiry_date, '')
+  );
+
+INSERT INTO stock_movements (item_id, batch_id, location_code, movement_type, qty_delta, reason)
+SELECT r.item_id, r.id, 'OT_RESERVED', 'RETURN', -r.qty,
+       'Migration 012: open case OT_RESERVED returned to MAIN'
+FROM item_batches r
+WHERE r.location_code = 'OT_RESERVED' AND r.qty > 0;
+
+INSERT INTO stock_movements (item_id, batch_id, location_code, movement_type, qty_delta, reason)
+SELECT r.item_id,
+       (
+         SELECT m.id FROM item_batches m
+         WHERE m.location_code = 'MAIN'
+           AND m.item_id = r.item_id
+           AND m.batch_no = r.batch_no
+           AND COALESCE(m.expiry_date, '') = COALESCE(r.expiry_date, '')
+         ORDER BY m.id
+         LIMIT 1
+       ),
+       'MAIN', 'RETURN', r.qty,
+       'Migration 012: open case OT_RESERVED returned to MAIN'
+FROM item_batches r
+WHERE r.location_code = 'OT_RESERVED' AND r.qty > 0;
+
+UPDATE item_batches
+SET qty = 0, updated_at = datetime('now')
+WHERE location_code = 'OT_RESERVED' AND qty > 0;
+
+UPDATE ot_cases
+SET legacy_stock_closed = 1
+WHERE status IN ('reconciled', 'billed');
+
+UPDATE ot_case_items
+SET qty_issued = qty_used,
+    qty_returned = 0,
+    qty_wasted = 0,
+    qty_kept_on_floor = 0
+WHERE case_id IN (
+  SELECT id FROM ot_cases
+  WHERE status = 'reconciled' AND ot_bill_id IS NULL
+);
+
+UPDATE ot_cases
+SET status = 'draft',
+    issued_at = NULL,
+    reconciled_at = NULL,
+    updated_at = datetime('now')
+WHERE status IN ('issued', 'reconciled') AND ot_bill_id IS NULL;
+`,
+	},
+	{
+		Name: "013_ot_sale_unit",
+		SQL: `
+-- Remember the unit the cashier chose (2 Box) beside qty_issued, which stays
+-- the smallest-unit count used for the bill and for cupboard stock.
+ALTER TABLE ot_case_items ADD COLUMN sale_qty INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE ot_case_items ADD COLUMN sale_unit TEXT NOT NULL DEFAULT '';
+`,
+	},
 }
 
 // Migrate applies pending migrations inside a transaction per migration.
@@ -564,24 +786,67 @@ func Migrate(sqlDB *sql.DB) error {
 		if exists > 0 {
 			continue
 		}
-
-		tx, err := sqlDB.Begin()
-		if err != nil {
-			return fmt.Errorf("begin migration %s: %w", m.Name, err)
-		}
-
-		if _, err := tx.Exec(m.SQL); err != nil {
-			_ = tx.Rollback()
-			return fmt.Errorf("run migration %s: %w", m.Name, err)
-		}
-		if _, err := tx.Exec(`INSERT INTO schema_migrations (name) VALUES (?)`, m.Name); err != nil {
-			_ = tx.Rollback()
-			return fmt.Errorf("record migration %s: %w", m.Name, err)
-		}
-		if err := tx.Commit(); err != nil {
-			return fmt.Errorf("commit migration %s: %w", m.Name, err)
+		if err := applyMigration(sqlDB, m); err != nil {
+			return err
 		}
 	}
 
+	return nil
+}
+
+func applyMigration(sqlDB *sql.DB, m Migration) error {
+	ctx := context.Background()
+	conn, err := sqlDB.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("conn migration %s: %w", m.Name, err)
+	}
+	defer conn.Close()
+
+	if m.DisableFK {
+		// Must be set before the transaction. SQLite ignores this pragma inside one.
+		if _, err := conn.ExecContext(ctx, `PRAGMA foreign_keys = OFF`); err != nil {
+			return fmt.Errorf("disable fk %s: %w", m.Name, err)
+		}
+	}
+
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		if m.DisableFK {
+			_, _ = conn.ExecContext(ctx, `PRAGMA foreign_keys = ON`)
+		}
+		return fmt.Errorf("begin migration %s: %w", m.Name, err)
+	}
+
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+		if m.DisableFK {
+			_, _ = conn.ExecContext(ctx, `PRAGMA foreign_keys = ON`)
+		}
+	}()
+
+	if _, err := tx.Exec(m.SQL); err != nil {
+		return fmt.Errorf("run migration %s: %w", m.Name, err)
+	}
+	if m.DisableFK {
+		var tbl, parent string
+		var rowid, fkid int
+		err := tx.QueryRow(`PRAGMA foreign_key_check`).Scan(&tbl, &rowid, &parent, &fkid)
+		if err == nil {
+			return fmt.Errorf("migration %s: foreign key violation in %s", m.Name, tbl)
+		}
+		if err != sql.ErrNoRows {
+			return fmt.Errorf("foreign key check %s: %w", m.Name, err)
+		}
+	}
+	if _, err := tx.Exec(`INSERT INTO schema_migrations (name) VALUES (?)`, m.Name); err != nil {
+		return fmt.Errorf("record migration %s: %w", m.Name, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit migration %s: %w", m.Name, err)
+	}
+	committed = true
 	return nil
 }

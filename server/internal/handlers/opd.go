@@ -18,39 +18,39 @@ type OPD struct {
 }
 
 type opdBillLine struct {
-	ID            int64  `json:"id,omitempty"`
-	LineType      string `json:"line_type"`
-	RefID         *int64 `json:"ref_id,omitempty"`
-	Code          string `json:"code"`
-	Description   string `json:"description"`
-	Qty           int64  `json:"qty"`
-	UnitPriceMMK  int64  `json:"unit_price_mmk"`
-	LineTotalMMK  int64  `json:"line_total_mmk"`
-	SortOrder     int    `json:"sort_order"`
+	ID           int64  `json:"id,omitempty"`
+	LineType     string `json:"line_type"`
+	RefID        *int64 `json:"ref_id,omitempty"`
+	Code         string `json:"code"`
+	Description  string `json:"description"`
+	Qty          int64  `json:"qty"`
+	UnitPriceMMK int64  `json:"unit_price_mmk"`
+	LineTotalMMK int64  `json:"line_total_mmk"`
+	SortOrder    int    `json:"sort_order"`
 }
 
 type opdBill struct {
-	ID               int64         `json:"id"`
-	BillNo           string        `json:"bill_no"`
-	PatientID        *int64        `json:"patient_id,omitempty"`
-	PatientName      string        `json:"patient_name"`
-	PatientPhone     string        `json:"patient_phone"`
-	PatientAgeYears  *int64        `json:"patient_age_years,omitempty"`
-	PatientGender    string        `json:"patient_gender"`
-	DoctorID         *int64        `json:"doctor_id,omitempty"`
-	DoctorName       string        `json:"doctor_name"`
-	Description      string        `json:"description"`
-	Status           string        `json:"status"`
-	TotalMMK         int64         `json:"total_mmk"`
-	PaidAt           *string       `json:"paid_at,omitempty"`
-	PaidByUserID     *int64        `json:"paid_by_user_id,omitempty"`
-	VoidedAt         *string       `json:"voided_at,omitempty"`
-	VoidedByUserID   *int64        `json:"voided_by_user_id,omitempty"`
-	VoidReason       string        `json:"void_reason,omitempty"`
-	CreatedByUserID  *int64        `json:"created_by_user_id,omitempty"`
-	CreatedAt        string        `json:"created_at"`
-	UpdatedAt        string        `json:"updated_at"`
-	Lines            []opdBillLine `json:"lines,omitempty"`
+	ID              int64         `json:"id"`
+	BillNo          string        `json:"bill_no"`
+	PatientID       *int64        `json:"patient_id,omitempty"`
+	PatientName     string        `json:"patient_name"`
+	PatientPhone    string        `json:"patient_phone"`
+	PatientAgeYears *int64        `json:"patient_age_years,omitempty"`
+	PatientGender   string        `json:"patient_gender"`
+	DoctorID        *int64        `json:"doctor_id,omitempty"`
+	DoctorName      string        `json:"doctor_name"`
+	Description     string        `json:"description"`
+	Status          string        `json:"status"`
+	TotalMMK        int64         `json:"total_mmk"`
+	PaidAt          *string       `json:"paid_at,omitempty"`
+	PaidByUserID    *int64        `json:"paid_by_user_id,omitempty"`
+	VoidedAt        *string       `json:"voided_at,omitempty"`
+	VoidedByUserID  *int64        `json:"voided_by_user_id,omitempty"`
+	VoidReason      string        `json:"void_reason,omitempty"`
+	CreatedByUserID *int64        `json:"created_by_user_id,omitempty"`
+	CreatedAt       string        `json:"created_at"`
+	UpdatedAt       string        `json:"updated_at"`
+	Lines           []opdBillLine `json:"lines,omitempty"`
 }
 
 type opdBillWriteRequest struct {
@@ -77,10 +77,10 @@ type catalogDoctor struct {
 }
 
 type catalogService struct {
-	ID        int64  `json:"id"`
-	Code      string `json:"code"`
-	Name      string `json:"name"`
-	PriceMMK  int64  `json:"price_mmk"`
+	ID       int64  `json:"id"`
+	Code     string `json:"code"`
+	Name     string `json:"name"`
+	PriceMMK int64  `json:"price_mmk"`
 }
 
 type catalogItem struct {
@@ -324,12 +324,6 @@ func (h *OPD) createBill(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "patient_name required"})
 		return
 	}
-	lines, total, errMsg := normalizeBillLines(req.Lines)
-	if errMsg != "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": errMsg})
-		return
-	}
-
 	tx, err := h.DB.Begin()
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "tx failed"})
@@ -340,6 +334,11 @@ func (h *OPD) createBill(w http.ResponseWriter, r *http.Request) {
 	doctorName, doctorID, err := resolveDoctor(tx, req.DoctorID, req.DoctorName)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	lines, total, errMsg := normalizeBillLines(tx, doctorID, doctorName, req.Lines)
+	if errMsg != "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": errMsg})
 		return
 	}
 
@@ -430,12 +429,6 @@ func (h *OPD) updateBill(w http.ResponseWriter, r *http.Request, path string) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "patient_name required"})
 		return
 	}
-	lines, total, errMsg := normalizeBillLines(req.Lines)
-	if errMsg != "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": errMsg})
-		return
-	}
-
 	tx, err := h.DB.Begin()
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "tx failed"})
@@ -461,6 +454,11 @@ func (h *OPD) updateBill(w http.ResponseWriter, r *http.Request, path string) {
 	doctorName, doctorID, err := resolveDoctor(tx, req.DoctorID, req.DoctorName)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	lines, total, errMsg := normalizeBillLines(tx, doctorID, doctorName, req.Lines)
+	if errMsg != "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": errMsg})
 		return
 	}
 
@@ -563,12 +561,13 @@ func (h *OPD) payBill(w http.ResponseWriter, r *http.Request, path string) {
 		_ = allocs
 	}
 
-	if _, err := tx.Exec(`
-		UPDATE opd_bills SET status = 'paid', paid_at = datetime('now'), paid_by_user_id = ?,
-			updated_at = datetime('now')
-		WHERE id = ?
-	`, uid, id); err != nil {
+	n, err := execPayDraft(tx, "opd_bills", id, uid)
+	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "pay failed"})
+		return
+	}
+	if n == 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "only draft bills can be paid"})
 		return
 	}
 	if err := tx.Commit(); err != nil {
@@ -663,7 +662,7 @@ func (h *OPD) voidBill(w http.ResponseWriter, r *http.Request, path string) {
 			}
 			if _, err := tx.Exec(`
 				INSERT INTO stock_movements (item_id, batch_id, location_code, movement_type, qty_delta, reason, actor_user_id)
-				VALUES (?, ?, 'MAIN', 'SALE', ?, ?, ?)
+				VALUES (?, ?, 'MAIN', 'RETURN', ?, ?, ?)
 			`, a.itemID, a.batchID, a.qty, reason, uid); err != nil {
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "movement failed"})
 				return
@@ -724,12 +723,7 @@ func (h *OPD) printBill(w http.ResponseWriter, r *http.Request, path string) {
 
 // fefoDeductSale deducts MAIN stock FEFO, writes SALE movements, and records bill_stock_allocs.
 func fefoDeductSale(tx *sql.Tx, billID, lineID, itemID, qty, actorUserID int64) (int, error) {
-	rows, err := tx.Query(`
-		SELECT id, qty FROM item_batches
-		WHERE item_id = ? AND location_code = 'MAIN' AND qty > 0
-		ORDER BY CASE WHEN expiry_date IS NULL OR expiry_date = '' THEN 1 ELSE 0 END,
-		         expiry_date ASC, id ASC
-	`, itemID)
+	rows, err := tx.Query(unexpiredBatchSQL("id, qty"), itemID, "MAIN", localToday())
 	if err != nil {
 		return 0, fmt.Errorf("stock query failed")
 	}
@@ -795,9 +789,16 @@ func fefoDeductSale(tx *sql.Tx, billID, lineID, itemID, qty, actorUserID int64) 
 	return n, nil
 }
 
-func normalizeBillLines(in []opdBillLine) ([]opdBillLine, int64, string) {
+type queryRower interface {
+	QueryRow(query string, args ...any) *sql.Row
+}
+
+// normalizeBillLines snapshots catalog prices. Client unit_price_mmk is ignored.
+// Consultation uses the doctor's fee, quantity is 1, and a second consultation is rejected.
+func normalizeBillLines(q queryRower, doctorID *int64, doctorName string, in []opdBillLine) ([]opdBillLine, int64, string) {
 	out := make([]opdBillLine, 0, len(in))
 	var total int64
+	consultations := 0
 	for i, l := range in {
 		l.LineType = strings.TrimSpace(strings.ToLower(l.LineType))
 		if l.LineType == "item" {
@@ -806,17 +807,62 @@ func normalizeBillLines(in []opdBillLine) ([]opdBillLine, int64, string) {
 		if l.LineType != "service" && l.LineType != "consultation" {
 			return nil, 0, "invalid line_type"
 		}
-		l.Description = strings.TrimSpace(l.Description)
-		if l.Description == "" {
-			return nil, 0, "line description required"
+		if l.LineType == "consultation" {
+			consultations++
+			if consultations > 1 {
+				return nil, 0, "only one consultation line is allowed"
+			}
+			if doctorID == nil || *doctorID == 0 {
+				return nil, 0, "consultation requires a doctor"
+			}
+			var fee int64
+			err := q.QueryRow(`
+				SELECT COALESCE(amount_mmk, 0) FROM doctor_fees
+				WHERE doctor_id = ? AND fee_type = 'consultation'
+			`, *doctorID).Scan(&fee)
+			if err == sql.ErrNoRows {
+				fee = 0
+			} else if err != nil {
+				return nil, 0, "consultation fee load failed"
+			}
+			l.Qty = 1
+			l.UnitPriceMMK = fee
+			l.Code = "CONSULT"
+			if strings.TrimSpace(doctorName) != "" {
+				l.Description = "Consultation — " + strings.TrimSpace(doctorName)
+			} else {
+				l.Description = "Consultation"
+			}
+			id := *doctorID
+			l.RefID = &id
+		} else {
+			if l.RefID == nil || *l.RefID == 0 {
+				return nil, 0, "service ref_id required"
+			}
+			if l.Qty <= 0 {
+				return nil, 0, "line qty must be > 0"
+			}
+			var code, name string
+			var price int64
+			var active int
+			err := q.QueryRow(`
+				SELECT code, name, price_mmk, active FROM services WHERE id = ?
+			`, *l.RefID).Scan(&code, &name, &price, &active)
+			if err == sql.ErrNoRows {
+				return nil, 0, "service not found"
+			}
+			if err != nil {
+				return nil, 0, "service load failed"
+			}
+			if active != 1 {
+				return nil, 0, fmt.Sprintf("service %s is inactive", code)
+			}
+			ref := *l.RefID
+			l.RefID = &ref
+			l.Code = code
+			l.Description = name
+			l.UnitPriceMMK = price
 		}
-		if l.Qty <= 0 {
-			return nil, 0, "line qty must be > 0"
-		}
-		if l.UnitPriceMMK < 0 {
-			return nil, 0, "unit_price_mmk invalid"
-		}
-		l.Code = strings.TrimSpace(l.Code)
 		l.LineTotalMMK = l.Qty * l.UnitPriceMMK
 		l.SortOrder = i
 		total += l.LineTotalMMK

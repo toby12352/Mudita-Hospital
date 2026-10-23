@@ -13,18 +13,27 @@ import {
   listStockMovements,
   packFromItem,
   restockItem,
+  transferBatchToOt,
   type PharmacyItem,
   type StockMovement,
 } from "@/features/pharmacy/api";
 import { DatePicker } from "@/shared/DatePicker";
+import { userMessage } from "@/shared/errors";
 import { Typeahead } from "@/shared/Typeahead";
 import { useI18n } from "@/shared/i18n";
 export function PharmacyItemsTab({
   isAdmin,
   onEdit,
+  selectedId = null,
+  embedDetail = false,
+  onChanged,
 }: {
   isAdmin: boolean;
   onEdit: (item: PharmacyItem) => void;
+  selectedId?: number | null;
+  /** When true, hide the browse list and show restock/batches for selectedId. */
+  embedDetail?: boolean;
+  onChanged?: () => void;
 }) {
   const { t } = useI18n();
   const [q, setQ] = useState("");
@@ -42,15 +51,19 @@ export function PharmacyItemsTab({
   const [adjustDelta, setAdjustDelta] = useState("");
   const [adjustReason, setAdjustReason] = useState("");
   const [codeLookup, setCodeLookup] = useState("");
+  const [sendQty, setSendQty] = useState<Record<number, string>>({});
+  const [notice, setNotice] = useState<string | null>(null);
 
   async function reload(search = q) {
-    setList(await listPharmacyItems(search.trim()));
+    setList(await listPharmacyItems(search.trim(), { includeInactive: true }));
+    onChanged?.();
   }
 
   function clearPanel() {
     setPanelItem(null);
     setPanelMode(null);
     setItemMovements([]);
+    setNotice(null);
   }
 
   function resetRestockFields(item: PharmacyItem) {
@@ -88,6 +101,8 @@ export function PharmacyItemsTab({
       ]);
       setPanelItem(item);
       setItemMovements(movements);
+      setSendQty({});
+      setNotice(null);
       setPanelMode("view");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Load failed");
@@ -127,10 +142,11 @@ export function PharmacyItemsTab({
   }
 
   useEffect(() => {
+    if (embedDetail) return;
     let cancelled = false;
     (async () => {
       try {
-        const data = await listPharmacyItems("");
+        const data = await listPharmacyItems("", { includeInactive: true });
         if (!cancelled) setList(data);
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Load failed");
@@ -139,7 +155,32 @@ export function PharmacyItemsTab({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [embedDetail]);
+
+  useEffect(() => {
+    if (!embedDetail || selectedId == null) return;
+    let cancelled = false;
+    (async () => {
+      setBusy(true);
+      setError(null);
+      try {
+        const item = await getPharmacyItem(selectedId);
+        if (cancelled) return;
+        resetRestockFields(item);
+        setItemMovements([]);
+        setPanelItem(item);
+        setPanelMode("restock");
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Load failed");
+      } finally {
+        if (!cancelled) setBusy(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load detail when selection changes
+  }, [embedDetail, selectedId]);
 
   async function onDeactivate(id: number) {
     setBusy(true);
@@ -183,7 +224,7 @@ export function PharmacyItemsTab({
     setError(null);
     try {
       const qty = Number(restockQty);
-      if (!qty || qty <= 0) throw new Error("Restock qty must be > 0");
+      if (!qty || qty <= 0) throw new Error(userMessage("Restock qty must be > 0"));
       const body: {
         qty: number;
         qty_unit?: "purchase" | "stock";
@@ -212,8 +253,8 @@ export function PharmacyItemsTab({
     setError(null);
     try {
       const delta = Number(adjustDelta);
-      if (!delta) throw new Error("Adjustment qty must be non-zero");
-      if (!adjustReason.trim()) throw new Error("Reason required");
+      if (!delta) throw new Error(userMessage("Adjustment qty must be non-zero"));
+      if (!adjustReason.trim()) throw new Error(userMessage("Reason required"));
       const item = await adjustItem(panelItem.id, {
         qty_delta: delta,
         reason: adjustReason.trim(),
@@ -224,6 +265,35 @@ export function PharmacyItemsTab({
       await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Adjust failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onSendToOt(e: FormEvent, batchId: number, onHand: number) {
+    e.preventDefault();
+    if (!panelItem) return;
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const qty = Number(sendQty[batchId]);
+      if (!qty || qty <= 0) throw new Error(t("qtyMustBePositive"));
+      if (qty > onHand) throw new Error(t("qtyExceedsMain"));
+      const result = await transferBatchToOt(batchId, qty);
+      setSendQty((prev) => ({ ...prev, [batchId]: "" }));
+      setNotice(
+        `${t("sentToOt")}: ${result.qty.toLocaleString()}. ${t("otOnHand")} ${result.ot_qty.toLocaleString()}. ${t("inStock")} ${result.pharmacy_qty.toLocaleString()}.`,
+      );
+      const [item, movements] = await Promise.all([
+        getPharmacyItem(panelItem.id),
+        listStockMovements({ itemId: panelItem.id }),
+      ]);
+      setPanelItem(item);
+      setItemMovements(movements);
+      await reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Send failed");
     } finally {
       setBusy(false);
     }
@@ -247,7 +317,8 @@ export function PharmacyItemsTab({
   }
 
   return (
-    <div className="settings-stack">
+    <div className={embedDetail ? "drug-setup-actions" : "settings-stack"}>
+      {!embedDetail ? (
       <div className="card-form">
         <div className="list-toolbar">
           <Typeahead
@@ -255,7 +326,9 @@ export function PharmacyItemsTab({
             value={codeLookup}
             onChange={setCodeLookup}
             placeholder={t("codeOrName")}
-            loadSuggestions={async (term) => listPharmacyItems(term)}
+            loadSuggestions={async (term) =>
+              listPharmacyItems(term, { includeInactive: true })
+            }
             getKey={(item) => item.id}
             renderOption={renderPharmacyOption}
             optionClassName={(item) => (!item.active ? "inactive" : "")}
@@ -272,7 +345,9 @@ export function PharmacyItemsTab({
             value={q}
             onChange={setQ}
             placeholder={t("idCodeOrName")}
-            loadSuggestions={async (term) => listPharmacyItems(term)}
+            loadSuggestions={async (term) =>
+              listPharmacyItems(term, { includeInactive: true })
+            }
             getKey={(item) => item.id}
             renderOption={renderPharmacyOption}
             optionClassName={(item) => (!item.active ? "inactive" : "")}
@@ -358,30 +433,65 @@ export function PharmacyItemsTab({
           ))}
         </ul>
       </div>
+      ) : (
+        <div className="btn-row drug-setup-action-row">
+          <button
+            type="button"
+            className={`btn ghost${panelMode === "restock" ? " primary" : ""}`}
+            disabled={busy || selectedId == null}
+            onClick={() => selectedId != null && void openRestock(selectedId)}
+          >
+            {t("restock")}
+          </button>
+          <button
+            type="button"
+            className={`btn ghost${panelMode === "view" ? " primary" : ""}`}
+            disabled={busy || selectedId == null}
+            onClick={() => selectedId != null && void openView(selectedId)}
+          >
+            {t("view")}
+          </button>
+          {panelItem?.active ? (
+            <button
+              type="button"
+              className="btn ghost danger"
+              onClick={() => panelItem && void onDeactivate(panelItem.id)}
+              disabled={busy}
+            >
+              {t("deactivate")}
+            </button>
+          ) : null}
+        </div>
+      )}
 
       {panelItem && panelMode === "restock" ? (
-        <div className="card-form">
-          <div className="btn-row">
-            <h2 className="section-title">
-              {t("restock")} · {formatItemCode(panelItem.code)} · {t("inStock")}{" "}
-              {panelItem.stock_main.toLocaleString()} {panelItem.stock_unit || ""}
-            </h2>
-            <button type="button" className="btn ghost" onClick={clearPanel} disabled={busy}>
-              {t("close")}
-            </button>
-          </div>
-          <p className="hint">
-            {panelItem.name}
-            {(panelItem.dosage || "").trim() ? ` · ${panelItem.dosage}` : ""} ·{" "}
-            {formatPackPreview(packFromItem(panelItem))}
-          </p>
+        embedDetail ? (
+          <div className="drug-setup-panel">
+            <div className="drug-setup-title-row">
+              <h3 className="drug-setup-title drug-setup-panel-title">
+                {t("restock")} · {formatItemCode(panelItem.code)} · {t("inStock")}{" "}
+                {panelItem.stock_main.toLocaleString()} {panelItem.stock_unit || ""}
+              </h3>
+              <button
+                type="button"
+                className="desk-text-link"
+                onClick={clearPanel}
+                disabled={busy}
+              >
+                {t("close")}
+              </button>
+            </div>
+            <p className="hint">
+              {panelItem.name}
+              {(panelItem.dosage || "").trim() ? ` · ${panelItem.dosage}` : ""} ·{" "}
+              {formatPackPreview(packFromItem(panelItem))}
+            </p>
 
-          <form className="nested-form" onSubmit={(e) => void onRestock(e)}>
-            <h3 className="section-title">{t("restock")}</h3>
-            <div className="field-row">
-              <label className="field">
-                <span>{t("quantityBoxes")}</span>
+            <form className="drug-setup-panel-form" onSubmit={(e) => void onRestock(e)}>
+              <div className="drug-info-field">
+                <span className="drug-info-label">{t("quantityBoxes")}</span>
                 <input
+                  className="drug-info-input"
                   type="number"
                   min={1}
                   value={restockQty}
@@ -389,139 +499,357 @@ export function PharmacyItemsTab({
                   required
                   disabled={busy}
                 />
-              </label>
-              <label className="field field-compact">
-                <span>{t("expiry")}</span>
+              </div>
+              <div className="drug-info-field">
+                <span className="drug-info-label">{t("expiry")}</span>
                 <DatePicker value={restockExpiry} onChange={setRestockExpiry} disabled={busy} />
-              </label>
-            </div>
-            {restockQty && Number(restockQty) > 0 ? (
-              <p className="hint">
-                {t("willAdd")}{" "}
-                {Number(restockQty) *
-                  Math.max(1, panelItem.units_per_purchase || panelItem.pack_size || 1)}{" "}
-                {panelItem.pack_l3_unit || panelItem.stock_unit || "units"} {t("toInStock")}
-              </p>
-            ) : null}
-            <div className="field-row">
-              <label className="field">
-                <span>{t("buyPricePerBox")}</span>
+              </div>
+              {restockQty && Number(restockQty) > 0 ? (
+                <p className="hint">
+                  {t("willAdd")}{" "}
+                  {Number(restockQty) *
+                    Math.max(1, panelItem.units_per_purchase || panelItem.pack_size || 1)}{" "}
+                  {panelItem.pack_l3_unit || panelItem.stock_unit || "units"} {t("toInStock")}
+                </p>
+              ) : null}
+              <div className="drug-info-field">
+                <span className="drug-info-label">{t("buyPricePerBox")}</span>
                 <input
+                  className="drug-info-input price-buy"
                   type="number"
                   min={0}
                   value={restockBuy}
                   onChange={(e) => setRestockBuy(e.target.value)}
                   disabled={busy}
                 />
-              </label>
-              <label className="field">
-                <span>{t("sellPricePerTablet")}</span>
+              </div>
+              <div className="drug-info-field">
+                <span className="drug-info-label">{t("sellPricePerTablet")}</span>
                 <input
+                  className="drug-info-input price-sell"
                   type="number"
                   min={0}
                   value={restockSell}
                   onChange={(e) => setRestockSell(e.target.value)}
                   disabled={busy}
                 />
-              </label>
-            </div>
-            {error ? <p className="form-error">{error}</p> : null}
-            <button type="submit" className="btn primary" disabled={busy || !panelItem.active}>
-              {t("restock")}
-            </button>
-          </form>
+              </div>
+              {error ? <p className="form-error">{error}</p> : null}
+              <button type="submit" className="btn primary" disabled={busy || !panelItem.active}>
+                {t("restock")}
+              </button>
+            </form>
 
-          {isAdmin ? (
-            <form className="nested-form" onSubmit={(e) => void onAdjust(e)}>
-              <h3 className="section-title">{t("adminAdjust")}</h3>
-              <div className="field-row">
-                <label className="field">
-                  <span>{t("qtyDelta")}</span>
+            {isAdmin ? (
+              <form className="drug-setup-panel-form" onSubmit={(e) => void onAdjust(e)}>
+                <h3 className="drug-setup-title drug-setup-panel-title">{t("adminAdjust")}</h3>
+                <div className="drug-info-field">
+                  <span className="drug-info-label">{t("qtyDelta")}</span>
                   <input
+                    className="drug-info-input"
                     type="number"
                     value={adjustDelta}
                     onChange={(e) => setAdjustDelta(e.target.value)}
                     required
                     disabled={busy}
                   />
-                </label>
-                <label className="field">
-                  <span>{t("reason")}</span>
+                </div>
+                <div className="drug-info-field">
+                  <span className="drug-info-label">{t("reason")}</span>
                   <input
+                    className="drug-info-input"
                     value={adjustReason}
                     onChange={(e) => setAdjustReason(e.target.value)}
                     required
                     disabled={busy}
                     placeholder={t("reasonPlaceholder")}
                   />
+                </div>
+                <button type="submit" className="btn ghost" disabled={busy}>
+                  {t("applyAdjustment")}
+                </button>
+              </form>
+            ) : null}
+          </div>
+        ) : (
+          <div className="card-form">
+            <div className="btn-row">
+              <h2 className="section-title">
+                {t("restock")} · {formatItemCode(panelItem.code)} · {t("inStock")}{" "}
+                {panelItem.stock_main.toLocaleString()} {panelItem.stock_unit || ""}
+              </h2>
+              <button type="button" className="btn ghost" onClick={clearPanel} disabled={busy}>
+                {t("close")}
+              </button>
+            </div>
+            <p className="hint">
+              {panelItem.name}
+              {(panelItem.dosage || "").trim() ? ` · ${panelItem.dosage}` : ""} ·{" "}
+              {formatPackPreview(packFromItem(panelItem))}
+            </p>
+
+            <form className="nested-form" onSubmit={(e) => void onRestock(e)}>
+              <h3 className="section-title">{t("restock")}</h3>
+              <div className="field-row">
+                <label className="field">
+                  <span>{t("quantityBoxes")}</span>
+                  <input
+                    type="number"
+                    min={1}
+                    value={restockQty}
+                    onChange={(e) => setRestockQty(e.target.value)}
+                    required
+                    disabled={busy}
+                  />
+                </label>
+                <label className="field field-compact">
+                  <span>{t("expiry")}</span>
+                  <DatePicker value={restockExpiry} onChange={setRestockExpiry} disabled={busy} />
                 </label>
               </div>
-              <button type="submit" className="btn ghost" disabled={busy}>
-                {t("applyAdjustment")}
+              {restockQty && Number(restockQty) > 0 ? (
+                <p className="hint">
+                  {t("willAdd")}{" "}
+                  {Number(restockQty) *
+                    Math.max(1, panelItem.units_per_purchase || panelItem.pack_size || 1)}{" "}
+                  {panelItem.pack_l3_unit || panelItem.stock_unit || "units"} {t("toInStock")}
+                </p>
+              ) : null}
+              <div className="field-row">
+                <label className="field">
+                  <span>{t("buyPricePerBox")}</span>
+                  <input
+                    type="number"
+                    min={0}
+                    value={restockBuy}
+                    onChange={(e) => setRestockBuy(e.target.value)}
+                    disabled={busy}
+                  />
+                </label>
+                <label className="field">
+                  <span>{t("sellPricePerTablet")}</span>
+                  <input
+                    type="number"
+                    min={0}
+                    value={restockSell}
+                    onChange={(e) => setRestockSell(e.target.value)}
+                    disabled={busy}
+                  />
+                </label>
+              </div>
+              {error ? <p className="form-error">{error}</p> : null}
+              <button type="submit" className="btn primary" disabled={busy || !panelItem.active}>
+                {t("restock")}
               </button>
             </form>
-          ) : null}
-        </div>
+
+            {isAdmin ? (
+              <form className="nested-form" onSubmit={(e) => void onAdjust(e)}>
+                <h3 className="section-title">{t("adminAdjust")}</h3>
+                <div className="field-row">
+                  <label className="field">
+                    <span>{t("qtyDelta")}</span>
+                    <input
+                      type="number"
+                      value={adjustDelta}
+                      onChange={(e) => setAdjustDelta(e.target.value)}
+                      required
+                      disabled={busy}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>{t("reason")}</span>
+                    <input
+                      value={adjustReason}
+                      onChange={(e) => setAdjustReason(e.target.value)}
+                      required
+                      disabled={busy}
+                      placeholder={t("reasonPlaceholder")}
+                    />
+                  </label>
+                </div>
+                <button type="submit" className="btn ghost" disabled={busy}>
+                  {t("applyAdjustment")}
+                </button>
+              </form>
+            ) : null}
+          </div>
+        )
       ) : null}
 
       {panelItem && panelMode === "view" ? (
-        <div className="card-form">
-          <div className="btn-row">
-            <h2 className="section-title">
-              {formatItemCode(panelItem.code)} · {t("inStock")}{" "}
-              {panelItem.stock_main.toLocaleString()}
-              {panelItem.stock_by_location?.OT_RESERVED
-                ? ` · ${t("reserved")} ${panelItem.stock_by_location.OT_RESERVED.toLocaleString()}`
-                : ""}
-              {panelItem.stock_by_location?.OT_FLOOR
-                ? ` · ${t("floorStock")} ${panelItem.stock_by_location.OT_FLOOR.toLocaleString()}`
-                : ""}
-            </h2>
-            <button type="button" className="btn ghost" onClick={clearPanel} disabled={busy}>
-              {t("close")}
-            </button>
-          </div>
-          <p className="hint">
-            {panelItem.name} — batches by location (FEFO at In Stock for sale/issue).
-          </p>
-          <ul className="data-list">
-            {(panelItem.batches ?? []).length === 0 ? (
-              <li className="empty-row">No batches yet — restock to add stock</li>
-            ) : null}
-            {(panelItem.batches ?? []).map((b) => (
-              <li key={b.id}>
-                <div>
-                  <p className="row-title">
-                    {formatLocationLabel(b.location_code)} · {t("qty")} {b.qty.toLocaleString()}
-                  </p>
-                  <p className="row-sub">
-                    {t("batch")} {b.batch_no || "—"} · {t("expiry")} {b.expiry_date || "none"}
-                  </p>
+        embedDetail ? (
+          <div className="drug-setup-panel">
+            <div className="drug-setup-title-row">
+              <h3 className="drug-setup-title drug-setup-panel-title">
+                {formatItemCode(panelItem.code)} · {t("inStock")}{" "}
+                {panelItem.stock_main.toLocaleString()}
+                {panelItem.stock_by_location?.OT_RESERVED
+                  ? ` · ${t("reserved")} ${panelItem.stock_by_location.OT_RESERVED.toLocaleString()}`
+                  : ""}
+                {panelItem.stock_by_location?.OT_FLOOR
+                  ? ` · ${t("floorStock")} ${panelItem.stock_by_location.OT_FLOOR.toLocaleString()}`
+                  : ""}
+              </h3>
+              <button
+                type="button"
+                className="desk-text-link"
+                onClick={clearPanel}
+                disabled={busy}
+              >
+                {t("close")}
+              </button>
+            </div>
+            <p className="hint">{t("batchSendHint")}</p>
+            {notice ? <p className="form-ok">{notice}</p> : null}
+            {error ? <p className="form-error">{error}</p> : null}
+            <div className="drug-setup-table drug-setup-batch-table" role="list">
+              <div className="drug-setup-batch-head">
+                <span>{t("batch")}</span>
+                <span>{t("qty")}</span>
+                <span>{t("expiry")}</span>
+                <span />
+              </div>
+              {(panelItem.batches ?? []).length === 0 ? (
+                <p className="empty-row">{t("noBatchesYet")}</p>
+              ) : null}
+              {(panelItem.batches ?? []).map((b) => (
+                <div key={b.id} className="drug-setup-batch-row" role="listitem">
+                  <span>
+                    {formatLocationLabel(b.location_code)} · {b.batch_no || "—"}
+                  </span>
+                  <span>{b.qty.toLocaleString()}</span>
+                  <span>{b.expiry_date || t("none")}</span>
+                  <span>
+                    {b.location_code === "MAIN" && b.qty > 0 ? (
+                      <form
+                        className="drug-setup-send-row"
+                        onSubmit={(e) => void onSendToOt(e, b.id, b.qty)}
+                      >
+                        <input
+                          className="drug-info-input"
+                          type="number"
+                          min={1}
+                          max={b.qty}
+                          value={sendQty[b.id] ?? ""}
+                          onChange={(e) =>
+                            setSendQty((prev) => ({ ...prev, [b.id]: e.target.value }))
+                          }
+                          disabled={busy}
+                          required
+                          aria-label={t("qtyToSend")}
+                        />
+                        <button type="submit" className="btn ghost" disabled={busy}>
+                          {t("sendToOt")}
+                        </button>
+                      </form>
+                    ) : null}
+                  </span>
                 </div>
-              </li>
-            ))}
-          </ul>
+              ))}
+            </div>
 
-          <h3 className="section-title">{t("itemHistory")}</h3>
-          <ul className="data-list">
-            {itemMovements.length === 0 ? (
-              <li className="empty-row">No history for this item</li>
-            ) : null}
-            {itemMovements.map((m) => {
-              const reasonLine = formatStockHistoryReason(m.reason);
-              return (
-                <li key={m.id}>
-                  <div>
+            <h3 className="drug-setup-title drug-setup-panel-title">{t("itemHistory")}</h3>
+            <div className="drug-setup-table drug-setup-history-table" role="list">
+              <div className="drug-setup-history-head">
+                <span>{t("itemHistory")}</span>
+              </div>
+              {itemMovements.length === 0 ? (
+                <p className="empty-row">No history for this item</p>
+              ) : null}
+              {itemMovements.map((m) => {
+                const reasonLine = formatStockHistoryReason(m.reason);
+                return (
+                  <div key={m.id} className="drug-setup-history-row" role="listitem">
                     <p className="row-title">
                       {formatStockHistoryLine(m, panelItem.stock_unit || m.stock_unit || "item")}
                     </p>
                     {reasonLine ? <p className="row-sub">{reasonLine}</p> : null}
                   </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <div className="card-form">
+            <div className="btn-row">
+              <h2 className="section-title">
+                {formatItemCode(panelItem.code)} · {t("inStock")}{" "}
+                {panelItem.stock_main.toLocaleString()}
+                {panelItem.stock_by_location?.OT_RESERVED
+                  ? ` · ${t("reserved")} ${panelItem.stock_by_location.OT_RESERVED.toLocaleString()}`
+                  : ""}
+                {panelItem.stock_by_location?.OT_FLOOR
+                  ? ` · ${t("floorStock")} ${panelItem.stock_by_location.OT_FLOOR.toLocaleString()}`
+                  : ""}
+              </h2>
+              <button type="button" className="btn ghost" onClick={clearPanel} disabled={busy}>
+                {t("close")}
+              </button>
+            </div>
+            <p className="hint">{t("batchSendHint")}</p>
+            {notice ? <p className="form-ok">{notice}</p> : null}
+            {error ? <p className="form-error">{error}</p> : null}
+            <ul className="data-list">
+              {(panelItem.batches ?? []).length === 0 ? (
+                <li className="empty-row">{t("noBatchesYet")}</li>
+              ) : null}
+              {(panelItem.batches ?? []).map((b) => (
+                <li key={b.id}>
+                  <div>
+                    <p className="row-title">
+                      {formatLocationLabel(b.location_code)} · {t("qty")} {b.qty.toLocaleString()}
+                    </p>
+                    <p className="row-sub">
+                      {t("batch")} {b.batch_no || "—"} · {t("expiry")} {b.expiry_date || t("none")}
+                    </p>
+                  </div>
+                  {b.location_code === "MAIN" && b.qty > 0 ? (
+                    <form className="btn-row" onSubmit={(e) => void onSendToOt(e, b.id, b.qty)}>
+                      <label className="field field-compact">
+                        <span>{t("qtyToSend")}</span>
+                        <input
+                          type="number"
+                          min={1}
+                          max={b.qty}
+                          value={sendQty[b.id] ?? ""}
+                          onChange={(e) =>
+                            setSendQty((prev) => ({ ...prev, [b.id]: e.target.value }))
+                          }
+                          disabled={busy}
+                          required
+                        />
+                      </label>
+                      <button type="submit" className="btn ghost" disabled={busy}>
+                        {t("sendToOt")}
+                      </button>
+                    </form>
+                  ) : null}
                 </li>
-              );
-            })}
-          </ul>
-        </div>
+              ))}
+            </ul>
+
+            <h3 className="section-title">{t("itemHistory")}</h3>
+            <ul className="data-list">
+              {itemMovements.length === 0 ? (
+                <li className="empty-row">No history for this item</li>
+              ) : null}
+              {itemMovements.map((m) => {
+                const reasonLine = formatStockHistoryReason(m.reason);
+                return (
+                  <li key={m.id}>
+                    <div>
+                      <p className="row-title">
+                        {formatStockHistoryLine(m, panelItem.stock_unit || m.stock_unit || "item")}
+                      </p>
+                      {reasonLine ? <p className="row-sub">{reasonLine}</p> : null}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )
       ) : null}
     </div>
   );

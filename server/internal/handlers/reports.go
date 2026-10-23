@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -28,15 +29,15 @@ type cashLine struct {
 }
 
 type cashReport struct {
-	Date           string     `json:"date"`
-	OPDCount       int        `json:"opd_count"`
-	OPDTotal       int64      `json:"opd_total_mmk"`
-	OTCount        int        `json:"ot_count"`
-	OTTotal        int64      `json:"ot_total_mmk"`
-	PharmacyCount  int        `json:"pharmacy_count"`
-	PharmacyTotal  int64      `json:"pharmacy_total_mmk"`
-	GrandTotal     int64      `json:"grand_total_mmk"`
-	Lines          []cashLine `json:"lines"`
+	Date          string     `json:"date"`
+	OPDCount      int        `json:"opd_count"`
+	OPDTotal      int64      `json:"opd_total_mmk"`
+	OTCount       int        `json:"ot_count"`
+	OTTotal       int64      `json:"ot_total_mmk"`
+	PharmacyCount int        `json:"pharmacy_count"`
+	PharmacyTotal int64      `json:"pharmacy_total_mmk"`
+	GrandTotal    int64      `json:"grand_total_mmk"`
+	Lines         []cashLine `json:"lines"`
 }
 
 type lowStockRow struct {
@@ -50,15 +51,15 @@ type lowStockRow struct {
 }
 
 type expiryRow struct {
-	BatchID     int64  `json:"batch_id"`
-	ItemID      int64  `json:"item_id"`
-	Code        string `json:"code"`
-	Name        string `json:"name"`
-	Location    string `json:"location_code"`
-	BatchNo     string `json:"batch_no"`
-	ExpiryDate  string `json:"expiry_date"`
-	Qty         int64  `json:"qty"`
-	DaysLeft    int    `json:"days_left"`
+	BatchID    int64  `json:"batch_id"`
+	ItemID     int64  `json:"item_id"`
+	Code       string `json:"code"`
+	Name       string `json:"name"`
+	Location   string `json:"location_code"`
+	BatchNo    string `json:"batch_no"`
+	ExpiryDate string `json:"expiry_date"`
+	Qty        int64  `json:"qty"`
+	DaysLeft   int    `json:"days_left"`
 }
 
 func (h *Reports) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -147,16 +148,66 @@ func (h *Reports) dailyCash(w http.ResponseWriter, r *http.Request, asHTML bool)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "report failed"})
 		return
 	}
+	user := middleware.UserFromContext(r.Context())
+	sources := map[string]bool{}
+	if user != nil {
+		sources = cashSourcesForRole(user.Role)
+	}
+	scopeCashReport(rep, sources)
 	if asHTML {
 		hosp, _ := loadHospitalSettings(h.DB)
 		if hosp == nil {
 			hosp = &hospitalSettings{HospitalName: "Mudita Hospital"}
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(renderCashReportHTML(hosp, rep)))
+		_, _ = w.Write([]byte(renderCashReportHTML(hosp, rep, sources)))
 		return
 	}
 	writeJSON(w, http.StatusOK, rep)
+}
+
+// cashSourcesForRole is the desks whose paid bills this role may see.
+// Admin has every desk permission, so the admin dashboard print stays combined.
+func cashSourcesForRole(role string) map[string]bool {
+	sources := map[string]bool{}
+	if auth.HasPermission(role, auth.PermOPD) {
+		sources["OPD"] = true
+	}
+	if auth.HasPermission(role, auth.PermOT) {
+		sources["OT"] = true
+	}
+	if auth.HasPermission(role, auth.PermPharmacy) {
+		sources["Pharmacy"] = true
+	}
+	return sources
+}
+
+func scopeCashReport(rep *cashReport, sources map[string]bool) {
+	if rep == nil {
+		return
+	}
+	lines := make([]cashLine, 0)
+	rep.OPDCount, rep.OTCount, rep.PharmacyCount = 0, 0, 0
+	rep.OPDTotal, rep.OTTotal, rep.PharmacyTotal = 0, 0, 0
+	for _, line := range rep.Lines {
+		if !sources[line.Source] {
+			continue
+		}
+		lines = append(lines, line)
+		switch line.Source {
+		case "OPD":
+			rep.OPDCount++
+			rep.OPDTotal += line.TotalMMK
+		case "OT":
+			rep.OTCount++
+			rep.OTTotal += line.TotalMMK
+		case "Pharmacy":
+			rep.PharmacyCount++
+			rep.PharmacyTotal += line.TotalMMK
+		}
+	}
+	rep.Lines = lines
+	rep.GrandTotal = rep.OPDTotal + rep.OTTotal + rep.PharmacyTotal
 }
 
 func buildDailyCash(db *sql.DB, date string) (*cashReport, error) {
@@ -334,6 +385,7 @@ func listNearExpiry(db *sql.DB, days int) ([]expiryRow, error) {
 		FROM item_batches b
 		JOIN items i ON i.id = b.item_id
 		WHERE i.active = 1 AND b.qty > 0
+		  AND b.location_code = 'MAIN'
 		  AND b.expiry_date IS NOT NULL AND b.expiry_date != ''
 		  AND date(b.expiry_date) <= date(?)
 		ORDER BY b.expiry_date ASC, i.code ASC
@@ -357,7 +409,61 @@ func listNearExpiry(db *sql.DB, days int) ([]expiryRow, error) {
 	return out, rows.Err()
 }
 
-func renderCashReportHTML(hosp *hospitalSettings, rep *cashReport) string {
+// listLiveNearExpiry is MAIN plus the OT cupboard. Legacy OT_FLOOR and
+// OT_RESERVED rows are omitted so a copied floor batch is not counted twice.
+func listLiveNearExpiry(db *sql.DB, days int) ([]expiryRow, error) {
+	main, err := listNearExpiry(db, days)
+	if err != nil {
+		return nil, err
+	}
+	ot, err := listOtNearExpiry(db, days)
+	if err != nil {
+		return nil, err
+	}
+	out := append(main, ot...)
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].ExpiryDate != out[j].ExpiryDate {
+			return out[i].ExpiryDate < out[j].ExpiryDate
+		}
+		return out[i].Code < out[j].Code
+	})
+	return out, nil
+}
+
+func listOtNearExpiry(db *sql.DB, days int) ([]expiryRow, error) {
+	today := time.Now().Format("2006-01-02")
+	limit := time.Now().AddDate(0, 0, days).Format("2006-01-02")
+	rows, err := db.Query(`
+		SELECT b.id, i.id, i.code, i.name, COALESCE(b.batch_no, ''),
+		       b.expiry_date, b.qty
+		FROM ot_batches b
+		JOIN items i ON i.id = b.item_id
+		WHERE i.active = 1 AND b.qty > 0
+		  AND b.expiry_date IS NOT NULL AND b.expiry_date != ''
+		  AND date(b.expiry_date) <= date(?)
+		ORDER BY b.expiry_date ASC, i.code ASC
+	`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]expiryRow, 0)
+	t0, _ := time.Parse("2006-01-02", today)
+	for rows.Next() {
+		var row expiryRow
+		row.Location = "OT"
+		if err := rows.Scan(&row.BatchID, &row.ItemID, &row.Code, &row.Name, &row.BatchNo, &row.ExpiryDate, &row.Qty); err != nil {
+			return nil, err
+		}
+		if exp, err := time.Parse("2006-01-02", row.ExpiryDate); err == nil {
+			row.DaysLeft = int(exp.Sub(t0).Hours() / 24)
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
+}
+
+func renderCashReportHTML(hosp *hospitalSettings, rep *cashReport, sources map[string]bool) string {
 	var b strings.Builder
 	b.WriteString("<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>Daily cash ")
 	b.WriteString(html.EscapeString(rep.Date))
@@ -370,13 +476,20 @@ func renderCashReportHTML(hosp *hospitalSettings, rep *cashReport) string {
 	b.WriteString("<h2>Daily cash report — ")
 	b.WriteString(html.EscapeString(rep.Date))
 	b.WriteString("</h2>")
-	b.WriteString(fmt.Sprintf(
-		"<p class=\"summary\">OPD: %d · %s MMK &nbsp;|&nbsp; Pharmacy: %d · %s MMK &nbsp;|&nbsp; OT: %d · %s MMK &nbsp;|&nbsp; <strong>Total: %s MMK</strong></p>",
-		rep.OPDCount, formatMMK(rep.OPDTotal),
-		rep.PharmacyCount, formatMMK(rep.PharmacyTotal),
-		rep.OTCount, formatMMK(rep.OTTotal),
-		formatMMK(rep.GrandTotal),
-	))
+	var parts []string
+	if sources["OPD"] {
+		parts = append(parts, fmt.Sprintf("OPD: %d · %s MMK", rep.OPDCount, formatMMK(rep.OPDTotal)))
+	}
+	if sources["Pharmacy"] {
+		parts = append(parts, fmt.Sprintf("Pharmacy: %d · %s MMK", rep.PharmacyCount, formatMMK(rep.PharmacyTotal)))
+	}
+	if sources["OT"] {
+		parts = append(parts, fmt.Sprintf("OT: %d · %s MMK", rep.OTCount, formatMMK(rep.OTTotal)))
+	}
+	parts = append(parts, fmt.Sprintf("<strong>Total: %s MMK</strong>", formatMMK(rep.GrandTotal)))
+	b.WriteString(`<p class="summary">`)
+	b.WriteString(strings.Join(parts, " &nbsp;|&nbsp; "))
+	b.WriteString("</p>")
 	b.WriteString("<table><thead><tr><th>Source</th><th>Bill</th><th>Patient</th><th>Doctor</th><th>Paid</th><th class=\"num\">MMK</th></tr></thead><tbody>")
 	for _, line := range rep.Lines {
 		b.WriteString("<tr><td>")
@@ -442,7 +555,7 @@ func renderNearExpiryHTML(hosp *hospitalSettings, list []expiryRow, days int) st
 	b.WriteString("</style></head><body>")
 	b.WriteString("<h1>")
 	b.WriteString(html.EscapeString(hosp.HospitalName))
-	b.WriteString(fmt.Sprintf("</h1><h2>Near expiry (within %d days)</h2>", days))
+	b.WriteString(fmt.Sprintf("</h1><h2>Near expiry — MAIN (within %d days)</h2>", days))
 	b.WriteString(fmt.Sprintf("<p class=\"summary\">%d batches</p>", len(list)))
 	b.WriteString("<table><thead><tr><th>Code</th><th>Name</th><th>Loc</th><th>Batch</th><th>Expiry</th><th class=\"num\">Days</th><th class=\"num\">Qty</th></tr></thead><tbody>")
 	for _, row := range list {

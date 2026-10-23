@@ -1,4 +1,5 @@
 import { apiFetch, getApiBase, TOKEN_KEY } from "./api";
+import { userMessage } from "./errors";
 
 export type MasterItem = {
   id: number;
@@ -147,7 +148,8 @@ export async function downloadExportCSV(kind: "items" | "services" | "doctors"):
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error((body as { error?: string }).error || `Export failed (${res.status})`);
+    const raw = (body as { error?: string }).error || `Export failed (${res.status})`;
+    throw new Error(userMessage(raw, res.status));
   }
   const blob = await res.blob();
   const cd = res.headers.get("Content-Disposition") || "";

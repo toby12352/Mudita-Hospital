@@ -1,9 +1,13 @@
+import { userMessage } from "@/shared/errors";
+
 /** In-app print preview — avoids window.open (blocked in Tauri WebView2). */
 
 export type PrintPreviewOptions = {
   title?: string;
   /** Narrow thermal receipt chrome (~80mm). Default true for bills. */
   receipt?: boolean;
+  /** Called after the preview Print button runs contentWindow.print(). */
+  onPrinted?: () => void | Promise<void>;
 };
 
 let activeOverlay: HTMLElement | null = null;
@@ -86,6 +90,8 @@ export function openPrintPreview(html: string, opts: PrintPreviewOptions = {}): 
     } catch {
       /* user can retry */
     }
+    const cb = opts.onPrinted;
+    if (cb) void Promise.resolve(cb()).catch(() => {});
   });
 
   // srcdoc keeps auth-fetched HTML in-process without a second navigation.
@@ -105,7 +111,7 @@ export async function fetchAndPreviewPrint(
   });
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(text || `print failed (${res.status})`);
+    throw new Error(userMessage(text || `print failed (${res.status})`, res.status));
   }
   const html = await res.text();
   openPrintPreview(html, opts);

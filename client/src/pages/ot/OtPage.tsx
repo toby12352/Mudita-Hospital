@@ -2,35 +2,58 @@ import { useEffect, useState } from "react";
 import {
   createOtBillFromCase,
   createOtCase,
+  findOtCatalogItem,
+  findOtServiceByCode,
   getOtBill,
   getOtCase,
-  issueOtCase,
   listOtCases,
+  listOtCatalogItems,
   listOtDoctors,
+  listOtServices,
   payOtBill,
   printOtBill,
-  printOtPickList,
-  reconcileOtCase,
   updateOtCase,
   voidOtBill,
   type OtBill,
   type OtCase,
   type OtCaseItem,
+  type OtCatalogItem,
   type OtDoctor,
+  type OtService,
 } from "@/features/ot/api";
 import {
-  findItemByCode,
-  listPharmacyItems,
-  type PharmacyItem,
+  formatPackCompact,
+  formatPackPreview,
+  packFromItem,
+  saleUnitsFromPack,
+  type SaleUnit,
 } from "@/features/pharmacy/api";
-import {
-  findOpdServiceByCode,
-  listOpdServices,
-} from "@/features/opd/api";
+import { BillLineGrid, createBillLineEntry, type BillLineGridRow } from "@/shared/BillLineGrid";
 import { formatMMK } from "@/shared/format";
 import { Typeahead } from "@/shared/Typeahead";
 import { useI18n } from "@/shared/i18n";
-import { FormSection } from "@/shared/FormSection";
+import { OtHistoryModal, type OtHistoryModalMode } from "./OtHistoryModal";
+
+type OtServiceLine = {
+  ref_id: number;
+  code: string;
+  description: string;
+  qty: number;
+  unit_price_mmk: number;
+};
+
+function servicesFromBill(b: OtBill): OtServiceLine[] {
+  return (b.lines ?? [])
+    .filter((l) => l.line_type === "service" && l.ref_id)
+    .map((l) => ({
+      ref_id: l.ref_id as number,
+      code: l.code,
+      description: l.description,
+      qty: l.qty,
+      unit_price_mmk: l.unit_price_mmk,
+    }));
+}
+
 export function OtPage({ initialMode = "list" }: { initialMode?: "list" | "case" }) {
   const { t } = useI18n();
   const [mode, setMode] = useState<"list" | "case" | "bill">(initialMode);
@@ -41,6 +64,7 @@ export function OtPage({ initialMode = "list" }: { initialMode?: "list" | "case"
   const [error, setError] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [dialog, setDialog] = useState<OtHistoryModalMode | null>(null);
 
   const [caseId, setCaseId] = useState<number | null>(null);
   const [caseNo, setCaseNo] = useState("");
@@ -51,18 +75,20 @@ export function OtPage({ initialMode = "list" }: { initialMode?: "list" | "case"
   const [patientGender, setPatientGender] = useState("");
   const [doctorId, setDoctorId] = useState("");
   const [doctorName, setDoctorName] = useState("");
+  const [doctorFeeMmk, setDoctorFeeMmk] = useState(0);
   const [procedureName, setProcedureName] = useState("");
   const [notes, setNotes] = useState("");
   const [items, setItems] = useState<OtCaseItem[]>([]);
-  const [codeInput, setCodeInput] = useState("");
+  const [onHandByItemId, setOnHandByItemId] = useState<Record<number, number>>({});
+  const [services, setServices] = useState<OtServiceLine[]>([]);
   const [otBillId, setOtBillId] = useState<number | null>(null);
+  const [createdAt, setCreatedAt] = useState<string | null>(null);
+  const [nowTick, setNowTick] = useState(() => Date.now());
 
   const [bill, setBill] = useState<OtBill | null>(null);
   const [voidReason, setVoidReason] = useState("");
 
   const isDraft = caseStatus === "draft";
-  const isIssued = caseStatus === "issued";
-  const isReconciled = caseStatus === "reconciled";
 
   async function reloadList(search = q, status = statusFilter) {
     setCases(await listOtCases(search, status));
@@ -85,6 +111,12 @@ export function OtPage({ initialMode = "list" }: { initialMode?: "list" | "case"
     };
   }, []);
 
+  useEffect(() => {
+    if (createdAt) return;
+    const id = window.setInterval(() => setNowTick(Date.now()), 30_000);
+    return () => window.clearInterval(id);
+  }, [createdAt]);
+
   function resetCaseForm() {
     setCaseId(null);
     setCaseNo("");
@@ -95,13 +127,34 @@ export function OtPage({ initialMode = "list" }: { initialMode?: "list" | "case"
     setPatientGender("");
     setDoctorId("");
     setDoctorName("");
+    setDoctorFeeMmk(0);
     setProcedureName("");
     setNotes("");
     setItems([]);
-    setCodeInput("");
+    setOnHandByItemId({});
+    setServices([]);
     setOtBillId(null);
+    setBill(null);
+    setCreatedAt(null);
     setError(null);
     setOkMsg(null);
+  }
+
+  function rememberOtOnHand(id: number, qty: number) {
+    setOnHandByItemId((prev) => ({ ...prev, [id]: qty }));
+  }
+
+  function refreshOtOnHand(caseItems: { code: string }[]) {
+    const codes = [...new Set(caseItems.map((it) => it.code.trim()).filter(Boolean))];
+    for (const code of codes) {
+      void findOtCatalogItem(code).then((item) => {
+        if (item) rememberOtOnHand(item.id, item.ot_on_hand);
+      });
+    }
+  }
+
+  function stockLeftMessage(left: number, unit: string) {
+    return t("stockOnlyLeft").replace("{qty}", String(Math.max(0, left))).replace("{unit}", unit);
   }
 
   function applyCase(c: OtCase) {
@@ -114,18 +167,20 @@ export function OtPage({ initialMode = "list" }: { initialMode?: "list" | "case"
     setPatientGender(c.patient_gender);
     setDoctorId(c.doctor_id != null ? String(c.doctor_id) : "");
     setDoctorName(c.doctor_name || "");
+    setDoctorFeeMmk(c.doctor_ot_fee_mmk ?? 0);
     setProcedureName(c.procedure_name);
     setNotes(c.notes);
-    setItems(
-      (c.items ?? []).map((it) => ({
-        ...it,
-        qty_used: it.qty_used || 0,
-        qty_returned: it.qty_returned || 0,
-        qty_wasted: it.qty_wasted || 0,
-        qty_kept_on_floor: it.qty_kept_on_floor || 0,
-      })),
-    );
+    const nextItems = (c.items ?? []).map((it) => ({
+      ...it,
+      qty_used: it.qty_used || 0,
+      qty_returned: it.qty_returned || 0,
+      qty_wasted: it.qty_wasted || 0,
+      qty_kept_on_floor: it.qty_kept_on_floor || 0,
+    }));
+    setItems(nextItems);
+    refreshOtOnHand(nextItems);
     setOtBillId(c.ot_bill_id ?? null);
+    setCreatedAt(c.created_at || null);
   }
 
   function openNew() {
@@ -141,7 +196,12 @@ export function OtPage({ initialMode = "list" }: { initialMode?: "list" | "case"
       applyCase(c);
       setMode("case");
       if (c.ot_bill_id) {
-        setOkMsg(`Linked bill id ${c.ot_bill_id}`);
+        const b = await getOtBill(c.ot_bill_id);
+        setBill(b);
+        setServices(servicesFromBill(b));
+      } else {
+        setBill(null);
+        setServices([]);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Open failed");
@@ -153,6 +213,7 @@ export function OtPage({ initialMode = "list" }: { initialMode?: "list" | "case"
   function pickOtDoctor(d: OtDoctor) {
     setDoctorId(String(d.id));
     setDoctorName(d.name);
+    setDoctorFeeMmk(d.ot_fee_mmk);
   }
 
   function buildWrite() {
@@ -172,6 +233,8 @@ export function OtPage({ initialMode = "list" }: { initialMode?: "list" | "case"
         name: it.name,
         sell_price_mmk: it.sell_price_mmk,
         qty_issued: Math.max(1, Math.floor(Number(it.qty_issued)) || 1),
+        sale_qty: it.sale_unit ? Math.max(1, Math.floor(Number(it.sale_qty)) || 1) : 0,
+        sale_unit: (it.sale_unit || "").trim(),
         qty_used: 0,
         qty_returned: 0,
         qty_wasted: 0,
@@ -180,12 +243,48 @@ export function OtPage({ initialMode = "list" }: { initialMode?: "list" | "case"
     };
   }
 
-  function addOtItem(item: PharmacyItem) {
+  function otherIssued(itemId: number, skipIndex: number) {
+    return items.reduce(
+      (sum, row, i) => (i !== skipIndex && row.item_id === itemId ? sum + row.qty_issued : sum),
+      0,
+    );
+  }
+
+  function addOtItem(item: OtCatalogItem, qty: number, unit: SaleUnit | null) {
+    const units = saleUnitsFromPack(packFromItem(item), item.sell_price_mmk);
+    const chosen = unit ?? (units.length === 1 ? units[0] : null);
+    if (!chosen && units.length > 0) {
+      setError(`${item.code}: ${t("chooseUnit")}`);
+      return;
+    }
+    const saleUnit = chosen?.id ?? "";
+    const factor = chosen?.factor ?? 1;
+    const stockQty = qty * factor;
+    const already = otherIssued(item.id, -1);
+    const stockUnit = item.stock_unit || packFromItem(item).pack_l3_unit || t("item");
+    if (item.ot_on_hand < already + stockQty) {
+      setError(stockLeftMessage(item.ot_on_hand - already, stockUnit));
+      return;
+    }
+    rememberOtOnHand(item.id, item.ot_on_hand);
     setItems((prev) => {
-      const idx = prev.findIndex((p) => p.item_id === item.id);
+      const idx = prev.findIndex(
+        (p) => p.item_id === item.id && (p.sale_unit || "") === saleUnit,
+      );
       if (idx >= 0) {
         const next = [...prev];
-        next[idx] = { ...next[idx], qty_issued: next[idx].qty_issued + 1 };
+        const row = next[idx];
+        if (!saleUnit) {
+          next[idx] = { ...row, qty_issued: row.qty_issued + stockQty };
+        } else {
+          const saleQty = (row.sale_qty || 0) + qty;
+          next[idx] = {
+            ...row,
+            sale_unit: saleUnit,
+            sale_qty: saleQty,
+            qty_issued: saleQty * factor,
+          };
+        }
         return next;
       }
       return [
@@ -195,7 +294,15 @@ export function OtPage({ initialMode = "list" }: { initialMode?: "list" | "case"
           code: item.code,
           name: item.name,
           sell_price_mmk: item.sell_price_mmk,
-          qty_issued: 1,
+          qty_issued: stockQty,
+          sale_qty: saleUnit ? qty : 0,
+          sale_unit: saleUnit,
+          pack_l1_qty: item.pack_l1_qty,
+          pack_l1_unit: item.pack_l1_unit,
+          pack_l2_qty: item.pack_l2_qty,
+          pack_l2_unit: item.pack_l2_unit,
+          pack_l3_qty: item.pack_l3_qty,
+          pack_l3_unit: item.pack_l3_unit,
           qty_used: 0,
           qty_returned: 0,
           qty_wasted: 0,
@@ -203,26 +310,126 @@ export function OtPage({ initialMode = "list" }: { initialMode?: "list" | "case"
         },
       ];
     });
-    setCodeInput("");
-    setOkMsg(
-      `Added ${item.code} (In Stock ${item.stock_main} ${item.stock_unit || "units"})`,
-    );
+    setError(null);
   }
 
-  async function addByCode() {
-    const code = codeInput.trim();
-    if (!code) return;
-    setError(null);
-    try {
-      const item = await findItemByCode(code);
-      if (!item) {
-        setError(`Unknown item code: ${code}`);
-        return;
+  function addOtService(svc: OtService, qty: number) {
+    setServices((prev) => {
+      const idx = prev.findIndex((s) => s.ref_id === svc.id);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = { ...next[idx], qty: next[idx].qty + qty };
+        return next;
       }
-      addOtItem(item);
+      return [
+        ...prev,
+        {
+          ref_id: svc.id,
+          code: svc.code,
+          description: svc.name,
+          qty,
+          unit_price_mmk: svc.price_mmk,
+        },
+      ];
+    });
+    setError(null);
+  }
+
+  async function lookupOtItem(code: string): Promise<OtCatalogItem | null> {
+    const trimmed = code.trim();
+    if (!trimmed) return null;
+    try {
+      const item = await findOtCatalogItem(trimmed);
+      if (!item) {
+        setError(`Unknown item code: ${trimmed}`);
+        return null;
+      }
+      rememberOtOnHand(item.id, item.ot_on_hand);
+      setError(null);
+      return item;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Lookup failed");
+      return null;
     }
+  }
+
+  async function lookupOtService(code: string): Promise<OtService | null> {
+    const trimmed = code.trim();
+    if (!trimmed) return null;
+    try {
+      const svc = await findOtServiceByCode(trimmed);
+      if (!svc) {
+        setError(`Unknown service code: ${trimmed}`);
+        return null;
+      }
+      setError(null);
+      return svc;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Lookup failed");
+      return null;
+    }
+  }
+
+  function commitOtItemQty(index: number, qty: number): boolean {
+    const it = items[index];
+    if (!it) return false;
+    let nextIssued = qty;
+    if (it.sale_unit) {
+      const units = saleUnitsFromPack(packFromItem(it), it.sell_price_mmk);
+      const unit = units.find((u) => u.id.toLowerCase() === it.sale_unit!.toLowerCase());
+      const factor =
+        unit?.factor ?? (it.sale_qty && it.sale_qty > 0 ? it.qty_issued / it.sale_qty : 1);
+      nextIssued = qty * factor;
+    }
+    const onHand = onHandByItemId[it.item_id];
+    const already = otherIssued(it.item_id, index);
+    if (onHand != null && onHand < already + nextIssued) {
+      const stockUnit = it.pack_l3_unit || packFromItem(it).pack_l3_unit || t("item");
+      setError(stockLeftMessage(onHand - already, stockUnit));
+      return false;
+    }
+    setItems((prev) =>
+      prev.map((row, i) => {
+        if (i !== index) return row;
+        if (!row.sale_unit) return { ...row, qty_issued: qty };
+        const units = saleUnitsFromPack(packFromItem(row), row.sell_price_mmk);
+        const unit = units.find((u) => u.id.toLowerCase() === row.sale_unit!.toLowerCase());
+        const factor =
+          unit?.factor ?? (row.sale_qty && row.sale_qty > 0 ? row.qty_issued / row.sale_qty : 1);
+        return { ...row, sale_qty: qty, qty_issued: qty * factor };
+      }),
+    );
+    setError(null);
+    return true;
+  }
+
+  function changeOtItemUnit(index: number, unitId: string) {
+    const it = items[index];
+    if (!it) return;
+    const units = saleUnitsFromPack(packFromItem(it), it.sell_price_mmk);
+    const unit = units.find((u) => u.id === unitId);
+    if (!unit) return;
+    const saleQty = it.sale_qty && it.sale_qty > 0 ? it.sale_qty : Math.max(1, it.qty_issued);
+    const nextIssued = saleQty * unit.factor;
+    const onHand = onHandByItemId[it.item_id];
+    const already = otherIssued(it.item_id, index);
+    if (onHand != null && onHand < already + nextIssued) {
+      const stockUnit = it.pack_l3_unit || packFromItem(it).pack_l3_unit || t("item");
+      setError(stockLeftMessage(onHand - already, stockUnit));
+      return;
+    }
+    setItems((prev) =>
+      prev.map((row, i) => {
+        if (i !== index) return row;
+        return {
+          ...row,
+          sale_unit: unit.id,
+          sale_qty: saleQty,
+          qty_issued: nextIssued,
+        };
+      }),
+    );
+    setError(null);
   }
 
   async function saveDraft() {
@@ -236,7 +443,7 @@ export function OtPage({ initialMode = "list" }: { initialMode?: "list" | "case"
       const body = buildWrite();
       const c = caseId ? await updateOtCase(caseId, body) : await createOtCase(body);
       applyCase(c);
-      setOkMsg(`Saved ${c.case_no}`);
+      setOkMsg(`${t("saved")} ${c.case_no}`);
       await reloadList();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Save failed");
@@ -245,124 +452,90 @@ export function OtPage({ initialMode = "list" }: { initialMode?: "list" | "case"
     }
   }
 
-  async function doIssue() {
+  async function ensureBillReady(): Promise<OtBill | null> {
     if (!patientName.trim()) {
       setError("Patient name required");
-      return;
+      return null;
     }
-    if (items.length === 0) {
-      setError("Add cart items before issue");
-      return;
+    const body = buildWrite();
+    let id = caseId;
+    let status = caseStatus;
+    if (!id) {
+      const created = await createOtCase(body);
+      applyCase(created);
+      id = created.id;
+      status = created.status;
+    } else if (status === "draft") {
+      const updated = await updateOtCase(id, body);
+      applyCase(updated);
+      status = updated.status;
     }
-    if (!window.confirm("Issue cart from In Stock → OT_RESERVED? Stock will leave pharmacy.")) {
-      return;
+
+    if (otBillId) {
+      const existing = bill?.id === otBillId ? bill : await getOtBill(otBillId);
+      setBill(existing);
+      return existing;
     }
+
+    const serviceLines = services.map((s) => ({
+      line_type: "service" as const,
+      ref_id: s.ref_id,
+      code: s.code,
+      description: s.description,
+      qty: s.qty,
+      unit_price_mmk: s.unit_price_mmk,
+      line_total_mmk: s.qty * s.unit_price_mmk,
+    }));
+    const b = await createOtBillFromCase(id!, serviceLines);
+    setBill(b);
+    setServices(servicesFromBill(b));
+    setOtBillId(b.id);
+    setCaseStatus("billed");
+    setOkMsg(`${t("saved")} ${b.bill_no}`);
+    await reloadList();
+    return b;
+  }
+
+  async function doPrintAndPay() {
     setBusy(true);
     setError(null);
+    setOkMsg(null);
     try {
-      const body = buildWrite();
-      let id = caseId;
-      if (!id) {
-        const created = await createOtCase(body);
-        applyCase(created);
-        id = created.id;
-      } else if (caseStatus === "draft") {
-        const updated = await updateOtCase(id, body);
-        applyCase(updated);
+      const b = await ensureBillReady();
+      if (!b) return;
+      const billId = b.id;
+      if (b.status === "paid") {
+        await printOtBill(billId);
+        return;
       }
-      const c = await issueOtCase(id);
-      applyCase(c);
-      setOkMsg(`Issued ${c.case_no} — print pick list for OT floor`);
-      await reloadList();
+      await printOtBill(billId, {
+        onPrinted: async () => {
+          try {
+            const current = await getOtBill(billId);
+            if (current.status === "draft") {
+              const paid = await payOtBill(billId);
+              setBill(paid);
+              setOkMsg(t("otDeskPrintedPaid").replace("{bill}", paid.bill_no));
+              await reloadList();
+            } else {
+              setBill(current);
+            }
+          } catch (e) {
+            setError(e instanceof Error ? e.message : "Pay failed");
+          }
+        },
+      });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Issue failed");
+      setError(e instanceof Error ? e.message : "Print failed");
     } finally {
       setBusy(false);
     }
   }
 
-  async function doReconcile() {
-    if (!caseId) return;
-    for (const it of items) {
-      if (!it.id) {
-        setError("Reload case before reconcile");
-        return;
-      }
-      const sum = it.qty_used + it.qty_returned + it.qty_wasted + it.qty_kept_on_floor;
-      if (sum !== it.qty_issued) {
-        setError(`${it.code}: Used+Returned+Wasted+Floor must equal issued (${it.qty_issued})`);
-        return;
-      }
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      const c = await reconcileOtCase(
-        caseId,
-        items.map((it) => ({
-          id: it.id!,
-          qty_used: it.qty_used,
-          qty_returned: it.qty_returned,
-          qty_wasted: it.qty_wasted,
-          qty_kept_on_floor: it.qty_kept_on_floor,
-        })),
-      );
-      applyCase(c);
-      setOkMsg(`Reconciled ${c.case_no}`);
-      await reloadList();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Reconcile failed");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const [extraServiceCode, setExtraServiceCode] = useState("");
-
-  async function doCreateBill() {
-    if (!caseId) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const services: {
-        line_type: "service";
-        ref_id?: number;
-        code: string;
-        description: string;
-        qty: number;
-        unit_price_mmk: number;
-        line_total_mmk: number;
-      }[] = [];
-      const code = extraServiceCode.trim();
-      if (code) {
-        const svc = await findOpdServiceByCode(code);
-        if (!svc) {
-          setError(`Unknown service code: ${code}`);
-          setBusy(false);
-          return;
-        }
-        services.push({
-          line_type: "service",
-          ref_id: svc.id,
-          code: svc.code,
-          description: svc.name,
-          qty: 1,
-          unit_price_mmk: svc.price_mmk,
-          line_total_mmk: svc.price_mmk,
-        });
-      }
-      const b = await createOtBillFromCase(caseId, services);
-      setBill(b);
-      setOtBillId(b.id);
-      setCaseStatus("billed");
-      setMode("bill");
-      setOkMsg(`Created ${b.bill_no}`);
-      await reloadList();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Bill create failed");
-    } finally {
-      setBusy(false);
-    }
+  function doCancelForm() {
+    if (!window.confirm(t("otDeskCancelConfirm"))) return;
+    resetCaseForm();
+    setMode("case");
   }
 
   async function openBill(id: number) {
@@ -386,7 +559,7 @@ export function OtPage({ initialMode = "list" }: { initialMode?: "list" | "case"
     try {
       const b = await payOtBill(bill.id);
       setBill(b);
-      setOkMsg(`Paid ${b.bill_no}`);
+      setOkMsg(`${t("paid")} ${b.bill_no}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Pay failed");
     } finally {
@@ -404,7 +577,8 @@ export function OtPage({ initialMode = "list" }: { initialMode?: "list" | "case"
     try {
       const b = await voidOtBill(bill.id, voidReason.trim());
       setBill(b);
-      setOkMsg(`Voided ${b.bill_no}`);
+      setOkMsg(t("voidOtDone").replace("{bill}", b.bill_no));
+      await reloadList();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Void failed");
     } finally {
@@ -412,35 +586,131 @@ export function OtPage({ initialMode = "list" }: { initialMode?: "list" | "case"
     }
   }
 
-  function setReconcileField(
-    index: number,
-    field: "qty_used" | "qty_returned" | "qty_wasted" | "qty_kept_on_floor",
-    raw: string,
-  ) {
-    const n = Math.max(0, Math.floor(Number(raw) || 0));
-    setItems((prev) => {
-      const next = [...prev];
-      next[index] = { ...next[index], [field]: n };
-      return next;
-    });
+  async function voidFromHistory(c: OtCase, reason: string) {
+    if (!c.ot_bill_id) {
+      throw new Error("No bill to void");
+    }
+    const b = await voidOtBill(c.ot_bill_id, reason);
+    setOkMsg(t("voidOtDone").replace("{bill}", b.bill_no));
+    if (otBillId === c.ot_bill_id) {
+      setBill(b);
+      setCaseStatus("draft");
+      setOtBillId(null);
+    }
+    await reloadList();
   }
 
-  function fillAllUsed() {
-    setItems((prev) =>
-      prev.map((it) => ({
-        ...it,
-        qty_used: it.qty_issued,
-        qty_returned: 0,
-        qty_wasted: 0,
-        qty_kept_on_floor: 0,
-      })),
-    );
+  useEffect(() => {
+    if (mode !== "case") return;
+    function onKey(e: KeyboardEvent) {
+      if (dialog) return;
+      if (document.querySelector(".print-preview-overlay")) return;
+      const key = e.key;
+      if (key === "F5") {
+        e.preventDefault();
+        if (!busy && isDraft) void saveDraft();
+        return;
+      }
+      if (key === "F7") {
+        e.preventDefault();
+        if (!busy) void doPrintAndPay();
+        return;
+      }
+      if (key === "F9") {
+        e.preventDefault();
+        if (!busy) setDialog("history");
+        return;
+      }
+      if (key === "F8" && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        if (!busy) setDialog("delete");
+        return;
+      }
+      if (key === "F10") {
+        e.preventDefault();
+        if (!busy) doCancelForm();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- desk shortcuts
+  }, [mode, dialog, busy, isDraft, caseId, patientName, items, services, otBillId, bill]);
+
+  const itemsTotal = items.reduce(
+    (sum, it) => sum + it.sell_price_mmk * Math.max(0, it.qty_issued),
+    0,
+  );
+  const servicesTotal = services.reduce((sum, s) => sum + s.qty * s.unit_price_mmk, 0);
+  const estimatedTotal = bill?.total_mmk ?? itemsTotal + servicesTotal + doctorFeeMmk;
+  const paidAmount = bill?.status === "paid" ? bill.total_mmk : 0;
+  const balanceAmount = Math.max(0, estimatedTotal - paidAmount);
+  const displayWhen = formatDisplayWhen(createdAt, nowTick);
+
+  const otKinds: Array<
+    { kind: "item"; index: number } | { kind: "service"; index: number } | { kind: "fee" }
+  > = [];
+  const otRows: BillLineGridRow[] = [];
+  items.forEach((it, index) => {
+    const units = saleUnitsFromPack(packFromItem(it), it.sell_price_mmk);
+    const chosen = it.sale_unit
+      ? units.find((u) => u.id.toLowerCase() === it.sale_unit!.toLowerCase())
+      : undefined;
+    const saleQty = it.sale_qty ?? 0;
+    const qty = it.sale_unit && saleQty > 0 ? saleQty : it.qty_issued;
+    const amount = it.sell_price_mmk * Math.max(0, it.qty_issued);
+    const price = chosen
+      ? chosen.price_mmk
+      : saleQty > 0
+        ? Math.round(amount / saleQty)
+        : it.sell_price_mmk;
+    const pack = packFromItem(it);
+    otKinds.push({ kind: "item", index });
+    otRows.push({
+      key: `item-${it.item_id}-${it.sale_unit || "stock"}-${index}`,
+      title: `${it.code} — ${it.name}`,
+      packLabel: formatPackCompact(pack),
+      packTitle: formatPackPreview(pack),
+      qty,
+      unitId: chosen?.id ?? (it.sale_unit || null),
+      units: chosen
+        ? units.map((u) => ({ id: u.id, label: u.label }))
+        : it.sale_unit
+          ? [{ id: it.sale_unit, label: it.sale_unit }]
+          : [],
+      priceMmk: price,
+      amountMmk: amount,
+      removable: true,
+    });
+  });
+  services.forEach((s, index) => {
+    otKinds.push({ kind: "service", index });
+    otRows.push({
+      key: `svc-${s.ref_id}-${index}`,
+      title: `${s.code} — ${s.description}`,
+      qty: s.qty,
+      priceMmk: s.unit_price_mmk,
+      amountMmk: s.qty * s.unit_price_mmk,
+      removable: true,
+    });
+  });
+  if (doctorFeeMmk > 0) {
+    otKinds.push({ kind: "fee" });
+    otRows.push({
+      key: "ot-fee",
+      title: doctorName ? `${t("doctorOtFee")} — ${doctorName}` : t("doctorOtFee"),
+      qty: 1,
+      priceMmk: doctorFeeMmk,
+      amountMmk: doctorFeeMmk,
+      locked: true,
+      removable: false,
+    });
   }
 
   if (mode === "list") {
     return (
-      <section className="settings-panel">
-        <div className="btn-row">
+      <section className="classic-list-panel">
+        <div className="drug-setup-title-row">
+          <h2 className="drug-setup-title">{t("navOtHistory")}</h2>
           <button type="button" className="btn primary" onClick={openNew}>
             {t("newCase")}
           </button>
@@ -484,8 +754,6 @@ export function OtPage({ initialMode = "list" }: { initialMode?: "list" | "case"
             >
               <option value="">{t("all")}</option>
               <option value="draft">{t("draft")}</option>
-              <option value="issued">{t("issued")}</option>
-              <option value="reconciled">{t("reconciled")}</option>
               <option value="billed">{t("billed")}</option>
             </select>
           </label>
@@ -536,7 +804,7 @@ export function OtPage({ initialMode = "list" }: { initialMode?: "list" | "case"
   if (mode === "bill" && bill) {
     const billDraft = bill.status === "draft";
     return (
-      <section className="settings-panel">
+      <section className="classic-list-panel">
         <div className="btn-row">
           <button
             type="button"
@@ -622,348 +890,334 @@ export function OtPage({ initialMode = "list" }: { initialMode?: "list" | "case"
   }
 
   return (
-    <section className="settings-panel">
-      <div className="btn-row">
-        <button
-          type="button"
-          className="btn ghost"
-          onClick={() => {
-            setMode("list");
-            void reloadList();
-          }}
-        >
-          {t("backCases")}
-        </button>
-        {caseNo ? (
-          <span className="hint">
-            {caseNo} · {caseStatus.toUpperCase()}
-          </span>
-        ) : null}
-      </div>
+    <>
+      <section className="opd-bill-desk">
+        <div className="opd-bill-desk-main">
+          <h2 className="opd-bill-desk-title">{t("otBillTitle")}</h2>
 
-      {!caseNo ? <h2 className="section-title">{t("createNewCase")}</h2> : null}
-
-      <div className="card-form">
-        <FormSection title={t("patient")} titleId="ot-case-patient">
-          <div className="field-row">
-            <label className="field grow">
-              {t("patientName")}
-              <input
-                value={patientName}
-                disabled={!isDraft}
-                onChange={(e) => setPatientName(e.target.value)}
-                autoFocus
-              />
-            </label>
-            <label className="field">
-              {t("phone")}
-              <input
-                value={patientPhone}
-                disabled={!isDraft}
-                onChange={(e) => setPatientPhone(e.target.value)}
-              />
-            </label>
-          </div>
-          <div className="field-row">
-            <label className="field">
-              {t("age")}
-              <input
-                value={patientAge}
-                disabled={!isDraft}
-                inputMode="numeric"
-                onChange={(e) => setPatientAge(e.target.value)}
-              />
-            </label>
-            <label className="field">
-              {t("gender")}
-              <select
-                value={patientGender}
-                disabled={!isDraft}
-                onChange={(e) => setPatientGender(e.target.value)}
-              >
-                <option value="">—</option>
-                <option value="M">{t("genderM")}</option>
-                <option value="F">{t("genderF")}</option>
-                <option value="Other">{t("genderOther")}</option>
-              </select>
-            </label>
-          </div>
-        </FormSection>
-
-        <FormSection title={t("caseSection")} titleId="ot-case-details">
-          <Typeahead
-            label={t("doctorOtFee")}
-            value={doctorName}
-            disabled={!isDraft}
-            placeholder={t("doctorPlaceholder")}
-            onChange={(v) => {
-              setDoctorName(v);
-              setDoctorId("");
-            }}
-            loadSuggestions={async (term) => {
-              const q = term.trim().toLowerCase();
-              if (!q) return doctors.slice(0, 8);
-              return doctors
-                .filter(
-                  (d) =>
-                    d.name.toLowerCase().includes(q) ||
-                    (d.specialty || "").toLowerCase().includes(q),
-                )
-                .slice(0, 8);
-            }}
-            getKey={(d) => d.id}
-            renderOption={(d) => (
-              <>
-                <span className="typeahead-title">{d.name}</span>
-                <span className="typeahead-sub">
-                  {d.specialty || t("general")} · OT {formatMMK(d.ot_fee_mmk)} {t("mmk")}
-                </span>
-              </>
-            )}
-            onPick={pickOtDoctor}
-          />
-          <label className="field">
-            {t("procedure")}
-            <input
-              value={procedureName}
-              disabled={!isDraft}
-              onChange={(e) => setProcedureName(e.target.value)}
-              placeholder={t("procedurePlaceholder")}
-            />
-          </label>
-          <label className="field">
-            {t("notes")}
-            <input value={notes} disabled={!isDraft} onChange={(e) => setNotes(e.target.value)} />
-          </label>
-        </FormSection>
-
-        <FormSection title={t("pharmacyItems")} titleId="ot-case-items">
-          {isDraft ? (
-            <div className="list-toolbar">
-              <Typeahead
-                label={t("pharmacyItemLabel")}
-                value={codeInput}
-                onChange={setCodeInput}
-                placeholder={t("pharmacyItemPlaceholder")}
-                loadSuggestions={async (term) => listPharmacyItems(term)}
-                getKey={(item) => item.id}
-                renderOption={(item) => (
-                  <>
-                    <span className="typeahead-title">
-                      {item.code} — {item.name}
-                    </span>
-                    <span className="typeahead-sub">
-                      {item.stock_unit || t("item")} · {formatMMK(item.sell_price_mmk)} {t("mmk")} ·{" "}
-                      {t("inStock")} {item.stock_main.toLocaleString()} {item.stock_unit || ""}
-                    </span>
-                  </>
-                )}
-                onPick={(item) => {
-                  setError(null);
-                  addOtItem(item);
-                }}
-                onSubmitWithoutPick={() => void addByCode()}
-              />
-              <button type="button" className="btn ghost" onClick={() => void addByCode()}>
-                {t("add")}
-              </button>
-            </div>
-          ) : null}
-
-          {isIssued ? (
-            <div className="btn-row">
-              <button type="button" className="btn ghost" onClick={fillAllUsed}>
-                {t("fillAllUsed")}
-              </button>
-              <span className="hint">{t("reconcileBalanceHint")}</span>
-            </div>
-          ) : null}
-
-          <div className={`bill-lines ${isIssued ? "ot-reconcile" : ""}`}>
-            <div className={`bill-lines-head ${isIssued ? "ot-reconcile-head" : ""}`}>
-              <span>{t("code")}</span>
-              <span>{t("item")}</span>
-              <span className="num">{t("issuedQty")}</span>
-              {isIssued || isReconciled || caseStatus === "billed" ? (
-                <>
-                  <span className="num">{t("used")}</span>
-                  <span className="num">{t("ret")}</span>
-                  <span className="num">{t("waste")}</span>
-                  <span className="num">{t("floor")}</span>
-                </>
-              ) : (
-                <>
-                  <span className="num">{t("price")}</span>
-                  <span />
-                </>
-              )}
-            </div>
-            {items.length === 0 ? <p className="empty-row">{t("noCartItems")}</p> : null}
-            {items.map((it, i) => (
-              <div key={`${it.item_id}-${i}`} className={`bill-lines-row ${isIssued ? "ot-reconcile-row" : ""}`}>
-                <span>{it.code}</span>
-                <span>{it.name}</span>
-                <span className="num">
-                  {isDraft ? (
-                    <input
-                      className="qty-input"
-                      value={it.qty_issued < 1 ? "" : it.qty_issued}
-                      inputMode="numeric"
-                      onChange={(e) => {
-                        const trimmed = e.target.value.trim();
-                        const n = trimmed === "" ? 0 : Math.floor(Number(trimmed));
-                        if (trimmed !== "" && (!Number.isFinite(n) || n < 0)) return;
-                        setItems((prev) => {
-                          const next = [...prev];
-                          next[i] = { ...next[i], qty_issued: n };
-                          return next;
-                        });
-                      }}
-                      onBlur={(e) => {
-                        const raw = e.target.value.trim();
-                        let n = raw === "" ? 0 : Math.floor(Number(raw));
-                        if (!Number.isFinite(n) || n < 1) n = 1;
-                        setItems((prev) => {
-                          const next = [...prev];
-                          next[i] = { ...next[i], qty_issued: n };
-                          return next;
-                        });
-                      }}
-                    />
-                  ) : (
-                    it.qty_issued
+          <div className="opd-bill-header">
+            <div className="opd-bill-header-col">
+              <label className="opd-bill-field">
+                <span className="opd-bill-label">{t("idName")}</span>
+                <input
+                  className="opd-bill-input grow"
+                  value={patientName}
+                  disabled={!isDraft}
+                  onChange={(e) => setPatientName(e.target.value)}
+                  autoFocus
+                  aria-label={t("patientName")}
+                />
+              </label>
+              <label className="opd-bill-field">
+                <span className="opd-bill-label">{t("phone")}</span>
+                <input
+                  className="opd-bill-input"
+                  value={patientPhone}
+                  disabled={!isDraft}
+                  onChange={(e) => setPatientPhone(e.target.value)}
+                />
+              </label>
+              <label className="opd-bill-field">
+                <span className="opd-bill-label">{t("age")}</span>
+                <input
+                  className="opd-bill-input opd-bill-input--narrow"
+                  value={patientAge}
+                  disabled={!isDraft}
+                  inputMode="numeric"
+                  onChange={(e) => setPatientAge(e.target.value)}
+                />
+                <span className="opd-bill-unit">{t("ageYearsShort")}</span>
+              </label>
+              <label className="opd-bill-field">
+                <span className="opd-bill-label">{t("gender")}</span>
+                <select
+                  className="opd-bill-input"
+                  value={patientGender}
+                  disabled={!isDraft}
+                  onChange={(e) => setPatientGender(e.target.value)}
+                >
+                  <option value="">—</option>
+                  <option value="M">{t("genderM")}</option>
+                  <option value="F">{t("genderF")}</option>
+                  <option value="Other">{t("genderOther")}</option>
+                </select>
+              </label>
+              <div className="opd-bill-field opd-bill-field--typeahead">
+                <span className="opd-bill-label">{t("doctor")}</span>
+                <Typeahead
+                  label=""
+                  value={doctorName}
+                  disabled={!isDraft}
+                  placeholder={t("doctorPlaceholder")}
+                  onChange={(v) => {
+                    setDoctorName(v);
+                    setDoctorId("");
+                    setDoctorFeeMmk(0);
+                  }}
+                  loadSuggestions={async (term) => {
+                    const qq = term.trim().toLowerCase();
+                    if (!qq) return doctors.slice(0, 8);
+                    return doctors
+                      .filter(
+                        (d) =>
+                          d.name.toLowerCase().includes(qq) ||
+                          (d.specialty || "").toLowerCase().includes(qq),
+                      )
+                      .slice(0, 8);
+                  }}
+                  getKey={(d) => d.id}
+                  renderOption={(d) => (
+                    <>
+                      <span className="typeahead-title">{d.name}</span>
+                      <span className="typeahead-sub">
+                        {d.specialty || t("general")} · OT {formatMMK(d.ot_fee_mmk)} {t("mmk")}
+                      </span>
+                    </>
                   )}
-                </span>
-                {isIssued ? (
-                  <>
-                    <span className="num">
-                      <input
-                        className="qty-input"
-                        value={it.qty_used}
-                        inputMode="numeric"
-                        onChange={(e) => setReconcileField(i, "qty_used", e.target.value)}
-                      />
-                    </span>
-                    <span className="num">
-                      <input
-                        className="qty-input"
-                        value={it.qty_returned}
-                        inputMode="numeric"
-                        onChange={(e) => setReconcileField(i, "qty_returned", e.target.value)}
-                      />
-                    </span>
-                    <span className="num">
-                      <input
-                        className="qty-input"
-                        value={it.qty_wasted}
-                        inputMode="numeric"
-                        onChange={(e) => setReconcileField(i, "qty_wasted", e.target.value)}
-                      />
-                    </span>
-                    <span className="num">
-                      <input
-                        className="qty-input"
-                        value={it.qty_kept_on_floor}
-                        inputMode="numeric"
-                        onChange={(e) => setReconcileField(i, "qty_kept_on_floor", e.target.value)}
-                      />
-                    </span>
-                  </>
-                ) : isReconciled || caseStatus === "billed" ? (
-                  <>
-                    <span className="num">{it.qty_used}</span>
-                    <span className="num">{it.qty_returned}</span>
-                    <span className="num">{it.qty_wasted}</span>
-                    <span className="num">{it.qty_kept_on_floor}</span>
-                  </>
-                ) : (
-                  <>
-                    <span className="num">{formatMMK(it.sell_price_mmk)}</span>
-                    <span>
-                      {isDraft ? (
-                        <button
-                          type="button"
-                          className="btn ghost danger"
-                          onClick={() => setItems((prev) => prev.filter((_, j) => j !== i))}
-                        >
-                          ×
-                        </button>
-                      ) : null}
-                    </span>
-                  </>
-                )}
+                  onPick={pickOtDoctor}
+                />
               </div>
-            ))}
+              <label className="opd-bill-field">
+                <span className="opd-bill-label">{t("remark")}</span>
+                <input
+                  className="opd-bill-input grow"
+                  value={notes}
+                  disabled={!isDraft}
+                  onChange={(e) => setNotes(e.target.value)}
+                />
+              </label>
+            </div>
+
+            <div className="opd-bill-header-col">
+              <div className="opd-bill-field">
+                <span className="opd-bill-label">{t("dateTime")}</span>
+                <span className="opd-bill-readonly">{displayWhen}</span>
+              </div>
+              <div className="opd-bill-field">
+                <span className="opd-bill-label">{t("vouNo")}</span>
+                <span className="opd-bill-readonly">{caseNo || "—"}</span>
+              </div>
+              <div className="opd-bill-field">
+                <span className="opd-bill-label">{t("currency")}</span>
+                <span className="opd-bill-readonly">{t("kyats")}</span>
+              </div>
+              <div className="opd-bill-field">
+                <span className="opd-bill-label">{t("procedure")}</span>
+                <input
+                  className="opd-bill-input grow"
+                  value={procedureName}
+                  disabled={!isDraft}
+                  onChange={(e) => setProcedureName(e.target.value)}
+                  placeholder={t("procedurePlaceholder")}
+                />
+              </div>
+              <div className="opd-bill-field">
+                <span className="opd-bill-label">{t("status")}</span>
+                <span className="opd-bill-readonly">{caseStatus.toUpperCase()}</span>
+              </div>
+              {bill?.bill_no ? (
+                <div className="opd-bill-field">
+                  <span className="opd-bill-label">{t("bill")}</span>
+                  <span className="opd-bill-readonly">{bill.bill_no}</span>
+                </div>
+              ) : null}
+            </div>
           </div>
-        </FormSection>
 
-        {error ? <p className="form-error">{error}</p> : null}
-        {okMsg ? <p className="form-ok">{okMsg}</p> : null}
+          <BillLineGrid
+            draft={isDraft}
+            showUnitColumn
+            showPackColumn
+            itemHeader={t("particular")}
+            priceHeader={t("fees")}
+            emptyLabel={t("noCartItems")}
+            rows={otRows}
+            onQtyCommit={(index, qty) => {
+              const kind = otKinds[index];
+              if (!kind || kind.kind === "fee") return false;
+              if (kind.kind === "item") return commitOtItemQty(kind.index, qty);
+              setServices((prev) =>
+                prev.map((s, i) => (i === kind.index ? { ...s, qty } : s)),
+              );
+              return true;
+            }}
+            onUnitChange={(index, unitId) => {
+              const kind = otKinds[index];
+              if (!kind || kind.kind !== "item") return;
+              changeOtItemUnit(kind.index, unitId);
+            }}
+            onRemove={(index) => {
+              const kind = otKinds[index];
+              if (!kind || kind.kind === "fee") return;
+              if (kind.kind === "item") {
+                setItems((prev) => prev.filter((_, i) => i !== kind.index));
+              } else {
+                setServices((prev) => prev.filter((_, i) => i !== kind.index));
+              }
+            }}
+            entries={[
+              createBillLineEntry<OtCatalogItem>(
+                {
+                  key: "cupboard",
+                  placeholder: t("pharmacyItemPlaceholder"),
+                  ariaLabel: t("cupboardItemLabel"),
+                  loadSuggestions: async (term) => listOtCatalogItems(term),
+                  getKey: (item) => item.id,
+                  itemTitle: (item) => `${item.code} — ${item.name}`,
+                  renderOption: (item) => (
+                    <>
+                      <span className="typeahead-title">
+                        {item.code} — {item.name}
+                      </span>
+                      <span className="typeahead-sub">
+                        {item.stock_unit || t("item")} · {formatMMK(item.sell_price_mmk)} {t("mmk")} ·{" "}
+                        {t("otOnHand")} {item.ot_on_hand.toLocaleString()} {item.stock_unit || ""}
+                      </span>
+                    </>
+                  ),
+                  unitsFor: (item) =>
+                    saleUnitsFromPack(packFromItem(item), item.sell_price_mmk).map((u) => ({
+                      id: u.id,
+                      label: u.label,
+                    })),
+                  packFor: (item) => formatPackCompact(packFromItem(item)),
+                  packTitleFor: (item) => formatPackPreview(packFromItem(item)),
+                  onCommit: (item, qty, unit) => {
+                    const units = saleUnitsFromPack(packFromItem(item), item.sell_price_mmk);
+                    addOtItem(
+                      item,
+                      qty,
+                      unit ? (units.find((u) => u.id === unit.id) ?? null) : null,
+                    );
+                  },
+                  onSubmitCode: lookupOtItem,
+                },
+                { showUnitColumn: true, showPackColumn: true },
+              ),
+              createBillLineEntry<OtService>(
+                {
+                  key: "service",
+                  placeholder: t("optionalServicePlaceholder"),
+                  ariaLabel: t("optionalService"),
+                  loadSuggestions: async (term) => listOtServices(term),
+                  getKey: (svc) => svc.id,
+                  itemTitle: (svc) => `${svc.code} — ${svc.name}`,
+                  renderOption: (svc) => (
+                    <>
+                      <span className="typeahead-title">
+                        {svc.code} — {svc.name}
+                      </span>
+                      <span className="typeahead-sub">
+                        {t("serviceType")} · {formatMMK(svc.price_mmk)} {t("mmk")}
+                      </span>
+                    </>
+                  ),
+                  unitsFor: () => [],
+                  onCommit: (svc, qty) => addOtService(svc, qty),
+                  onSubmitCode: lookupOtService,
+                },
+                { showUnitColumn: true, showPackColumn: true },
+              ),
+            ]}
+          />
 
-        <div className="btn-row">
-          {isDraft ? (
-            <>
-              <button type="button" className="btn primary" disabled={busy} onClick={() => void saveDraft()}>
-                {busy ? "…" : caseId ? t("save") : t("createDraft")}
-              </button>
-              <button
-                type="button"
-                className="btn primary"
-                disabled={busy || items.length === 0}
-                onClick={() => void doIssue()}
-              >
-                {t("issueFromPharmacy")}
-              </button>
-            </>
-          ) : null}
-          {isIssued ? (
-            <button type="button" className="btn primary" disabled={busy} onClick={() => void doReconcile()}>
-              {t("reconcile")}
-            </button>
-          ) : null}
-          {isReconciled ? (
-            <>
-              <Typeahead
-                label={t("optionalService")}
-                value={extraServiceCode}
-                onChange={setExtraServiceCode}
-                placeholder={t("optionalServicePlaceholder")}
-                loadSuggestions={async (term) => listOpdServices(term)}
-                getKey={(svc) => svc.id}
-                renderOption={(svc) => (
-                  <>
-                    <span className="typeahead-title">
-                      {svc.code} — {svc.name}
-                    </span>
-                    <span className="typeahead-sub">
-                      {t("serviceType")} · {formatMMK(svc.price_mmk)} {t("mmk")}
-                    </span>
-                  </>
-                )}
-                onPick={(svc) => setExtraServiceCode(svc.code)}
-              />
-              <button type="button" className="btn primary" disabled={busy} onClick={() => void doCreateBill()}>
-                {t("createOtBill")}
-              </button>
-            </>
-          ) : null}
-          {otBillId ? (
-            <button type="button" className="btn ghost" disabled={busy} onClick={() => void openBill(otBillId)}>
-              {t("openBill")}
-            </button>
-          ) : null}
+          <div className="opd-bill-footer">
+            <div className="opd-bill-footer-left">
+              <span className="opd-bill-service-count">
+                {t("serviceCount")}: {items.length + services.length}
+              </span>
+              {!caseId ? <span className="opd-bill-new-badge">{t("newBadge")}</span> : null}
+            </div>
+            <div className="opd-bill-totals">
+              <div className="opd-bill-total-row">
+                <span>{t("totalLabel")}</span>
+                <span>{formatMMK(estimatedTotal)}</span>
+              </div>
+              <div className="opd-bill-total-row">
+                <span>{t("discount")}</span>
+                <span>0</span>
+              </div>
+              <div className="opd-bill-total-row">
+                <span>{t("paid")}</span>
+                <span>{formatMMK(paidAmount)}</span>
+              </div>
+              <div className="opd-bill-total-row opd-bill-total-row--balance">
+                <span>{t("balance")}</span>
+                <span>{formatMMK(balanceAmount)}</span>
+              </div>
+            </div>
+          </div>
+
+          {error ? <p className="form-error">{error}</p> : null}
+          {okMsg ? <p className="form-ok">{okMsg}</p> : null}
+        </div>
+
+        <aside className="opd-bill-rail" aria-label={t("billActions")}>
           <button
             type="button"
-            className="btn ghost"
-            disabled={busy || !caseId}
-            onClick={() =>
-              void printOtPickList(caseId!).catch((e) => setError(e instanceof Error ? e.message : String(e)))
-            }
+            className="opd-bill-rail-btn"
+            disabled={busy}
+            onClick={() => void doPrintAndPay()}
           >
-            {t("printPickList")}
+            <span>{t("print")}</span>
+            <kbd>F7</kbd>
           </button>
-        </div>
-      </div>
-    </section>
+          <button
+            type="button"
+            className="opd-bill-rail-btn"
+            disabled={busy || !isDraft}
+            onClick={() => void saveDraft()}
+          >
+            <span>{t("confirm")}</span>
+            <kbd>F5</kbd>
+          </button>
+          <button
+            type="button"
+            className="opd-bill-rail-btn"
+            disabled={busy}
+            onClick={() => setDialog("history")}
+          >
+            <span>{t("history")}</span>
+            <kbd>F9</kbd>
+          </button>
+          <button
+            type="button"
+            className="opd-bill-rail-btn"
+            disabled={busy}
+            onClick={() => setDialog("delete")}
+          >
+            <span>{t("vDelete")}</span>
+            <kbd>^F8</kbd>
+          </button>
+          <button type="button" className="opd-bill-rail-btn" disabled={busy} onClick={doCancelForm}>
+            <span>{t("cancel")}</span>
+            <kbd>F10</kbd>
+          </button>
+        </aside>
+      </section>
+
+      {dialog ? (
+        <OtHistoryModal
+          mode={dialog}
+          onClose={() => setDialog(null)}
+          onOpen={(id) => void openCase(id)}
+          onVoid={voidFromHistory}
+        />
+      ) : null}
+    </>
   );
+}
+
+function formatDisplayWhen(createdAt: string | null, nowTick: number): string {
+  const d = createdAt
+    ? new Date(createdAt.includes("T") ? createdAt : createdAt.replace(" ", "T") + "Z")
+    : new Date(nowTick);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString(undefined, {
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }

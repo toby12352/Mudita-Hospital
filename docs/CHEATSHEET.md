@@ -1,48 +1,51 @@
 # Mudita Hospital — Staff cheat sheet
 
-Print this page (or use **Help → Print cheat sheet** in the app) and laminate for the reception / pharmacy desk.
+Print this page (or use **Help → Print cheat sheet** in the app) and laminate for the OPD, OT, and pharmacy desks.
 
 ## 1. Sign in
 
 1. Open Mudita on the clinic PC.
 2. First launch: enter **Server IP** (port `8080`), e.g. `192.168.1.10`.
-3. Sign in:
-   - Reception: `reception` / (hospital password)
-   - Pharmacy: `pharmacy` / …
-   - Admin: `admin` / …
+3. Sign in. Each desk opens only its own portal:
+   - OPD: `opd`
+   - OT: `ot`
+   - Pharmacy: `pharmacy`
+   - Admin: `admin` — pick OPD, OT, Pharmacy, or Settings, and step back without a second login
 4. Idle ~15 minutes → auto lock. Switch language **English / မြန်မာ** in the top bar.
+5. History on a desk lists that desk's bills only. Another desk's cash is not on this screen.
 
 ## 2. OPD bill (cash)
 
-1. Home → **OPD** → New bill.
-2. Patient name → doctor → type item or service **code** → **Enter** to add line.
-3. **Pay cash** (stock drops on pay) → **Print** (preview opens in the app).
-4. First time printing a receipt: choose **EPSON TM-T82 Receipt**, paper **80 mm**, no scaling / fit to printable width.
-5. Void needs a reason (restores stock if already paid).
+1. **OPD** → Bill (desk form opens).
+2. Patient name → doctor → add a **service** or consultation. Medicines are billed in Pharmacy.
+3. **Confirm (F5)** saves a draft. **Print (F7)** saves, marks paid, then opens the print preview.
+4. **History (F9)** opens past bills (newest first). **V.Delete (^F8)** voids a selected bill (reason required). **Cancel (F10)** clears the form.
+5. First time printing a receipt: choose **EPSON TM-T82 Receipt**, paper **80 mm**, no scaling / fit to printable width.
 
-## 3. OT case cart
+## 3. OT cupboard and bill (nurse handover)
 
-1. Home → **OT** → New case → add items → **Issue**.
-2. Print pick list → take upstairs.
-3. **Reconcile**: Used / Returned / Wasted / Kept on floor.
-4. Create OT bill → Pay cash → Print (same 80 mm receipt preview as OPD).
+1. Pharmacy: open the item → **View** → **Send to OT** (batch and qty). Pharmacy on-hand drops and the OT cupboard rises in that same step. Batch number and expiry go with the qty.
+2. OT: **OT cupboard** shows that on-hand. **Return to pharmacy** sends unused qty back. Pharmacy on-hand rises when the return is saved.
+3. OT: **Create new bill** → patient, doctor, procedure → services and items from cupboard on-hand → **Pay cash** → **Print**. Pay deducts cupboard qty. Void puts that qty back. Qty left in the cupboard is not touched.
+4. Print the pick list if the ward wants a paper list of the cart. There is no issue or reconcile step.
 
 ## 4. Pharmacy
 
-1. Home → **Pharmacy** → search by code or name.
-2. New item: code, category, prices, reorder level, first batch + expiry.
+1. **Pharmacy billing** → new bill → add medicines by code → **Pay cash** (stock drops) → **Print**. Void restores stock.
+2. **Pharmacy stock** → search by code or name. New item: code, category, prices, reorder level, first batch + expiry.
 3. **Restock** an existing code (unknown codes must be created first).
-4. Home → **Reports** → Low stock / Near expiry.
+4. Low stock and near expiry are **MAIN** pharmacy stock. Send a MAIN batch to the OT cupboard from the item view.
 
 ## 5. Reports
 
 | Report | Who | What |
 |--------|-----|------|
-| Daily cash | Reception / Admin | Paid OPD + OT totals for a date |
-| Low stock | Pharmacy / Admin | In Stock qty ≤ reorder level |
-| Near expiry | Pharmacy / Admin | Batches expiring within N days |
+| Daily cash | That desk | Paid bills for that portal only |
+| Combined daily cash | Admin dashboard | Paid OPD + OT + pharmacy for a date |
+| Low stock | Pharmacy / Admin | MAIN qty ≤ reorder level |
+| Near expiry | Pharmacy / Admin | MAIN batches expiring within N days |
 
-Use **Print** on each report for the day book.
+The admin dashboard is the day book for the whole hospital. A clinic desk does not open another portal's bills.
 
 ## 6. Daily ops
 
@@ -55,7 +58,7 @@ Use **Print** on each report for the day book.
 ## Myanmar summary / မြန်မာ အကျဉ်း
 
 1. **ဝင်ရန်** — ဆာဗာ IP → အကောင့်ဝင် → ဘာသာစကား EN/မြန်မာ။
-2. **OPD** — လူနာ + ဆရာဝန် → ကုဒ် Enter → ငွေသားပေး → ပရင့် (TM-T82 / 80 mm)။
-3. **OT** — ကေ့စ် → ထုတ် → pick list → စစ်ဆေး → ဘေလ်။
-4. **ဆေးဆိုင်** — ကုဒ်ရှာ → restock / item အသစ်။
-5. **အစီရင်ခံစာ** — နေ့စဉ်ငွေ / စတော့နည်း / သက်တမ်းနီး။
+2. **OPD** — လူနာ + ဆရာဝန် → ဝန်ဆောင်မှု → Confirm (မူကြမ်း) / Print (ပေးချေ + ပရင့်) (TM-T82 / 80 mm)။ ဆေးသည် ဆေးဆိုင်တွင်။
+3. **OT** — ဆေးဆိုင်က ဆေးဗီရိုသို့ ပို့ → ဘေလ်ဆွဲ → ငွေသားပေး (လက်ကျန်ကျ) → မသုံးတာ ပြန်ပို့။
+4. **ဆေးဆိုင်** — ကုဒ်ရှာ → restock / item အသစ် → MAIN အသုတ်ကို OT သို့ ပို့။
+5. **အစီရင်ခံစာ** — မိမိဘေလ်သာ။ ဆေးရုံတစ်ခုလုံး ငွေစုသည် Admin ဒက်ရှ်ဘုတ်။

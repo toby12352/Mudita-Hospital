@@ -1,5 +1,6 @@
 import { FormEvent, useState } from "react";
-import { markApiConfigured, setApiBase } from "@/shared/api";
+import { fetchHealth, markApiConfigured, setApiBase } from "@/shared/api";
+import { userMessage } from "@/shared/errors";
 import { useI18n } from "@/shared/i18n";
 
 export function ServerSetupForm({
@@ -33,21 +34,21 @@ export function ServerSetupForm({
     const timer = window.setTimeout(() => controller.abort(), 4000);
     try {
       const base = setApiBase(value.trim());
-      const res = await fetch(`${base}/api/health`, { signal: controller.signal });
-      if (!res.ok) throw new Error(`Health check failed (${res.status})`);
-      const health = (await res.json()) as { status?: string; db?: string };
-      if (health.status !== "ok") throw new Error("API not ready");
+      const health = await fetchHealth(controller.signal);
+      if (health.db !== "ok" || health.status !== "ok") {
+        throw new Error(userMessage("db=error"));
+      }
       markApiConfigured();
-      setHint(`Connected to ${base}`);
+      setHint(t("errConnectedTo").split("{base}").join(base));
       onSave(base);
     } catch (err) {
       const msg =
         err instanceof Error
           ? err.name === "AbortError"
-            ? "Timed out reaching server"
+            ? userMessage("Failed to fetch")
             : err.message
-          : "Cannot reach server";
-      setError(`${msg}. You can still save and retry from Sign in.`);
+          : userMessage("Failed to fetch");
+      setError(`${msg} ${t("errSaveRetryHint")}`);
     } finally {
       window.clearTimeout(timer);
       setBusy(false);
@@ -59,7 +60,7 @@ export function ServerSetupForm({
       const base = setApiBase(value.trim());
       onSave(base);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Invalid address");
+      setError(err instanceof Error ? err.message : userMessage("Invalid server address"));
     }
   }
 

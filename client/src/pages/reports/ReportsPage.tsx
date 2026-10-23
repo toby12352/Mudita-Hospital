@@ -146,10 +146,22 @@ export function ReportsPage({
       {tab === "cash" && cash ? (
         <div className="report-block">
           <p className="hint">
-            {t("opdBills")}: {cash.opd_count} · {formatMMK(cash.opd_total_mmk)} {t("mmk")} ·{" "}
-            {t("pharmacyBills")}: {cash.pharmacy_count ?? 0} ·{" "}
-            {formatMMK(cash.pharmacy_total_mmk ?? 0)} {t("mmk")} · {t("otBills")}: {cash.ot_count} ·{" "}
-            {formatMMK(cash.ot_total_mmk)} {t("mmk")} ·{" "}
+            {cash.opd_count > 0 ? (
+              <>
+                {t("opdBills")}: {cash.opd_count} · {formatMMK(cash.opd_total_mmk)} {t("mmk")} ·{" "}
+              </>
+            ) : null}
+            {(cash.pharmacy_count ?? 0) > 0 ? (
+              <>
+                {t("pharmacyBills")}: {cash.pharmacy_count ?? 0} ·{" "}
+                {formatMMK(cash.pharmacy_total_mmk ?? 0)} {t("mmk")} ·{" "}
+              </>
+            ) : null}
+            {cash.ot_count > 0 ? (
+              <>
+                {t("otBills")}: {cash.ot_count} · {formatMMK(cash.ot_total_mmk)} {t("mmk")} ·{" "}
+              </>
+            ) : null}
             <strong>
               {t("grandTotal")}: {formatMMK(cash.grand_total_mmk)} {t("mmk")}
             </strong>

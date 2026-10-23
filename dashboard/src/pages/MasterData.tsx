@@ -13,6 +13,7 @@ import {
   type MasterItem,
   type MasterService,
 } from "../bulkApi";
+import { importLineMessage } from "../errors";
 import { formatMMK } from "../lib/format";
 
 type Props = {
@@ -445,7 +446,7 @@ export function MasterDataPage({ t }: Props) {
               <ul className="error-list">
                 {importResult.errors.slice(0, 20).map((e, i) => (
                   <li key={`${e.line}-${i}`}>
-                    L{e.line}: {e.message}
+                    {importLineMessage(e.line, e.message)}
                   </li>
                 ))}
               </ul>

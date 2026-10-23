@@ -4,34 +4,42 @@ import {
   findItemByCode,
   getPharmacyBill,
   lineChargeFromPack,
-  listPharmacyBills,
   listPharmacyItems,
   packFromItem,
+  packQtysForSale,
   payPharmacyBill,
+  pharmacyLineSaleView,
+  saleUnitsFromPack,
   printPharmacyBill,
   updatePharmacyBill,
   voidPharmacyBill,
   type PharmacyBill,
-  type PharmacyBillLine,
   type PharmacyItem,
 } from "@/features/pharmacy/api";
-import { formatMMK } from "@/shared/format";
-import { Typeahead } from "@/shared/Typeahead";
+import { userMessage } from "@/shared/errors";
 import { useI18n } from "@/shared/i18n";
-import { FormSection } from "@/shared/FormSection";
+import {
+  PharmacyBillForm,
+  type PharmacyBillLineView,
+} from "@/pages/pharmacy/PharmacyBillForm";
+import {
+  PharmacyBillListDialog,
+  type PharmacyBillListDialogMode,
+} from "@/pages/pharmacy/PharmacyBillListDialog";
+
+/** Pharmacy Billing always opens the desk form; history replaces the old list. */
 export function PharmacyBillingPage({
-  initialMode = "list",
+  initialMode = "edit",
 }: {
   initialMode?: "list" | "edit";
 }) {
   const { t } = useI18n();
-  const [mode, setMode] = useState<"list" | "edit">(initialMode);
-  const [q, setQ] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
-  const [bills, setBills] = useState<PharmacyBill[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [dialog, setDialog] = useState<PharmacyBillListDialogMode | null>(
+    initialMode === "list" ? "history" : null,
+  );
 
   const [billId, setBillId] = useState<number | null>(null);
   const [billNo, setBillNo] = useState("");
@@ -41,32 +49,20 @@ export function PharmacyBillingPage({
   const [patientAge, setPatientAge] = useState("");
   const [patientGender, setPatientGender] = useState("");
   const [description, setDescription] = useState("");
-  const [lines, setLines] = useState<PharmacyBillLine[]>([]);
-  const [codeInput, setCodeInput] = useState("");
-  const [pendingItem, setPendingItem] = useState<PharmacyItem | null>(null);
-  const [boxQtyInput, setBoxQtyInput] = useState("");
-  const [stripQtyInput, setStripQtyInput] = useState("");
-  const [tabletQtyInput, setTabletQtyInput] = useState("");
+  const [lines, setLines] = useState<PharmacyBillLineView[]>([]);
+  const [onHandByItemId, setOnHandByItemId] = useState<Record<number, number>>({});
+  const [createdAt, setCreatedAt] = useState<string | null>(null);
+  const [nowTick, setNowTick] = useState(() => Date.now());
 
   const isDraft = billStatus === "draft";
-  const total = lines.reduce((s, l) => s + l.line_total_mmk, 0);
-
-  function resetPackQty() {
-    setBoxQtyInput("");
-    setStripQtyInput("");
-    setTabletQtyInput("");
-  }
-
-  async function reloadList(search = q, status = statusFilter) {
-    setBills(await listPharmacyBills(search, status));
-  }
 
   useEffect(() => {
-    void reloadList().catch((e) => setError(String(e)));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (createdAt) return;
+    const id = window.setInterval(() => setNowTick(Date.now()), 30_000);
+    return () => window.clearInterval(id);
+  }, [createdAt]);
 
-  function openNew() {
+  function resetEditor() {
     setBillId(null);
     setBillNo("");
     setBillStatus("draft");
@@ -76,17 +72,43 @@ export function PharmacyBillingPage({
     setPatientGender("");
     setDescription("");
     setLines([]);
-    setCodeInput("");
-    setPendingItem(null);
-    resetPackQty();
+    setOnHandByItemId({});
+    setCreatedAt(null);
     setError(null);
     setOkMsg(null);
-    setMode("edit");
+  }
+
+  function rememberOnHand(id: number, qty: number) {
+    setOnHandByItemId((prev) => ({ ...prev, [id]: qty }));
+  }
+
+  function refreshOnHand(billLines: { code: string }[]) {
+    const codes = [...new Set(billLines.map((l) => l.code.trim()).filter(Boolean))];
+    for (const code of codes) {
+      void findItemByCode(code).then((item) => {
+        if (item) rememberOnHand(item.id, item.stock_main);
+      });
+    }
+  }
+
+  function stockLeftMessage(left: number, unit: string) {
+    return t("stockOnlyLeft").replace("{qty}", String(Math.max(0, left))).replace("{unit}", unit);
+  }
+
+  function applySavedBill(b: PharmacyBill) {
+    setBillId(b.id);
+    setBillNo(b.bill_no);
+    setBillStatus(b.status);
+    setCreatedAt(b.created_at);
+    const next = b.lines ?? [];
+    setLines(next);
+    refreshOnHand(next);
   }
 
   async function openBill(id: number) {
     setBusy(true);
     setError(null);
+    setOkMsg(null);
     try {
       const b = await getPharmacyBill(id);
       setBillId(b.id);
@@ -97,9 +119,10 @@ export function PharmacyBillingPage({
       setPatientAge(b.patient_age_years != null ? String(b.patient_age_years) : "");
       setPatientGender(b.patient_gender || "");
       setDescription(b.description || "");
-      setLines(b.lines ?? []);
-      setPendingItem(null);
-      setMode("edit");
+      const next = b.lines ?? [];
+      setLines(next);
+      refreshOnHand(next);
+      setCreatedAt(b.created_at);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Load failed");
     } finally {
@@ -115,7 +138,21 @@ export function PharmacyBillingPage({
       patient_age_years: age != null && !Number.isNaN(age) ? age : null,
       patient_gender: patientGender,
       description: description.trim(),
-      lines,
+      lines: lines.map((line) => ({
+        item_id: line.item_id,
+        code: line.code,
+        description: line.description,
+        box_qty: line.box_qty ?? 0,
+        strip_qty: line.strip_qty ?? 0,
+        tablet_qty: line.tablet_qty ?? 0,
+        billing_qty: line.billing_qty,
+        billing_unit: line.billing_unit,
+        stock_qty: line.stock_qty,
+        stock_unit: line.stock_unit,
+        unit_price_mmk: line.unit_price_mmk,
+        line_total_mmk: line.line_total_mmk,
+        sort_order: line.sort_order,
+      })),
       save_patient: false,
     };
   }
@@ -141,6 +178,12 @@ export function PharmacyBillingPage({
         item_id: item.id,
         code: item.code,
         description: item.name,
+        pack_l1_qty: item.pack_l1_qty,
+        pack_l1_unit: item.pack_l1_unit,
+        pack_l2_qty: item.pack_l2_qty,
+        pack_l2_unit: item.pack_l2_unit,
+        pack_l3_qty: item.pack_l3_qty,
+        pack_l3_unit: item.pack_l3_unit,
         box_qty: boxQty,
         strip_qty: stripQty,
         tablet_qty: tabletQty,
@@ -153,34 +196,28 @@ export function PharmacyBillingPage({
         sort_order: prev.length,
       },
     ]);
-    setCodeInput("");
-    setPendingItem(null);
-    resetPackQty();
     setError(null);
-    if (item.stock_main < billingQty) {
-      setOkMsg(
-        `${item.code}: needs ${billingQty} ${l3} but In Stock is ${item.stock_main}`,
-      );
-    }
   }
 
-  async function saveDraft() {
+  async function saveDraft(): Promise<number | null> {
+    const body = buildBody();
+    if (!body.patient_name) throw new Error(userMessage("Patient name required"));
+    if (body.lines.length === 0) throw new Error(userMessage("Add at least one medicine"));
+    const b = billId
+      ? await updatePharmacyBill(billId, body)
+      : await createPharmacyBill(body);
+    applySavedBill(b);
+    setOkMsg(`${t("saved")} ${b.bill_no}`);
+    return b.id;
+  }
+
+  async function doConfirm() {
+    if (!isDraft) return;
     setBusy(true);
     setError(null);
     setOkMsg(null);
     try {
-      const body = buildBody();
-      if (!body.patient_name) throw new Error("Patient name required");
-      if (body.lines.length === 0) throw new Error("Add at least one medicine");
-      const b = billId
-        ? await updatePharmacyBill(billId, body)
-        : await createPharmacyBill(body);
-      setBillId(b.id);
-      setBillNo(b.bill_no);
-      setBillStatus(b.status);
-      setLines(b.lines ?? []);
-      setOkMsg(`Saved ${b.bill_no}`);
-      await reloadList();
+      await saveDraft();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Save failed");
     } finally {
@@ -188,52 +225,39 @@ export function PharmacyBillingPage({
     }
   }
 
-  async function doPay() {
-    if (!billId) {
-      setError("Save the bill first");
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      const b = await payPharmacyBill(billId);
-      setBillStatus(b.status);
-      setOkMsg(`Paid ${b.bill_no}`);
-      await reloadList();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Pay failed");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function doVoid() {
-    if (!billId) return;
-    const reason = window.prompt(t("voidReasonPrompt"));
-    if (!reason?.trim()) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const b = await voidPharmacyBill(billId, reason.trim());
-      setBillStatus(b.status);
-      setOkMsg(`Voided ${b.bill_no}`);
-      await reloadList();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Void failed");
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function doPrint() {
-    if (!billId) {
-      setError("Save the bill first");
-      return;
-    }
     setBusy(true);
     setError(null);
+    setOkMsg(null);
     try {
-      await printPharmacyBill(billId);
+      let id = billId;
+      if (billStatus === "paid" && id) {
+        await printPharmacyBill(id);
+        return;
+      }
+      if (!isDraft) {
+        throw new Error(userMessage("Only draft or paid bills can be printed"));
+      }
+      if (lines.length === 0) throw new Error(userMessage("Add at least one medicine"));
+      id = await saveDraft();
+      if (id == null) throw new Error(userMessage("Save failed"));
+      const billIdForPay = id;
+      await printPharmacyBill(billIdForPay, {
+        onPrinted: async () => {
+          try {
+            const current = await getPharmacyBill(billIdForPay);
+            if (current.status === "draft") {
+              const paid = await payPharmacyBill(billIdForPay);
+              applySavedBill(paid);
+              setOkMsg(t("pharmacyPrintedPaid").replace("{bill}", paid.bill_no));
+            } else {
+              applySavedBill(current);
+            }
+          } catch (e) {
+            setError(e instanceof Error ? e.message : "Pay failed");
+          }
+        },
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Print failed");
     } finally {
@@ -241,373 +265,225 @@ export function PharmacyBillingPage({
     }
   }
 
-  const pendingPack = pendingItem ? packFromItem(pendingItem) : null;
-  const preview =
-    pendingItem && pendingPack
-      ? (() => {
-          const boxQ = Number(boxQtyInput) || 0;
-          const stripQ = Number(stripQtyInput) || 0;
-          const tabQ = Number(tabletQtyInput) || 0;
-          if (boxQ === 0 && stripQ === 0 && tabQ === 0) return null;
-          const { total: tabs, charge, error: err } = lineChargeFromPack(
-            boxQ,
-            stripQ,
-            tabQ,
-            pendingPack.pack_l2_qty,
-            pendingPack.pack_l3_qty,
-            pendingItem.sell_price_mmk,
-          );
-          if (err) return err;
-          const l3 = pendingPack.pack_l3_unit;
-          return `${boxQ}×${stripQ}×${tabQ} → ${tabs} ${l3} · ${formatMMK(charge)} MMK`;
-        })()
-      : null;
+  async function doVoidSelected(id: number, reason: string) {
+    const b = await voidPharmacyBill(id, reason);
+    if (billId === id) {
+      await openBill(id);
+    }
+    setOkMsg(`${t("voided")} ${b.bill_no}`);
+  }
 
-  if (mode === "list") {
-    return (
-      <section className="settings-panel">
-        <div className="btn-row">
-          <button type="button" className="btn primary" onClick={openNew}>
-            {t("newBill")}
-          </button>
-        </div>
-        <p className="hint">{t("pharmacyBillingHint")}</p>
-        <div className="list-toolbar">
-          <Typeahead
-            label={t("search")}
-            value={q}
-            onChange={setQ}
-            placeholder={t("searchBillPlaceholder")}
-            loadSuggestions={async (term) => listPharmacyBills(term, statusFilter)}
-            getKey={(b) => b.id}
-            renderOption={(b) => (
-              <>
-                <span className="typeahead-title">
-                  {b.bill_no} — {b.patient_name}
-                </span>
-                <span className="typeahead-sub">
-                  {b.status.toUpperCase()}
-                  {b.patient_phone ? ` · ${b.patient_phone}` : ""}
-                </span>
-              </>
-            )}
-            onPick={(b) => {
-              setQ(b.bill_no);
-              void openBill(b.id);
-            }}
-            onSubmitWithoutPick={() =>
-              void reloadList().catch((err) => setError(String(err)))
-            }
-          />
-          <label className="field">
-            {t("status")}
-            <select
-              value={statusFilter}
-              onChange={(e) => {
-                setStatusFilter(e.target.value);
-                void reloadList(q, e.target.value).catch((err) => setError(String(err)));
-              }}
-            >
-              <option value="">{t("all")}</option>
-              <option value="draft">{t("draft")}</option>
-              <option value="paid">{t("paid")}</option>
-              <option value="void">{t("voidStatus")}</option>
-            </select>
-          </label>
-          <button
-            type="button"
-            className="btn ghost"
-            onClick={() => void reloadList().catch((e) => setError(String(e)))}
-          >
-            {t("search")}
-          </button>
-        </div>
-        {error ? <p className="form-error">{error}</p> : null}
-        <ul className="data-list">
-          {bills.length === 0 ? <li className="empty-row">{t("noBillsYet")}</li> : null}
-          {bills.map((b) => (
-            <li key={b.id}>
-              <div>
-                <p className="row-title">
-                  {b.bill_no} · {b.patient_name}
-                </p>
-                <p className="row-sub">
-                  {b.status.toUpperCase()} · {formatMMK(b.total_mmk)} {t("mmk")}
-                </p>
-              </div>
-              <button type="button" className="btn ghost" onClick={() => void openBill(b.id)}>
-                {t("open")}
-              </button>
-            </li>
-          ))}
-        </ul>
-      </section>
+  function doCancel() {
+    if (!window.confirm(t("confirmCancelBill"))) return;
+    resetEditor();
+  }
+
+  function otherStockQty(itemId: number, skipIndex: number) {
+    return lines.reduce(
+      (sum, line, i) => (i !== skipIndex && line.item_id === itemId ? sum + line.stock_qty : sum),
+      0,
     );
   }
 
+  function commitNewItem(item: PharmacyItem, qty: number, unitId: string | null) {
+    const pack = packFromItem(item);
+    const units = saleUnitsFromPack(pack, item.sell_price_mmk);
+    const chosen = unitId ? units.find((u) => u.id === unitId) : null;
+    if (!chosen) {
+      setError(`${item.code}: ${t("chooseUnit")}`);
+      return;
+    }
+    rememberOnHand(item.id, item.stock_main);
+    const demand = qty * chosen.factor;
+    const already = otherStockQty(item.id, -1);
+    const unit = pack.pack_l3_unit || item.billing_unit || "Tablet";
+    if (item.stock_main < already + demand) {
+      setError(stockLeftMessage(item.stock_main - already, unit));
+      return;
+    }
+    const qtys = packQtysForSale(chosen, qty);
+    addLineFromItem(item, qtys.box_qty, qtys.strip_qty, qtys.tablet_qty);
+  }
+
+  function commitLineQty(index: number, qty: number): boolean {
+    const line = lines[index];
+    if (!line) return false;
+    const view = pharmacyLineSaleView(line);
+    if (view.locked) return false;
+    const unit = view.units.find((u) => u.id === view.unitId);
+    const billing = unit ? qty * unit.factor : qty;
+    const onHand = onHandByItemId[line.item_id];
+    const already = otherStockQty(line.item_id, index);
+    const stockUnit = line.stock_unit || line.pack_l3_unit || "Tablet";
+    if (onHand != null && onHand < already + billing) {
+      setError(stockLeftMessage(onHand - already, stockUnit));
+      return false;
+    }
+    setLines((prev) =>
+      prev.map((row, i) => {
+        if (i !== index) return row;
+        if (!unit) {
+          return {
+            ...row,
+            box_qty: 0,
+            strip_qty: 0,
+            tablet_qty: billing,
+            billing_qty: billing,
+            stock_qty: billing,
+            line_total_mmk: billing * row.unit_price_mmk,
+          };
+        }
+        return {
+          ...row,
+          ...packQtysForSale(unit, qty),
+          billing_qty: billing,
+          stock_qty: billing,
+          line_total_mmk: billing * row.unit_price_mmk,
+        };
+      }),
+    );
+    setError(null);
+    return true;
+  }
+
+  function changeLineUnit(index: number, unitId: string) {
+    const line = lines[index];
+    if (!line) return;
+    const view = pharmacyLineSaleView(line);
+    if (view.locked) return;
+    const unit = view.units.find((u) => u.id === unitId);
+    if (!unit) return;
+    const billing = view.qty * unit.factor;
+    const onHand = onHandByItemId[line.item_id];
+    const already = otherStockQty(line.item_id, index);
+    const stockUnit = line.stock_unit || line.pack_l3_unit || "Tablet";
+    if (onHand != null && onHand < already + billing) {
+      setError(stockLeftMessage(onHand - already, stockUnit));
+      return;
+    }
+    setLines((prev) =>
+      prev.map((row, i) => {
+        if (i !== index) return row;
+        return {
+          ...row,
+          ...packQtysForSale(unit, view.qty),
+          billing_qty: billing,
+          stock_qty: billing,
+          line_total_mmk: billing * row.unit_price_mmk,
+        };
+      }),
+    );
+    setError(null);
+  }
+
+  async function lookupItem(code: string): Promise<PharmacyItem | null> {
+    const trimmed = code.trim();
+    if (!trimmed) return null;
+    const found = await findItemByCode(trimmed);
+    if (!found || !found.active) {
+      setError(`Unknown code “${trimmed}”`);
+      return null;
+    }
+    rememberOnHand(found.id, found.stock_main);
+    setError(null);
+    return found;
+  }
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (dialog) return;
+      if (document.querySelector(".print-preview-overlay")) return;
+
+      const key = e.key;
+      if (key === "F5") {
+        e.preventDefault();
+        if (!busy && isDraft) void doConfirm();
+        return;
+      }
+      if (key === "F7") {
+        e.preventDefault();
+        if (!busy) void doPrint();
+        return;
+      }
+      if (key === "F9") {
+        e.preventDefault();
+        if (!busy) setDialog("history");
+        return;
+      }
+      if (key === "F8" && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        if (!busy) setDialog("delete");
+        return;
+      }
+      if (key === "F10") {
+        e.preventDefault();
+        if (!busy) doCancel();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // Intentional: handlers close over latest state each render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- shortcut wiring
+  }, [dialog, busy, isDraft, billId, billStatus, lines, patientName]);
+
+  const displayWhen = formatDisplayWhen(createdAt, nowTick);
+
   return (
-    <section className="settings-panel">
-      <div className="btn-row">
-        <button
-          type="button"
-          className="btn ghost"
-          onClick={() => {
-            setMode("list");
-            void reloadList();
-          }}
-        >
-          {t("backBills")}
-        </button>
-        {billNo ? (
-          <span className="hint">
-            {billNo} · {billStatus.toUpperCase()}
-          </span>
-        ) : null}
-      </div>
-
-      {!billNo ? <h2 className="section-title">{t("createPharmacyBill")}</h2> : null}
-
-      <div className="card-form">
-        <FormSection title={t("patient")} titleId="pharmacy-bill-patient">
-          <div className="field-row">
-            <label className="field grow">
-              {t("patientName")}
-              <input
-                value={patientName}
-                disabled={!isDraft}
-                onChange={(e) => setPatientName(e.target.value)}
-                autoFocus
-              />
-            </label>
-            <label className="field">
-              {t("phone")}
-              <input
-                value={patientPhone}
-                disabled={!isDraft}
-                onChange={(e) => setPatientPhone(e.target.value)}
-              />
-            </label>
-          </div>
-          <div className="field-row">
-            <label className="field">
-              {t("age")}
-              <input
-                value={patientAge}
-                disabled={!isDraft}
-                inputMode="numeric"
-                onChange={(e) => setPatientAge(e.target.value)}
-              />
-            </label>
-            <label className="field">
-              {t("gender")}
-              <select
-                value={patientGender}
-                disabled={!isDraft}
-                onChange={(e) => setPatientGender(e.target.value)}
-              >
-                <option value="">—</option>
-                <option value="M">{t("genderM")}</option>
-                <option value="F">{t("genderF")}</option>
-                <option value="Other">{t("genderOther")}</option>
-              </select>
-            </label>
-          </div>
-          <label className="field">
-            {t("note")}
-            <input
-              value={description}
-              disabled={!isDraft}
-              onChange={(e) => setDescription(e.target.value)}
-            />
-          </label>
-        </FormSection>
-
-        <FormSection title={t("medicines")} titleId="pharmacy-bill-medicines">
-          {isDraft ? (
-            <>
-              <div className="list-toolbar">
-                <Typeahead
-                  label={t("medicineLabel")}
-                  value={codeInput}
-                  onChange={(v) => {
-                    setCodeInput(v);
-                    setPendingItem(null);
-                  }}
-                  placeholder={t("medicinePlaceholder")}
-                  loadSuggestions={async (term) => listPharmacyItems(term)}
-                  getKey={(item) => item.id}
-                  renderOption={(item) => {
-                    const dosage = (item.dosage || "").trim();
-                    const l3 = item.pack_l3_unit || item.billing_unit;
-                    return (
-                      <>
-                        <span className="typeahead-title">
-                          {item.code} — {item.name}
-                          {dosage ? ` (${dosage})` : ""}
-                        </span>
-                        <span className="typeahead-sub">
-                          {t("inStock")} {item.stock_main} {l3} · {formatMMK(item.sell_price_mmk)}{" "}
-                          {t("mmk")}/{l3}
-                        </span>
-                      </>
-                    );
-                  }}
-                  onPick={(item) => {
-                    setPendingItem(item);
-                    setCodeInput(item.code);
-                    resetPackQty();
-                    setTabletQtyInput("1");
-                    setError(null);
-                  }}
-                  onSubmitWithoutPick={async () => {
-                    const found = await findItemByCode(codeInput);
-                    if (!found) {
-                      setError(`Unknown code “${codeInput.trim()}”`);
-                      return;
-                    }
-                    setPendingItem(found);
-                  }}
-                />
-              </div>
-              <div className="qty-triple">
-                <div className="qty-triple-cell">
-                  <span className="muted">
-                    {pendingPack?.pack_l1_unit || t("packUnitBox")}
-                  </span>
-                  <input
-                    type="number"
-                    min={0}
-                    value={boxQtyInput}
-                    disabled={!pendingItem}
-                    onChange={(e) => setBoxQtyInput(e.target.value)}
-                    placeholder="0"
-                  />
-                </div>
-                <span className="qty-triple-star" aria-hidden="true">
-                  *
-                </span>
-                <div className="qty-triple-cell">
-                  <span className="muted">
-                    {pendingPack?.pack_l2_unit || t("packUnitStrip")}
-                  </span>
-                  <input
-                    type="number"
-                    min={0}
-                    value={stripQtyInput}
-                    disabled={!pendingItem}
-                    onChange={(e) => setStripQtyInput(e.target.value)}
-                    placeholder="0"
-                  />
-                </div>
-                <span className="qty-triple-star" aria-hidden="true">
-                  *
-                </span>
-                <div className="qty-triple-cell">
-                  <span className="muted">
-                    {pendingPack?.pack_l3_unit || t("packUnitTablet")}
-                  </span>
-                  <input
-                    type="number"
-                    min={0}
-                    value={tabletQtyInput}
-                    disabled={!pendingItem}
-                    onChange={(e) => setTabletQtyInput(e.target.value)}
-                    placeholder="0"
-                  />
-                </div>
-                <button
-                  type="button"
-                  className="btn ghost"
-                  disabled={!pendingItem}
-                  onClick={() => {
-                    if (!pendingItem) return;
-                    addLineFromItem(
-                      pendingItem,
-                      Number(boxQtyInput) || 0,
-                      Number(stripQtyInput) || 0,
-                      Number(tabletQtyInput) || 0,
-                    );
-                  }}
-                >
-                  {t("add")}
-                </button>
-              </div>
-              {preview ? <p className="hint">{preview}</p> : null}
-            </>
-          ) : null}
-
-          <div className="bill-lines pharmacy-bill">
-            <div className="bill-lines-head">
-              <span>{t("code")}</span>
-              <span>{t("description")}</span>
-              <span className="num">{t("qty")}</span>
-              <span className="num">{t("stock")}</span>
-              <span className="num">{t("price")}</span>
-              <span className="num">{t("amount")}</span>
-              <span />
-            </div>
-            {lines.length === 0 ? <p className="empty-row">{t("noLinesYet")}</p> : null}
-            {lines.map((l, i) => (
-              <div key={`${l.code}-${i}`} className="bill-lines-row">
-                <span>{l.code || "—"}</span>
-                <span>{l.description}</span>
-                <span className="num">
-                  {(l.box_qty || 0) > 0 || (l.strip_qty || 0) > 0 || (l.tablet_qty || 0) > 0
-                    ? `${l.box_qty || 0}*${l.strip_qty || 0}*${l.tablet_qty || 0}`
-                    : `${l.billing_qty} ${l.billing_unit}`}
-                </span>
-                <span className="num">
-                  {l.billing_qty} {l.billing_unit}
-                </span>
-                <span className="num">{formatMMK(l.unit_price_mmk)}</span>
-                <span className="num">{formatMMK(l.line_total_mmk)}</span>
-                <span>
-                  {isDraft ? (
-                    <button
-                      type="button"
-                      className="btn ghost danger"
-                      onClick={() => setLines((prev) => prev.filter((_, j) => j !== i))}
-                    >
-                      ×
-                    </button>
-                  ) : null}
-                </span>
-              </div>
-            ))}
-          </div>
-
-          <p className="bill-total">
-            {t("totalLabel")}: {formatMMK(total)} {t("mmk")}
-          </p>
-        </FormSection>
-        {error ? <p className="form-error">{error}</p> : null}
-        {okMsg ? <p className="form-ok">{okMsg}</p> : null}
-
-        <div className="btn-row">
-          {isDraft ? (
-            <button type="button" className="btn primary" disabled={busy} onClick={() => void saveDraft()}>
-              {busy ? t("saving") : billId ? t("updateDraft") : t("saveDraft")}
-            </button>
-          ) : null}
-          {isDraft && billId ? (
-            <button type="button" className="btn primary" disabled={busy} onClick={() => void doPay()}>
-              {t("payCash")}
-            </button>
-          ) : null}
-          {billId && billStatus !== "void" ? (
-            <button type="button" className="btn ghost danger" disabled={busy} onClick={() => void doVoid()}>
-              {t("voidStatus")}
-            </button>
-          ) : null}
-        </div>
-        {billId ? (
-          <div className="btn-row btn-row-print">
-            <button type="button" className="btn print" disabled={busy} onClick={() => void doPrint()}>
-              {t("print")}
-            </button>
-          </div>
-        ) : null}
-      </div>
-    </section>
+    <>
+      <PharmacyBillForm
+        billId={billId}
+        billNo={billNo}
+        billStatus={billStatus}
+        patientName={patientName}
+        patientPhone={patientPhone}
+        patientAge={patientAge}
+        patientGender={patientGender}
+        description={description}
+        lines={lines}
+        displayWhen={displayWhen}
+        busy={busy}
+        error={error}
+        okMsg={okMsg}
+        isDraft={isDraft}
+        onPatientName={setPatientName}
+        onPatientPhone={setPatientPhone}
+        onPatientAge={setPatientAge}
+        onPatientGender={setPatientGender}
+        onDescription={setDescription}
+        onCommitItem={commitNewItem}
+        onLookupItem={lookupItem}
+        loadItemSuggestions={async (term) => listPharmacyItems(term)}
+        onCommitLineQty={commitLineQty}
+        onUnitChange={changeLineUnit}
+        onRemoveLine={(i) => setLines((prev) => prev.filter((_, j) => j !== i))}
+        onPrint={() => void doPrint()}
+        onConfirm={() => void doConfirm()}
+        onHistory={() => setDialog("history")}
+        onDelete={() => setDialog("delete")}
+        onCancel={doCancel}
+      />
+      {dialog ? (
+        <PharmacyBillListDialog
+          mode={dialog}
+          onClose={() => setDialog(null)}
+          onOpen={(id) => void openBill(id)}
+          onVoid={doVoidSelected}
+        />
+      ) : null}
+    </>
   );
+}
+
+function formatDisplayWhen(createdAt: string | null, nowTick: number): string {
+  const d = createdAt
+    ? new Date(createdAt.includes("T") ? createdAt : createdAt.replace(" ", "T") + "Z")
+    : new Date(nowTick);
+  if (Number.isNaN(d.getTime())) return createdAt ?? "";
+  return d.toLocaleString(undefined, {
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }

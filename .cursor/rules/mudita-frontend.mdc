@@ -18,6 +18,7 @@ Full guide: `@docs/standards/FRONTEND.md` · Conventions: `@docs/standards/CONVE
 ## Must follow
 
 - Do **not** add new feature panels inside `app/App.tsx`; put screens under `pages/`
+- A UI change must not require staff to re-enter server data; desks do not migrate SQLite
 - View/page string unions only — no React Router
 - Local `useState`/`useEffect` — no Redux/Zustand/React Query by default
 - New UI strings: EN + MY keys in `i18n.ts`

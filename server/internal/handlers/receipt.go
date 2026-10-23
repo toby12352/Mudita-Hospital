@@ -47,6 +47,7 @@ type receiptLine struct {
 	Code        string
 	Description string
 	Qty         int64
+	Unit        string
 	UnitPrice   int64
 	LineTotal   int64
 }
@@ -142,7 +143,11 @@ func renderThermalReceiptHTML(hosp *hospitalSettings, bill receiptBill) string {
 		b.WriteString(`<div class="line"><div class="line-desc">`)
 		b.WriteString(html.EscapeString(desc))
 		b.WriteString(`</div><div class="line-meta"><span>`)
-		b.WriteString(fmt.Sprintf("%d x %s", line.Qty, formatMMK(line.UnitPrice)))
+		if line.Unit != "" {
+			b.WriteString(fmt.Sprintf("%d %s x %s", line.Qty, html.EscapeString(line.Unit), formatMMK(line.UnitPrice)))
+		} else {
+			b.WriteString(fmt.Sprintf("%d x %s", line.Qty, formatMMK(line.UnitPrice)))
+		}
 		b.WriteString(`</span><span class="bold">`)
 		b.WriteString(formatMMK(line.LineTotal))
 		b.WriteString(`</span></div></div>`)

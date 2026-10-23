@@ -66,26 +66,29 @@ func (h *Dashboard) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 type dashOverview struct {
-	Date            string `json:"date"`
-	OPDCount        int    `json:"opd_count"`
-	OPDTotalMMK     int64  `json:"opd_total_mmk"`
-	OTCount         int    `json:"ot_count"`
-	OTTotalMMK      int64  `json:"ot_total_mmk"`
-	GrandTotalMMK   int64  `json:"grand_total_mmk"`
-	BillCount       int    `json:"bill_count"`
-	AvgBillMMK      int64  `json:"avg_bill_mmk"`
-	VoidsToday      int    `json:"voids_today"`
-	LowStockCount   int    `json:"low_stock_count"`
-	NearExpiryCount int    `json:"near_expiry_count"`
-	NearExpiryDays  int    `json:"near_expiry_days"`
+	Date             string `json:"date"`
+	OPDCount         int    `json:"opd_count"`
+	OPDTotalMMK      int64  `json:"opd_total_mmk"`
+	OTCount          int    `json:"ot_count"`
+	OTTotalMMK       int64  `json:"ot_total_mmk"`
+	PharmacyCount    int    `json:"pharmacy_count"`
+	PharmacyTotalMMK int64  `json:"pharmacy_total_mmk"`
+	GrandTotalMMK    int64  `json:"grand_total_mmk"`
+	BillCount        int    `json:"bill_count"`
+	AvgBillMMK       int64  `json:"avg_bill_mmk"`
+	VoidsToday       int    `json:"voids_today"`
+	LowStockCount    int    `json:"low_stock_count"`
+	NearExpiryCount  int    `json:"near_expiry_count"`
+	NearExpiryDays   int    `json:"near_expiry_days"`
 }
 
 type trendPoint struct {
-	Date          string `json:"date"`
-	OPDTotalMMK   int64  `json:"opd_total_mmk"`
-	OTTotalMMK    int64  `json:"ot_total_mmk"`
-	GrandTotalMMK int64  `json:"grand_total_mmk"`
-	BillCount     int    `json:"bill_count"`
+	Date             string `json:"date"`
+	OPDTotalMMK      int64  `json:"opd_total_mmk"`
+	OTTotalMMK       int64  `json:"ot_total_mmk"`
+	PharmacyTotalMMK int64  `json:"pharmacy_total_mmk"`
+	GrandTotalMMK    int64  `json:"grand_total_mmk"`
+	BillCount        int    `json:"bill_count"`
 }
 
 type doctorRevenueRow struct {
@@ -139,7 +142,7 @@ func (h *Dashboard) overview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	nearDays := 60
-	near, err := listNearExpiry(h.DB, nearDays)
+	near, err := listLiveNearExpiry(h.DB, nearDays)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "overview failed"})
 		return
@@ -149,24 +152,26 @@ func (h *Dashboard) overview(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "overview failed"})
 		return
 	}
-	billCount := cash.OPDCount + cash.OTCount
+	billCount := cash.OPDCount + cash.OTCount + cash.PharmacyCount
 	var avg int64
 	if billCount > 0 {
 		avg = cash.GrandTotal / int64(billCount)
 	}
 	writeJSON(w, http.StatusOK, dashOverview{
-		Date:            date,
-		OPDCount:        cash.OPDCount,
-		OPDTotalMMK:     cash.OPDTotal,
-		OTCount:         cash.OTCount,
-		OTTotalMMK:      cash.OTTotal,
-		GrandTotalMMK:   cash.GrandTotal,
-		BillCount:       billCount,
-		AvgBillMMK:      avg,
-		VoidsToday:      voids,
-		LowStockCount:   len(low),
-		NearExpiryCount: len(near),
-		NearExpiryDays:  nearDays,
+		Date:             date,
+		OPDCount:         cash.OPDCount,
+		OPDTotalMMK:      cash.OPDTotal,
+		OTCount:          cash.OTCount,
+		OTTotalMMK:       cash.OTTotal,
+		PharmacyCount:    cash.PharmacyCount,
+		PharmacyTotalMMK: cash.PharmacyTotal,
+		GrandTotalMMK:    cash.GrandTotal,
+		BillCount:        billCount,
+		AvgBillMMK:       avg,
+		VoidsToday:       voids,
+		LowStockCount:    len(low),
+		NearExpiryCount:  len(near),
+		NearExpiryDays:   nearDays,
 	})
 }
 
@@ -289,24 +294,28 @@ type stockHealthReport struct {
 }
 
 type dailyReportResponse struct {
-	Date           string     `json:"date"`
-	Yesterday      string     `json:"yesterday"`
-	OPDCount       int        `json:"opd_count"`
-	OPDTotalMMK    int64      `json:"opd_total_mmk"`
-	OTCount        int        `json:"ot_count"`
-	OTTotalMMK     int64      `json:"ot_total_mmk"`
-	GrandTotalMMK  int64      `json:"grand_total_mmk"`
-	BillCount      int        `json:"bill_count"`
-	Voids          int        `json:"voids"`
-	Lines          []cashLine `json:"lines"`
-	PrevOPDTotal   int64      `json:"prev_opd_total_mmk"`
-	PrevOTTotal    int64      `json:"prev_ot_total_mmk"`
-	PrevGrandTotal int64      `json:"prev_grand_total_mmk"`
-	PrevBillCount  int        `json:"prev_bill_count"`
-	DeltaOPDMMK    int64      `json:"delta_opd_mmk"`
-	DeltaOTMMK     int64      `json:"delta_ot_mmk"`
-	DeltaGrandMMK  int64      `json:"delta_grand_mmk"`
-	DeltaBills     int        `json:"delta_bills"`
+	Date              string     `json:"date"`
+	Yesterday         string     `json:"yesterday"`
+	OPDCount          int        `json:"opd_count"`
+	OPDTotalMMK       int64      `json:"opd_total_mmk"`
+	OTCount           int        `json:"ot_count"`
+	OTTotalMMK        int64      `json:"ot_total_mmk"`
+	PharmacyCount     int        `json:"pharmacy_count"`
+	PharmacyTotalMMK  int64      `json:"pharmacy_total_mmk"`
+	GrandTotalMMK     int64      `json:"grand_total_mmk"`
+	BillCount         int        `json:"bill_count"`
+	Voids             int        `json:"voids"`
+	Lines             []cashLine `json:"lines"`
+	PrevOPDTotal      int64      `json:"prev_opd_total_mmk"`
+	PrevOTTotal       int64      `json:"prev_ot_total_mmk"`
+	PrevPharmacyTotal int64      `json:"prev_pharmacy_total_mmk"`
+	PrevGrandTotal    int64      `json:"prev_grand_total_mmk"`
+	PrevBillCount     int        `json:"prev_bill_count"`
+	DeltaOPDMMK       int64      `json:"delta_opd_mmk"`
+	DeltaOTMMK        int64      `json:"delta_ot_mmk"`
+	DeltaPharmacyMMK  int64      `json:"delta_pharmacy_mmk"`
+	DeltaGrandMMK     int64      `json:"delta_grand_mmk"`
+	DeltaBills        int        `json:"delta_bills"`
 }
 
 func (h *Dashboard) stock(w http.ResponseWriter, r *http.Request) {
@@ -360,27 +369,31 @@ func (h *Dashboard) dailyReport(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "daily-report failed"})
 		return
 	}
-	billCount := today.OPDCount + today.OTCount
-	prevBills := prev.OPDCount + prev.OTCount
+	billCount := today.OPDCount + today.OTCount + today.PharmacyCount
+	prevBills := prev.OPDCount + prev.OTCount + prev.PharmacyCount
 	writeJSON(w, http.StatusOK, dailyReportResponse{
-		Date:           date,
-		Yesterday:      yesterday,
-		OPDCount:       today.OPDCount,
-		OPDTotalMMK:    today.OPDTotal,
-		OTCount:        today.OTCount,
-		OTTotalMMK:     today.OTTotal,
-		GrandTotalMMK:  today.GrandTotal,
-		BillCount:      billCount,
-		Voids:          voids,
-		Lines:          today.Lines,
-		PrevOPDTotal:   prev.OPDTotal,
-		PrevOTTotal:    prev.OTTotal,
-		PrevGrandTotal: prev.GrandTotal,
-		PrevBillCount:  prevBills,
-		DeltaOPDMMK:    today.OPDTotal - prev.OPDTotal,
-		DeltaOTMMK:     today.OTTotal - prev.OTTotal,
-		DeltaGrandMMK:  today.GrandTotal - prev.GrandTotal,
-		DeltaBills:     billCount - prevBills,
+		Date:              date,
+		Yesterday:         yesterday,
+		OPDCount:          today.OPDCount,
+		OPDTotalMMK:       today.OPDTotal,
+		OTCount:           today.OTCount,
+		OTTotalMMK:        today.OTTotal,
+		PharmacyCount:     today.PharmacyCount,
+		PharmacyTotalMMK:  today.PharmacyTotal,
+		GrandTotalMMK:     today.GrandTotal,
+		BillCount:         billCount,
+		Voids:             voids,
+		Lines:             today.Lines,
+		PrevOPDTotal:      prev.OPDTotal,
+		PrevOTTotal:       prev.OTTotal,
+		PrevPharmacyTotal: prev.PharmacyTotal,
+		PrevGrandTotal:    prev.GrandTotal,
+		PrevBillCount:     prevBills,
+		DeltaOPDMMK:       today.OPDTotal - prev.OPDTotal,
+		DeltaOTMMK:        today.OTTotal - prev.OTTotal,
+		DeltaPharmacyMMK:  today.PharmacyTotal - prev.PharmacyTotal,
+		DeltaGrandMMK:     today.GrandTotal - prev.GrandTotal,
+		DeltaBills:        billCount - prevBills,
 	})
 }
 
@@ -414,7 +427,7 @@ func buildStockHealth(db *sql.DB, slowDays, cogsDays int) (*stockHealthReport, e
 	}
 	return &stockHealthReport{
 		AsOf:            asOf,
-		Note:            "Inventory valued at current item buy prices × on-hand qty (MAIN, OT_RESERVED, OT_FLOOR).",
+		Note:            "Inventory valued at current item buy prices × on-hand qty (MAIN pharmacy and the OT cupboard). Legacy OT_RESERVED and OT_FLOOR rows are not counted.",
 		TotalValueMMK:   totalValue,
 		TotalQty:        totalQty,
 		ByLocation:      byLoc,
@@ -435,18 +448,28 @@ func buildStockHealth(db *sql.DB, slowDays, cogsDays int) (*stockHealthReport, e
 
 func stockValueByLocation(db *sql.DB) ([]stockLocValue, int64, int64, error) {
 	rows, err := db.Query(`
-		SELECT b.location_code,
-		       COALESCE(SUM(b.qty), 0),
-		       COALESCE(SUM(
-		         b.qty * COALESCE(i.buy_price_mmk, 0) * 1.0 /
-		         CASE WHEN COALESCE(i.units_per_purchase, 1) < 1 THEN 1 ELSE i.units_per_purchase END
-		       ), 0)
-		FROM item_batches b
-		JOIN items i ON i.id = b.item_id
-		WHERE i.active = 1 AND b.qty > 0
-		  AND b.location_code IN ('MAIN', 'OT_RESERVED', 'OT_FLOOR')
-		GROUP BY b.location_code
-		ORDER BY b.location_code
+		SELECT location_code,
+		       COALESCE(SUM(qty), 0),
+		       COALESCE(SUM(value_mmk), 0)
+		FROM (
+			SELECT 'MAIN' AS location_code,
+			       b.qty AS qty,
+			       b.qty * COALESCE(i.buy_price_mmk, 0) * 1.0 /
+			         CASE WHEN COALESCE(i.units_per_purchase, 1) < 1 THEN 1 ELSE i.units_per_purchase END AS value_mmk
+			FROM item_batches b
+			JOIN items i ON i.id = b.item_id
+			WHERE i.active = 1 AND b.qty > 0 AND b.location_code = 'MAIN'
+			UNION ALL
+			SELECT 'OT',
+			       ob.qty,
+			       ob.qty * COALESCE(i.buy_price_mmk, 0) * 1.0 /
+			         CASE WHEN COALESCE(i.units_per_purchase, 1) < 1 THEN 1 ELSE i.units_per_purchase END
+			FROM ot_batches ob
+			JOIN items i ON i.id = ob.item_id
+			WHERE i.active = 1 AND ob.qty > 0
+		) AS live
+		GROUP BY location_code
+		ORDER BY location_code
 	`)
 	if err != nil {
 		return nil, 0, 0, err
@@ -468,7 +491,7 @@ func stockValueByLocation(db *sql.DB) ([]stockLocValue, int64, int64, error) {
 
 func buildExpiryBuckets(db *sql.DB, asOf string) ([]expiryBucket, int64, int, error) {
 	// Pull batches expiring within 90 days (includes already expired).
-	list, err := listNearExpiry(db, 90)
+	list, err := listLiveNearExpiry(db, 90)
 	if err != nil {
 		return nil, 0, 0, err
 	}
@@ -545,31 +568,63 @@ func listSlowMovers(db *sql.DB, slowDays int, asOf string) ([]slowMoverRow, erro
 	cutoff := asOfT.AddDate(0, 0, -slowDays).Format("2006-01-02")
 	rows, err := db.Query(`
 		SELECT i.id, i.code, i.name,
-		       COALESCE(SUM(b.qty), 0) AS qty_on_hand,
-		       COALESCE(SUM(
-		         b.qty * COALESCE(i.buy_price_mmk, 0) * 1.0 /
-		         CASE WHEN COALESCE(i.units_per_purchase, 1) < 1 THEN 1 ELSE i.units_per_purchase END
+		       COALESCE((
+		         SELECT SUM(b.qty) FROM item_batches b
+		         WHERE b.item_id = i.id AND b.location_code = 'MAIN' AND b.qty > 0
+		       ), 0) + COALESCE((
+		         SELECT SUM(ob.qty) FROM ot_batches ob
+		         WHERE ob.item_id = i.id AND ob.qty > 0
+		       ), 0) AS qty_on_hand,
+		       COALESCE((
+		         SELECT SUM(
+		           b.qty * COALESCE(i.buy_price_mmk, 0) * 1.0 /
+		           CASE WHEN COALESCE(i.units_per_purchase, 1) < 1 THEN 1 ELSE i.units_per_purchase END
+		         )
+		         FROM item_batches b
+		         WHERE b.item_id = i.id AND b.location_code = 'MAIN' AND b.qty > 0
+		       ), 0) + COALESCE((
+		         SELECT SUM(
+		           ob.qty * COALESCE(i.buy_price_mmk, 0) * 1.0 /
+		           CASE WHEN COALESCE(i.units_per_purchase, 1) < 1 THEN 1 ELSE i.units_per_purchase END
+		         )
+		         FROM ot_batches ob
+		         WHERE ob.item_id = i.id AND ob.qty > 0
 		       ), 0) AS value_mmk,
 		       (
-		         SELECT MAX(date(m.created_at))
-		         FROM stock_movements m
-		         WHERE m.item_id = i.id AND m.movement_type = 'SALE'
+		         SELECT MAX(d) FROM (
+		           SELECT date(m.created_at) AS d
+		           FROM stock_movements m
+		           WHERE m.item_id = i.id AND m.movement_type IN ('SALE', 'ISSUE')
+		           UNION ALL
+		           SELECT date(m.created_at)
+		           FROM ot_stock_movements m
+		           WHERE m.item_id = i.id AND m.movement_type = 'SALE'
+		         )
 		       ) AS last_sale
 		FROM items i
-		JOIN item_batches b ON b.item_id = i.id
-		WHERE i.active = 1 AND b.qty > 0
-		  AND b.location_code IN ('MAIN', 'OT_RESERVED', 'OT_FLOOR')
+		WHERE i.active = 1
+		  AND COALESCE((
+		        SELECT SUM(b.qty) FROM item_batches b
+		        WHERE b.item_id = i.id AND b.location_code = 'MAIN' AND b.qty > 0
+		      ), 0) + COALESCE((
+		        SELECT SUM(ob.qty) FROM ot_batches ob
+		        WHERE ob.item_id = i.id AND ob.qty > 0
+		      ), 0) > 0
 		  AND NOT EXISTS (
 		    SELECT 1 FROM stock_movements m
+		    WHERE m.item_id = i.id
+		      AND m.movement_type IN ('SALE', 'ISSUE')
+		      AND date(m.created_at) >= date(?)
+		  )
+		  AND NOT EXISTS (
+		    SELECT 1 FROM ot_stock_movements m
 		    WHERE m.item_id = i.id
 		      AND m.movement_type = 'SALE'
 		      AND date(m.created_at) >= date(?)
 		  )
-		GROUP BY i.id, i.code, i.name
-		HAVING COALESCE(SUM(b.qty), 0) > 0
 		ORDER BY value_mmk DESC, i.code ASC
 		LIMIT 50
-	`, cutoff)
+	`, cutoff, cutoff)
 	if err != nil {
 		return nil, err
 	}
@@ -641,7 +696,7 @@ type dashError struct{ msg string }
 func (e *dashError) Error() string { return e.msg }
 
 func countVoidsOnDate(db *sql.DB, date string) (int, error) {
-	var opd, ot int
+	var opd, ot, pharmacy int
 	err := db.QueryRow(`
 		SELECT COUNT(*) FROM opd_bills
 		WHERE status = 'void' AND date(COALESCE(voided_at, updated_at, created_at)) = date(?)
@@ -656,13 +711,20 @@ func countVoidsOnDate(db *sql.DB, date string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	return opd + ot, nil
+	err = db.QueryRow(`
+		SELECT COUNT(*) FROM pharmacy_bills
+		WHERE status = 'void' AND date(COALESCE(voided_at, updated_at, created_at)) = date(?)
+	`, date).Scan(&pharmacy)
+	if err != nil {
+		return 0, err
+	}
+	return opd + ot + pharmacy, nil
 }
 
 func buildCashTrends(db *sql.DB, from, to string) ([]trendPoint, error) {
 	type agg struct {
-		opd, ot   int64
-		opdN, otN int
+		opd, ot, pharmacy    int64
+		opdN, otN, pharmacyN int
 	}
 	byDay := map[string]*agg{}
 
@@ -724,6 +786,35 @@ func buildCashTrends(db *sql.DB, from, to string) ([]trendPoint, error) {
 		return nil, err
 	}
 
+	phRows, err := db.Query(`
+		SELECT date(paid_at), COUNT(*), COALESCE(SUM(total_mmk), 0)
+		FROM pharmacy_bills
+		WHERE status = 'paid' AND date(paid_at) BETWEEN date(?) AND date(?)
+		GROUP BY date(paid_at)
+	`, from, to)
+	if err != nil {
+		return nil, err
+	}
+	defer phRows.Close()
+	for phRows.Next() {
+		var d string
+		var n int
+		var total int64
+		if err := phRows.Scan(&d, &n, &total); err != nil {
+			return nil, err
+		}
+		a := byDay[d]
+		if a == nil {
+			a = &agg{}
+			byDay[d] = a
+		}
+		a.pharmacy = total
+		a.pharmacyN = n
+	}
+	if err := phRows.Err(); err != nil {
+		return nil, err
+	}
+
 	fromT, _ := time.Parse("2006-01-02", from)
 	toT, _ := time.Parse("2006-01-02", to)
 	out := make([]trendPoint, 0)
@@ -734,8 +825,9 @@ func buildCashTrends(db *sql.DB, from, to string) ([]trendPoint, error) {
 		if a != nil {
 			p.OPDTotalMMK = a.opd
 			p.OTTotalMMK = a.ot
-			p.GrandTotalMMK = a.opd + a.ot
-			p.BillCount = a.opdN + a.otN
+			p.PharmacyTotalMMK = a.pharmacy
+			p.GrandTotalMMK = a.opd + a.ot + a.pharmacy
+			p.BillCount = a.opdN + a.otN + a.pharmacyN
 		}
 		out = append(out, p)
 	}
@@ -833,8 +925,10 @@ func buildPharmacyMargin(db *sql.DB, from, to string) (*pharmacyMarginReport, er
 			       COALESCE(NULLIF(TRIM(bl.description), ''), COALESCE(i.name, '(item)')) AS name,
 			       COALESCE(bl.qty, 0) AS qty_sold,
 			       COALESCE(bl.line_total_mmk, 0) AS revenue_mmk,
-			       COALESCE(bl.qty, 0) * COALESCE(i.buy_price_mmk, 0) * 1.0 /
-			         CASE WHEN COALESCE(i.units_per_purchase, 1) < 1 THEN 1 ELSE i.units_per_purchase END AS cogs_mmk
+			       CAST(ROUND(
+			         COALESCE(bl.qty, 0) * COALESCE(i.buy_price_mmk, 0) * 1.0 /
+			         CASE WHEN COALESCE(i.units_per_purchase, 1) < 1 THEN 1 ELSE i.units_per_purchase END
+			       ) AS INTEGER) AS cogs_mmk
 			FROM bill_lines bl
 			JOIN opd_bills b ON b.id = bl.bill_id
 			LEFT JOIN items i ON i.id = bl.ref_id
@@ -847,18 +941,35 @@ func buildPharmacyMargin(db *sql.DB, from, to string) (*pharmacyMarginReport, er
 			       COALESCE(NULLIF(TRIM(bl.description), ''), COALESCE(i.name, '(item)')),
 			       COALESCE(bl.qty, 0),
 			       COALESCE(bl.line_total_mmk, 0),
-			       COALESCE(bl.qty, 0) * COALESCE(i.buy_price_mmk, 0) * 1.0 /
+			       CAST(ROUND(
+			         COALESCE(bl.qty, 0) * COALESCE(i.buy_price_mmk, 0) * 1.0 /
 			         CASE WHEN COALESCE(i.units_per_purchase, 1) < 1 THEN 1 ELSE i.units_per_purchase END
+			       ) AS INTEGER)
 			FROM ot_bill_lines bl
 			JOIN ot_bills b ON b.id = bl.bill_id
 			LEFT JOIN items i ON i.id = bl.ref_id
 			WHERE b.status = 'paid'
 			  AND bl.line_type = 'item'
 			  AND date(b.paid_at) BETWEEN date(?) AND date(?)
+			UNION ALL
+			SELECT COALESCE(bl.item_id, 0),
+			       COALESCE(NULLIF(TRIM(bl.code), ''), COALESCE(i.code, '')),
+			       COALESCE(NULLIF(TRIM(bl.description), ''), COALESCE(i.name, '(item)')),
+			       COALESCE(bl.stock_qty, 0),
+			       COALESCE(bl.line_total_mmk, 0),
+			       CAST(ROUND(
+			         COALESCE(bl.stock_qty, 0) * COALESCE(i.buy_price_mmk, 0) * 1.0 /
+			         CASE WHEN COALESCE(i.units_per_purchase, 1) < 1 THEN 1 ELSE i.units_per_purchase END
+			       ) AS INTEGER)
+			FROM pharmacy_bill_lines bl
+			JOIN pharmacy_bills b ON b.id = bl.bill_id
+			LEFT JOIN items i ON i.id = bl.item_id
+			WHERE b.status = 'paid'
+			  AND date(b.paid_at) BETWEEN date(?) AND date(?)
 		)
 		GROUP BY item_id, code, name
 		ORDER BY SUM(revenue_mmk) DESC
-	`, from, to, from, to)
+	`, from, to, from, to, from, to)
 	if err != nil {
 		return nil, err
 	}

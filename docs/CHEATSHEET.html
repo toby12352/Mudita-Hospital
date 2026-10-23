@@ -76,55 +76,58 @@
 <body>
 
   <h1>Mudita Hospital — Staff cheat sheet</h1>
-  <p class="meta">Print and laminate for the reception / pharmacy desk. Also: Help → Print cheat sheet in the app (<strong>?</strong> key).</p>
+  <p class="meta">Print and laminate for the OPD, OT, and pharmacy desks. Also: Help → Print cheat sheet in the app (<strong>?</strong> key).</p>
 
   <h2>1. Sign in</h2>
   <ol>
     <li>Open Mudita on the clinic PC.</li>
     <li>First launch: enter <strong>Server IP</strong> (port <code>8080</code>), e.g. <code>192.168.1.10</code>.</li>
-    <li>Sign in:
+    <li>Sign in. Each desk opens only its own portal:
       <ul>
-        <li>Reception: <code>reception</code> / (hospital password)</li>
-        <li>Pharmacy: <code>pharmacy</code> / …</li>
-        <li>Admin: <code>admin</code> / …</li>
+        <li>OPD: <code>opd</code></li>
+        <li>OT: <code>ot</code></li>
+        <li>Pharmacy: <code>pharmacy</code></li>
+        <li>Admin: <code>admin</code> — pick OPD, OT, Pharmacy, or Settings</li>
       </ul>
     </li>
     <li>Idle ~15 minutes → auto lock. Switch language <strong>English / မြန်မာ</strong> in the top bar.</li>
+    <li>History lists this desk's bills only.</li>
   </ol>
 
   <h2>2. OPD bill (cash)</h2>
   <ol>
-    <li>Home → <strong>OPD</strong> → New bill.</li>
-    <li>Patient name → doctor → type item or service <strong>code</strong> → <strong>Enter</strong> to add line.</li>
-    <li><strong>Pay cash</strong> (stock drops on pay) → <strong>Print</strong> (preview opens in the app).</li>
+    <li><strong>OPD</strong> → New bill.</li>
+    <li>Patient name → doctor → add a <strong>service</strong> or consultation. Medicines are billed in Pharmacy.</li>
+    <li><strong>Pay cash</strong> → <strong>Print</strong> (preview opens in the app).</li>
     <li>First receipt print: choose <strong>EPSON TM-T82 Receipt</strong>, paper <strong>80 mm</strong>, no scaling / fit to printable width.</li>
-    <li>Void needs a reason (restores stock if already paid).</li>
+    <li>Void needs a reason.</li>
   </ol>
 
-  <h2>3. OT case cart</h2>
+  <h2>3. OT cupboard and bill</h2>
   <ol>
-    <li>Home → <strong>OT</strong> → New case → add items → <strong>Issue</strong>.</li>
-    <li>Print pick list → take upstairs.</li>
-    <li><strong>Reconcile</strong>: Used / Returned / Wasted / Kept on floor.</li>
-    <li>Create OT bill → Pay cash → Print (same 80 mm receipt preview as OPD).</li>
+    <li>Pharmacy: item → <strong>View</strong> → <strong>Send to OT</strong> (batch and qty). Pharmacy on-hand drops and the cupboard rises in that step.</li>
+    <li>OT: <strong>OT cupboard</strong> shows on-hand. <strong>Return to pharmacy</strong> sends unused qty back.</li>
+    <li>New OT bill from cupboard on-hand → <strong>Pay cash</strong> → Print. Pay deducts qty. Void puts it back.</li>
+    <li>Print the pick list for a paper cart. There is no issue or reconcile step.</li>
   </ol>
 
   <h2>4. Pharmacy</h2>
   <ol>
-    <li>Home → <strong>Pharmacy</strong> → search by code or name.</li>
-    <li>New item: code, category, prices, reorder level, first batch + expiry.</li>
+    <li><strong>Pharmacy billing</strong> → new bill → medicines by code → <strong>Pay cash</strong> → Print. Void restores stock.</li>
+    <li><strong>Pharmacy stock</strong> → search by code or name. New item needs a code, prices, and a first batch.</li>
     <li><strong>Restock</strong> an existing code (unknown codes must be created first).</li>
-    <li>Home → <strong>Reports</strong> → Low stock / Near expiry.</li>
+    <li>Low stock and near expiry are <strong>MAIN</strong>. Send a MAIN batch to the OT cupboard from the item view.</li>
   </ol>
 
   <h2>5. Reports</h2>
   <table>
     <tr><th>Report</th><th>Who</th><th>What</th></tr>
-    <tr><td>Daily cash</td><td>Reception / Admin</td><td>Paid OPD + OT totals for a date</td></tr>
-    <tr><td>Low stock</td><td>Pharmacy / Admin</td><td>In Stock qty ≤ reorder level</td></tr>
-    <tr><td>Near expiry</td><td>Pharmacy / Admin</td><td>Batches expiring within N days</td></tr>
+    <tr><td>Daily cash</td><td>That desk</td><td>Paid bills for that portal only</td></tr>
+    <tr><td>Combined daily cash</td><td>Admin dashboard</td><td>Paid OPD + OT + pharmacy for a date</td></tr>
+    <tr><td>Low stock</td><td>Pharmacy / Admin</td><td>MAIN qty ≤ reorder level</td></tr>
+    <tr><td>Near expiry</td><td>Pharmacy / Admin</td><td>MAIN batches expiring within N days</td></tr>
   </table>
-  <p>Use <strong>Print</strong> on each report for the day book.</p>
+  <p>The admin dashboard is the day book for the whole hospital.</p>
 
   <h2>6. Daily ops</h2>
   <ul>
@@ -139,10 +142,10 @@
     <h2>Myanmar summary / မြန်မာ အကျဉ်း</h2>
     <ol>
       <li><strong>ဝင်ရန်</strong> — ဆာဗာ IP → အကောင့်ဝင် → ဘာသာစကား EN/မြန်မာ။</li>
-      <li><strong>OPD</strong> — လူနာ + ဆရာဝန် → ကုဒ် Enter → ငွေသားပေး → ပရင့်။</li>
-      <li><strong>OT</strong> — ကေ့စ် → ထုတ် → pick list → စစ်ဆေး → ဘေလ်။</li>
-      <li><strong>ဆေးဆိုင်</strong> — ကုဒ်ရှာ → restock / item အသစ်။</li>
-      <li><strong>အစီရင်ခံစာ</strong> — နေ့စဉ်ငွေ / စတော့နည်း / သက်တမ်းနီး။</li>
+      <li><strong>OPD</strong> — လူနာ + ဆရာဝန် → ဝန်ဆောင်မှု → ငွေသားပေး → ပရင့်။ ဆေးသည် ဆေးဆိုင်တွင်။</li>
+      <li><strong>OT</strong> — ဆေးဆိုင်က ဆေးဗီရိုသို့ ပို့ → ဘေလ်ဆွဲ → ငွေသားပေး → မသုံးတာ ပြန်ပို့။</li>
+      <li><strong>ဆေးဆိုင်</strong> — ကုဒ်ရှာ → restock / item အသစ် → MAIN အသုတ်ကို OT သို့ ပို့။</li>
+      <li><strong>အစီရင်ခံစာ</strong> — မိမိဘေလ်သာ။ ဆေးရုံတစ်ခုလုံး ငွေစုသည် Admin ဒက်ရှ်ဘုတ်။</li>
     </ol>
   </div>
 

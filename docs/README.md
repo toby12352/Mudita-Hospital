@@ -5,7 +5,7 @@
 | [standards/README.md](./standards/README.md) | **Developer standards** — architecture, frontend/backend rules, feature playbook (start here for code) |
 | [DEPLOY.md](./DEPLOY.md) | LAN install: switch, static IP, firewall 8080, service/task, USB backup |
 | [FIELD_INSTALL_FAQ.pdf](./FIELD_INSTALL_FAQ.pdf) | Customer-site FAQ (print/study). Edit [FIELD_INSTALL_FAQ.md](./FIELD_INSTALL_FAQ.md); print layout [FIELD_INSTALL_FAQ.html](./FIELD_INSTALL_FAQ.html) |
-| [CHEATSHEET.pdf](./CHEATSHEET.pdf) | Staff laminate (OPD / OT / Pharmacy / reports). Edit [CHEATSHEET.md](./CHEATSHEET.md); print layout [CHEATSHEET.html](./CHEATSHEET.html) |
+| [CHEATSHEET.pdf](./CHEATSHEET.pdf) | Staff laminate (OPD / OT cupboard / Pharmacy / reports). Edit [CHEATSHEET.md](./CHEATSHEET.md); print layout [CHEATSHEET.html](./CHEATSHEET.html). The PDF is older than the HTML until it is reprinted. |
 | [RISK_AND_CONTINUITY.pdf](./RISK_AND_CONTINUITY.pdf) | Risk & continuity answers (money, crash overseas, staff quit, data loss, security). Edit [RISK_AND_CONTINUITY.md](./RISK_AND_CONTINUITY.md); print layout [RISK_AND_CONTINUITY.html](./RISK_AND_CONTINUITY.html) |
 | [CRASH_RESTORE_CARD.pdf](./CRASH_RESTORE_CARD.pdf) | One-page crash / backup / restore / leave-site card. Edit [CRASH_RESTORE_CARD.md](./CRASH_RESTORE_CARD.md); print layout [CRASH_RESTORE_CARD.html](./CRASH_RESTORE_CARD.html) |
 | [EXISTING-SYSTEM-DISCOVERY.pdf](./EXISTING-SYSTEM-DISCOVERY.pdf) | Printable checklist: map current reception server ↔ client PCs (SQL Developer, ports, configs). Source: [EXISTING-SYSTEM-DISCOVERY.html](./EXISTING-SYSTEM-DISCOVERY.html) |

@@ -26,7 +26,7 @@
 | App | Path | Role |
 |-----|------|------|
 | API | `server/` | Auth, domain handlers, migrations, backup, receipts |
-| Clinic | `client/` | Day-to-day OPD / OT / Pharmacy / Settings / Reports |
+| Clinic | `client/` | One window. Login opens OPD, OT, or Pharmacy. Admin picks a portal or Settings |
 | Dashboard | `dashboard/` | Admin analytics (overview, revenue, stock, audit, master data bulk) |
 
 Shared brand asset: `assets/logo.png`. Packaging: `scripts/`, `deploy/server/`, output in `dist/`.
@@ -46,6 +46,29 @@ Shared brand asset: `assets/logo.png`. Packaging: `scripts/`, `deploy/server/`, 
 - Idle lock (~15 min) returns to login on clinic.
 - Roles → permissions: `server/internal/auth/roles.go`. Dashboard requires Admin.
 
+## Portals
+
+One clinic window, one API, one SQLite file. The role on the session decides the portal. Admin opens a picker (OPD, OT, Pharmacy, Settings) and can step back without a second login. The nav shows only that portal. OPD nav opens Doctors, Services, and Bill (same doctor and service screens as Admin Settings). Hospital settings, users, backup, and training open from the admin picker only; Admin Settings still includes Doctors and Services.
+
+| Role | Permission | Lands on |
+|------|------------|----------|
+| Admin | every permission | Portal picker |
+| OPD | `opd` | OPD billing |
+| OT | `ot` | OT billing |
+| Pharmacy | `pharmacy` | Pharmacy billing |
+
+OPD replaced Reception. Existing Reception users were migrated to OPD. Seed desks are `opd`, `ot`, `pharmacy`, and `admin`.
+
+Patients, the medicine catalog, doctors, and the service price list stay shared. Bills and on-hand stock do not: `opd_bills` are services and consultation, `pharmacy_bills` sell `MAIN`, and OT bills sell the OT cupboard.
+
+## Cash and the OT cupboard
+
+A desk sees only its own bills and its own daily cash. `GET /api/reports/daily-cash` keeps lines and totals for the permissions on that token. Combined daily cash (OPD + OT + pharmacy) stays on the admin dashboard (`/api/dashboard/overview`, `/api/dashboard/daily-report`, and the admin print of daily cash).
+
+Pharmacy records a handover with `POST /api/pharmacy/transfers`: one transaction moves a chosen `MAIN` batch (same batch number and expiry) into `ot_batches`, writes both ledgers, and links them with `stock_transfers`. OT stock increases immediately. OT returns qty the other way. An OT bill still lists the case; item lines read OT on-hand, and stock drops only when that bill is paid. Void puts those batches back. Unused cupboard qty is not touched. There is no issue or reconcile step.
+
+Live on-hand is `item_batches` at `MAIN` plus `ot_batches`. `OT_RESERVED` and `OT_FLOOR` are legacy rows. Dashboard inventory values MAIN and the OT cupboard and does not add those rows, because floor qty was copied into `ot_batches`.
+
 ## Dependency direction
 
 ```
@@ -57,7 +80,7 @@ UI (pages /)
 ```
 
 - Handlers currently own routing, SQL, and domain rules in one package. Do **not** introduce a generic repository/ORM layer unless a concrete need appears.
-- Prefer copying the nearest domain pattern (OPD for simple bills; OT for multi-step workflows) over inventing a new stack.
+- Prefer copying the nearest domain pattern (OPD for simple bills; OT for cupboard billing; Pharmacy for stock) over inventing a new stack.
 
 ## Server layout (current — keep)
 

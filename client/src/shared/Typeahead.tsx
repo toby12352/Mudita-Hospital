@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useId, useRef, useState } from "react";
+import { ReactNode, Ref, useEffect, useId, useRef, useState } from "react";
 
 export type TypeaheadProps<T> = {
   value: string;
@@ -19,6 +19,10 @@ export type TypeaheadProps<T> = {
   optionClassName?: (item: T) => string;
   className?: string;
   autoComplete?: string;
+  /** Focus the text box from a parent (the next blank bill row). */
+  inputRef?: Ref<HTMLInputElement>;
+  /** Accessible name when `label` is omitted (inside a grid cell). */
+  ariaLabel?: string;
 };
 
 export function Typeahead<T>({
@@ -38,6 +42,8 @@ export function Typeahead<T>({
   optionClassName,
   className,
   autoComplete = "off",
+  inputRef,
+  ariaLabel,
 }: TypeaheadProps<T>) {
   const listId = useId();
   const effectiveMinChars = Math.max(1, minChars);
@@ -100,10 +106,12 @@ export function Typeahead<T>({
     <div className={`field grow typeahead${className ? ` ${className}` : ""}`}>
       {label ? <span>{label}</span> : null}
       <input
+        ref={inputRef}
         value={value}
         disabled={disabled}
         placeholder={placeholder}
         autoComplete={autoComplete}
+        aria-label={label ? undefined : ariaLabel}
         role="combobox"
         aria-expanded={open}
         aria-autocomplete="list"

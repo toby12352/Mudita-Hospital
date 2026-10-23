@@ -21,19 +21,24 @@ import {
 import { useI18n } from "@/shared/i18n";
 import { applyUiScale, resetUiScale, zoomIn, zoomOut } from "@/shared/uiScale";
 import "@/shared/styles/App.css";
-import { HomePage } from "@/pages/home/HomePage";
-import { AppNavBar, type NavSectionId } from "./AppNavBar";
+import { PortalPicker } from "@/pages/portal/PortalPicker";
+import { AppNavBar } from "./AppNavBar";
 import { ChangePasswordForm } from "./ChangePasswordForm";
+import { DeskStatusBar, shortcutsForView } from "./DeskStatusBar";
 import { HelpOverlay } from "./HelpOverlay";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { LoginForm } from "./LoginForm";
-import { ServerBadge } from "./ServerBadge";
+import { landingFor, portalForRole, viewInPortal } from "./portal";
+import { ServerIpButton } from "./ServerIpButton";
 import { ServerSetupForm } from "./ServerSetupForm";
-import type { ConnState, NavIntent, View } from "./types";
+import type { ConnState, NavIntent, NavSectionId, PortalId, View } from "./types";
 import { OpdPage } from "@/pages/opd/OpdPage";
 import { OtPage } from "@/pages/ot/OtPage";
+import { OtStockPage } from "@/pages/ot/OtStockPage";
 import { PharmacyBillingPage } from "@/pages/pharmacy/PharmacyBillingPage";
 import { PharmacyPage } from "@/pages/pharmacy/PharmacyPage";
+import { DoctorsTab } from "@/pages/settings/DoctorsTab";
+import { ServicesTab } from "@/pages/settings/ServicesTab";
 import { SettingsPage } from "@/pages/settings/SettingsPage";
 
 export default function App() {
@@ -45,7 +50,8 @@ export default function App() {
   const [booting, setBooting] = useState(!!getStoredToken());
   const [view, setView] = useState<View>("home");
   const [navIntent, setNavIntent] = useState<NavIntent>({});
-  const [activeSection, setActiveSection] = useState<NavSectionId>("home");
+  const [activeSection, setActiveSection] = useState<NavSectionId>("opd");
+  const [adminPortal, setAdminPortal] = useState<PortalId | null>(null);
   const [navEpoch, setNavEpoch] = useState(0);
   const [authError, setAuthError] = useState<string | null>(null);
   const [needsServerSetup, setNeedsServerSetup] = useState(!isApiConfigured());
@@ -67,20 +73,20 @@ export default function App() {
         if (cancelled) return;
         if (health.status === "ok" && health.db === "ok") {
           setConn("ok");
-          setDetail(`API ${health.service} · DB ${health.db}`);
+          setDetail(t("errConnected"));
         } else {
           setConn("offline");
-          setDetail(`Degraded: status=${health.status}, db=${health.db}`);
+          setDetail(t("errDbDown"));
         }
       } catch {
         if (cancelled) return;
         setConn("offline");
-        setDetail("Cannot reach API — check cable, power, firewall port 8080, or Server IP");
+        setDetail(t("errUnreachable"));
       }
     }
 
     setConn("checking");
-    setDetail("Checking API…");
+    setDetail(t("checking"));
     check();
     const id = window.setInterval(check, 5000);
     return () => {
@@ -88,7 +94,7 @@ export default function App() {
       controller.abort();
       window.clearInterval(id);
     };
-  }, [needsServerSetup, apiEpoch]);
+  }, [needsServerSetup, apiEpoch, t]);
 
   useEffect(() => {
     const token = getStoredToken();
@@ -128,7 +134,8 @@ export default function App() {
         setPermissions([]);
         setView("home");
         setNavIntent({});
-        setActiveSection("home");
+        setActiveSection("opd");
+        setAdminPortal(null);
         setAuthError("Locked after 15 minutes idle — please sign in again.");
       })();
     });
@@ -184,7 +191,8 @@ export default function App() {
     setPermissions([]);
     setView("home");
     setNavIntent({});
-    setActiveSection("home");
+    setActiveSection("opd");
+    setAdminPortal(null);
     setAuthError(null);
   }
 
@@ -204,11 +212,7 @@ export default function App() {
     setAuthError(null);
   }
 
-  function openServerSetup() {
-    setNeedsServerSetup(true);
-  }
-
-  function navigate(next: View, intent: NavIntent = {}, section: NavSectionId = "home") {
+  function navigate(next: View, intent: NavIntent = {}, section: NavSectionId = "opd") {
     setView(next);
     setNavIntent(intent);
     setActiveSection(section);
@@ -259,18 +263,21 @@ export default function App() {
             </div>
           </div>
         </header>
-        <LanguageSwitcher locale={locale} onChange={setLocale} t={t} />
+        <div className="user-chip signin-chip">
+          <LanguageSwitcher locale={locale} onChange={setLocale} t={t} />
+          <ServerIpButton
+            conn={conn}
+            detail={detail}
+            onSave={finishServerSetup}
+            onUseLocal={() => finishServerSetup("http://127.0.0.1:8080")}
+            onRetry={() => setApiEpoch((n) => n + 1)}
+            t={t}
+          />
+        </div>
         <LoginForm
           onSubmit={handleLogin}
           error={authError}
           disabled={conn === "offline"}
-          t={t}
-        />
-        <ServerBadge
-          conn={conn}
-          detail={detail}
-          onChangeServer={openServerSetup}
-          onRetry={() => setApiEpoch((n) => n + 1)}
           t={t}
         />
       </main>
@@ -295,95 +302,164 @@ export default function App() {
     );
   }
 
-  const titleKey =
-    view === "settings"
-      ? "settings"
-      : view === "pharmacy"
-        ? "pharmacyStock"
-        : view === "pharmacy_billing"
-          ? "pharmacyBilling"
-          : view === "opd"
-            ? "opd"
-            : view === "ot"
-              ? "ot"
-              : "home";
-
-  const pageKey = `${view}-${navEpoch}`;
-
-  return (
-    <main className="shell shell-wide shell-app">
-      <div className="app-chrome">
-        <header className="topbar">
+  const rolePortal = portalForRole(user.role);
+  if (!rolePortal) {
+    return (
+      <main className="shell">
+        <header className="brand">
           <div className="brand-lockup">
-            <img src={brandLogo} alt="" className="brand-logo" />
+            <img src={brandLogo} alt="" className="brand-logo brand-logo--lg" />
             <div>
               <p className="eyebrow">{t("brand")}</p>
-              <h1 className="title-sm">{t(titleKey)}</h1>
+              <h1>{t("noAccess")}</h1>
+              <p className="lede">{user.role}</p>
             </div>
           </div>
-          <div className="user-chip">
-            <LanguageSwitcher locale={locale} onChange={setLocale} t={t} compact />
-            <span>
-              {user.display_name} · {user.role}
-            </span>
-            <button type="button" className="btn ghost" onClick={openServerSetup}>
-              {t("serverIp")}
-            </button>
-          </div>
         </header>
-        <AppNavBar
-          view={view}
-          navIntent={navIntent}
-          activeSection={activeSection}
-          canSettings={hasPermission(permissions, "settings")}
-          canPharmacy={hasPermission(permissions, "pharmacy")}
-          canOPD={hasPermission(permissions, "opd")}
-          canOT={hasPermission(permissions, "ot")}
-          onNavigate={navigate}
-          onHelp={() => setHelpOpen(true)}
-          onLogout={() => void handleLogout()}
-          t={t}
-        />
-      </div>
+        <button type="button" className="btn ghost" onClick={() => void handleLogout()}>
+          {t("logOut")}
+        </button>
+      </main>
+    );
+  }
 
-      <div className="app-content">
-        {view === "home" ? <HomePage key={pageKey} t={t} /> : null}
-        {view === "settings" ? (
-          <SettingsPage
-            key={pageKey}
-            canManageUsers={hasPermission(permissions, "manage_users")}
-            initialTab={navIntent.settingsTab ?? "hospital"}
+  const portal: PortalId | null = rolePortal === "admin" ? adminPortal : rolePortal;
+  const landing = portal ? landingFor(portal) : null;
+  const aligned = portal ? viewInPortal(view, portal) : false;
+  const shownView = aligned ? view : landing?.view ?? view;
+  const shownIntent = aligned ? navIntent : landing?.intent ?? {};
+  const shownSection = aligned ? activeSection : landing?.section ?? activeSection;
+
+  function enterPortal(next: PortalId) {
+    const dest = landingFor(next);
+    setAdminPortal(next);
+    setView(dest.view);
+    setNavIntent(dest.intent);
+    setActiveSection(dest.section);
+    setNavEpoch((n) => n + 1);
+  }
+
+  const opdScreen = shownIntent.opdScreen ?? "bill";
+  const portalTitleKey = portal ?? "portalPickerTitle";
+
+  const pageKey = `${shownView}-${navEpoch}`;
+
+  const chromeTrailing = (
+    <div className="desk-header-actions">
+      <LanguageSwitcher locale={locale} onChange={setLocale} t={t} compact />
+      <button type="button" className="btn ghost compact" onClick={() => setHelpOpen(true)}>
+        {t("help")}
+      </button>
+      <button type="button" className="btn ghost compact" onClick={() => void handleLogout()}>
+        {t("logOut")}
+      </button>
+      <ServerIpButton
+        conn={conn}
+        detail={detail}
+        onSave={finishServerSetup}
+        onUseLocal={() => finishServerSetup("http://127.0.0.1:8080")}
+        onRetry={() => setApiEpoch((n) => n + 1)}
+        t={t}
+        compact
+      />
+    </div>
+  );
+
+  return (
+    <main className="shell shell-wide shell-app shell-desk shell-classic">
+      <div className="app-chrome app-chrome--classic">
+        <header className="desk-header">
+          <div className="desk-header-brand">
+            <img src={brandLogo} alt="" className="brand-logo brand-logo--desk" />
+            <h1 className="desk-header-title">{t(portalTitleKey)}</h1>
+          </div>
+          {chromeTrailing}
+        </header>
+        {portal ? (
+          <AppNavBar
+            portal={portal}
+            showBack={rolePortal === "admin"}
+            view={shownView}
+            navIntent={shownIntent}
+            activeSection={shownSection}
+            onNavigate={navigate}
+            onBack={() => setAdminPortal(null)}
             t={t}
           />
         ) : null}
-        {view === "pharmacy" ? (
+      </div>
+
+      <div className="app-content">
+        {!portal ? <PortalPicker onPick={enterPortal} t={t} /> : null}
+        {portal === "settings" && shownView === "settings" ? (
+          <SettingsPage
+            key={pageKey}
+            canManageUsers={hasPermission(permissions, "manage_users")}
+            initialTab={shownIntent.settingsTab ?? "hospital"}
+            t={t}
+          />
+        ) : null}
+        {portal === "pharmacy" && shownView === "pharmacy" ? (
           <PharmacyPage
             key={pageKey}
             isAdmin={user.role === "Admin"}
-            initialScreen={navIntent.pharmacyScreen ?? "browse"}
+            initialScreen={shownIntent.pharmacyScreen ?? "browse"}
           />
         ) : null}
-        {view === "pharmacy_billing" ? (
+        {portal === "pharmacy" && shownView === "pharmacy_billing" ? (
           <PharmacyBillingPage
             key={pageKey}
-            initialMode={navIntent.billingMode ?? "list"}
+            initialMode={shownIntent.billingMode ?? "list"}
           />
         ) : null}
-        {view === "opd" ? (
-          <OpdPage key={pageKey} initialMode={navIntent.billingMode ?? "list"} />
+        {portal === "opd" && shownView === "opd" && (opdScreen === "doctors" || opdScreen === "services") ? (
+          <section key={pageKey} className="desk-maintenance">
+            <div className="tabs" role="tablist" aria-label={t("navMaintenance")}>
+              <button
+                type="button"
+                role="tab"
+                className={`tab${opdScreen === "doctors" ? " active" : ""}`}
+                aria-selected={opdScreen === "doctors"}
+                onClick={() =>
+                  navigate("opd", { opdScreen: "doctors" }, "opd_maintenance")
+                }
+              >
+                {t("maintenanceDoctors")}
+              </button>
+              <button
+                type="button"
+                role="tab"
+                className={`tab${opdScreen === "services" ? " active" : ""}`}
+                aria-selected={opdScreen === "services"}
+                onClick={() =>
+                  navigate("opd", { opdScreen: "services" }, "opd_maintenance")
+                }
+              >
+                {t("maintenanceServices")}
+              </button>
+            </div>
+            {opdScreen === "doctors" ? <DoctorsTab /> : <ServicesTab />}
+          </section>
         ) : null}
-        {view === "ot" ? (
-          <OtPage key={pageKey} initialMode={navIntent.otMode ?? "list"} />
+        {portal === "opd" && shownView === "opd" && opdScreen === "bill" ? (
+          <OpdPage key={pageKey} initialMode={shownIntent.billingMode ?? "list"} />
+        ) : null}
+        {portal === "ot" && shownView === "ot" && shownIntent.otMode === "stock" ? (
+          <OtStockPage key={pageKey} />
+        ) : null}
+        {portal === "ot" && shownView === "ot" && shownIntent.otMode !== "stock" ? (
+          <OtPage key={pageKey} initialMode={shownIntent.otMode ?? "list"} />
         ) : null}
       </div>
 
-      <ServerBadge
-        conn={conn}
-        detail={detail}
-        onChangeServer={openServerSetup}
-        onRetry={() => setApiEpoch((n) => n + 1)}
-        t={t}
-      />
+      {portal ? (
+        <DeskStatusBar
+          shortcuts={shortcutsForView(shownView, shownIntent, t)}
+          username={user.display_name || user.username}
+          t={t}
+        />
+      ) : null}
+
       {helpOpen ? <HelpOverlay onClose={() => setHelpOpen(false)} t={t} /> : null}
     </main>
   );

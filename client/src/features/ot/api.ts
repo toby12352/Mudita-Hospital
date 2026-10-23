@@ -1,6 +1,78 @@
+import type { StockTransfer } from "@/features/pharmacy/api";
 import { apiFetch, getApiBase } from "@/shared/api";
 import { getStoredToken } from "@/shared/auth";
 import { fetchAndPreviewPrint } from "@/shared/print";
+
+export type OtStockBatch = {
+  id: number;
+  item_id: number;
+  item_code: string;
+  item_name: string;
+  stock_unit: string;
+  batch_no: string;
+  expiry_date: string | null;
+  qty: number;
+};
+
+export async function listOtStock(): Promise<OtStockBatch[]> {
+  const res = await apiFetch<{ batches: OtStockBatch[] }>("/api/ot/stock");
+  return res.batches ?? [];
+}
+
+export async function returnOtStock(batchId: number, qty: number): Promise<StockTransfer> {
+  return apiFetch<StockTransfer>(`/api/ot/stock/${batchId}/return`, {
+    method: "POST",
+    body: JSON.stringify({ qty }),
+  });
+}
+
+export type OtCatalogItem = {
+  id: number;
+  code: string;
+  name: string;
+  sell_price_mmk: number;
+  stock_unit: string;
+  ot_on_hand: number;
+  pack_l1_qty: number;
+  pack_l1_unit: string;
+  pack_l2_qty: number;
+  pack_l2_unit: string;
+  pack_l3_qty: number;
+  pack_l3_unit: string;
+};
+
+export async function listOtCatalogItems(q = ""): Promise<OtCatalogItem[]> {
+  const qs = q.trim() ? `?q=${encodeURIComponent(q.trim())}` : "";
+  const res = await apiFetch<{ items: OtCatalogItem[] }>(`/api/ot/catalog/items${qs}`);
+  return res.items ?? [];
+}
+
+export async function findOtCatalogItem(code: string): Promise<OtCatalogItem | null> {
+  const res = await apiFetch<{ items: OtCatalogItem[] }>(
+    `/api/ot/catalog/items?code=${encodeURIComponent(code.trim())}`,
+  );
+  return res.items?.[0] ?? null;
+}
+
+export type OtService = {
+  id: number;
+  code: string;
+  name: string;
+  price_mmk: number;
+};
+
+export async function listOtServices(q = ""): Promise<OtService[]> {
+  const qs = q.trim() ? `?q=${encodeURIComponent(q.trim())}` : "";
+  const res = await apiFetch<{ services: OtService[] }>(`/api/ot/catalog/services${qs}`);
+  return res.services ?? [];
+}
+
+export async function findOtServiceByCode(code: string): Promise<OtService | null> {
+  const res = await apiFetch<{ services: OtService[] }>(
+    `/api/ot/catalog/services?code=${encodeURIComponent(code.trim())}`,
+  );
+  return res.services?.[0] ?? null;
+}
 
 export type OtCaseItem = {
   id?: number;
@@ -9,11 +81,20 @@ export type OtCaseItem = {
   name: string;
   sell_price_mmk: number;
   qty_issued: number;
+  /** Chosen sale count. 0 when the line has no unit (legacy stock qty). */
+  sale_qty?: number;
+  sale_unit?: string;
   qty_used: number;
   qty_returned: number;
   qty_wasted: number;
   qty_kept_on_floor: number;
   sort_order?: number;
+  pack_l1_qty?: number;
+  pack_l1_unit?: string;
+  pack_l2_qty?: number;
+  pack_l2_unit?: string;
+  pack_l3_qty?: number;
+  pack_l3_unit?: string;
 };
 
 export type OtCase = {
@@ -123,26 +204,6 @@ export async function updateOtCase(id: number, body: OtCaseWrite): Promise<OtCas
   });
 }
 
-export async function issueOtCase(id: number): Promise<OtCase> {
-  return apiFetch<OtCase>(`/api/ot/cases/${id}/issue`, { method: "POST", body: "{}" });
-}
-
-export async function reconcileOtCase(
-  id: number,
-  items: {
-    id: number;
-    qty_used: number;
-    qty_returned: number;
-    qty_wasted: number;
-    qty_kept_on_floor: number;
-  }[],
-): Promise<OtCase> {
-  return apiFetch<OtCase>(`/api/ot/cases/${id}/reconcile`, {
-    method: "POST",
-    body: JSON.stringify({ items }),
-  });
-}
-
 export async function createOtBillFromCase(
   caseId: number,
   services: OtBillLine[] = [],
@@ -170,7 +231,7 @@ export async function voidOtBill(id: number, reason: string): Promise<OtBill> {
 
 async function printHtml(
   path: string,
-  opts: { title: string; receipt?: boolean },
+  opts: { title: string; receipt?: boolean; onPrinted?: () => void | Promise<void> },
 ): Promise<void> {
   return fetchAndPreviewPrint(path, getApiBase, getStoredToken, opts);
 }
@@ -182,9 +243,13 @@ export async function printOtPickList(caseId: number): Promise<void> {
   });
 }
 
-export async function printOtBill(billId: number): Promise<void> {
+export async function printOtBill(
+  billId: number,
+  opts?: { onPrinted?: () => void | Promise<void> },
+): Promise<void> {
   return printHtml(`/api/ot/bills/${billId}/print`, {
     title: "OT receipt",
     receipt: true,
+    onPrinted: opts?.onPrinted,
   });
 }

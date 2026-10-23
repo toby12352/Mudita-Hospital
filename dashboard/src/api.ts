@@ -1,3 +1,5 @@
+import { userMessage } from "./errors";
+
 export type HealthResponse = {
   status: string;
   service: string;
@@ -47,7 +49,7 @@ export function clearApiBaseConfig(): void {
 export function normalizeApiBase(input: string): string {
   let s = input.trim().replace(/\/$/, "");
   if (!s) {
-    throw new Error("Server address required");
+    throw new Error(userMessage("Server address required"));
   }
   if (!/^https?:\/\//i.test(s)) {
     s = `http://${s}`;
@@ -59,7 +61,7 @@ export function normalizeApiBase(input: string): string {
     }
     return `${u.protocol}//${u.hostname}:${u.port}`;
   } catch {
-    throw new Error("Invalid server address");
+    throw new Error(userMessage("Invalid server address"));
   }
 }
 
@@ -69,15 +71,29 @@ function authHeaders(): HeadersInit {
   return { Authorization: `Bearer ${token}` };
 }
 
+/**
+ * Fetch /api/health. Returns the JSON body even when HTTP is 503 (DB down),
+ * so the UI can show a records message instead of “unreachable”.
+ */
 export async function fetchHealth(signal?: AbortSignal): Promise<HealthResponse> {
-  const res = await fetch(`${getApiBase()}/api/health`, { signal });
-  if (!res.ok) {
-    throw new Error(`Health check failed (${res.status})`);
+  let res: Response;
+  try {
+    res = await fetch(`${getApiBase()}/api/health`, { signal });
+  } catch (err) {
+    const name = err instanceof Error ? err.name : "";
+    if (name === "AbortError") {
+      throw new Error(userMessage("Failed to fetch"));
+    }
+    throw new Error(userMessage(err instanceof Error ? err.message : "Failed to fetch"));
   }
-  return res.json() as Promise<HealthResponse>;
+  const body = (await res.json().catch(() => null)) as HealthResponse | null;
+  if (body && typeof body.status === "string" && typeof body.db === "string") {
+    return body;
+  }
+  throw new Error(userMessage(`Health check failed (${res.status})`, res.status));
 }
 
-/** Authenticated JSON fetch. Throws Error with message from API body when possible. */
+/** Authenticated JSON fetch. Throws Error with a plain-language message. */
 export async function apiFetch<T = unknown>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   if (!headers.has("Content-Type") && init.body) {
@@ -88,11 +104,16 @@ export async function apiFetch<T = unknown>(path: string, init: RequestInit = {}
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  const res = await fetch(`${getApiBase()}${path}`, { ...init, headers });
+  let res: Response;
+  try {
+    res = await fetch(`${getApiBase()}${path}`, { ...init, headers });
+  } catch (err) {
+    throw new Error(userMessage(err instanceof Error ? err.message : "Failed to fetch"));
+  }
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const msg = (body as { error?: string }).error || `Request failed (${res.status})`;
-    throw new Error(msg);
+    const raw = (body as { error?: string }).error || `Request failed (${res.status})`;
+    throw new Error(userMessage(raw, res.status));
   }
   return body as T;
 }

@@ -47,7 +47,7 @@ func (h *OPD) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 - Permission constants and role map: `server/internal/auth/roles.go`.
 - New domain capabilities need a new `Perm*` key and role assignments in the same change.
-- Catalog / read endpoints for non-admin roles must stay intentional (e.g. Reception reading OPD catalog without `settings`).
+- Catalog / read endpoints for non-admin roles must stay intentional (e.g. OPD reading the OPD catalog without `settings`).
 - Never skip `RequirePermission` on mutating routes.
 
 ## Schema and migrations
@@ -55,6 +55,7 @@ func (h *OPD) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 - **Only** change schema via named migrations in `server/internal/db/migrate.go` (ordered `001_…`, `002_…`, …).
 - Do not edit production DBs by hand or alter columns in place without a migration plan (add → backfill → drop in separate steps when needed).
 - Seed data belongs in `seed.go` for first-run defaults.
+- Live hospitals already have data: additive migrations, seed rules, and the ship checklist are in [UPGRADES.md](./UPGRADES.md).
 
 ## SQL and transactions
 

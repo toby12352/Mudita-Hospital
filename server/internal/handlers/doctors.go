@@ -12,7 +12,7 @@ import (
 	"mudita-hospital/server/internal/middleware"
 )
 
-// Doctors handles doctor + fee master data (Admin / settings).
+// Doctors handles doctor + fee master data (Admin settings or OPD desk).
 type Doctors struct {
 	DB *sql.DB
 }
@@ -41,7 +41,7 @@ type doctorWriteRequest struct {
 }
 
 func (h *Doctors) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	middleware.RequirePermission(h.DB, auth.PermSettings, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	middleware.RequireAnyPermission(h.DB, []string{auth.PermSettings, auth.PermOPD}, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := strings.TrimPrefix(r.URL.Path, "/api/doctors")
 		path = strings.TrimSuffix(path, "/")
 		if path == "" {

@@ -44,6 +44,10 @@ func RequireAuth(db *sql.DB, next http.Handler) http.Handler {
 			writeJSONError(w, http.StatusUnauthorized, "unauthorized")
 			return
 		}
+		if user.MustChangePassword && !passwordChangeAllowed(r.URL.Path) {
+			writeJSONError(w, http.StatusForbidden, "password change required")
+			return
+		}
 		next.ServeHTTP(w, r.WithContext(withUser(r.Context(), user)))
 	})
 }
@@ -58,6 +62,33 @@ func RequirePermission(db *sql.DB, perm string, next http.Handler) http.Handler 
 		}
 		next.ServeHTTP(w, r)
 	}))
+}
+
+// RequireAnyPermission requires auth plus any one of the listed role permissions.
+func RequireAnyPermission(db *sql.DB, perms []string, next http.Handler) http.Handler {
+	return RequireAuth(db, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user := UserFromContext(r.Context())
+		if user == nil {
+			writeJSONError(w, http.StatusForbidden, "forbidden")
+			return
+		}
+		for _, perm := range perms {
+			if auth.HasPermission(user.Role, perm) {
+				next.ServeHTTP(w, r)
+				return
+			}
+		}
+		writeJSONError(w, http.StatusForbidden, "forbidden")
+	}))
+}
+
+func passwordChangeAllowed(path string) bool {
+	switch strings.TrimSuffix(path, "/") {
+	case "/api/auth/me", "/api/auth/change-password", "/api/auth/logout":
+		return true
+	default:
+		return false
+	}
 }
 
 func writeJSONError(w http.ResponseWriter, status int, msg string) {

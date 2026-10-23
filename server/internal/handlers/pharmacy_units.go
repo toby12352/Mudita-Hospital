@@ -12,9 +12,7 @@ var allowedUnits = map[string]bool{
 	"Strip": true, "Card": true,
 }
 
-var packL1Units = map[string]bool{"Box": true, "Bottle": true}
-var packL2Units = map[string]bool{"Strip": true, "Card": true}
-var packL3Units = map[string]bool{"Tablet": true, "Capsule": true, "mL": true}
+// Any allowed pharmacy unit may appear at L1, L2, or L3 (packing chain is free-form).
 
 type itemUnits struct {
 	PurchaseUnit        string
@@ -109,14 +107,14 @@ func resolveItemPack(l1Qty, l2Qty, l3Qty *int64, l1Unit, l2Unit, l3Unit string) 
 	if p.L3Qty < 1 {
 		return p, "pack_l3_qty must be >= 1"
 	}
-	if !packL1Units[p.L1Unit] {
-		return p, "invalid pack_l1_unit (Box or Bottle)"
+	if !validateUnitName(p.L1Unit) {
+		return p, "invalid pack_l1_unit"
 	}
-	if !packL2Units[p.L2Unit] {
-		return p, "invalid pack_l2_unit (Strip or Card)"
+	if !validateUnitName(p.L2Unit) {
+		return p, "invalid pack_l2_unit"
 	}
-	if !packL3Units[p.L3Unit] {
-		return p, "invalid pack_l3_unit (Tablet, Capsule, or mL)"
+	if !validateUnitName(p.L3Unit) {
+		return p, "invalid pack_l3_unit"
 	}
 	return p, ""
 }
@@ -139,6 +137,51 @@ func totalTabletsFromPackQtys(boxQty, stripQty, tabletQty int64, p itemPack) (in
 		return 0, "quantity must be > 0"
 	}
 	return total, ""
+}
+
+type packLevel struct {
+	Unit   string
+	Factor int64
+}
+
+// visiblePackLevels matches the clinic pack chain: hidden pass-through levels
+// are collapsed, and Factor is how many smallest units one of that level contains.
+func visiblePackLevels(p itemPack) []packLevel {
+	l1, l2, l3 := p.L1Unit, p.L2Unit, p.L3Unit
+	q2, q3 := p.L2Qty, p.L3Qty
+	if q2 < 1 {
+		q2 = 1
+	}
+	if q3 < 1 {
+		q3 = 1
+	}
+	if l1 == l2 && l2 == l3 && q2 == 1 && q3 == 1 {
+		return []packLevel{{Unit: l1, Factor: 1}}
+	}
+	if q3 == 1 && l2 == l3 {
+		return []packLevel{{Unit: l1, Factor: q2}, {Unit: l2, Factor: 1}}
+	}
+	if l1 == l2 && q2 == 1 {
+		return []packLevel{{Unit: l1, Factor: q3}, {Unit: l3, Factor: 1}}
+	}
+	return []packLevel{
+		{Unit: l1, Factor: q2 * q3},
+		{Unit: l2, Factor: q3},
+		{Unit: l3, Factor: 1},
+	}
+}
+
+func saleUnitFactor(p itemPack, unit string) (factor int64, canonical string, ok bool) {
+	want := strings.TrimSpace(unit)
+	if want == "" {
+		return 0, "", false
+	}
+	for _, lv := range visiblePackLevels(p) {
+		if strings.EqualFold(lv.Unit, want) {
+			return lv.Factor, lv.Unit, true
+		}
+	}
+	return 0, "", false
 }
 
 func packToItemUnits(p itemPack) itemUnits {

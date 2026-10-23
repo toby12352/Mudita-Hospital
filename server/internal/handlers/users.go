@@ -11,7 +11,7 @@ import (
 	"mudita-hospital/server/internal/middleware"
 )
 
-// Users handles Admin user management (Reception / Pharmacy accounts).
+// Users handles Admin user management (OPD, OT, and Pharmacy accounts).
 type Users struct {
 	DB *sql.DB
 }
@@ -118,9 +118,9 @@ func (h *Users) create(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "password must be at least 6 characters"})
 		return
 	}
-	// Soft rule: Admin UI creates Reception/Pharmacy only (not another Admin).
-	if req.Role != auth.RoleReception && req.Role != auth.RolePharmacy {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "role must be Reception or Pharmacy"})
+	// Admin UI creates desk accounts only (not another Admin).
+	if !isDeskRole(req.Role) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "role must be OPD, OT, or Pharmacy"})
 		return
 	}
 
@@ -193,14 +193,14 @@ func (h *Users) update(w http.ResponseWriter, r *http.Request, path string) {
 	role := existing.Role
 	if req.Role != nil {
 		role = strings.TrimSpace(*req.Role)
-		// Keep existing Admins as Admin; do not promote Reception/Pharmacy to Admin here.
+		// Keep existing Admins as Admin; do not promote a desk account to Admin here.
 		if existing.Role == auth.RoleAdmin {
 			if role != auth.RoleAdmin {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "cannot change Admin role"})
 				return
 			}
-		} else if role != auth.RoleReception && role != auth.RolePharmacy {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "role must be Reception or Pharmacy"})
+		} else if !isDeskRole(role) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "role must be OPD, OT, or Pharmacy"})
 			return
 		}
 	}
@@ -273,6 +273,10 @@ func (h *Users) update(w http.ResponseWriter, r *http.Request, path string) {
 		return
 	}
 	writeJSON(w, http.StatusOK, u)
+}
+
+func isDeskRole(role string) bool {
+	return role == auth.RoleOPD || role == auth.RoleOT || role == auth.RolePharmacy
 }
 
 func loadUserItem(db *sql.DB, id int64) (userListItem, error) {

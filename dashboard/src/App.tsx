@@ -20,11 +20,12 @@ import {
   storeSession,
   type User,
 } from "./auth";
+import { DeskStatusBar } from "./components/layout/DeskStatusBar";
+import { RadioBar } from "./components/layout/RadioBar";
 import { ServerBadge, type ConnState } from "./components/layout/ServerBadge";
-import { Sidebar } from "./components/layout/Sidebar";
-import { Topbar } from "./components/layout/Topbar";
+import { userMessage } from "./errors";
 import { useI18n } from "./i18n";
-import { PAGE_TITLE_KEY, type PageId } from "./nav";
+import type { PageId } from "./nav";
 import { AuditPage } from "./pages/Audit";
 import { DailyReportPage } from "./pages/DailyReport";
 import { MasterDataPage } from "./pages/MasterData";
@@ -56,20 +57,20 @@ function App() {
         if (cancelled) return;
         if (health.status === "ok" && health.db === "ok") {
           setConn("ok");
-          setDetail(`API ${health.service} · DB ${health.db}`);
+          setDetail(t("errConnected"));
         } else {
           setConn("offline");
-          setDetail(`Degraded: status=${health.status}, db=${health.db}`);
+          setDetail(t("errDbDown"));
         }
       } catch {
         if (cancelled) return;
         setConn("offline");
-        setDetail("Cannot reach API — check cable, power, firewall port 8080, or Server IP");
+        setDetail(t("errUnreachable"));
       }
     }
 
     setConn("checking");
-    setDetail("Checking API…");
+    setDetail(t("checking"));
     check();
     const id = window.setInterval(check, 5000);
     return () => {
@@ -77,7 +78,7 @@ function App() {
       controller.abort();
       window.clearInterval(id);
     };
-  }, [needsServerSetup, apiEpoch]);
+  }, [needsServerSetup, apiEpoch, t]);
 
   useEffect(() => {
     const token = getStoredToken();
@@ -293,21 +294,44 @@ function App() {
   void permissions;
 
   return (
-    <div className="app-frame">
-      <Sidebar page={page} onNavigate={setPage} t={t} />
-      <div className="app-main">
-        <Topbar
-          title={t(PAGE_TITLE_KEY[page])}
-          user={user}
-          locale={locale}
-          onLocale={setLocale}
-          onLogout={() => void handleLogout()}
-          conn={conn}
-          detail={detail}
-          onChangeServer={openServerSetup}
-          onRetry={() => setApiEpoch((n) => n + 1)}
-          t={t}
-        />
+    <div className="app-frame app-frame--classic">
+      <RadioBar
+        page={page}
+        onNavigate={setPage}
+        t={t}
+        trailing={
+          <div className="desk-radio-trailing-inner">
+            <ServerBadge
+              conn={conn}
+              detail={detail}
+              onChangeServer={openServerSetup}
+              onRetry={() => setApiEpoch((n) => n + 1)}
+              t={t}
+              compact
+            />
+            <div className="lang-switch lang-compact" role="group" aria-label={t("language")}>
+              <button
+                type="button"
+                className={`btn ghost ${locale === "en" ? "lang-active" : ""}`}
+                onClick={() => setLocale("en")}
+              >
+                {t("english")}
+              </button>
+              <button
+                type="button"
+                className={`btn ghost ${locale === "my" ? "lang-active" : ""}`}
+                onClick={() => setLocale("my")}
+              >
+                {t("myanmar")}
+              </button>
+            </div>
+            <button type="button" className="btn ghost compact" onClick={() => void handleLogout()}>
+              {t("logOut")}
+            </button>
+          </div>
+        }
+      />
+      <div className="app-main app-main--classic">
         {page === "overview" ? <OverviewPage t={t} /> : null}
         {page === "revenue" ? <RevenuePage t={t} /> : null}
         {page === "stock" ? <StockPage t={t} /> : null}
@@ -315,6 +339,7 @@ function App() {
         {page === "master" ? <MasterDataPage t={t} /> : null}
         {page === "audit" ? <AuditPage t={t} /> : null}
       </div>
+      <DeskStatusBar username={user.display_name || user.username} t={t} />
     </div>
   );
 }
@@ -357,6 +382,7 @@ function ServerSetupForm({
   onSave: (base: string) => void;
   onUseLocal: () => void;
 }) {
+  const { t } = useI18n();
   const [value, setValue] = useState(() => {
     try {
       const u = new URL(initial);
@@ -378,21 +404,21 @@ function ServerSetupForm({
     const timer = window.setTimeout(() => controller.abort(), 4000);
     try {
       const base = setApiBase(value.trim());
-      const res = await fetch(`${base}/api/health`, { signal: controller.signal });
-      if (!res.ok) throw new Error(`Health check failed (${res.status})`);
-      const health = (await res.json()) as { status?: string; db?: string };
-      if (health.status !== "ok") throw new Error("API not ready");
+      const health = await fetchHealth(controller.signal);
+      if (health.db !== "ok" || health.status !== "ok") {
+        throw new Error(userMessage("db=error"));
+      }
       markApiConfigured();
-      setHint(`Connected to ${base}`);
+      setHint(t("errConnectedTo").split("{base}").join(base));
       onSave(base);
     } catch (err) {
       const msg =
         err instanceof Error
           ? err.name === "AbortError"
-            ? "Timed out reaching server"
+            ? userMessage("Failed to fetch")
             : err.message
-          : "Cannot reach server";
-      setError(`${msg}. You can still save and retry from Sign in.`);
+          : userMessage("Failed to fetch");
+      setError(`${msg} ${t("errSaveRetryHint")}`);
     } finally {
       window.clearTimeout(timer);
       setBusy(false);
@@ -404,7 +430,7 @@ function ServerSetupForm({
       const base = setApiBase(value.trim());
       onSave(base);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Invalid address");
+      setError(err instanceof Error ? err.message : userMessage("Invalid server address"));
     }
   }
 

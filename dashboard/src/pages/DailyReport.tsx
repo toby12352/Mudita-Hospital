@@ -159,6 +159,11 @@ export function DailyReportPage({ t }: Props) {
               sub={`${formatDelta(data.delta_ot_mmk)} · ${data.ot_count} ${t("billsShort")}`}
             />
             <KpiCard
+              label={t("pharmacyCash")}
+              value={formatMMK(data.pharmacy_total_mmk ?? 0)}
+              sub={`${formatDelta(data.delta_pharmacy_mmk ?? 0)} · ${data.pharmacy_count ?? 0} ${t("billsShort")}`}
+            />
+            <KpiCard
               label={t("voidsToday")}
               value={String(data.voids)}
               sub={t("voidsHint")}
@@ -188,6 +193,10 @@ export function DailyReportPage({ t }: Props) {
               <div>
                 <p className="kpi-label">{t("otCash")}</p>
                 <p className="delta-val">{formatDelta(data.delta_ot_mmk)}</p>
+              </div>
+              <div>
+                <p className="kpi-label">{t("pharmacyCash")}</p>
+                <p className="delta-val">{formatDelta(data.delta_pharmacy_mmk ?? 0)}</p>
               </div>
             </div>
           </section>

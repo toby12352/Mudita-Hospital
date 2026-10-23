@@ -108,9 +108,10 @@ Open `http://localhost:1420` in a browser.
 
 | Username | Password | Role | Notes |
 |----------|----------|------|--------|
-| `admin` | `admin123` | Admin | Must change password on first login |
-| `pharmacy` | `pharmacy123` | Pharmacy | Demo; cannot open Settings |
-| `reception` | `reception123` | Reception | Demo |
+| `admin` | `admin123` | Admin | Must change password on first login. Opens the portal picker |
+| `opd` | `opd123` | OPD | Demo. OPD billing only |
+| `ot` | `ot123` | OT | Demo. OT billing and cupboard only |
+| `pharmacy` | `pharmacy123` | Pharmacy | Demo. Pharmacy billing and stock only |
 
 ## Auth, master data, pharmacy, OPD & OT API
 
@@ -122,10 +123,10 @@ Open `http://localhost:1420` in a browser.
 | GET | `/api/auth/me` | Bearer |
 | POST | `/api/auth/change-password` | Bearer |
 | GET / PUT | `/api/settings` | Bearer + Admin (`settings`) |
-| GET / POST | `/api/doctors` | Bearer + Admin |
-| GET / PUT / DELETE | `/api/doctors/{id}` | Bearer + Admin |
-| GET / POST | `/api/services` | Bearer + Admin |
-| GET / PUT / DELETE | `/api/services/{id}` | Bearer + Admin |
+| GET / POST | `/api/doctors` | Bearer + Admin (`settings`) or OPD (`opd`) |
+| GET / PUT / DELETE | `/api/doctors/{id}` | Bearer + Admin (`settings`) or OPD (`opd`) |
+| GET / POST | `/api/services` | Bearer + Admin (`settings`) or OPD (`opd`) |
+| GET / PUT / DELETE | `/api/services/{id}` | Bearer + Admin (`settings`) or OPD (`opd`) |
 | GET / POST | `/api/users` | Bearer + Admin (`manage_users`) |
 | PUT | `/api/users/{id}` | Bearer + Admin (`manage_users`) |
 | GET / POST | `/api/pharmacy/items` | Bearer + `pharmacy` |
@@ -135,53 +136,58 @@ Open `http://localhost:1420` in a browser.
 | GET | `/api/pharmacy/items/{id}/batches` | Bearer + `pharmacy` |
 | GET | `/api/pharmacy/movements` | Bearer + `pharmacy` |
 | GET | `/api/pharmacy/locations` | Bearer + `pharmacy` |
+| POST | `/api/pharmacy/transfers` | Bearer + `pharmacy` — chosen MAIN batch qty → OT cupboard |
 | GET | `/api/opd/catalog/doctors` | Bearer + `opd` |
 | GET | `/api/opd/catalog/services` | Bearer + `opd` |
 | GET | `/api/opd/catalog/items` | Bearer + `opd` |
 | GET | `/api/opd/settings` | Bearer + `opd` (read-only bill header) |
 | GET / POST | `/api/opd/bills` | Bearer + `opd` |
 | GET / PUT | `/api/opd/bills/{id}` | Bearer + `opd` |
-| POST | `/api/opd/bills/{id}/pay` | Bearer + `opd` (cash; FEFO `SALE` at MAIN) |
+| POST | `/api/opd/bills/{id}/pay` | Bearer + `opd` (cash; FEFO `SALE` at MAIN, skips expired) |
 | POST | `/api/opd/bills/{id}/void` | Bearer + `opd` (reason; restores stock if paid) |
 | GET | `/api/opd/bills/{id}/print` | Bearer + `opd` (HTML + OS print) |
+| GET | `/api/ot/stock` | Bearer + `ot` — cupboard on hand |
+| POST | `/api/ot/stock/{id}/return` | Bearer + `ot` — cupboard qty back to MAIN |
 | GET | `/api/ot/catalog/doctors` | Bearer + `ot` (includes OT fee) |
 | GET | `/api/ot/catalog/services` | Bearer + `ot` |
-| GET | `/api/ot/catalog/items` | Bearer + `ot` |
+| GET | `/api/ot/catalog/items` | Bearer + `ot` — on-hand is `ot_batches`, not MAIN |
 | GET | `/api/ot/settings` | Bearer + `ot` (read-only bill header) |
 | GET / POST | `/api/ot/cases` | Bearer + `ot` |
 | GET / PUT | `/api/ot/cases/{id}` | Bearer + `ot` (edit draft only) |
-| POST | `/api/ot/cases/{id}/issue` | Bearer + `ot` (MAIN → OT_RESERVED, FEFO) |
 | GET | `/api/ot/cases/{id}/pick-list` | Bearer + `ot` (HTML pick slip) |
-| POST | `/api/ot/cases/{id}/reconcile` | Bearer + `ot` (Used/Returned/Wasted/Floor) |
-| POST | `/api/ot/cases/{id}/bill` | Bearer + `ot` (used items + OT fee + optional services) |
+| POST | `/api/ot/cases/{id}/bill` | Bearer + `ot` (cupboard items + OT fee + optional services) |
 | GET | `/api/ot/bills` | Bearer + `ot` |
 | GET / PUT | `/api/ot/bills/{id}` | Bearer + `ot` |
-| POST | `/api/ot/bills/{id}/pay` | Bearer + `ot` (cash; stock already closed) |
-| POST | `/api/ot/bills/{id}/void` | Bearer + `ot` (bill only — no stock restore) |
+| POST | `/api/ot/bills/{id}/pay` | Bearer + `ot` (cash; FEFO `SALE` on `ot_batches`, skips expired) |
+| POST | `/api/ot/bills/{id}/void` | Bearer + `ot` (restores cupboard qty; case returns to draft) |
 | GET | `/api/ot/bills/{id}/print` | Bearer + `ot` (HTML + OS print) |
 | GET / POST | `/api/backup` | Bearer + Admin (`settings`) — list / create |
 | POST | `/api/backup/restore` | Bearer + Admin — queue restore + API restart |
-| GET | `/api/reports/daily-cash` | Bearer + OPD/OT/Admin — `?date=YYYY-MM-DD` |
-| GET | `/api/reports/daily-cash/print` | Bearer — HTML print |
-| GET | `/api/reports/low-stock` | Bearer + Pharmacy/Admin |
+| GET | `/api/reports/daily-cash` | Bearer — desk sees only its own paid bills; Admin sees OPD + OT + pharmacy. `?date=YYYY-MM-DD` |
+| GET | `/api/reports/daily-cash/print` | Bearer — HTML print, same scope as the JSON report |
+| GET | `/api/reports/low-stock` | Bearer + Pharmacy/Admin — MAIN qty ≤ reorder |
 | GET | `/api/reports/low-stock/print` | Bearer — HTML print |
-| GET | `/api/reports/near-expiry` | Bearer + Pharmacy/Admin — `?days=90` |
+| GET | `/api/reports/near-expiry` | Bearer + Pharmacy/Admin — MAIN batches, `?days=90` |
 | GET | `/api/reports/near-expiry/print` | Bearer — HTML print |
+| GET | `/api/dashboard/overview` | Bearer + Admin (`settings`) — combined cash for the date |
+| GET | `/api/dashboard/daily-report` | Bearer + Admin — combined cash, prior day, and bill lines |
 | GET | `/api/demo/status` | Bearer + Admin |
 | POST | `/api/demo/seed` | Bearer + Admin — DEMO- catalog + sample paid OPD |
 | POST | `/api/demo/reset` | Bearer + Admin — wipe DEMO-/[TRAINING] then re-seed |
 
 Send `Authorization: Bearer <token>` (also accepts `mudita_session` cookie).
 
-Reception / Pharmacy cannot open Settings or manage users. Admin Settings tabs: Hospital, Doctors, Services, Users, Backup, **Training**.
+OPD, OT, and Pharmacy cannot open hospital Settings, manage users, backup, or training, and cannot list another desk's bills. OPD can maintain doctors and services from its portal (same `/api/doctors` and `/api/services` as Admin). Admin Settings tabs: Hospital, Doctors, Services, Users, Backup, **Training**. Combined cash is on the admin dashboard, not inside a clinic portal.
 
-**Pharmacy:** Admin + Pharmacy roles. Stock on hand = sum of `item_batches.qty` at location (default `MAIN`). Restock writes a `PURCHASE` movement. Locations `MAIN` / `OT_RESERVED` / `OT_FLOOR`. Item detail shows reserved/floor qty. **FEFO:** earliest `expiry_date` at `MAIN` for Admin adjust-down, OPD cash pay, and OT issue. Unknown item codes cannot be restocked — create the item first.
+**Pharmacy:** Admin + Pharmacy. Stock on hand = sum of `item_batches.qty` at `MAIN`. Restock writes a `PURCHASE` movement. **Send to OT** moves a chosen MAIN batch into the OT cupboard. **FEFO:** pharmacy sale and an OPD item line take the earliest `expiry_date` at `MAIN`. OT bill pay takes the earliest expiry on `ot_batches`. Both skip batches dated before today (blank expiry still sells, after dated stock). Admin adjust-down still uses earliest expiry, including expired batches. Bill prices come from the item catalog. Unknown item codes cannot be restocked — create the item first. Pack quantities and the small unit cannot change while a batch still has quantity.
 
-**OPD:** Admin + Reception. Draft bill → pay cash deducts stock (`SALE` + `bill_stock_allocs` per batch) → print HTML. Void with reason restores exact batches. Bill numbers `OPD-000001`…. Totals in MMK. Catalog endpoints let Reception read doctors/services/items without Admin `settings`/`pharmacy` perms.
+**OPD:** Admin + OPD. Portal nav: Doctors, Services, Bill. OPD can create, edit, and deactivate doctors and services (not hospital settings, users, backup, or training). Draft bill lines use the service catalog price and the doctor's consultation fee (one consultation, quantity 1). Medicines are billed in Pharmacy. Pay cash → print HTML. Void with reason restores stock when a paid line was an item. Bill numbers `OPD-000001`…. Totals in MMK. Catalog endpoints remain for read-only lookup while billing.
 
-**OT:** Admin + Reception. Case cart draft → **Issue** (MAIN→OT_RESERVED via `ISSUE`/`TRANSFER`) → print pick list → **Reconcile** (Used consumed; Returned→MAIN; Wasted written off; KeptOnFloor→OT_FLOOR) → OT bill (used items + doctor OT fee + optional services) → cash pay → print. Case numbers `OT-######`; bills `OTB-######`. Pay does not touch stock (closed at reconcile).
+**OT:** Admin + OT. Draft bill from the OT cupboard, doctor OT fee, and optional services → cash pay → print. Case numbers `OT-######`; bills `OTB-######`. Pay writes `SALE` on `ot_batches` and `ot_bill_stock_allocs`. Void restores those batches and returns the case to draft. Issue and reconcile are gone. History lists OT bills only.
 
-**Reports & polish (Chat 8):** Home **Reports** tile — daily cash (OPD+OT paid), low stock, near expiry (print HTML). UI language **English / မြန်မာ** (Noto Sans Myanmar embedded). Help tile or `?` opens shortcuts; **Print cheat sheet** / [`docs/CHEATSHEET.md`](docs/CHEATSHEET.md) for laminate. Admin **Settings → Training** seeds/resets `DEMO-` / `[TRAINING]` data only.
+**OT cupboard:** Pharmacy sends a chosen `MAIN` batch and qty (`POST /api/pharmacy/transfers`). The same batch number and expiry land in `ot_batches`; pharmacy `MAIN` qty drops in that same transaction, with a `stock_movements` row, an `ot_stock_movements` row, and one `stock_transfers` row. OT returns qty the same way in reverse. A qty the source does not hold is rejected and changes nothing. Migration `011_ot_stock` copies existing `OT_FLOOR` qty into `ot_batches`. Migration `012_ot_bill_stock` returns leftover `OT_RESERVED` qty to `MAIN` and turns open issued or reconciled cases into draft bill documents. Paying an OT bill deducts `ot_batches`. Dashboard stock value counts MAIN and `ot_batches` only.
+
+**Reports:** Each clinic desk's daily cash is its own paid bills. Combined OPD + OT + pharmacy cash is the admin dashboard. Low stock and near expiry (pharmacy) are MAIN only. UI language **English / မြန်မာ**. Help or `?` opens shortcuts; **Print cheat sheet** / [`docs/CHEATSHEET.md`](docs/CHEATSHEET.md) for laminate. Admin **Settings → Training** seeds/resets `DEMO-` / `[TRAINING]` data only.
 
 ## Config
 
@@ -221,6 +227,6 @@ Backup API (Admin / `settings`): `GET/POST /api/backup`, `POST /api/backup/resto
 
 ## Current milestone
 
-**Chat 8 — Polish** complete: EN/MY i18n, reports (daily cash / low stock / near expiry), training seed/reset, in-app help + laminated cheat sheet. All 8 architecture layers shipped.
+**Chat 8 — Polish** complete: EN/MY i18n, reports, training seed/reset, in-app help, and the cheat sheet. The clinic is three portals (OPD, OT, Pharmacy) plus an admin picker. Combined cash stays on the admin dashboard.
 
 Ops next: install on hospital PCs per [`docs/DEPLOY.md`](docs/DEPLOY.md); dry-run OPD with [`docs/CHEATSHEET.md`](docs/CHEATSHEET.md); seed Training only on a practice DB if needed; leave [`docs/CRASH_RESTORE_CARD.md`](docs/CRASH_RESTORE_CARD.md) filled in before long absence ([`docs/RISK_AND_CONTINUITY.md`](docs/RISK_AND_CONTINUITY.md)).
