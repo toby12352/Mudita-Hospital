@@ -302,8 +302,8 @@ func TestExpiredBatchNotDispensed(t *testing.T) {
 		if _, err := fefoDeductSale(tx, billID, lineID, itemID, 2, uid); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := fefoDeductSale(tx, billID, lineID, itemID, 100, uid); err == nil || !strings.Contains(err.Error(), "OPDMED") {
-			t.Fatalf("want insufficient stock naming the item, got %v", err)
+		if _, err := fefoDeductSale(tx, billID, lineID, itemID, 7, uid); err == nil || !strings.Contains(err.Error(), "OPDMED") {
+			t.Fatalf("expired must not fill an undated shortfall, got %v", err)
 		}
 		if err := tx.Commit(); err != nil {
 			t.Fatal(err)
@@ -562,4 +562,541 @@ func TestMustChangePasswordBlocksAPI(t *testing.T) {
 	}
 	w = doJSON(authH, http.MethodPost, "/api/auth/logout", token, "")
 	mustCode(t, w, http.StatusOK)
+}
+
+func mainQty(t *testing.T, sqlDB *sql.DB, itemID int64) int64 {
+	t.Helper()
+	var q int64
+	if err := sqlDB.QueryRow(`SELECT COALESCE(SUM(qty), 0) FROM item_batches WHERE item_id = ?`, itemID).Scan(&q); err != nil {
+		t.Fatal(err)
+	}
+	return q
+}
+
+func TestBatchIdentityAndBlankExpiry(t *testing.T) {
+	sqlDB := openTestDB(t)
+	_, token := insertSession(t, sqlDB, "Admin", 0)
+	h := &Pharmacy{DB: sqlDB}
+	later := time.Now().In(yangon).AddDate(0, 0, 40).Format("2006-01-02")
+	sooner := time.Now().In(yangon).AddDate(0, 0, 10).Format("2006-01-02")
+
+	t.Run("restock and opening stock", func(t *testing.T) {
+		itemID := insertItem(t, sqlDB, "RESTK", "Restock me", 100, 50)
+		insertBatch(t, sqlDB, itemID, "KEEP", later, 5)
+		w := doJSON(h, http.MethodPost, fmt.Sprintf("/api/pharmacy/items/%d/restock", itemID), token,
+			`{"qty":2,"batch_no":"B2","expiry_date":"not-a-date"}`)
+		mustCode(t, w, http.StatusBadRequest)
+		if mainQty(t, sqlDB, itemID) != 5 {
+			t.Fatalf("rejected restock changed qty to %d", mainQty(t, sqlDB, itemID))
+		}
+		for _, body := range []string{
+			`{"qty":2}`,
+			`{"qty":2,"batch_no":"B2"}`,
+			fmt.Sprintf(`{"qty":2,"expiry_date":"%s"}`, later),
+		} {
+			w = doJSON(h, http.MethodPost, fmt.Sprintf("/api/pharmacy/items/%d/restock", itemID), token, body)
+			mustCode(t, w, http.StatusOK)
+		}
+		w = doJSON(h, http.MethodPost, fmt.Sprintf("/api/pharmacy/items/%d/restock", itemID), token,
+			fmt.Sprintf(`{"qty":1,"batch_no":"B2","expiry_date":"%s"}`, later))
+		mustCode(t, w, http.StatusOK)
+		// units_per_purchase is 10: three qty-2 receipts (60) plus one qty-1 receipt (10).
+		if mainQty(t, sqlDB, itemID) != 75 {
+			t.Fatalf("restock qty %d, want 75", mainQty(t, sqlDB, itemID))
+		}
+
+		w = doJSON(h, http.MethodPost, "/api/pharmacy/items", token,
+			`{"code":"OPENBAD","name":"Open","initial_qty":3,"expiry_date":"not-a-date"}`)
+		mustCode(t, w, http.StatusBadRequest)
+		var n int
+		if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM items WHERE code = 'OPENBAD'`).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		if n != 0 {
+			t.Fatalf("rejected opening stock created %d items", n)
+		}
+		for _, body := range []string{
+			`{"code":"OPEN1","name":"Open","initial_qty":3}`,
+			`{"code":"OPEN2","name":"Open lot","initial_qty":3,"batch_no":"LOT"}`,
+			fmt.Sprintf(`{"code":"OPEN3","name":"Open date","initial_qty":3,"expiry_date":"%s"}`, later),
+			fmt.Sprintf(`{"code":"OPEN4","name":"Open both","initial_qty":3,"batch_no":"LOT","expiry_date":"%s"}`, later),
+		} {
+			w = doJSON(h, http.MethodPost, "/api/pharmacy/items", token, body)
+			mustCode(t, w, http.StatusCreated)
+		}
+		for _, code := range []string{"OPEN1", "OPEN2", "OPEN3", "OPEN4"} {
+			var opened int64
+			if err := sqlDB.QueryRow(`SELECT id FROM items WHERE code = ?`, code).Scan(&opened); err != nil {
+				t.Fatal(err)
+			}
+			if mainQty(t, sqlDB, opened) != 3 {
+				t.Fatalf("%s opening qty %d, want 3", code, mainQty(t, sqlDB, opened))
+			}
+		}
+
+		w = doJSON(h, http.MethodPost, fmt.Sprintf("/api/pharmacy/items/%d/adjust", itemID), token,
+			`{"qty_delta":4,"reason":"count","expiry_date":"not-a-date"}`)
+		mustCode(t, w, http.StatusBadRequest)
+		if mainQty(t, sqlDB, itemID) != 75 {
+			t.Fatalf("rejected adjust changed qty to %d", mainQty(t, sqlDB, itemID))
+		}
+		w = doJSON(h, http.MethodPost, fmt.Sprintf("/api/pharmacy/items/%d/adjust", itemID), token,
+			`{"qty_delta":4,"reason":"count"}`)
+		mustCode(t, w, http.StatusOK)
+		if mainQty(t, sqlDB, itemID) != 79 {
+			t.Fatalf("undated adjust qty %d, want 79", mainQty(t, sqlDB, itemID))
+		}
+		w = doJSON(h, http.MethodPost, fmt.Sprintf("/api/pharmacy/items/%d/adjust", itemID), token,
+			fmt.Sprintf(`{"qty_delta":4,"reason":"count","batch_no":"ADJ2","expiry_date":"%s"}`, later))
+		mustCode(t, w, http.StatusOK)
+		if mainQty(t, sqlDB, itemID) != 83 {
+			t.Fatalf("adjust qty %d, want 83", mainQty(t, sqlDB, itemID))
+		}
+	})
+
+	t.Run("label then sell", func(t *testing.T) {
+		itemID := insertItem(t, sqlDB, "LABEL", "Label me", 100, 50)
+		dated := insertBatch(t, sqlDB, itemID, "EARLY", sooner, 3)
+		blank := insertBatch(t, sqlDB, itemID, "", "", 8)
+
+		w := doJSON(h, http.MethodPost, "/api/pharmacy/bills", token, fmt.Sprintf(`{
+			"patient_name": "Ma Hla",
+			"lines": [{"item_id": %d, "tablet_qty": 3, "unit_price_mmk": 1}]
+		}`, itemID))
+		mustCode(t, w, http.StatusCreated)
+		var bill pharmacyBill
+		if err := json.Unmarshal(w.Body.Bytes(), &bill); err != nil {
+			t.Fatal(err)
+		}
+		w = doJSON(h, http.MethodGet, fmt.Sprintf("/api/pharmacy/bills/%d/print", bill.ID), token, "")
+		mustCode(t, w, http.StatusOK)
+		if !strings.Contains(w.Body.String(), "DRAFT") {
+			t.Fatalf("draft receipt: %s", w.Body.String())
+		}
+		w = doJSON(h, http.MethodPost, fmt.Sprintf("/api/pharmacy/bills/%d/pay", bill.ID), token, "")
+		mustCode(t, w, http.StatusOK)
+		if batchQty(t, sqlDB, dated) != 0 || batchQty(t, sqlDB, blank) != 8 {
+			t.Fatalf("FEFO dated=%d blank=%d", batchQty(t, sqlDB, dated), batchQty(t, sqlDB, blank))
+		}
+		w = doJSON(h, http.MethodGet, fmt.Sprintf("/api/pharmacy/bills/%d/print", bill.ID), token, "")
+		mustCode(t, w, http.StatusOK)
+		if !strings.Contains(w.Body.String(), "PAID \u2014 CASH") {
+			t.Fatalf("paid receipt missing PAID — CASH: %s", w.Body.String())
+		}
+
+		w = doJSON(h, http.MethodPost, "/api/pharmacy/bills", token, fmt.Sprintf(`{
+			"patient_name": "Ma Hla",
+			"lines": [{"item_id": %d, "tablet_qty": 1, "unit_price_mmk": 1}]
+		}`, itemID))
+		mustCode(t, w, http.StatusCreated)
+		if err := json.Unmarshal(w.Body.Bytes(), &bill); err != nil {
+			t.Fatal(err)
+		}
+		w = doJSON(h, http.MethodPost, fmt.Sprintf("/api/pharmacy/bills/%d/pay", bill.ID), token, "")
+		mustCode(t, w, http.StatusOK)
+		if batchQty(t, sqlDB, blank) != 7 {
+			t.Fatalf("undated sale qty %d, want 7", batchQty(t, sqlDB, blank))
+		}
+
+		w = doJSON(h, http.MethodPost, fmt.Sprintf("/api/pharmacy/items/%d/batches/%d/label", itemID, blank), token,
+			fmt.Sprintf(`{"batch_no":"LAB1","expiry_date":"%s"}`, later))
+		mustCode(t, w, http.StatusOK)
+		if batchQty(t, sqlDB, blank) != 7 {
+			t.Fatalf("label changed qty to %d", batchQty(t, sqlDB, blank))
+		}
+		var gotNo, gotExp string
+		if err := sqlDB.QueryRow(`SELECT batch_no, expiry_date FROM item_batches WHERE id = ?`, blank).Scan(&gotNo, &gotExp); err != nil {
+			t.Fatal(err)
+		}
+		if gotNo != "LAB1" || gotExp != later {
+			t.Fatalf("label stored %s %s", gotNo, gotExp)
+		}
+		var detail string
+		if err := sqlDB.QueryRow(`
+			SELECT detail FROM audit_logs WHERE action = 'label_batch' AND entity = 'item_batch' AND entity_id = ?
+		`, blank).Scan(&detail); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(detail, "LAB1") || !strings.Contains(detail, later) {
+			t.Fatalf("audit %s", detail)
+		}
+
+		w = doJSON(h, http.MethodPost, "/api/pharmacy/bills", token, fmt.Sprintf(`{
+			"patient_name": "Ma Hla",
+			"lines": [{"item_id": %d, "tablet_qty": 1, "unit_price_mmk": 1}]
+		}`, itemID))
+		mustCode(t, w, http.StatusCreated)
+		if err := json.Unmarshal(w.Body.Bytes(), &bill); err != nil {
+			t.Fatal(err)
+		}
+		w = doJSON(h, http.MethodPost, fmt.Sprintf("/api/pharmacy/bills/%d/pay", bill.ID), token, "")
+		mustCode(t, w, http.StatusOK)
+		if batchQty(t, sqlDB, blank) != 6 {
+			t.Fatalf("after label sale qty %d, want 6", batchQty(t, sqlDB, blank))
+		}
+		w = doJSON(h, http.MethodPost, fmt.Sprintf("/api/pharmacy/bills/%d/pay", bill.ID), token, "")
+		mustCode(t, w, http.StatusBadRequest)
+		if batchQty(t, sqlDB, blank) != 6 {
+			t.Fatalf("second pay changed qty to %d", batchQty(t, sqlDB, blank))
+		}
+	})
+
+	t.Run("ot cupboard", func(t *testing.T) {
+		uid, _ := insertSession(t, sqlDB, "Admin", 0)
+		itemID := insertItem(t, sqlDB, "OTLBL", "OT label", 100, 50)
+		blank := insertOtBatch(t, sqlDB, itemID, "", "", 6)
+		dated := insertOtBatch(t, sqlDB, itemID, "OT1", sooner, 2)
+		res, err := sqlDB.Exec(`INSERT INTO ot_cases (case_no, patient_name, status) VALUES ('OT-000077', 'P', 'billed')`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		caseID, _ := res.LastInsertId()
+		res, err = sqlDB.Exec(`
+			INSERT INTO ot_bills (bill_no, case_id, case_no, patient_name, status, total_mmk)
+			VALUES ('OTB-000077', ?, 'OT-000077', 'P', 'draft', 1)
+		`, caseID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		billID, _ := res.LastInsertId()
+		res, err = sqlDB.Exec(`
+			INSERT INTO ot_bill_lines (bill_id, line_type, ref_id, code, description, qty, unit_price_mmk, line_total_mmk)
+			VALUES (?, 'item', ?, 'OTLBL', 'OT label', 1, 50, 50)
+		`, billID, itemID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		lineID, _ := res.LastInsertId()
+
+		tx, err := sqlDB.Begin()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := fefoDeductOtSale(tx, billID, lineID, itemID, 2, uid); err != nil {
+			t.Fatal(err)
+		}
+		if err := fefoDeductOtSale(tx, billID, lineID, itemID, 1, uid); err != nil {
+			t.Fatal(err)
+		}
+		if err := tx.Commit(); err != nil {
+			t.Fatal(err)
+		}
+		if otBatchQty(t, sqlDB, dated) != 0 || otBatchQty(t, sqlDB, blank) != 5 {
+			t.Fatalf("ot dated=%d blank=%d", otBatchQty(t, sqlDB, dated), otBatchQty(t, sqlDB, blank))
+		}
+
+		ot := &OT{DB: sqlDB}
+		w := doJSON(ot, http.MethodPost, fmt.Sprintf("/api/ot/stock/%d/label", blank), token,
+			fmt.Sprintf(`{"batch_no":"CUP1","expiry_date":"%s"}`, later))
+		mustCode(t, w, http.StatusOK)
+		if otBatchQty(t, sqlDB, blank) != 5 {
+			t.Fatalf("ot label changed qty to %d", otBatchQty(t, sqlDB, blank))
+		}
+		tx, err = sqlDB.Begin()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := fefoDeductOtSale(tx, billID, lineID, itemID, 1, uid); err != nil {
+			t.Fatal(err)
+		}
+		if err := tx.Commit(); err != nil {
+			t.Fatal(err)
+		}
+		if otBatchQty(t, sqlDB, blank) != 4 {
+			t.Fatalf("labeled OT qty %d, want 4", otBatchQty(t, sqlDB, blank))
+		}
+
+		_, phToken := insertSession(t, sqlDB, "Pharmacy", 0)
+		w = doJSON(ot, http.MethodPost, fmt.Sprintf("/api/ot/stock/%d/label", blank), phToken, `{"batch_no":"X","expiry_date":"2027-01-01"}`)
+		mustCode(t, w, http.StatusForbidden)
+	})
+}
+
+func TestPharmacyReturnCreditsStockAndNetsCash(t *testing.T) {
+	sqlDB := openTestDB(t)
+	uid, token := insertSession(t, sqlDB, "Pharmacy", 0)
+	h := &Pharmacy{DB: sqlDB}
+	itemID := insertItem(t, sqlDB, "RETMED", "Return med", 1000, 100)
+	dated := insertBatch(t, sqlDB, itemID, "LOT-A", "2030-01-01", 20)
+
+	// Sale still deducts FEFO from the dated lot.
+	w := doJSON(h, http.MethodPost, "/api/pharmacy/bills", token, fmt.Sprintf(`{
+		"patient_name": "Sale Patient",
+		"kind": "sale",
+		"lines": [{"item_id": %d, "tablet_qty": 5}]
+	}`, itemID))
+	mustCode(t, w, http.StatusCreated)
+	var sale struct {
+		ID     int64  `json:"id"`
+		BillNo string `json:"bill_no"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &sale); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(sale.BillNo, "PH-") {
+		t.Fatalf("sale bill_no %s", sale.BillNo)
+	}
+	w = doJSON(h, http.MethodPost, fmt.Sprintf("/api/pharmacy/bills/%d/pay", sale.ID), token, "{}")
+	mustCode(t, w, http.StatusOK)
+	if batchQty(t, sqlDB, dated) != 15 {
+		t.Fatalf("after sale dated qty %d, want 15", batchQty(t, sqlDB, dated))
+	}
+
+	// Return credits the unlabeled MAIN batch (not the dated lot).
+	w = doJSON(h, http.MethodPost, "/api/pharmacy/bills", token, fmt.Sprintf(`{
+		"patient_name": "Return Patient",
+		"kind": "return",
+		"lines": [{"item_id": %d, "tablet_qty": 3}]
+	}`, itemID))
+	mustCode(t, w, http.StatusCreated)
+	var ret struct {
+		ID       int64  `json:"id"`
+		BillNo   string `json:"bill_no"`
+		TotalMMK int64  `json:"total_mmk"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &ret); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(ret.BillNo, "RT-") {
+		t.Fatalf("return bill_no %s", ret.BillNo)
+	}
+	if ret.TotalMMK != 300 {
+		t.Fatalf("return total %d, want 300", ret.TotalMMK)
+	}
+	w = doJSON(h, http.MethodPost, fmt.Sprintf("/api/pharmacy/bills/%d/pay", ret.ID), token, "{}")
+	mustCode(t, w, http.StatusOK)
+
+	var blankID, blankQty int64
+	err := sqlDB.QueryRow(`
+		SELECT id, qty FROM item_batches
+		WHERE item_id = ? AND location_code = 'MAIN'
+		  AND batch_no = '' AND (expiry_date IS NULL OR expiry_date = '')
+	`, itemID).Scan(&blankID, &blankQty)
+	if err != nil {
+		t.Fatalf("unlabeled batch: %v", err)
+	}
+	if blankQty != 3 {
+		t.Fatalf("unlabeled qty %d, want 3", blankQty)
+	}
+	if batchQty(t, sqlDB, dated) != 15 {
+		t.Fatalf("dated lot changed to %d", batchQty(t, sqlDB, dated))
+	}
+
+	var moveType string
+	var delta int64
+	if err := sqlDB.QueryRow(`
+		SELECT movement_type, qty_delta FROM stock_movements
+		WHERE item_id = ? AND batch_id = ? AND movement_type = 'RETURN'
+		ORDER BY id DESC LIMIT 1
+	`, itemID, blankID).Scan(&moveType, &delta); err != nil {
+		t.Fatalf("RETURN movement: %v", err)
+	}
+	if delta != 3 {
+		t.Fatalf("RETURN delta %d, want 3", delta)
+	}
+
+	// List kind filters keep desks separate.
+	w = doJSON(h, http.MethodGet, "/api/pharmacy/bills?kind=return", token, "")
+	mustCode(t, w, http.StatusOK)
+	if !strings.Contains(w.Body.String(), ret.BillNo) || strings.Contains(w.Body.String(), sale.BillNo) {
+		t.Fatalf("return list mixed: %s", w.Body.String())
+	}
+	w = doJSON(h, http.MethodGet, "/api/pharmacy/bills?kind=sale", token, "")
+	mustCode(t, w, http.StatusOK)
+	if !strings.Contains(w.Body.String(), sale.BillNo) || strings.Contains(w.Body.String(), ret.BillNo) {
+		t.Fatalf("sale list mixed: %s", w.Body.String())
+	}
+
+	// Daily cash nets the refund.
+	today := time.Now().In(time.FixedZone("Asia/Yangon", 6*3600+30*60)).Format("2006-01-02")
+	cash, err := buildDailyCash(sqlDB, today)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Sale 5*100=500 minus return 300 = 200.
+	if cash.PharmacyTotal != 200 {
+		t.Fatalf("pharmacy cash %d, want 200 (uid=%d)", cash.PharmacyTotal, uid)
+	}
+
+	// Void return removes the credited qty.
+	w = doJSON(h, http.MethodPost, fmt.Sprintf("/api/pharmacy/bills/%d/void", ret.ID), token, `{"reason":"test void"}`)
+	mustCode(t, w, http.StatusOK)
+	if batchQty(t, sqlDB, blankID) != 0 {
+		t.Fatalf("after void blank qty %d, want 0", batchQty(t, sqlDB, blankID))
+	}
+}
+
+func TestPharmacyTransferToOt(t *testing.T) {
+	sqlDB := openTestDB(t)
+	_, token := insertSession(t, sqlDB, "Pharmacy", 0)
+	h := &Pharmacy{DB: sqlDB}
+	itemID := insertItem(t, sqlDB, "XFOT", "Transfer med", 100, 50)
+	yesterday := time.Now().In(yangon).AddDate(0, 0, -1).Format("2006-01-02")
+	sooner := time.Now().In(yangon).AddDate(0, 0, 10).Format("2006-01-02")
+	dated := insertBatch(t, sqlDB, itemID, "EARLY", sooner, 2)
+	blank := insertBatch(t, sqlDB, itemID, "", "", 8)
+	expired := insertBatch(t, sqlDB, itemID, "OLD", yesterday, 5)
+
+	today := time.Now().In(yangon).Format("2006-01-02")
+	before, err := buildDailyCash(sqlDB, today)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Not enough saleable stock (expired does not count). Nothing moves.
+	w := doJSON(h, http.MethodPost, "/api/pharmacy/bills", token, fmt.Sprintf(`{
+		"kind":"transfer",
+		"lines":[{"item_id":%d,"tablet_qty":11,"unit_price_mmk":50}]
+	}`, itemID))
+	mustCode(t, w, http.StatusCreated)
+	var short pharmacyBill
+	if err := json.Unmarshal(w.Body.Bytes(), &short); err != nil {
+		t.Fatal(err)
+	}
+	w = doJSON(h, http.MethodPost, fmt.Sprintf("/api/pharmacy/bills/%d/transfer", short.ID), token, "{}")
+	mustCode(t, w, http.StatusBadRequest)
+	if batchQty(t, sqlDB, dated) != 2 || batchQty(t, sqlDB, blank) != 8 || batchQty(t, sqlDB, expired) != 5 {
+		t.Fatal("short transfer changed stock")
+	}
+	if err := sqlDB.QueryRow(`SELECT status FROM pharmacy_bills WHERE id = ?`, short.ID).Scan(&short.Status); err != nil {
+		t.Fatal(err)
+	}
+	if short.Status != "draft" {
+		t.Fatalf("short slip status %s", short.Status)
+	}
+
+	w = doJSON(h, http.MethodPost, fmt.Sprintf("/api/pharmacy/bills/%d/pay", short.ID), token, "{}")
+	mustCode(t, w, http.StatusBadRequest)
+	if batchQty(t, sqlDB, dated) != 2 {
+		t.Fatal("pay of a transfer slip changed stock")
+	}
+
+	done := confirmTransferBill(t, h, token, itemID, 3)
+	if batchQty(t, sqlDB, dated) != 0 || batchQty(t, sqlDB, blank) != 7 || batchQty(t, sqlDB, expired) != 5 {
+		t.Fatalf("FEFO dated=%d blank=%d expired=%d", batchQty(t, sqlDB, dated), batchQty(t, sqlDB, blank), batchQty(t, sqlDB, expired))
+	}
+	var datedOt, blankOt int64
+	if err := sqlDB.QueryRow(`
+		SELECT qty FROM ot_batches WHERE item_id = ? AND batch_no = 'EARLY' AND expiry_date = ?
+	`, itemID, sooner).Scan(&datedOt); err != nil {
+		t.Fatal(err)
+	}
+	if err := sqlDB.QueryRow(`
+		SELECT qty FROM ot_batches
+		WHERE item_id = ? AND batch_no = '' AND (expiry_date IS NULL OR expiry_date = '')
+	`, itemID).Scan(&blankOt); err != nil {
+		t.Fatal(err)
+	}
+	if datedOt != 2 || blankOt != 1 {
+		t.Fatalf("ot dated=%d blank=%d", datedOt, blankOt)
+	}
+
+	w = doJSON(h, http.MethodGet, "/api/pharmacy/bills?kind=sale", token, "")
+	mustCode(t, w, http.StatusOK)
+	if strings.Contains(w.Body.String(), done.BillNo) {
+		t.Fatalf("sale list includes transfer: %s", w.Body.String())
+	}
+	w = doJSON(h, http.MethodGet, "/api/pharmacy/bills?kind=return", token, "")
+	mustCode(t, w, http.StatusOK)
+	if strings.Contains(w.Body.String(), done.BillNo) {
+		t.Fatalf("return list includes transfer: %s", w.Body.String())
+	}
+	w = doJSON(h, http.MethodGet, "/api/pharmacy/bills?kind=transfer", token, "")
+	mustCode(t, w, http.StatusOK)
+	if !strings.Contains(w.Body.String(), done.BillNo) {
+		t.Fatalf("transfer list missing slip: %s", w.Body.String())
+	}
+
+	after, err := buildDailyCash(sqlDB, today)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.PharmacyTotal != before.PharmacyTotal || after.PharmacyCount != before.PharmacyCount {
+		t.Fatalf("cash changed from %+v to %+v", before.PharmacyTotal, after.PharmacyTotal)
+	}
+
+	w = doJSON(h, http.MethodPost, fmt.Sprintf("/api/pharmacy/bills/%d/void", done.ID), token, `{"reason":"put back"}`)
+	mustCode(t, w, http.StatusOK)
+	if batchQty(t, sqlDB, dated) != 2 || batchQty(t, sqlDB, blank) != 8 || datedOtRow(t, sqlDB, itemID, sooner) != 0 || blankOtRow(t, sqlDB, itemID) != 0 {
+		t.Fatalf("void left dated=%d blank=%d otDated=%d otBlank=%d",
+			batchQty(t, sqlDB, dated), batchQty(t, sqlDB, blank), datedOtRow(t, sqlDB, itemID, sooner), blankOtRow(t, sqlDB, itemID))
+	}
+
+	again := confirmTransferBill(t, h, token, itemID, 4)
+	if _, err := sqlDB.Exec(`UPDATE ot_batches SET qty = 1 WHERE item_id = ?`, itemID); err != nil {
+		t.Fatal(err)
+	}
+	mainBefore := batchQty(t, sqlDB, dated) + batchQty(t, sqlDB, blank)
+	w = doJSON(h, http.MethodPost, fmt.Sprintf("/api/pharmacy/bills/%d/void", again.ID), token, `{"reason":"cupboard used"}`)
+	mustCode(t, w, http.StatusBadRequest)
+	var status string
+	if err := sqlDB.QueryRow(`SELECT status FROM pharmacy_bills WHERE id = ?`, again.ID).Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	if status != "paid" {
+		t.Fatalf("failed void status %s", status)
+	}
+	if batchQty(t, sqlDB, dated)+batchQty(t, sqlDB, blank) != mainBefore {
+		t.Fatal("failed void changed MAIN qty")
+	}
+}
+
+func datedOtRow(t *testing.T, sqlDB *sql.DB, itemID int64, expiry string) int64 {
+	t.Helper()
+	var q int64
+	err := sqlDB.QueryRow(`
+		SELECT COALESCE(qty, 0) FROM ot_batches WHERE item_id = ? AND expiry_date = ?
+	`, itemID, expiry).Scan(&q)
+	if err == sql.ErrNoRows {
+		return 0
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	return q
+}
+
+func blankOtRow(t *testing.T, sqlDB *sql.DB, itemID int64) int64 {
+	t.Helper()
+	var q int64
+	err := sqlDB.QueryRow(`
+		SELECT COALESCE(qty, 0) FROM ot_batches
+		WHERE item_id = ? AND batch_no = '' AND (expiry_date IS NULL OR expiry_date = '')
+	`, itemID).Scan(&q)
+	if err == sql.ErrNoRows {
+		return 0
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	return q
+}
+
+func TestTrainingOffUnlessEnabled(t *testing.T) {
+	sqlDB := openTestDB(t)
+	_, token := insertSession(t, sqlDB, "Admin", 0)
+	off := &Demo{DB: sqlDB}
+	w := doJSON(off, http.MethodGet, "/api/demo/status", token, "")
+	mustCode(t, w, http.StatusOK)
+	if !strings.Contains(w.Body.String(), `"enabled":false`) {
+		t.Fatalf("status %s", w.Body.String())
+	}
+	w = doJSON(off, http.MethodPost, "/api/demo/seed", token, "{}")
+	mustCode(t, w, http.StatusForbidden)
+	w = doJSON(off, http.MethodPost, "/api/demo/reset", token, "{}")
+	mustCode(t, w, http.StatusForbidden)
+	var n int
+	if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM items WHERE code LIKE 'DEMO-%'`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatalf("disabled training wrote %d items", n)
+	}
+
+	on := &Demo{DB: sqlDB, AllowTraining: true}
+	w = doJSON(on, http.MethodGet, "/api/demo/status", token, "")
+	mustCode(t, w, http.StatusOK)
+	if !strings.Contains(w.Body.String(), `"enabled":true`) {
+		t.Fatalf("status %s", w.Body.String())
+	}
 }

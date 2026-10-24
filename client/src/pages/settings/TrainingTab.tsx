@@ -59,8 +59,9 @@ export function TrainingTab({ t }: { t: (k: string) => string }) {
   return (
     <div className="card-form">
       <h2 className="section-title">{t("trainingTitle")}</h2>
-      <p className="hint">{t("trainingLede")}</p>
-      {status ? (
+      {status?.enabled ? <p className="hint">{t("trainingLede")}</p> : null}
+      {status && !status.enabled ? <p className="hint">{t("trainingOff")}</p> : null}
+      {status?.enabled ? (
         <p className="status-meta">
           {t("trainingStatus")}: {status.seeded ? t("seeded") : t("notSeeded")} · items{" "}
           {status.training_items} · OPD {status.training_opd_bills} · doctors{" "}
@@ -69,14 +70,16 @@ export function TrainingTab({ t }: { t: (k: string) => string }) {
       ) : null}
       {error ? <p className="form-error">{error}</p> : null}
       {message ? <p className="form-ok">{message}</p> : null}
-      <div className="btn-row">
-        <button type="button" className="btn primary" disabled={busy} onClick={() => void doSeed()}>
-          {busy ? t("busy") : t("seedTraining")}
-        </button>
-        <button type="button" className="btn ghost" disabled={busy} onClick={() => void doReset()}>
-          {t("resetTraining")}
-        </button>
-      </div>
+      {status?.enabled ? (
+        <div className="btn-row">
+          <button type="button" className="btn primary" disabled={busy} onClick={() => void doSeed()}>
+            {busy ? t("busy") : t("seedTraining")}
+          </button>
+          <button type="button" className="btn ghost" disabled={busy} onClick={() => void doReset()}>
+            {t("resetTraining")}
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

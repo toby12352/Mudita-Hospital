@@ -424,30 +424,28 @@ func TestOtStockTransferAndReturn(t *testing.T) {
 	batchID := insertBatch(t, sqlDB, itemID, "LOT-9", "2027-06-01", 10)
 	reserved := insertBatchAt(t, sqlDB, itemID, "OT_RESERVED", "RES-9", "2027-06-01", 2)
 
-	w := doJSON(pharmacy, http.MethodPost, "/api/pharmacy/transfers", pharmTok, fmt.Sprintf(`{"batch_id":%d,"qty":4}`, batchID))
-	mustCode(t, w, http.StatusCreated)
-	var moved stockTransfer
-	if err := json.Unmarshal(w.Body.Bytes(), &moved); err != nil {
+	moved := confirmTransferBill(t, pharmacy, pharmTok, itemID, 4)
+	var otBatchID int64
+	var billLink sql.NullInt64
+	if err := sqlDB.QueryRow(`
+		SELECT ot_batch_id, pharmacy_bill_id FROM stock_transfers WHERE pharmacy_bill_id = ?
+	`, moved.ID).Scan(&otBatchID, &billLink); err != nil {
 		t.Fatal(err)
 	}
-	if moved.Direction != "TO_OT" || moved.Qty != 4 || moved.BatchNo != "LOT-9" || moved.PharmacyQty != 6 || moved.OtQty != 4 {
-		t.Fatalf("transfer %+v", moved)
+	if !billLink.Valid || billLink.Int64 != moved.ID {
+		t.Fatalf("transfer not linked to bill %+v", billLink)
 	}
-	if moved.ExpiryDate == nil || *moved.ExpiryDate != "2027-06-01" {
-		t.Fatalf("expiry %+v", moved.ExpiryDate)
-	}
-	assertBatchLedger(t, sqlDB, batchID, moved.OtBatchID, 6, 4, "LOT-9", "2027-06-01")
+	assertBatchLedger(t, sqlDB, batchID, otBatchID, 6, 4, "LOT-9", "2027-06-01")
 	assertTransferCount(t, sqlDB, 1)
 	assertMovement(t, sqlDB, "stock_movements", "TRANSFER", -4)
 	assertMovement(t, sqlDB, "ot_stock_movements", "TRANSFER_IN", 4)
-
-	w = doJSON(pharmacy, http.MethodPost, "/api/pharmacy/transfers", pharmTok, fmt.Sprintf(`{"batch_id":%d,"qty":2}`, batchID))
-	mustCode(t, w, http.StatusCreated)
-	if err := json.Unmarshal(w.Body.Bytes(), &moved); err != nil {
-		t.Fatal(err)
+	if batchQty(t, sqlDB, reserved) != 2 {
+		t.Fatal("reserved qty changed")
 	}
-	if moved.OtQty != 6 || moved.PharmacyQty != 4 {
-		t.Fatalf("second transfer %+v", moved)
+
+	second := confirmTransferBill(t, pharmacy, pharmTok, itemID, 2)
+	if second.ID == moved.ID {
+		t.Fatal("second slip reused the first bill")
 	}
 	var otRows int
 	if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM ot_batches WHERE item_id = ?`, itemID).Scan(&otRows); err != nil {
@@ -456,24 +454,36 @@ func TestOtStockTransferAndReturn(t *testing.T) {
 	if otRows != 1 {
 		t.Fatalf("ot batches %d, want the same batch merged", otRows)
 	}
+	if batchQty(t, sqlDB, batchID) != 4 || otBatchQty(t, sqlDB, otBatchID) != 6 {
+		t.Fatalf("after second transfer main=%d ot=%d", batchQty(t, sqlDB, batchID), otBatchQty(t, sqlDB, otBatchID))
+	}
 
 	before := ledgerSnapshot(t, sqlDB)
-	w = doJSON(pharmacy, http.MethodPost, "/api/pharmacy/transfers", pharmTok, fmt.Sprintf(`{"batch_id":%d,"qty":5}`, batchID))
+	w := doJSON(pharmacy, http.MethodPost, "/api/pharmacy/bills", pharmTok, fmt.Sprintf(`{
+		"kind":"transfer",
+		"lines":[{"item_id":%d,"tablet_qty":5,"unit_price_mmk":1}]
+	}`, itemID))
+	mustCode(t, w, http.StatusCreated)
+	var over pharmacyBill
+	if err := json.Unmarshal(w.Body.Bytes(), &over); err != nil {
+		t.Fatal(err)
+	}
+	w = doJSON(pharmacy, http.MethodPost, fmt.Sprintf("/api/pharmacy/bills/%d/transfer", over.ID), pharmTok, "{}")
 	mustCode(t, w, http.StatusBadRequest)
-	if batchQty(t, sqlDB, batchID) != 4 || otBatchQty(t, sqlDB, moved.OtBatchID) != 6 {
+	if batchQty(t, sqlDB, batchID) != 4 || otBatchQty(t, sqlDB, otBatchID) != 6 {
 		t.Fatal("over-transfer changed qty")
 	}
 	if ledgerSnapshot(t, sqlDB) != before {
 		t.Fatalf("over-transfer wrote rows: before %s after %s", before, ledgerSnapshot(t, sqlDB))
 	}
-
-	w = doJSON(pharmacy, http.MethodPost, "/api/pharmacy/transfers", pharmTok, fmt.Sprintf(`{"batch_id":%d,"qty":1}`, reserved))
-	mustCode(t, w, http.StatusBadRequest)
-	if batchQty(t, sqlDB, reserved) != 2 || ledgerSnapshot(t, sqlDB) != before {
-		t.Fatal("non-MAIN transfer changed stock")
+	if batchQty(t, sqlDB, reserved) != 2 {
+		t.Fatal("reserved qty changed")
 	}
 
-	w = doJSON(ot, http.MethodPost, fmt.Sprintf("/api/ot/stock/%d/return", moved.OtBatchID), otTok, `{"qty":1}`)
+	w = doJSON(pharmacy, http.MethodPost, "/api/pharmacy/transfers", pharmTok, fmt.Sprintf(`{"batch_id":%d,"qty":1}`, batchID))
+	mustCode(t, w, http.StatusMethodNotAllowed)
+
+	w = doJSON(ot, http.MethodPost, fmt.Sprintf("/api/ot/stock/%d/return", otBatchID), otTok, `{"qty":1}`)
 	mustCode(t, w, http.StatusCreated)
 	var back stockTransfer
 	if err := json.Unmarshal(w.Body.Bytes(), &back); err != nil {
@@ -485,7 +495,7 @@ func TestOtStockTransferAndReturn(t *testing.T) {
 	if back.PharmacyBatchID != batchID {
 		t.Fatalf("return landed on batch %d, want %d", back.PharmacyBatchID, batchID)
 	}
-	assertBatchLedger(t, sqlDB, batchID, moved.OtBatchID, 5, 5, "LOT-9", "2027-06-01")
+	assertBatchLedger(t, sqlDB, batchID, otBatchID, 5, 5, "LOT-9", "2027-06-01")
 	assertTransferCount(t, sqlDB, 3)
 	var toPharm int
 	if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM stock_transfers WHERE direction = 'TO_PHARMACY'`).Scan(&toPharm); err != nil {
@@ -498,26 +508,26 @@ func TestOtStockTransferAndReturn(t *testing.T) {
 
 	before = ledgerSnapshot(t, sqlDB)
 	mainQty := batchQty(t, sqlDB, batchID)
-	otQty := otBatchQty(t, sqlDB, moved.OtBatchID)
-	w = doJSON(ot, http.MethodPost, fmt.Sprintf("/api/ot/stock/%d/return", moved.OtBatchID), otTok, `{"qty":9}`)
+	otQty := otBatchQty(t, sqlDB, otBatchID)
+	w = doJSON(ot, http.MethodPost, fmt.Sprintf("/api/ot/stock/%d/return", otBatchID), otTok, `{"qty":9}`)
 	mustCode(t, w, http.StatusBadRequest)
-	if batchQty(t, sqlDB, batchID) != mainQty || otBatchQty(t, sqlDB, moved.OtBatchID) != otQty || ledgerSnapshot(t, sqlDB) != before {
+	if batchQty(t, sqlDB, batchID) != mainQty || otBatchQty(t, sqlDB, otBatchID) != otQty || ledgerSnapshot(t, sqlDB) != before {
 		t.Fatal("over-return changed stock")
 	}
 
 	w = doJSON(pharmacy, http.MethodPost, "/api/pharmacy/transfers", opdTok, fmt.Sprintf(`{"batch_id":%d,"qty":1}`, batchID))
 	mustCode(t, w, http.StatusForbidden)
-	w = doJSON(ot, http.MethodPost, fmt.Sprintf("/api/ot/stock/%d/return", moved.OtBatchID), opdTok, `{"qty":1}`)
+	w = doJSON(ot, http.MethodPost, fmt.Sprintf("/api/ot/stock/%d/return", otBatchID), opdTok, `{"qty":1}`)
 	mustCode(t, w, http.StatusForbidden)
 	w = doJSON(pharmacy, http.MethodPost, "/api/pharmacy/transfers", otTok, fmt.Sprintf(`{"batch_id":%d,"qty":1}`, batchID))
 	mustCode(t, w, http.StatusForbidden)
-	w = doJSON(ot, http.MethodPost, fmt.Sprintf("/api/ot/stock/%d/return", moved.OtBatchID), pharmTok, `{"qty":1}`)
+	w = doJSON(ot, http.MethodPost, fmt.Sprintf("/api/ot/stock/%d/return", otBatchID), pharmTok, `{"qty":1}`)
 	mustCode(t, w, http.StatusForbidden)
 	w = doJSON(ot, http.MethodGet, "/api/ot/stock", pharmTok, "")
 	mustCode(t, w, http.StatusForbidden)
-	w = doJSON(ot, http.MethodPut, fmt.Sprintf("/api/ot/stock/%d", moved.OtBatchID), pharmTok, `{"qty":99}`)
+	w = doJSON(ot, http.MethodPut, fmt.Sprintf("/api/ot/stock/%d", otBatchID), pharmTok, `{"qty":99}`)
 	mustCode(t, w, http.StatusForbidden)
-	if batchQty(t, sqlDB, batchID) != mainQty || otBatchQty(t, sqlDB, moved.OtBatchID) != otQty {
+	if batchQty(t, sqlDB, batchID) != mainQty || otBatchQty(t, sqlDB, otBatchID) != otQty {
 		t.Fatal("forbidden calls changed qty")
 	}
 
@@ -532,6 +542,39 @@ func TestOtStockTransferAndReturn(t *testing.T) {
 	if len(listed.Batches) != 1 || listed.Batches[0].Qty != otQty || listed.Batches[0].BatchNo != "LOT-9" {
 		t.Fatalf("on hand %+v", listed.Batches)
 	}
+	b0 := listed.Batches[0]
+	if b0.ItemCode == "" || b0.ItemName == "" || b0.PackL3Unit == "" {
+		t.Fatalf("stock row missing item/pack fields %+v", b0)
+	}
+	if b0.BuyPriceMMK < 0 || b0.SellPriceMMK < 0 {
+		t.Fatalf("stock row prices %+v", b0)
+	}
+}
+
+func confirmTransferBill(t *testing.T, h *Pharmacy, token string, itemID, qty int64) pharmacyBill {
+	t.Helper()
+	w := doJSON(h, http.MethodPost, "/api/pharmacy/bills", token, fmt.Sprintf(`{
+		"kind":"transfer",
+		"lines":[{"item_id":%d,"tablet_qty":%d,"unit_price_mmk":1}]
+	}`, itemID, qty))
+	mustCode(t, w, http.StatusCreated)
+	var draft pharmacyBill
+	if err := json.Unmarshal(w.Body.Bytes(), &draft); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(draft.BillNo, "TO-") || draft.PatientName != "OT" {
+		t.Fatalf("draft slip %+v", draft.BillNo)
+	}
+	w = doJSON(h, http.MethodPost, fmt.Sprintf("/api/pharmacy/bills/%d/transfer", draft.ID), token, "{}")
+	mustCode(t, w, http.StatusOK)
+	var done pharmacyBill
+	if err := json.Unmarshal(w.Body.Bytes(), &done); err != nil {
+		t.Fatal(err)
+	}
+	if done.Status != "paid" || done.BillNo != draft.BillNo {
+		t.Fatalf("confirmed slip %+v", done)
+	}
+	return done
 }
 
 func insertBatchAt(t *testing.T, sqlDB *sql.DB, itemID int64, location, batchNo, expiry string, qty int64) int64 {

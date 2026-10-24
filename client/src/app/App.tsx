@@ -32,13 +32,15 @@ import { landingFor, portalForRole, viewInPortal } from "./portal";
 import { ServerIpButton } from "./ServerIpButton";
 import { ServerSetupForm } from "./ServerSetupForm";
 import type { ConnState, NavIntent, NavSectionId, PortalId, View } from "./types";
+import { OpdDoctorsPage } from "@/pages/opd/OpdDoctorsPage";
 import { OpdPage } from "@/pages/opd/OpdPage";
+import { OpdServicesPage } from "@/pages/opd/OpdServicesPage";
 import { OtPage } from "@/pages/ot/OtPage";
 import { OtStockPage } from "@/pages/ot/OtStockPage";
 import { PharmacyBillingPage } from "@/pages/pharmacy/PharmacyBillingPage";
 import { PharmacyPage } from "@/pages/pharmacy/PharmacyPage";
-import { DoctorsTab } from "@/pages/settings/DoctorsTab";
-import { ServicesTab } from "@/pages/settings/ServicesTab";
+import { PharmacyReturnPage } from "@/pages/pharmacy/PharmacyReturnPage";
+import { PharmacyTransferPage } from "@/pages/pharmacy/PharmacyTransferPage";
 import { SettingsPage } from "@/pages/settings/SettingsPage";
 
 export default function App() {
@@ -412,6 +414,18 @@ export default function App() {
             initialMode={shownIntent.billingMode ?? "list"}
           />
         ) : null}
+        {portal === "pharmacy" && shownView === "pharmacy_return" ? (
+          <PharmacyReturnPage
+            key={pageKey}
+            initialMode={shownIntent.billingMode ?? "list"}
+          />
+        ) : null}
+        {portal === "pharmacy" && shownView === "pharmacy_transfer" ? (
+          <PharmacyTransferPage
+            key={pageKey}
+            initialMode={shownIntent.billingMode ?? "list"}
+          />
+        ) : null}
         {portal === "opd" && shownView === "opd" && (opdScreen === "doctors" || opdScreen === "services") ? (
           <section key={pageKey} className="desk-maintenance">
             <div className="tabs" role="tablist" aria-label={t("navMaintenance")}>
@@ -438,7 +452,7 @@ export default function App() {
                 {t("maintenanceServices")}
               </button>
             </div>
-            {opdScreen === "doctors" ? <DoctorsTab /> : <ServicesTab />}
+            {opdScreen === "doctors" ? <OpdDoctorsPage /> : <OpdServicesPage />}
           </section>
         ) : null}
         {portal === "opd" && shownView === "opd" && opdScreen === "bill" ? (
@@ -448,7 +462,7 @@ export default function App() {
           <OtStockPage key={pageKey} />
         ) : null}
         {portal === "ot" && shownView === "ot" && shownIntent.otMode !== "stock" ? (
-          <OtPage key={pageKey} initialMode={shownIntent.otMode ?? "list"} />
+          <OtPage key={pageKey} />
         ) : null}
       </div>
 

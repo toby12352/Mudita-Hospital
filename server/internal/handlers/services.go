@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"mudita-hospital/server/internal/audit"
@@ -46,6 +47,8 @@ func (h *Services) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.list(w, r)
 		case path == "/" && r.Method == http.MethodPost:
 			h.create(w, r)
+		case path == "/history" && r.Method == http.MethodGet:
+			h.history(w, r)
 		case strings.HasPrefix(path, "/") && r.Method == http.MethodGet:
 			h.get(w, r, path)
 		case strings.HasPrefix(path, "/") && r.Method == http.MethodPut:
@@ -126,6 +129,82 @@ func (h *Services) get(w http.ResponseWriter, r *http.Request, path string) {
 		return
 	}
 	writeJSON(w, http.StatusOK, svc)
+}
+
+type serviceHistoryRow struct {
+	ID            int64   `json:"id"`
+	ActorUsername string  `json:"actor_username,omitempty"`
+	Action        string  `json:"action"`
+	EntityID      *int64  `json:"entity_id,omitempty"`
+	Code          string  `json:"code"`
+	Name          string  `json:"name"`
+	Detail        *string `json:"detail,omitempty"`
+	CreatedAt     string  `json:"created_at"`
+}
+
+func (h *Services) history(w http.ResponseWriter, r *http.Request) {
+	limit := 100
+	if v := strings.TrimSpace(r.URL.Query().Get("limit")); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 || n > 500 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "limit must be 1–500"})
+			return
+		}
+		limit = n
+	}
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+
+	var args []any
+	sqlStr := `
+		SELECT a.id, COALESCE(u.username, ''), a.action, a.entity_id,
+			COALESCE(s.code, ''), COALESCE(s.name, ''), a.detail, a.created_at
+		FROM audit_logs a
+		LEFT JOIN users u ON u.id = a.actor_user_id
+		LEFT JOIN services s ON s.id = a.entity_id
+		WHERE a.entity = 'service'
+	`
+	if q != "" {
+		like := "%" + q + "%"
+		sqlStr += ` AND (
+			COALESCE(u.username, '') LIKE ? OR a.action LIKE ?
+			OR COALESCE(s.code, '') LIKE ? OR COALESCE(s.name, '') LIKE ?
+			OR COALESCE(a.detail, '') LIKE ?
+		)`
+		args = append(args, like, like, like, like, like)
+	}
+	sqlStr += " ORDER BY a.id DESC LIMIT ?"
+	args = append(args, limit)
+
+	rows, err := h.DB.Query(sqlStr, args...)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "history list failed"})
+		return
+	}
+	defer rows.Close()
+
+	out := make([]serviceHistoryRow, 0)
+	for rows.Next() {
+		var row serviceHistoryRow
+		var entityID sql.NullInt64
+		var detail sql.NullString
+		if err := rows.Scan(
+			&row.ID, &row.ActorUsername, &row.Action, &entityID,
+			&row.Code, &row.Name, &detail, &row.CreatedAt,
+		); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "scan failed"})
+			return
+		}
+		if entityID.Valid {
+			id := entityID.Int64
+			row.EntityID = &id
+		}
+		if detail.Valid {
+			s := detail.String
+			row.Detail = &s
+		}
+		out = append(out, row)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"history": out})
 }
 
 func (h *Services) create(w http.ResponseWriter, r *http.Request) {

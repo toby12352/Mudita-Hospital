@@ -6,15 +6,18 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 )
 
 // Config holds server runtime settings. Env vars override config.json.
 type Config struct {
-	Host                 string `json:"host"`
-	Port                 int    `json:"port"`
-	DBPath               string `json:"db_path"`
-	BackupDir            string `json:"backup_dir"`
-	BackupIntervalHours  int    `json:"backup_interval_hours"`
+	Host                string `json:"host"`
+	Port                int    `json:"port"`
+	DBPath              string `json:"db_path"`
+	BackupDir           string `json:"backup_dir"`
+	BackupIntervalHours int    `json:"backup_interval_hours"`
+	// AllowTraining enables POST /api/demo/seed and /reset. Missing in config.json stays false.
+	AllowTraining bool `json:"allow_training"`
 }
 
 func Default() Config {
@@ -29,6 +32,7 @@ func Default() Config {
 
 // Load reads optional configPath (JSON), then applies env overrides:
 // MUDITA_HOST, MUDITA_PORT, MUDITA_DB_PATH, MUDITA_BACKUP_DIR, MUDITA_BACKUP_INTERVAL_HOURS.
+// MUDITA_ALLOW_TRAINING=1 turns training seed/reset on. Any other non-empty value turns it off.
 func Load(configPath string) (Config, error) {
 	cfg := Default()
 
@@ -66,6 +70,9 @@ func Load(configPath string) (Config, error) {
 			return cfg, fmt.Errorf("MUDITA_BACKUP_INTERVAL_HOURS: %w", err)
 		}
 		cfg.BackupIntervalHours = h
+	}
+	if v := os.Getenv("MUDITA_ALLOW_TRAINING"); v != "" {
+		cfg.AllowTraining = v == "1" || strings.EqualFold(v, "true")
 	}
 
 	return cfg, nil

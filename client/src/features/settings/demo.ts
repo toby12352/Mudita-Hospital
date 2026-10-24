@@ -1,12 +1,14 @@
 import { apiFetch } from "@/shared/api";
 
 export type DemoStatus = {
-  training_doctors: number;
-  training_services: number;
-  training_items: number;
-  training_opd_bills: number;
-  training_ot_bills: number;
-  seeded: boolean;
+  enabled: boolean;
+  training_doctors?: number;
+  training_services?: number;
+  training_items?: number;
+  training_opd_bills?: number;
+  training_ot_bills?: number;
+  training_pharmacy_bills?: number;
+  seeded?: boolean;
 };
 
 export async function fetchDemoStatus(): Promise<DemoStatus> {

@@ -9,11 +9,11 @@ import {
   formatStockHistoryLine,
   formatStockHistoryReason,
   getPharmacyItem,
+  labelPharmacyBatch,
   listPharmacyItems,
   listStockMovements,
   packFromItem,
   restockItem,
-  transferBatchToOt,
   type PharmacyItem,
   type StockMovement,
 } from "@/features/pharmacy/api";
@@ -45,13 +45,15 @@ export function PharmacyItemsTab({
   const [itemMovements, setItemMovements] = useState<StockMovement[]>([]);
 
   const [restockQty, setRestockQty] = useState("");
+  const [restockBatchNo, setRestockBatchNo] = useState("");
   const [restockExpiry, setRestockExpiry] = useState("");
   const [restockBuy, setRestockBuy] = useState("");
   const [restockSell, setRestockSell] = useState("");
   const [adjustDelta, setAdjustDelta] = useState("");
+  const [adjustBatchNo, setAdjustBatchNo] = useState("");
+  const [adjustExpiry, setAdjustExpiry] = useState("");
   const [adjustReason, setAdjustReason] = useState("");
   const [codeLookup, setCodeLookup] = useState("");
-  const [sendQty, setSendQty] = useState<Record<number, string>>({});
   const [notice, setNotice] = useState<string | null>(null);
 
   async function reload(search = q) {
@@ -68,10 +70,13 @@ export function PharmacyItemsTab({
 
   function resetRestockFields(item: PharmacyItem) {
     setRestockQty("");
+    setRestockBatchNo("");
     setRestockExpiry("");
     setRestockBuy(String(item.buy_price_mmk || 0));
     setRestockSell(String(item.sell_price_mmk || 0));
     setAdjustDelta("");
+    setAdjustBatchNo("");
+    setAdjustExpiry("");
     setAdjustReason("");
   }
 
@@ -101,7 +106,6 @@ export function PharmacyItemsTab({
       ]);
       setPanelItem(item);
       setItemMovements(movements);
-      setSendQty({});
       setNotice(null);
       setPanelMode("view");
     } catch (err) {
@@ -228,11 +232,16 @@ export function PharmacyItemsTab({
       const body: {
         qty: number;
         qty_unit?: "purchase" | "stock";
-        expiry_date?: string;
+        batch_no: string;
+        expiry_date: string;
         buy_price_mmk?: number;
         sell_price_mmk?: number;
-      } = { qty, qty_unit: "purchase" };
-      if (restockExpiry.trim()) body.expiry_date = restockExpiry.trim();
+      } = {
+        qty,
+        qty_unit: "purchase",
+        batch_no: restockBatchNo.trim(),
+        expiry_date: restockExpiry.trim(),
+      };
       if (restockBuy.trim() !== "") body.buy_price_mmk = Number(restockBuy) || 0;
       if (restockSell.trim() !== "") body.sell_price_mmk = Number(restockSell) || 0;
       const item = await restockItem(panelItem.id, body);
@@ -255,12 +264,21 @@ export function PharmacyItemsTab({
       const delta = Number(adjustDelta);
       if (!delta) throw new Error(userMessage("Adjustment qty must be non-zero"));
       if (!adjustReason.trim()) throw new Error(userMessage("Reason required"));
-      const item = await adjustItem(panelItem.id, {
-        qty_delta: delta,
-        reason: adjustReason.trim(),
-      });
+      const body: {
+        qty_delta: number;
+        reason: string;
+        batch_no?: string;
+        expiry_date?: string;
+      } = { qty_delta: delta, reason: adjustReason.trim() };
+      if (delta > 0) {
+        body.batch_no = adjustBatchNo.trim();
+        body.expiry_date = adjustExpiry.trim();
+      }
+      const item = await adjustItem(panelItem.id, body);
       setPanelItem(item);
       setAdjustDelta("");
+      setAdjustBatchNo("");
+      setAdjustExpiry("");
       setAdjustReason("");
       await reload();
     } catch (err) {
@@ -270,30 +288,23 @@ export function PharmacyItemsTab({
     }
   }
 
-  async function onSendToOt(e: FormEvent, batchId: number, onHand: number) {
-    e.preventDefault();
+  async function onLabelBatch(batchId: number, batchNo: string, expiry: string) {
     if (!panelItem) return;
     setBusy(true);
     setError(null);
     setNotice(null);
     try {
-      const qty = Number(sendQty[batchId]);
-      if (!qty || qty <= 0) throw new Error(t("qtyMustBePositive"));
-      if (qty > onHand) throw new Error(t("qtyExceedsMain"));
-      const result = await transferBatchToOt(batchId, qty);
-      setSendQty((prev) => ({ ...prev, [batchId]: "" }));
-      setNotice(
-        `${t("sentToOt")}: ${result.qty.toLocaleString()}. ${t("otOnHand")} ${result.ot_qty.toLocaleString()}. ${t("inStock")} ${result.pharmacy_qty.toLocaleString()}.`,
-      );
-      const [item, movements] = await Promise.all([
-        getPharmacyItem(panelItem.id),
-        listStockMovements({ itemId: panelItem.id }),
-      ]);
+      if (!batchNo.trim()) throw new Error(t("errBatchRequired"));
+      if (!expiry.trim()) throw new Error(t("errExpiryRequired"));
+      const item = await labelPharmacyBatch(panelItem.id, batchId, {
+        batch_no: batchNo.trim(),
+        expiry_date: expiry.trim(),
+      });
       setPanelItem(item);
-      setItemMovements(movements);
+      setNotice(t("saved"));
       await reload();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Send failed");
+      setError(err instanceof Error ? err.message : "Label failed");
     } finally {
       setBusy(false);
     }
@@ -501,6 +512,15 @@ export function PharmacyItemsTab({
                 />
               </div>
               <div className="drug-info-field">
+                <span className="drug-info-label">{t("batchNumber")}</span>
+                <input
+                  className="drug-info-input"
+                  value={restockBatchNo}
+                  onChange={(e) => setRestockBatchNo(e.target.value)}
+                  disabled={busy}
+                />
+              </div>
+              <div className="drug-info-field">
                 <span className="drug-info-label">{t("expiry")}</span>
                 <DatePicker value={restockExpiry} onChange={setRestockExpiry} disabled={busy} />
               </div>
@@ -554,6 +574,23 @@ export function PharmacyItemsTab({
                     disabled={busy}
                   />
                 </div>
+                {Number(adjustDelta) > 0 ? (
+                  <>
+                    <div className="drug-info-field">
+                      <span className="drug-info-label">{t("batchNumber")}</span>
+                      <input
+                        className="drug-info-input"
+                        value={adjustBatchNo}
+                        onChange={(e) => setAdjustBatchNo(e.target.value)}
+                        disabled={busy}
+                      />
+                    </div>
+                    <div className="drug-info-field">
+                      <span className="drug-info-label">{t("expiry")}</span>
+                      <DatePicker value={adjustExpiry} onChange={setAdjustExpiry} disabled={busy} />
+                    </div>
+                  </>
+                ) : null}
                 <div className="drug-info-field">
                   <span className="drug-info-label">{t("reason")}</span>
                   <input
@@ -599,6 +636,14 @@ export function PharmacyItemsTab({
                     value={restockQty}
                     onChange={(e) => setRestockQty(e.target.value)}
                     required
+                    disabled={busy}
+                  />
+                </label>
+                <label className="field">
+                  <span>{t("batchNumber")}</span>
+                  <input
+                    value={restockBatchNo}
+                    onChange={(e) => setRestockBatchNo(e.target.value)}
                     disabled={busy}
                   />
                 </label>
@@ -657,6 +702,22 @@ export function PharmacyItemsTab({
                       disabled={busy}
                     />
                   </label>
+                  {Number(adjustDelta) > 0 ? (
+                    <>
+                      <label className="field">
+                        <span>{t("batchNumber")}</span>
+                        <input
+                          value={adjustBatchNo}
+                          onChange={(e) => setAdjustBatchNo(e.target.value)}
+                          disabled={busy}
+                        />
+                      </label>
+                      <label className="field field-compact">
+                        <span>{t("expiry")}</span>
+                        <DatePicker value={adjustExpiry} onChange={setAdjustExpiry} disabled={busy} />
+                      </label>
+                    </>
+                  ) : null}
                   <label className="field">
                     <span>{t("reason")}</span>
                     <input
@@ -721,28 +782,15 @@ export function PharmacyItemsTab({
                   <span>{b.qty.toLocaleString()}</span>
                   <span>{b.expiry_date || t("none")}</span>
                   <span>
-                    {b.location_code === "MAIN" && b.qty > 0 ? (
-                      <form
-                        className="drug-setup-send-row"
-                        onSubmit={(e) => void onSendToOt(e, b.id, b.qty)}
-                      >
-                        <input
-                          className="drug-info-input"
-                          type="number"
-                          min={1}
-                          max={b.qty}
-                          value={sendQty[b.id] ?? ""}
-                          onChange={(e) =>
-                            setSendQty((prev) => ({ ...prev, [b.id]: e.target.value }))
-                          }
-                          disabled={busy}
-                          required
-                          aria-label={t("qtyToSend")}
-                        />
-                        <button type="submit" className="btn ghost" disabled={busy}>
-                          {t("sendToOt")}
-                        </button>
-                      </form>
+                    {b.location_code === "MAIN" && batchNeedsLabel(b.batch_no, b.expiry_date) ? (
+                      <LabelBatchFields
+                        batchNo={b.batch_no}
+                        expiry={b.expiry_date ?? ""}
+                        busy={busy}
+                        compact
+                        t={t}
+                        onSave={(batchNo, expiry) => void onLabelBatch(b.id, batchNo, expiry)}
+                      />
                     ) : null}
                   </span>
                 </div>
@@ -804,26 +852,14 @@ export function PharmacyItemsTab({
                       {t("batch")} {b.batch_no || "—"} · {t("expiry")} {b.expiry_date || t("none")}
                     </p>
                   </div>
-                  {b.location_code === "MAIN" && b.qty > 0 ? (
-                    <form className="btn-row" onSubmit={(e) => void onSendToOt(e, b.id, b.qty)}>
-                      <label className="field field-compact">
-                        <span>{t("qtyToSend")}</span>
-                        <input
-                          type="number"
-                          min={1}
-                          max={b.qty}
-                          value={sendQty[b.id] ?? ""}
-                          onChange={(e) =>
-                            setSendQty((prev) => ({ ...prev, [b.id]: e.target.value }))
-                          }
-                          disabled={busy}
-                          required
-                        />
-                      </label>
-                      <button type="submit" className="btn ghost" disabled={busy}>
-                        {t("sendToOt")}
-                      </button>
-                    </form>
+                  {b.location_code === "MAIN" && batchNeedsLabel(b.batch_no, b.expiry_date) ? (
+                    <LabelBatchFields
+                      batchNo={b.batch_no}
+                      expiry={b.expiry_date ?? ""}
+                      busy={busy}
+                      t={t}
+                      onSave={(batchNo, expiry) => void onLabelBatch(b.id, batchNo, expiry)}
+                    />
                   ) : null}
                 </li>
               ))}
@@ -852,5 +888,51 @@ export function PharmacyItemsTab({
         )
       ) : null}
     </div>
+  );
+}
+
+function batchNeedsLabel(batchNo: string, expiry: string | null): boolean {
+  return !batchNo.trim() || !expiry;
+}
+
+function LabelBatchFields({
+  batchNo,
+  expiry,
+  busy,
+  compact = false,
+  t,
+  onSave,
+}: {
+  batchNo: string;
+  expiry: string;
+  busy: boolean;
+  compact?: boolean;
+  t: (k: string) => string;
+  onSave: (batchNo: string, expiry: string) => void;
+}) {
+  const [no, setNo] = useState(batchNo);
+  const [exp, setExp] = useState(expiry);
+  return (
+    <form
+      className={compact ? "drug-setup-send-row" : "btn-row"}
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSave(no, exp);
+      }}
+    >
+      <input
+        className={compact ? "drug-info-input" : undefined}
+        value={no}
+        onChange={(e) => setNo(e.target.value)}
+        disabled={busy}
+        required
+        aria-label={t("batchNumber")}
+        placeholder={t("batchNumber")}
+      />
+      <DatePicker value={exp} onChange={setExp} disabled={busy} />
+      <button type="submit" className="btn ghost" disabled={busy}>
+        {t("saveLabel")}
+      </button>
+    </form>
   );
 }

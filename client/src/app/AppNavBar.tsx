@@ -19,11 +19,12 @@ function sectionForView(view: View, intent: NavIntent, fallback: NavSectionId): 
   }
   if (view === "ot") {
     const mode = intent.otMode ?? "case";
-    if (mode === "list") return "ot_history";
     if (mode === "stock") return "ot_stock";
     return "ot_bill";
   }
   if (view === "pharmacy_billing") return "pharmacy";
+  if (view === "pharmacy_return") return "pharmacy_return";
+  if (view === "pharmacy_transfer") return "pharmacy_transfer";
   if (view === "pharmacy") return "stock";
   if (view === "settings") return "settings";
   return fallback;
@@ -63,12 +64,6 @@ function entriesFor(portal: PortalId): RadioEntry[] {
         action: { kind: "navigate", view: "ot", intent: { otMode: "case" } },
       },
       {
-        id: "ot_history",
-        labelKey: "navOtHistory",
-        enabled: true,
-        action: { kind: "navigate", view: "ot", intent: { otMode: "list" } },
-      },
-      {
         id: "ot_stock",
         labelKey: "navOtCupboard",
         enabled: true,
@@ -85,6 +80,26 @@ function entriesFor(portal: PortalId): RadioEntry[] {
         action: {
           kind: "navigate",
           view: "pharmacy_billing",
+          intent: { billingMode: "edit" },
+        },
+      },
+      {
+        id: "pharmacy_return",
+        labelKey: "navReturnIn",
+        enabled: true,
+        action: {
+          kind: "navigate",
+          view: "pharmacy_return",
+          intent: { billingMode: "edit" },
+        },
+      },
+      {
+        id: "pharmacy_transfer",
+        labelKey: "navTransferToOt",
+        enabled: true,
+        action: {
+          kind: "navigate",
+          view: "pharmacy_transfer",
           intent: { billingMode: "edit" },
         },
       },

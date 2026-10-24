@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -15,7 +16,7 @@ import (
 // Pharmacy handles inventory items, batches, restock, and stock movements.
 // Stock on hand = SUM(item_batches.qty) at a location (default MAIN).
 // FEFO (earliest expiry first) is used for Admin adjust-down without batch_id.
-// Pharmacy sale, OPD sale, and OT issue use the same order but skip expired batches.
+// Pharmacy and OPD sales skip expired batches and batches with no expiry.
 type Pharmacy struct {
 	DB *sql.DB
 }
@@ -101,6 +102,7 @@ type itemCreateRequest struct {
 	SellPriceMMK   *int64 `json:"sell_price_mmk,omitempty"` // per L3
 	InitialQty     *int64 `json:"initial_qty,omitempty"`    // boxes when initial_qty_unit=purchase
 	InitialQtyUnit string `json:"initial_qty_unit"`         // purchase | stock (default purchase)
+	BatchNo        string `json:"batch_no"`
 	ExpiryDate     string `json:"expiry_date"`
 	Active         *bool  `json:"active,omitempty"`
 }
@@ -124,15 +126,18 @@ type itemUpdateRequest struct {
 type restockRequest struct {
 	Qty          int64  `json:"qty"`      // boxes when qty_unit omitted/purchase
 	QtyUnit      string `json:"qty_unit"` // purchase | stock (default purchase)
+	BatchNo      string `json:"batch_no"`
 	ExpiryDate   string `json:"expiry_date"`
 	BuyPriceMMK  *int64 `json:"buy_price_mmk,omitempty"`  // per box
 	SellPriceMMK *int64 `json:"sell_price_mmk,omitempty"` // per L3
 }
 
 type adjustRequest struct {
-	QtyDelta int64  `json:"qty_delta"`
-	Reason   string `json:"reason"`
-	BatchID  *int64 `json:"batch_id,omitempty"`
+	QtyDelta   int64  `json:"qty_delta"`
+	Reason     string `json:"reason"`
+	BatchID    *int64 `json:"batch_id,omitempty"`
+	BatchNo    string `json:"batch_no"`
+	ExpiryDate string `json:"expiry_date"`
 }
 
 func (h *Pharmacy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -146,8 +151,6 @@ func (h *Pharmacy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case path == "/locations" && r.Method == http.MethodGet:
 			h.listLocations(w, r)
-		case path == "/transfers" && r.Method == http.MethodPost:
-			h.transferToOT(w, r)
 		case path == "/movements" && r.Method == http.MethodGet:
 			h.listMovements(w, r)
 		case path == "/bills" && r.Method == http.MethodGet:
@@ -156,6 +159,8 @@ func (h *Pharmacy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.createPharmacyBill(w, r)
 		case strings.HasPrefix(path, "/bills/") && strings.HasSuffix(path, "/pay") && r.Method == http.MethodPost:
 			h.payPharmacyBill(w, r, path)
+		case strings.HasPrefix(path, "/bills/") && strings.HasSuffix(path, "/transfer") && r.Method == http.MethodPost:
+			h.transferPharmacyBill(w, r, path)
 		case strings.HasPrefix(path, "/bills/") && strings.HasSuffix(path, "/void") && r.Method == http.MethodPost:
 			h.voidPharmacyBill(w, r, path)
 		case strings.HasPrefix(path, "/bills/") && strings.HasSuffix(path, "/print") && r.Method == http.MethodGet:
@@ -172,6 +177,8 @@ func (h *Pharmacy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.restock(w, r, path)
 		case strings.HasPrefix(path, "/items/") && strings.HasSuffix(path, "/adjust") && r.Method == http.MethodPost:
 			h.adjust(w, r, path)
+		case strings.HasPrefix(path, "/items/") && strings.HasSuffix(path, "/label") && r.Method == http.MethodPost:
+			h.labelBatch(w, r, path)
 		case strings.HasPrefix(path, "/items/") && strings.HasSuffix(path, "/batches") && r.Method == http.MethodGet:
 			h.listBatches(w, r, path)
 		case strings.HasPrefix(path, "/items/") && r.Method == http.MethodGet:
@@ -342,10 +349,20 @@ func (h *Pharmacy) createItem(w http.ResponseWriter, r *http.Request) {
 			initialQty = initialQty * units.UnitsPerPurchase
 		}
 	}
-	expiry, err := normalizeExpiry(req.ExpiryDate)
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "expiry_date must be YYYY-MM-DD"})
-		return
+	var openingBatch string
+	var openingExpiry *string
+	if initialQty > 0 {
+		batchNo, expiry, reqErr := optionalBatchIdentity(req.BatchNo, req.ExpiryDate)
+		if reqErr != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": reqErr.Error()})
+			return
+		}
+		openingBatch, openingExpiry = batchNo, expiry
+	} else if strings.TrimSpace(req.ExpiryDate) != "" {
+		if _, err := normalizeExpiry(req.ExpiryDate); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "expiry_date must be YYYY-MM-DD"})
+			return
+		}
 	}
 
 	tx, err := h.DB.Begin()
@@ -385,15 +402,11 @@ func (h *Pharmacy) createItem(w http.ResponseWriter, r *http.Request) {
 	uid := user.ID
 
 	if initialQty > 0 {
-		bres, err := tx.Exec(`
-			INSERT INTO item_batches (item_id, location_code, batch_no, expiry_date, qty)
-			VALUES (?, 'MAIN', '', ?, ?)
-		`, itemID, expiry, initialQty)
+		batchID, err := findOrCreateBatch(tx, itemID, "MAIN", openingBatch, openingExpiry, initialQty)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "batch create failed"})
 			return
 		}
-		batchID, _ := bres.LastInsertId()
 		if _, err := tx.Exec(`
 			INSERT INTO stock_movements (item_id, batch_id, location_code, movement_type, qty_delta, reason, actor_user_id)
 			VALUES (?, ?, 'MAIN', 'PURCHASE', ?, 'Initial stock', ?)
@@ -410,6 +423,7 @@ func (h *Pharmacy) createItem(w http.ResponseWriter, r *http.Request) {
 
 	audit.WriteAudit(h.DB, &uid, "create", "item", &itemID, map[string]any{
 		"code": req.Code, "name": req.Name, "category": req.Category, "initial_qty": initialQty,
+		"batch_no": openingBatch, "expiry_date": openingExpiry,
 	})
 
 	item, err := loadPharmacyItem(h.DB, itemID, true)
@@ -631,9 +645,9 @@ func (h *Pharmacy) restock(w http.ResponseWriter, r *http.Request, path string) 
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "qty must be > 0"})
 		return
 	}
-	expiry, err := normalizeExpiry(req.ExpiryDate)
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "expiry_date must be YYYY-MM-DD"})
+	batchNo, expiry, reqErr := optionalBatchIdentity(req.BatchNo, req.ExpiryDate)
+	if reqErr != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": reqErr.Error()})
 		return
 	}
 
@@ -692,7 +706,7 @@ func (h *Pharmacy) restock(w http.ResponseWriter, r *http.Request, path string) 
 		}
 	}
 
-	batchID, err := findOrCreateBatch(tx, id, "MAIN", "", expiry, stockQty)
+	batchID, err := findOrCreateBatch(tx, id, "MAIN", batchNo, expiry, stockQty)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "batch failed"})
 		return
@@ -715,7 +729,7 @@ func (h *Pharmacy) restock(w http.ResponseWriter, r *http.Request, path string) 
 
 	audit.WriteAudit(h.DB, &uid, "restock", "item", &id, map[string]any{
 		"qty": stockQty, "qty_entered": req.Qty, "qty_unit": qtyUnit,
-		"batch_id": batchID, "expiry_date": expiry,
+		"batch_id": batchID, "batch_no": batchNo, "expiry_date": expiry,
 	})
 
 	item, err := loadPharmacyItem(h.DB, id, true)
@@ -805,7 +819,12 @@ func (h *Pharmacy) adjust(w http.ResponseWriter, r *http.Request, path string) {
 			return
 		}
 	} else if req.QtyDelta > 0 {
-		batchID, err := findOrCreateBatch(tx, id, "MAIN", "ADJ", nil, req.QtyDelta)
+		batchNo, expiry, reqErr := optionalBatchIdentity(req.BatchNo, req.ExpiryDate)
+		if reqErr != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": reqErr.Error()})
+			return
+		}
+		batchID, err := findOrCreateBatch(tx, id, "MAIN", batchNo, expiry, req.QtyDelta)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "batch failed"})
 			return
@@ -969,6 +988,39 @@ func normalizeExpiry(raw string) (*string, error) {
 		return nil, err
 	}
 	return &raw, nil
+}
+
+// optionalBatchIdentity accepts a blank batch number and a blank expiry.
+// A non-empty expiry must be YYYY-MM-DD.
+func optionalBatchIdentity(batchNo, expiryRaw string) (string, *string, error) {
+	batchNo = strings.TrimSpace(batchNo)
+	expiry, err := normalizeExpiry(expiryRaw)
+	if err != nil {
+		return "", nil, fmt.Errorf("expiry_date must be YYYY-MM-DD")
+	}
+	return batchNo, expiry, nil
+}
+
+// requireBatchIdentity rejects a label that has no batch number or expiry.
+func requireBatchIdentity(batchNo, expiryRaw string) (string, *string, error) {
+	batchNo, expiry, err := optionalBatchIdentity(batchNo, expiryRaw)
+	if err != nil {
+		return "", nil, err
+	}
+	if batchNo == "" {
+		return "", nil, fmt.Errorf("batch_no required")
+	}
+	if expiry == nil {
+		return "", nil, fmt.Errorf("expiry_date must be YYYY-MM-DD")
+	}
+	return batchNo, expiry, nil
+}
+
+func batchUnlabeled(batchNo string, expiry sql.NullString) bool {
+	if strings.TrimSpace(batchNo) == "" {
+		return true
+	}
+	return !expiry.Valid || strings.TrimSpace(expiry.String) == ""
 }
 
 func findOrCreateBatch(tx *sql.Tx, itemID int64, location, batchNo string, expiry *string, addQty int64) (int64, error) {

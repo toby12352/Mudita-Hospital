@@ -745,6 +745,7 @@ export type PharmacyItemWrite = {
   sell_price_mmk: number;
   initial_qty?: number;
   initial_qty_unit?: "purchase" | "stock";
+  batch_no?: string;
   expiry_date?: string;
   active?: boolean;
 };
@@ -775,7 +776,8 @@ export async function restockItem(
   body: {
     qty: number;
     qty_unit?: "purchase" | "stock";
-    expiry_date?: string;
+    batch_no: string;
+    expiry_date: string;
     buy_price_mmk?: number;
     sell_price_mmk?: number;
   },
@@ -799,16 +801,20 @@ export type StockTransfer = {
   ot_qty: number;
 };
 
-export async function transferBatchToOt(batchId: number, qty: number): Promise<StockTransfer> {
-  return apiFetch<StockTransfer>("/api/pharmacy/transfers", {
+export async function labelPharmacyBatch(
+  itemId: number,
+  batchId: number,
+  body: { batch_no: string; expiry_date: string },
+): Promise<PharmacyItem> {
+  return apiFetch<PharmacyItem>(`/api/pharmacy/items/${itemId}/batches/${batchId}/label`, {
     method: "POST",
-    body: JSON.stringify({ batch_id: batchId, qty }),
+    body: JSON.stringify(body),
   });
 }
 
 export async function adjustItem(
   id: number,
-  body: { qty_delta: number; reason: string; batch_id?: number },
+  body: { qty_delta: number; reason: string; batch_id?: number; batch_no?: string; expiry_date?: string },
 ): Promise<PharmacyItem> {
   return apiFetch<PharmacyItem>(`/api/pharmacy/items/${id}/adjust`, {
     method: "POST",
@@ -828,10 +834,17 @@ export async function listStockMovements(opts?: {
   return res.movements;
 }
 
-export async function listPharmacyBills(q = "", status = ""): Promise<PharmacyBill[]> {
+export type PharmacyBillKind = "sale" | "return" | "transfer";
+
+export async function listPharmacyBills(
+  q = "",
+  status = "",
+  kind?: PharmacyBillKind,
+): Promise<PharmacyBill[]> {
   const params = new URLSearchParams();
   if (q) params.set("q", q);
   if (status) params.set("status", status);
+  if (kind) params.set("kind", kind);
   const qs = params.toString() ? `?${params}` : "";
   const res = await apiFetch<{ bills: PharmacyBill[] }>(`/api/pharmacy/bills${qs}`);
   return res.bills;
@@ -849,6 +862,7 @@ export async function createPharmacyBill(body: {
   description?: string;
   lines: PharmacyBillLine[];
   save_patient?: boolean;
+  kind?: PharmacyBillKind;
 }): Promise<PharmacyBill> {
   return apiFetch<PharmacyBill>("/api/pharmacy/bills", {
     method: "POST",
@@ -878,6 +892,10 @@ export async function payPharmacyBill(id: number): Promise<PharmacyBill> {
   return apiFetch<PharmacyBill>(`/api/pharmacy/bills/${id}/pay`, { method: "POST", body: "{}" });
 }
 
+export async function transferPharmacyBill(id: number): Promise<PharmacyBill> {
+  return apiFetch<PharmacyBill>(`/api/pharmacy/bills/${id}/transfer`, { method: "POST", body: "{}" });
+}
+
 export async function voidPharmacyBill(id: number, reason: string): Promise<PharmacyBill> {
   return apiFetch<PharmacyBill>(`/api/pharmacy/bills/${id}/void`, {
     method: "POST",
@@ -887,12 +905,12 @@ export async function voidPharmacyBill(id: number, reason: string): Promise<Phar
 
 export async function printPharmacyBill(
   id: number,
-  opts?: { onPrinted?: () => void | Promise<void> },
+  opts?: { title?: string; note?: string; onPrinted?: () => void | Promise<void> },
 ): Promise<void> {
-  return fetchAndPreviewPrint(
-    `/api/pharmacy/bills/${id}/print`,
-    getApiBase,
-    getStoredToken,
-    { title: "Pharmacy receipt", receipt: true, onPrinted: opts?.onPrinted },
-  );
+  return fetchAndPreviewPrint(`/api/pharmacy/bills/${id}/print`, getApiBase, getStoredToken, {
+    title: opts?.title ?? "Pharmacy receipt",
+    note: opts?.note,
+    receipt: true,
+    onPrinted: opts?.onPrinted,
+  });
 }

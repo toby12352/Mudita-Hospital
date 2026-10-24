@@ -768,6 +768,14 @@ ALTER TABLE ot_case_items ADD COLUMN sale_qty INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE ot_case_items ADD COLUMN sale_unit TEXT NOT NULL DEFAULT '';
 `,
 	},
+	{
+		Name: "014_transfer_bill_link",
+		SQL: `
+-- A Transfer to OT slip can be voided back onto the same cupboard row.
+-- Older handover rows have no bill.
+ALTER TABLE stock_transfers ADD COLUMN pharmacy_bill_id INTEGER REFERENCES pharmacy_bills(id);
+`,
+	},
 }
 
 // Migrate applies pending migrations inside a transaction per migration.

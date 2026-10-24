@@ -9,6 +9,15 @@ export type OtStockBatch = {
   item_code: string;
   item_name: string;
   stock_unit: string;
+  dosage: string;
+  buy_price_mmk: number;
+  sell_price_mmk: number;
+  pack_l1_qty: number;
+  pack_l1_unit: string;
+  pack_l2_qty: number;
+  pack_l2_unit: string;
+  pack_l3_qty: number;
+  pack_l3_unit: string;
   batch_no: string;
   expiry_date: string | null;
   qty: number;
@@ -17,6 +26,16 @@ export type OtStockBatch = {
 export async function listOtStock(): Promise<OtStockBatch[]> {
   const res = await apiFetch<{ batches: OtStockBatch[] }>("/api/ot/stock");
   return res.batches ?? [];
+}
+
+export async function labelOtBatch(
+  batchId: number,
+  body: { batch_no: string; expiry_date: string },
+): Promise<{ id: number; batch_no: string; expiry_date: string; qty: number }> {
+  return apiFetch(`/api/ot/stock/${batchId}/label`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }
 
 export async function returnOtStock(batchId: number, qty: number): Promise<StockTransfer> {
@@ -231,7 +250,12 @@ export async function voidOtBill(id: number, reason: string): Promise<OtBill> {
 
 async function printHtml(
   path: string,
-  opts: { title: string; receipt?: boolean; onPrinted?: () => void | Promise<void> },
+  opts: {
+    title: string;
+    note?: string;
+    receipt?: boolean;
+    onPrinted?: () => void | Promise<void>;
+  },
 ): Promise<void> {
   return fetchAndPreviewPrint(path, getApiBase, getStoredToken, opts);
 }
@@ -245,10 +269,11 @@ export async function printOtPickList(caseId: number): Promise<void> {
 
 export async function printOtBill(
   billId: number,
-  opts?: { onPrinted?: () => void | Promise<void> },
+  opts?: { title?: string; note?: string; onPrinted?: () => void | Promise<void> },
 ): Promise<void> {
   return printHtml(`/api/ot/bills/${billId}/print`, {
-    title: "OT receipt",
+    title: opts?.title ?? "OT receipt",
+    note: opts?.note,
     receipt: true,
     onPrinted: opts?.onPrinted,
   });

@@ -54,7 +54,12 @@ export function viewInPortal(view: View, portal: PortalId): boolean {
     case "ot":
       return view === "ot";
     case "pharmacy":
-      return view === "pharmacy" || view === "pharmacy_billing";
+      return (
+        view === "pharmacy" ||
+        view === "pharmacy_billing" ||
+        view === "pharmacy_return" ||
+        view === "pharmacy_transfer"
+      );
     case "settings":
       return view === "settings";
   }

@@ -7,6 +7,7 @@ import {
   saleUnitsFromPack,
 } from "@/features/pharmacy/api";
 import { BillLineGrid, createBillLineEntry } from "@/shared/BillLineGrid";
+import { BillCollectNote, BillPayPrintButton, moneyStatusLabel } from "@/shared/BillPayPrint";
 import { formatMMK } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
 
@@ -27,6 +28,10 @@ type Props = {
   error: string | null;
   okMsg: string | null;
   isDraft: boolean;
+  /** Desk mode: sales, customer return-in, or transfer to the OT cupboard. */
+  kind?: "sale" | "return" | "transfer";
+  /** Transfer desk: Transfer was pressed and Confirm transfer is showing. */
+  awaitingConfirm?: boolean;
   onPatientName: (v: string) => void;
   onPatientPhone: (v: string) => void;
   onPatientAge: (v: string) => void;
@@ -39,10 +44,13 @@ type Props = {
   onUnitChange: (index: number, unitId: string) => void;
   onRemoveLine: (index: number) => void;
   onPrint: () => void;
+  onTransfer?: () => void;
+  onConfirmTransfer?: () => void;
   onConfirm: () => void;
   onHistory: () => void;
   onDelete: () => void;
   onCancel: () => void;
+  onNewBill: () => void;
 };
 
 export function PharmacyBillForm(props: Props) {
@@ -62,15 +70,21 @@ export function PharmacyBillForm(props: Props) {
     error,
     okMsg,
     isDraft,
+    kind = "sale",
+    awaitingConfirm = false,
   } = props;
 
+  const isReturn = kind === "return";
+  const isTransfer = kind === "transfer";
   const total = lines.reduce((s, l) => s + l.line_total_mmk, 0);
   const paid = billStatus === "paid" ? total : 0;
   const balance = billStatus === "paid" ? 0 : total;
   return (
     <section className="opd-bill-desk">
       <div className="opd-bill-desk-main">
-        <h2 className="opd-bill-desk-title">{t("pharmacyBilling")}</h2>
+        <h2 className="opd-bill-desk-title">
+          {isTransfer ? t("pharmacyTransferToOt") : isReturn ? t("pharmacyReturnIn") : t("pharmacyBilling")}
+        </h2>
 
         <div className="opd-bill-header">
           <div className="opd-bill-header-col">
@@ -79,13 +93,19 @@ export function PharmacyBillForm(props: Props) {
               <span className="opd-bill-readonly">{billNo || "—"}</span>
             </div>
             <div className="opd-bill-field">
-              <span className="opd-bill-label">{t("payType")}</span>
-              <span className="opd-bill-readonly">{t("payTypeCash")}</span>
+              <span className="opd-bill-label">
+                {isTransfer ? t("destination") : t("payType")}
+              </span>
+              <span className="opd-bill-readonly">
+                {isTransfer ? t("transferDestination") : t("payTypeCash")}
+              </span>
             </div>
+            {isTransfer ? null : (
             <label className="opd-bill-field">
               <span className="opd-bill-label">{t("patientName")}</span>
               <input
                 className="opd-bill-input grow"
+                data-focus="bill-patient"
                 value={patientName}
                 disabled={!isDraft}
                 onChange={(e) => props.onPatientName(e.target.value)}
@@ -93,6 +113,8 @@ export function PharmacyBillForm(props: Props) {
                 aria-label={t("patientName")}
               />
             </label>
+            )}
+            {isTransfer ? null : (
             <label className="opd-bill-field">
               <span className="opd-bill-label">{t("phone")}</span>
               <input
@@ -102,6 +124,8 @@ export function PharmacyBillForm(props: Props) {
                 onChange={(e) => props.onPatientPhone(e.target.value)}
               />
             </label>
+            )}
+            {isTransfer ? null : (
             <label className="opd-bill-field">
               <span className="opd-bill-label">{t("age")}</span>
               <input
@@ -113,6 +137,8 @@ export function PharmacyBillForm(props: Props) {
               />
               <span className="opd-bill-unit">{t("ageYearsShort")}</span>
             </label>
+            )}
+            {isTransfer ? null : (
             <label className="opd-bill-field">
               <span className="opd-bill-label">{t("gender")}</span>
               <select
@@ -127,13 +153,17 @@ export function PharmacyBillForm(props: Props) {
                 <option value="Other">{t("genderOther")}</option>
               </select>
             </label>
+            )}
             <label className="opd-bill-field">
               <span className="opd-bill-label">{t("remark")}</span>
               <input
                 className="opd-bill-input grow"
+                data-focus={isTransfer ? "bill-patient" : undefined}
                 value={description}
                 disabled={!isDraft}
                 onChange={(e) => props.onDescription(e.target.value)}
+                autoFocus={isTransfer}
+                aria-label={t("remark")}
               />
             </label>
           </div>
@@ -143,12 +173,14 @@ export function PharmacyBillForm(props: Props) {
               <span className="opd-bill-label">{t("dateTime")}</span>
               <span className="opd-bill-readonly">{displayWhen}</span>
             </div>
-            {billStatus && billStatus !== "draft" ? (
-              <div className="opd-bill-field">
-                <span className="opd-bill-label">{t("status")}</span>
-                <span className="opd-bill-readonly">{billStatus.toUpperCase()}</span>
-              </div>
-            ) : null}
+            <div className="opd-bill-field">
+              <span className="opd-bill-label">{t("status")}</span>
+              <span className="opd-bill-readonly">
+                {isTransfer && billStatus === "paid"
+                  ? t("transferred")
+                  : moneyStatusLabel(billStatus || "draft", t)}
+              </span>
+            </div>
           </div>
         </div>
 
@@ -231,6 +263,12 @@ export function PharmacyBillForm(props: Props) {
               <span>{t("totalLabel")}</span>
               <span>{formatMMK(total)}</span>
             </div>
+            {isTransfer ? (
+              <p className="opd-bill-collect-note">
+                {awaitingConfirm ? t("transferArmedNote") : t("transferConfirmNote")}
+              </p>
+            ) : (
+            <>
             <div className="opd-bill-total-row">
               <span>{t("paid")}</span>
               <span>{formatMMK(paid)}</span>
@@ -239,6 +277,13 @@ export function PharmacyBillForm(props: Props) {
               <span>{t("balance")}</span>
               <span>{formatMMK(balance)}</span>
             </div>
+            <BillCollectNote
+              status={billStatus || "draft"}
+              balance={balance}
+              sideEffect={isReturn ? "pharmacy_return" : "pharmacy"}
+            />
+            </>
+            )}
           </div>
         </div>
 
@@ -247,22 +292,51 @@ export function PharmacyBillForm(props: Props) {
       </div>
 
       <aside className="opd-bill-rail" aria-label={t("billActions")}>
-        <button
-          type="button"
-          className="opd-bill-rail-btn"
-          disabled={busy}
+        {isTransfer ? (
+          <>
+            <button
+              type="button"
+              className={`opd-bill-rail-btn${isDraft && !awaitingConfirm ? " opd-bill-rail-btn--accent" : ""}`}
+              disabled={busy || !isDraft || awaitingConfirm}
+              onClick={props.onTransfer}
+            >
+              <span className="opd-bill-rail-btn-text">
+                <span className="opd-bill-rail-btn-label">{t("transferAction")}</span>
+                <span className="opd-bill-rail-btn-sub">{t("transferCheckLines")}</span>
+              </span>
+              {awaitingConfirm ? null : <kbd>F7</kbd>}
+            </button>
+            {awaitingConfirm && isDraft ? (
+              <button
+                type="button"
+                className="opd-bill-rail-btn opd-bill-rail-btn--accent"
+                disabled={busy}
+                onClick={props.onConfirmTransfer}
+              >
+                <span className="opd-bill-rail-btn-text">
+                  <span className="opd-bill-rail-btn-label">{t("confirmTransfer")}</span>
+                  <span className="opd-bill-rail-btn-sub">{t("movesToOtCupboard")}</span>
+                </span>
+                <kbd>F7</kbd>
+              </button>
+            ) : null}
+          </>
+        ) : (
+        <BillPayPrintButton
+          status={billStatus || "draft"}
+          busy={busy}
           onClick={props.onPrint}
-        >
-          <span>{t("print")}</span>
-          <kbd>F7</kbd>
-        </button>
+          collectLabel={isReturn ? t("returnAndPrint") : undefined}
+          collectSubLabel={isReturn ? t("marksReturned") : undefined}
+        />
+        )}
         <button
           type="button"
           className="opd-bill-rail-btn"
           disabled={busy || !isDraft}
           onClick={props.onConfirm}
         >
-          <span>{t("confirm")}</span>
+          <span>{t("saveDraft")}</span>
           <kbd>F5</kbd>
         </button>
         <button type="button" className="opd-bill-rail-btn" disabled={busy} onClick={props.onHistory}>
@@ -276,6 +350,15 @@ export function PharmacyBillForm(props: Props) {
         <button type="button" className="opd-bill-rail-btn" disabled={busy} onClick={props.onCancel}>
           <span>{t("cancel")}</span>
           <kbd>F10</kbd>
+        </button>
+        <button
+          type="button"
+          className={`opd-bill-rail-btn${!isDraft ? " opd-bill-rail-btn--accent" : ""}`}
+          disabled={busy}
+          onClick={props.onNewBill}
+        >
+          <span>{isTransfer ? t("newTransfer") : isReturn ? t("newReturn") : t("newBill")}</span>
+          <kbd>F2</kbd>
         </button>
       </aside>
     </section>

@@ -157,6 +157,8 @@ func (h *OT) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.listOtStock(w, r)
 		case strings.HasPrefix(path, "/stock/") && strings.HasSuffix(path, "/return") && r.Method == http.MethodPost:
 			h.returnOtStock(w, r, path)
+		case strings.HasPrefix(path, "/stock/") && strings.HasSuffix(path, "/label") && r.Method == http.MethodPost:
+			h.labelOtBatch(w, r, path)
 		case path == "/cases" && r.Method == http.MethodGet:
 			h.listCases(w, r)
 		case path == "/cases" && r.Method == http.MethodPost:

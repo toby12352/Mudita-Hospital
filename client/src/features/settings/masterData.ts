@@ -96,6 +96,22 @@ export async function deactivateDoctor(id: number): Promise<void> {
   await apiFetch(`/api/doctors/${id}`, { method: "DELETE" });
 }
 
+export type DoctorHistoryRow = {
+  id: number;
+  actor_username?: string;
+  action: string;
+  entity_id?: number;
+  name: string;
+  detail?: string;
+  created_at: string;
+};
+
+export async function listDoctorHistory(q = ""): Promise<DoctorHistoryRow[]> {
+  const qs = q ? `?q=${encodeURIComponent(q)}` : "";
+  const res = await apiFetch<{ history: DoctorHistoryRow[] }>(`/api/doctors/history${qs}`);
+  return res.history;
+}
+
 export async function listServices(q = ""): Promise<Service[]> {
   const qs = q ? `?q=${encodeURIComponent(q)}&all=1` : "?all=1";
   const res = await apiFetch<{ services: Service[] }>(`/api/services${qs}`);
@@ -125,6 +141,23 @@ export async function updateService(
 
 export async function deactivateService(id: number): Promise<void> {
   await apiFetch(`/api/services/${id}`, { method: "DELETE" });
+}
+
+export type ServiceHistoryRow = {
+  id: number;
+  actor_username?: string;
+  action: string;
+  entity_id?: number;
+  code: string;
+  name: string;
+  detail?: string;
+  created_at: string;
+};
+
+export async function listServiceHistory(q = ""): Promise<ServiceHistoryRow[]> {
+  const qs = q ? `?q=${encodeURIComponent(q)}` : "";
+  const res = await apiFetch<{ history: ServiceHistoryRow[] }>(`/api/services/history${qs}`);
+  return res.history;
 }
 
 export async function listUsers(q = ""): Promise<ManagedUser[]> {

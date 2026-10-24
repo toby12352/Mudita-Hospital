@@ -66,11 +66,23 @@ type pharmacyBillWriteRequest struct {
 	Description     string             `json:"description"`
 	Lines           []pharmacyBillLine `json:"lines"`
 	SavePatient     bool               `json:"save_patient"`
+	// Kind is "sale" (default), "return", or "transfer".
+	// Returns get RT-###### numbers. Transfers to OT get TO-###### numbers.
+	Kind string `json:"kind,omitempty"`
+}
+
+func isPharmacyReturnBillNo(billNo string) bool {
+	return strings.HasPrefix(billNo, "RT-")
+}
+
+func isPharmacyTransferBillNo(billNo string) bool {
+	return strings.HasPrefix(billNo, "TO-")
 }
 
 func (h *Pharmacy) listPharmacyBills(w http.ResponseWriter, r *http.Request) {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	status := strings.TrimSpace(r.URL.Query().Get("status"))
+	kind := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("kind")))
 	query := `
 		SELECT id, bill_no, patient_id, patient_name, patient_phone, patient_age_years, patient_gender,
 		       description, status, total_mmk, paid_at, paid_by_user_id, voided_at, voided_by_user_id,
@@ -79,6 +91,19 @@ func (h *Pharmacy) listPharmacyBills(w http.ResponseWriter, r *http.Request) {
 	`
 	args := make([]any, 0)
 	where := make([]string, 0)
+	switch kind {
+	case "return":
+		where = append(where, "bill_no LIKE 'RT-%'")
+	case "sale":
+		where = append(where, "bill_no LIKE 'PH-%'")
+	case "transfer":
+		where = append(where, "bill_no LIKE 'TO-%'")
+	case "":
+		// All pharmacy bills (sales, returns, and transfers).
+	default:
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "kind must be sale, return, or transfer"})
+		return
+	}
 	if status != "" {
 		where = append(where, "status = ?")
 		args = append(args, status)
@@ -120,6 +145,23 @@ func (h *Pharmacy) createPharmacyBill(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req.PatientName = strings.TrimSpace(req.PatientName)
+	kind := strings.ToLower(strings.TrimSpace(req.Kind))
+	prefix := "PH"
+	switch kind {
+	case "", "sale":
+		kind = "sale"
+	case "return":
+		prefix = "RT"
+	case "transfer":
+		prefix = "TO"
+		if req.PatientName == "" {
+			req.PatientName = "OT"
+		}
+		req.SavePatient = false
+	default:
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "kind must be sale, return, or transfer"})
+		return
+	}
 	if req.PatientName == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "patient_name required"})
 		return
@@ -151,7 +193,7 @@ func (h *Pharmacy) createPharmacyBill(w http.ResponseWriter, r *http.Request) {
 		patientID = &pid
 	}
 
-	billNo, err := nextPharmacyBillNo(tx)
+	billNo, err := nextPharmacyBillNo(tx, prefix)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "bill number failed"})
 		return
@@ -180,7 +222,7 @@ func (h *Pharmacy) createPharmacyBill(w http.ResponseWriter, r *http.Request) {
 	}
 
 	audit.WriteAudit(h.DB, &uid, "create", "pharmacy_bill", &billID, map[string]any{
-		"bill_no": billNo, "total_mmk": total,
+		"bill_no": billNo, "total_mmk": total, "kind": kind,
 	})
 
 	bill, err := loadPharmacyBill(h.DB, billID)
@@ -223,10 +265,6 @@ func (h *Pharmacy) updatePharmacyBill(w http.ResponseWriter, r *http.Request, pa
 		return
 	}
 	req.PatientName = strings.TrimSpace(req.PatientName)
-	if req.PatientName == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "patient_name required"})
-		return
-	}
 	lines, total, errMsg := normalizePharmacyBillLines(h.DB, req.Lines)
 	if errMsg != "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": errMsg})
@@ -244,8 +282,8 @@ func (h *Pharmacy) updatePharmacyBill(w http.ResponseWriter, r *http.Request, pa
 	}
 	defer tx.Rollback()
 
-	var status string
-	err = tx.QueryRow(`SELECT status FROM pharmacy_bills WHERE id = ?`, id).Scan(&status)
+	var status, billNo string
+	err = tx.QueryRow(`SELECT status, bill_no FROM pharmacy_bills WHERE id = ?`, id).Scan(&status, &billNo)
 	if err == sql.ErrNoRows {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		return
@@ -256,6 +294,15 @@ func (h *Pharmacy) updatePharmacyBill(w http.ResponseWriter, r *http.Request, pa
 	}
 	if status != "draft" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "only draft bills can be edited"})
+		return
+	}
+	if isPharmacyTransferBillNo(billNo) {
+		if req.PatientName == "" {
+			req.PatientName = "OT"
+		}
+		req.SavePatient = false
+	} else if req.PatientName == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "patient_name required"})
 		return
 	}
 
@@ -319,14 +366,18 @@ func (h *Pharmacy) payPharmacyBill(w http.ResponseWriter, r *http.Request, path 
 	}
 	defer tx.Rollback()
 
-	var status string
-	err = tx.QueryRow(`SELECT status FROM pharmacy_bills WHERE id = ?`, id).Scan(&status)
+	var status, billNo string
+	err = tx.QueryRow(`SELECT status, bill_no FROM pharmacy_bills WHERE id = ?`, id).Scan(&status, &billNo)
 	if err == sql.ErrNoRows {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		return
 	}
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "load failed"})
+		return
+	}
+	if isPharmacyTransferBillNo(billNo) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "transfer bills are confirmed, not paid"})
 		return
 	}
 	if status != "draft" {
@@ -345,10 +396,18 @@ func (h *Pharmacy) payPharmacyBill(w http.ResponseWriter, r *http.Request, path 
 	}
 
 	uid := user.ID
+	isReturn := isPharmacyReturnBillNo(billNo)
 	for _, line := range lines {
-		if _, err := fefoDeductPharmacySale(tx, id, line.ID, line.ItemID, line.StockQty, uid); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-			return
+		if isReturn {
+			if err := creditPharmacyReturn(tx, id, line.ID, line.ItemID, line.StockQty, uid); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+				return
+			}
+		} else {
+			if _, err := fefoDeductPharmacySale(tx, id, line.ID, line.ItemID, line.StockQty, uid); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+				return
+			}
 		}
 	}
 
@@ -366,7 +425,88 @@ func (h *Pharmacy) payPharmacyBill(w http.ResponseWriter, r *http.Request, path 
 		return
 	}
 
-	audit.WriteAudit(h.DB, &uid, "pay", "pharmacy_bill", &id, map[string]any{"method": "cash"})
+	payAction := "pay"
+	if isReturn {
+		payAction = "return"
+	}
+	audit.WriteAudit(h.DB, &uid, payAction, "pharmacy_bill", &id, map[string]any{"method": "cash", "bill_no": billNo})
+
+	bill, err := loadPharmacyBill(h.DB, id)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "reload failed"})
+		return
+	}
+	writeJSON(w, http.StatusOK, bill)
+}
+
+func (h *Pharmacy) transferPharmacyBill(w http.ResponseWriter, r *http.Request, path string) {
+	user := middleware.UserFromContext(r.Context())
+	idPath := strings.TrimSuffix(strings.TrimPrefix(path, "/bills/"), "/transfer")
+	id, ok := parseID("/" + idPath)
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid id"})
+		return
+	}
+
+	tx, err := h.DB.Begin()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "tx failed"})
+		return
+	}
+	defer tx.Rollback()
+
+	var status, billNo string
+	err = tx.QueryRow(`SELECT status, bill_no FROM pharmacy_bills WHERE id = ?`, id).Scan(&status, &billNo)
+	if err == sql.ErrNoRows {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return
+	}
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "load failed"})
+		return
+	}
+	if !isPharmacyTransferBillNo(billNo) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "only a transfer slip can be confirmed"})
+		return
+	}
+	if status != "draft" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "only a draft transfer can be confirmed"})
+		return
+	}
+
+	lines, err := loadPharmacyBillLinesTx(tx, id)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "lines load failed"})
+		return
+	}
+	if len(lines) == 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bill has no lines"})
+		return
+	}
+
+	uid := user.ID
+	for _, line := range lines {
+		if err := transferSaleableMainToOt(tx, id, line.ID, line.ItemID, line.StockQty, uid, billNo); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+	}
+
+	n, err := execPayDraft(tx, "pharmacy_bills", id, uid)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "transfer failed"})
+		return
+	}
+	if n == 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "only a draft transfer can be confirmed"})
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "commit failed"})
+		return
+	}
+
+	audit.WriteAudit(h.DB, &uid, "transfer", "pharmacy_bill", &id, map[string]any{"bill_no": billNo})
 
 	bill, err := loadPharmacyBill(h.DB, id)
 	if err != nil {
@@ -419,7 +559,19 @@ func (h *Pharmacy) voidPharmacyBill(w http.ResponseWriter, r *http.Request, path
 	}
 
 	uid := user.ID
-	if status == "paid" {
+	isReturn := isPharmacyReturnBillNo(billNo)
+	isTransfer := isPharmacyTransferBillNo(billNo)
+	if status == "paid" && isTransfer {
+		reason := fmt.Sprintf("void %s: %s", billNo, req.Reason)
+		if err := reverseTransfersForBill(tx, id, uid, reason); err != nil {
+			code := http.StatusInternalServerError
+			if strings.HasPrefix(err.Error(), "cannot void transfer") {
+				code = http.StatusBadRequest
+			}
+			writeJSON(w, code, map[string]string{"error": err.Error()})
+			return
+		}
+	} else if status == "paid" {
 		rows, err := tx.Query(`
 			SELECT id, item_id, batch_id, qty FROM pharmacy_bill_stock_allocs WHERE bill_id = ?
 		`, id)
@@ -444,18 +596,45 @@ func (h *Pharmacy) voidPharmacyBill(w http.ResponseWriter, r *http.Request, path
 
 		reason := fmt.Sprintf("void %s: %s", billNo, req.Reason)
 		for _, a := range allocs {
-			if _, err := tx.Exec(`
-				UPDATE item_batches SET qty = qty + ?, updated_at = datetime('now') WHERE id = ?
-			`, a.qty, a.batchID); err != nil {
-				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "stock restore failed"})
-				return
-			}
-			if _, err := tx.Exec(`
-				INSERT INTO stock_movements (item_id, batch_id, location_code, movement_type, qty_delta, reason, actor_user_id)
-				VALUES (?, ?, 'MAIN', 'RETURN', ?, ?, ?)
-			`, a.itemID, a.batchID, a.qty, reason, uid); err != nil {
-				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "movement failed"})
-				return
+			if isReturn {
+				var have int64
+				if err := tx.QueryRow(`SELECT qty FROM item_batches WHERE id = ?`, a.batchID).Scan(&have); err != nil {
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "batch load failed"})
+					return
+				}
+				if have < a.qty {
+					writeJSON(w, http.StatusBadRequest, map[string]string{
+						"error": fmt.Sprintf("cannot void return: batch has %d, need to remove %d", have, a.qty),
+					})
+					return
+				}
+				if _, err := tx.Exec(`
+					UPDATE item_batches SET qty = qty - ?, updated_at = datetime('now') WHERE id = ?
+				`, a.qty, a.batchID); err != nil {
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "stock reverse failed"})
+					return
+				}
+				if _, err := tx.Exec(`
+					INSERT INTO stock_movements (item_id, batch_id, location_code, movement_type, qty_delta, reason, actor_user_id)
+					VALUES (?, ?, 'MAIN', 'ADJUST', ?, ?, ?)
+				`, a.itemID, a.batchID, -a.qty, reason, uid); err != nil {
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "movement failed"})
+					return
+				}
+			} else {
+				if _, err := tx.Exec(`
+					UPDATE item_batches SET qty = qty + ?, updated_at = datetime('now') WHERE id = ?
+				`, a.qty, a.batchID); err != nil {
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "stock restore failed"})
+					return
+				}
+				if _, err := tx.Exec(`
+					INSERT INTO stock_movements (item_id, batch_id, location_code, movement_type, qty_delta, reason, actor_user_id)
+					VALUES (?, ?, 'MAIN', 'RETURN', ?, ?, ?)
+				`, a.itemID, a.batchID, a.qty, reason, uid); err != nil {
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "movement failed"})
+					return
+				}
 			}
 		}
 	}
@@ -528,9 +707,16 @@ func (h *Pharmacy) printPharmacyBill(w http.ResponseWriter, r *http.Request, pat
 		})
 	}
 
+	title := "PHARMACY RECEIPT"
+	if isPharmacyReturnBillNo(bill.BillNo) {
+		title = "PHARMACY RETURN"
+	}
+	if isPharmacyTransferBillNo(bill.BillNo) {
+		title = "TRANSFER TO OT"
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write([]byte(renderThermalReceiptHTML(hosp, receiptBill{
-		Title:         "PHARMACY RECEIPT",
+		Title:         title,
 		BillNo:        bill.BillNo,
 		Status:        bill.Status,
 		PatientName:   bill.PatientName,
@@ -638,7 +824,10 @@ func normalizePharmacyBillLines(db *sql.DB, in []pharmacyBillLine) ([]pharmacyBi
 	return out, total, ""
 }
 
-func nextPharmacyBillNo(tx *sql.Tx) (string, error) {
+func nextPharmacyBillNo(tx *sql.Tx, prefix string) (string, error) {
+	if prefix == "" {
+		prefix = "PH"
+	}
 	var n int64
 	err := tx.QueryRow(`SELECT next_num FROM pharmacy_bill_number_seq WHERE id = 1`).Scan(&n)
 	if err != nil {
@@ -647,7 +836,32 @@ func nextPharmacyBillNo(tx *sql.Tx) (string, error) {
 	if _, err := tx.Exec(`UPDATE pharmacy_bill_number_seq SET next_num = next_num + 1 WHERE id = 1`); err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("PH-%06d", n), nil
+	return fmt.Sprintf("%s-%06d", prefix, n), nil
+}
+
+// creditPharmacyReturn adds qty onto the unlabeled MAIN batch and records allocs.
+func creditPharmacyReturn(tx *sql.Tx, billID, lineID, itemID, qty, actorUserID int64) error {
+	if qty <= 0 {
+		return fmt.Errorf("return qty must be > 0")
+	}
+	batchID, err := findOrCreateBatch(tx, itemID, "MAIN", "", nil, qty)
+	if err != nil {
+		return fmt.Errorf("stock credit failed")
+	}
+	reason := fmt.Sprintf("Pharmacy bill return line %d", lineID)
+	if _, err := tx.Exec(`
+		INSERT INTO stock_movements (item_id, batch_id, location_code, movement_type, qty_delta, reason, actor_user_id)
+		VALUES (?, ?, 'MAIN', 'RETURN', ?, ?, ?)
+	`, itemID, batchID, qty, reason, actorUserID); err != nil {
+		return fmt.Errorf("movement failed")
+	}
+	if _, err := tx.Exec(`
+		INSERT INTO pharmacy_bill_stock_allocs (bill_id, bill_line_id, item_id, batch_id, qty)
+		VALUES (?, ?, ?, ?, ?)
+	`, billID, lineID, itemID, batchID, qty); err != nil {
+		return fmt.Errorf("alloc failed")
+	}
+	return nil
 }
 
 func insertPharmacyBillLines(tx *sql.Tx, billID int64, lines []pharmacyBillLine) error {

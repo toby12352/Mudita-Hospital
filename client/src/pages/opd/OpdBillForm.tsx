@@ -1,5 +1,6 @@
 import type { OpdBillLine, OpdDoctor, OpdService } from "@/features/opd/api";
 import { BillLineGrid, createBillLineEntry } from "@/shared/BillLineGrid";
+import { BillCollectNote, BillPayPrintButton, moneyStatusLabel } from "@/shared/BillPayPrint";
 import { formatMMK } from "@/shared/format";
 import { Typeahead } from "@/shared/Typeahead";
 import { useI18n } from "@/shared/i18n";
@@ -42,6 +43,7 @@ type Props = {
   onHistory: () => void;
   onDelete: () => void;
   onCancel: () => void;
+  onNewBill: () => void;
 };
 
 export function OpdBillForm(props: Props) {
@@ -88,6 +90,7 @@ export function OpdBillForm(props: Props) {
               <span className="opd-bill-label">{t("idName")}</span>
               <input
                 className="opd-bill-input grow"
+                data-focus="bill-patient"
                 value={isDraft ? patientName : idName}
                 disabled={!isDraft}
                 onChange={(e) => props.onPatientName(e.target.value)}
@@ -201,12 +204,10 @@ export function OpdBillForm(props: Props) {
               <span className="opd-bill-label">{t("opdNo")}</span>
               <span className="opd-bill-readonly">{billNo || "—"}</span>
             </div>
-            {billStatus && billStatus !== "draft" ? (
-              <div className="opd-bill-field">
-                <span className="opd-bill-label">{t("status")}</span>
-                <span className="opd-bill-readonly">{billStatus.toUpperCase()}</span>
-              </div>
-            ) : null}
+            <div className="opd-bill-field">
+              <span className="opd-bill-label">{t("status")}</span>
+              <span className="opd-bill-readonly">{moneyStatusLabel(billStatus || "draft", t)}</span>
+            </div>
           </div>
         </div>
 
@@ -274,6 +275,7 @@ export function OpdBillForm(props: Props) {
               <span>{t("balance")}</span>
               <span>{formatMMK(balance)}</span>
             </div>
+            <BillCollectNote status={billStatus || "draft"} balance={balance} />
           </div>
         </div>
 
@@ -282,22 +284,14 @@ export function OpdBillForm(props: Props) {
       </div>
 
       <aside className="opd-bill-rail" aria-label={t("billActions")}>
-        <button
-          type="button"
-          className="opd-bill-rail-btn"
-          disabled={busy}
-          onClick={props.onPrint}
-        >
-          <span>{t("print")}</span>
-          <kbd>F7</kbd>
-        </button>
+        <BillPayPrintButton status={billStatus || "draft"} busy={busy} onClick={props.onPrint} />
         <button
           type="button"
           className="opd-bill-rail-btn"
           disabled={busy || !isDraft}
           onClick={props.onConfirm}
         >
-          <span>{t("confirm")}</span>
+          <span>{t("saveDraft")}</span>
           <kbd>F5</kbd>
         </button>
         <button type="button" className="opd-bill-rail-btn" disabled={busy} onClick={props.onHistory}>
@@ -311,6 +305,15 @@ export function OpdBillForm(props: Props) {
         <button type="button" className="opd-bill-rail-btn" disabled={busy} onClick={props.onCancel}>
           <span>{t("cancel")}</span>
           <kbd>F10</kbd>
+        </button>
+        <button
+          type="button"
+          className={`opd-bill-rail-btn${!isDraft ? " opd-bill-rail-btn--accent" : ""}`}
+          disabled={busy}
+          onClick={props.onNewBill}
+        >
+          <span>{t("newBill")}</span>
+          <kbd>F2</kbd>
         </button>
       </aside>
     </section>

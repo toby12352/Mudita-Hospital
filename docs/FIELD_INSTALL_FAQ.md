@@ -209,7 +209,7 @@ Do **not** use `uninstall-server.ps1 -RemoveData`, do **not** Restore a backup a
 
 ### What is Training mode?
 
-Admin → Settings → **Training**: seeds `DEMO-` items and `[TRAINING]` sample bills for practice. Reset only removes DEMO / TRAINING rows — not real users. Prefer a practice DB or Training seed for demos; do not teach on live cash without the hospital’s OK.
+Admin → Settings → **Training**: seeds `DEMO-` items and `[TRAINING]` sample bills for practice. Reset only removes DEMO / TRAINING rows — not real users. Prefer a practice DB or Training seed for demos; do not teach on live cash without the hospital’s OK. Seed and reset stay off unless that server is started with `MUDITA_ALLOW_TRAINING=1` (laptop and demo installs set it; the hospital beta install does not).
 
 ### Language / staff cheat sheet?
 

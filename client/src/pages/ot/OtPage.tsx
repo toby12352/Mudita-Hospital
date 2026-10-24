@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   createOtBillFromCase,
   createOtCase,
@@ -6,7 +6,6 @@ import {
   findOtServiceByCode,
   getOtBill,
   getOtCase,
-  listOtCases,
   listOtCatalogItems,
   listOtDoctors,
   listOtServices,
@@ -29,12 +28,18 @@ import {
   type SaleUnit,
 } from "@/features/pharmacy/api";
 import { BillLineGrid, createBillLineEntry, type BillLineGridRow } from "@/shared/BillLineGrid";
+import { BillCollectNote, BillPayPrintButton, moneyStatusLabel } from "@/shared/BillPayPrint";
+import { userMessage } from "@/shared/errors";
 import { formatMMK } from "@/shared/format";
 import { Typeahead } from "@/shared/Typeahead";
 import { useI18n } from "@/shared/i18n";
 import { OtHistoryModal, type OtHistoryModalMode } from "./OtHistoryModal";
 
+/** Client-only cart order. Not sent to the API. */
+type OtDraftItem = OtCaseItem & { seq: number };
+
 type OtServiceLine = {
+  seq: number;
   ref_id: number;
   code: string;
   description: string;
@@ -42,7 +47,9 @@ type OtServiceLine = {
   unit_price_mmk: number;
 };
 
-function servicesFromBill(b: OtBill): OtServiceLine[] {
+type OtServiceLineFields = Omit<OtServiceLine, "seq">;
+
+function servicesFromBill(b: OtBill): OtServiceLineFields[] {
   return (b.lines ?? [])
     .filter((l) => l.line_type === "service" && l.ref_id)
     .map((l) => ({
@@ -54,12 +61,8 @@ function servicesFromBill(b: OtBill): OtServiceLine[] {
     }));
 }
 
-export function OtPage({ initialMode = "list" }: { initialMode?: "list" | "case" }) {
+export function OtPage() {
   const { t } = useI18n();
-  const [mode, setMode] = useState<"list" | "case" | "bill">(initialMode);
-  const [q, setQ] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
-  const [cases, setCases] = useState<OtCase[]>([]);
   const [doctors, setDoctors] = useState<OtDoctor[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
@@ -78,29 +81,35 @@ export function OtPage({ initialMode = "list" }: { initialMode?: "list" | "case"
   const [doctorFeeMmk, setDoctorFeeMmk] = useState(0);
   const [procedureName, setProcedureName] = useState("");
   const [notes, setNotes] = useState("");
-  const [items, setItems] = useState<OtCaseItem[]>([]);
+  const [items, setItems] = useState<OtDraftItem[]>([]);
   const [onHandByItemId, setOnHandByItemId] = useState<Record<number, number>>({});
   const [services, setServices] = useState<OtServiceLine[]>([]);
   const [otBillId, setOtBillId] = useState<number | null>(null);
   const [createdAt, setCreatedAt] = useState<string | null>(null);
   const [nowTick, setNowTick] = useState(() => Date.now());
+  /** Next client cart seq. Not persisted. */
+  const nextSeqRef = useRef(1);
+  const servicesRef = useRef(services);
+  servicesRef.current = services;
 
   const [bill, setBill] = useState<OtBill | null>(null);
-  const [voidReason, setVoidReason] = useState("");
 
   const isDraft = caseStatus === "draft";
 
-  async function reloadList(search = q, status = statusFilter) {
-    setCases(await listOtCases(search, status));
+  function takeSeq() {
+    return nextSeqRef.current++;
+  }
+
+  function stampServiceSeqs(lines: OtServiceLineFields[]): OtServiceLine[] {
+    return lines.map((s) => ({ ...s, seq: takeSeq() }));
   }
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const [c, d] = await Promise.all([listOtCases("", ""), listOtDoctors()]);
+        const d = await listOtDoctors();
         if (cancelled) return;
-        setCases(c);
         setDoctors(d);
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Load failed");
@@ -130,6 +139,7 @@ export function OtPage({ initialMode = "list" }: { initialMode?: "list" | "case"
     setDoctorFeeMmk(0);
     setProcedureName("");
     setNotes("");
+    nextSeqRef.current = 1;
     setItems([]);
     setOnHandByItemId({});
     setServices([]);
@@ -157,7 +167,12 @@ export function OtPage({ initialMode = "list" }: { initialMode?: "list" | "case"
     return t("stockOnlyLeft").replace("{qty}", String(Math.max(0, left))).replace("{unit}", unit);
   }
 
-  function applyCase(c: OtCase) {
+  /**
+   * Reload case header and cupboard lines.
+   * `serviceFields` undefined keeps the current draft services (renumbered after items).
+   * Pass [] to clear, or bill service fields to replace.
+   */
+  function applyCase(c: OtCase, serviceFields?: OtServiceLineFields[]) {
     setCaseId(c.id);
     setCaseNo(c.case_no);
     setCaseStatus(c.status);
@@ -170,22 +185,24 @@ export function OtPage({ initialMode = "list" }: { initialMode?: "list" | "case"
     setDoctorFeeMmk(c.doctor_ot_fee_mmk ?? 0);
     setProcedureName(c.procedure_name);
     setNotes(c.notes);
+    nextSeqRef.current = 1;
     const nextItems = (c.items ?? []).map((it) => ({
       ...it,
+      seq: takeSeq(),
       qty_used: it.qty_used || 0,
       qty_returned: it.qty_returned || 0,
       qty_wasted: it.qty_wasted || 0,
       qty_kept_on_floor: it.qty_kept_on_floor || 0,
     }));
     setItems(nextItems);
+    const keep =
+      serviceFields === undefined
+        ? servicesRef.current.map(({ seq: _seq, ...rest }) => rest)
+        : serviceFields;
+    setServices(stampServiceSeqs(keep));
     refreshOtOnHand(nextItems);
     setOtBillId(c.ot_bill_id ?? null);
     setCreatedAt(c.created_at || null);
-  }
-
-  function openNew() {
-    resetCaseForm();
-    setMode("case");
   }
 
   async function openCase(id: number) {
@@ -193,15 +210,13 @@ export function OtPage({ initialMode = "list" }: { initialMode?: "list" | "case"
     setError(null);
     try {
       const c = await getOtCase(id);
-      applyCase(c);
-      setMode("case");
       if (c.ot_bill_id) {
         const b = await getOtBill(c.ot_bill_id);
+        applyCase(c, servicesFromBill(b));
         setBill(b);
-        setServices(servicesFromBill(b));
       } else {
+        applyCase(c, []);
         setBill(null);
-        setServices([]);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Open failed");
@@ -267,71 +282,46 @@ export function OtPage({ initialMode = "list" }: { initialMode?: "list" | "case"
       return;
     }
     rememberOtOnHand(item.id, item.ot_on_hand);
-    setItems((prev) => {
-      const idx = prev.findIndex(
-        (p) => p.item_id === item.id && (p.sale_unit || "") === saleUnit,
-      );
-      if (idx >= 0) {
-        const next = [...prev];
-        const row = next[idx];
-        if (!saleUnit) {
-          next[idx] = { ...row, qty_issued: row.qty_issued + stockQty };
-        } else {
-          const saleQty = (row.sale_qty || 0) + qty;
-          next[idx] = {
-            ...row,
-            sale_unit: saleUnit,
-            sale_qty: saleQty,
-            qty_issued: saleQty * factor,
-          };
-        }
-        return next;
-      }
-      return [
-        ...prev,
-        {
-          item_id: item.id,
-          code: item.code,
-          name: item.name,
-          sell_price_mmk: item.sell_price_mmk,
-          qty_issued: stockQty,
-          sale_qty: saleUnit ? qty : 0,
-          sale_unit: saleUnit,
-          pack_l1_qty: item.pack_l1_qty,
-          pack_l1_unit: item.pack_l1_unit,
-          pack_l2_qty: item.pack_l2_qty,
-          pack_l2_unit: item.pack_l2_unit,
-          pack_l3_qty: item.pack_l3_qty,
-          pack_l3_unit: item.pack_l3_unit,
-          qty_used: 0,
-          qty_returned: 0,
-          qty_wasted: 0,
-          qty_kept_on_floor: 0,
-        },
-      ];
-    });
+    const seq = takeSeq();
+    setItems((prev) => [
+      ...prev,
+      {
+        seq,
+        item_id: item.id,
+        code: item.code,
+        name: item.name,
+        sell_price_mmk: item.sell_price_mmk,
+        qty_issued: stockQty,
+        sale_qty: saleUnit ? qty : 0,
+        sale_unit: saleUnit,
+        pack_l1_qty: item.pack_l1_qty,
+        pack_l1_unit: item.pack_l1_unit,
+        pack_l2_qty: item.pack_l2_qty,
+        pack_l2_unit: item.pack_l2_unit,
+        pack_l3_qty: item.pack_l3_qty,
+        pack_l3_unit: item.pack_l3_unit,
+        qty_used: 0,
+        qty_returned: 0,
+        qty_wasted: 0,
+        qty_kept_on_floor: 0,
+      },
+    ]);
     setError(null);
   }
 
   function addOtService(svc: OtService, qty: number) {
-    setServices((prev) => {
-      const idx = prev.findIndex((s) => s.ref_id === svc.id);
-      if (idx >= 0) {
-        const next = [...prev];
-        next[idx] = { ...next[idx], qty: next[idx].qty + qty };
-        return next;
-      }
-      return [
-        ...prev,
-        {
-          ref_id: svc.id,
-          code: svc.code,
-          description: svc.name,
-          qty,
-          unit_price_mmk: svc.price_mmk,
-        },
-      ];
-    });
+    const seq = takeSeq();
+    setServices((prev) => [
+      ...prev,
+      {
+        seq,
+        ref_id: svc.id,
+        code: svc.code,
+        description: svc.name,
+        qty,
+        unit_price_mmk: svc.price_mmk,
+      },
+    ]);
     setError(null);
   }
 
@@ -444,7 +434,6 @@ export function OtPage({ initialMode = "list" }: { initialMode?: "list" | "case"
       const c = caseId ? await updateOtCase(caseId, body) : await createOtCase(body);
       applyCase(c);
       setOkMsg(`${t("saved")} ${c.case_no}`);
-      await reloadList();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Save failed");
     } finally {
@@ -488,12 +477,18 @@ export function OtPage({ initialMode = "list" }: { initialMode?: "list" | "case"
     }));
     const b = await createOtBillFromCase(id!, serviceLines);
     setBill(b);
-    setServices(servicesFromBill(b));
+    setServices(stampServiceSeqs(servicesFromBill(b)));
     setOtBillId(b.id);
     setCaseStatus("billed");
     setOkMsg(`${t("saved")} ${b.bill_no}`);
-    await reloadList();
     return b;
+  }
+
+  function receiptPreviewOpts(billNoPaid: string) {
+    return {
+      title: t("receiptPaidTitle").replace("{bill}", billNoPaid),
+      note: t("receiptAlreadyPaidNote"),
+    };
   }
 
   async function doPrintAndPay() {
@@ -505,26 +500,20 @@ export function OtPage({ initialMode = "list" }: { initialMode?: "list" | "case"
       if (!b) return;
       const billId = b.id;
       if (b.status === "paid") {
-        await printOtBill(billId);
+        await printOtBill(billId, receiptPreviewOpts(b.bill_no));
         return;
       }
-      await printOtBill(billId, {
-        onPrinted: async () => {
-          try {
-            const current = await getOtBill(billId);
-            if (current.status === "draft") {
-              const paid = await payOtBill(billId);
-              setBill(paid);
-              setOkMsg(t("otDeskPrintedPaid").replace("{bill}", paid.bill_no));
-              await reloadList();
-            } else {
-              setBill(current);
-            }
-          } catch (e) {
-            setError(e instanceof Error ? e.message : "Pay failed");
-          }
-        },
-      });
+      if (b.status !== "draft") {
+        throw new Error(userMessage("Only draft or paid bills can be printed"));
+      }
+      const paid = await payOtBill(billId);
+      setBill(paid);
+      setOkMsg(t("paidReceiptReady").replace("{bill}", paid.bill_no));
+      try {
+        await printOtBill(billId, receiptPreviewOpts(paid.bill_no));
+      } catch {
+        setError(t("receiptFailedReprint").replace("{bill}", paid.bill_no));
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Print failed");
     } finally {
@@ -535,55 +524,27 @@ export function OtPage({ initialMode = "list" }: { initialMode?: "list" | "case"
   function doCancelForm() {
     if (!window.confirm(t("otDeskCancelConfirm"))) return;
     resetCaseForm();
-    setMode("case");
   }
 
-  async function openBill(id: number) {
-    setBusy(true);
-    setError(null);
-    try {
-      const b = await getOtBill(id);
-      setBill(b);
-      setMode("bill");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Bill load failed");
-    } finally {
-      setBusy(false);
-    }
+  function focusBillPatient() {
+    window.requestAnimationFrame(() => {
+      document.querySelector<HTMLInputElement>('[data-focus="bill-patient"]')?.focus();
+    });
   }
 
-  async function doPayBill() {
-    if (!bill) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const b = await payOtBill(bill.id);
-      setBill(b);
-      setOkMsg(`${t("paid")} ${b.bill_no}`);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Pay failed");
-    } finally {
-      setBusy(false);
+  function doNewBill() {
+    const finished = caseStatus === "billed";
+    if (!finished) {
+      const dirty =
+        Boolean(patientName.trim()) ||
+        items.length > 0 ||
+        services.length > 0 ||
+        caseId != null ||
+        Boolean(caseNo);
+      if (dirty && !window.confirm(t("confirmNewBill"))) return;
     }
-  }
-
-  async function doVoidBill() {
-    if (!bill || !voidReason.trim()) {
-      setError("Void reason required");
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      const b = await voidOtBill(bill.id, voidReason.trim());
-      setBill(b);
-      setOkMsg(t("voidOtDone").replace("{bill}", b.bill_no));
-      await reloadList();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Void failed");
-    } finally {
-      setBusy(false);
-    }
+    resetCaseForm();
+    focusBillPatient();
   }
 
   async function voidFromHistory(c: OtCase, reason: string) {
@@ -597,11 +558,9 @@ export function OtPage({ initialMode = "list" }: { initialMode?: "list" | "case"
       setCaseStatus("draft");
       setOtBillId(null);
     }
-    await reloadList();
   }
 
   useEffect(() => {
-    if (mode !== "case") return;
     function onKey(e: KeyboardEvent) {
       if (dialog) return;
       if (document.querySelector(".print-preview-overlay")) return;
@@ -629,12 +588,17 @@ export function OtPage({ initialMode = "list" }: { initialMode?: "list" | "case"
       if (key === "F10") {
         e.preventDefault();
         if (!busy) doCancelForm();
+        return;
+      }
+      if (key === "F2") {
+        e.preventDefault();
+        if (!busy) doNewBill();
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- desk shortcuts
-  }, [mode, dialog, busy, isDraft, caseId, patientName, items, services, otBillId, bill]);
+  }, [dialog, busy, isDraft, caseId, caseNo, caseStatus, patientName, items, services, otBillId, bill]);
 
   const itemsTotal = items.reduce(
     (sum, it) => sum + it.sell_price_mmk * Math.max(0, it.qty_issued),
@@ -650,49 +614,59 @@ export function OtPage({ initialMode = "list" }: { initialMode?: "list" | "case"
     { kind: "item"; index: number } | { kind: "service"; index: number } | { kind: "fee" }
   > = [];
   const otRows: BillLineGridRow[] = [];
-  items.forEach((it, index) => {
-    const units = saleUnitsFromPack(packFromItem(it), it.sell_price_mmk);
-    const chosen = it.sale_unit
-      ? units.find((u) => u.id.toLowerCase() === it.sale_unit!.toLowerCase())
-      : undefined;
-    const saleQty = it.sale_qty ?? 0;
-    const qty = it.sale_unit && saleQty > 0 ? saleQty : it.qty_issued;
-    const amount = it.sell_price_mmk * Math.max(0, it.qty_issued);
-    const price = chosen
-      ? chosen.price_mmk
-      : saleQty > 0
-        ? Math.round(amount / saleQty)
-        : it.sell_price_mmk;
-    const pack = packFromItem(it);
-    otKinds.push({ kind: "item", index });
-    otRows.push({
-      key: `item-${it.item_id}-${it.sale_unit || "stock"}-${index}`,
-      title: `${it.code} — ${it.name}`,
-      packLabel: formatPackCompact(pack),
-      packTitle: formatPackPreview(pack),
-      qty,
-      unitId: chosen?.id ?? (it.sale_unit || null),
-      units: chosen
-        ? units.map((u) => ({ id: u.id, label: u.label }))
-        : it.sale_unit
-          ? [{ id: it.sale_unit, label: it.sale_unit }]
-          : [],
-      priceMmk: price,
-      amountMmk: amount,
-      removable: true,
-    });
-  });
-  services.forEach((s, index) => {
-    otKinds.push({ kind: "service", index });
-    otRows.push({
-      key: `svc-${s.ref_id}-${index}`,
-      title: `${s.code} — ${s.description}`,
-      qty: s.qty,
-      priceMmk: s.unit_price_mmk,
-      amountMmk: s.qty * s.unit_price_mmk,
-      removable: true,
-    });
-  });
+  const cartOrder: Array<
+    { kind: "item"; index: number; seq: number } | { kind: "service"; index: number; seq: number }
+  > = [
+    ...items.map((it, index) => ({ kind: "item" as const, index, seq: it.seq })),
+    ...services.map((s, index) => ({ kind: "service" as const, index, seq: s.seq })),
+  ].sort((a, b) => a.seq - b.seq);
+
+  for (const entry of cartOrder) {
+    if (entry.kind === "item") {
+      const it = items[entry.index];
+      const units = saleUnitsFromPack(packFromItem(it), it.sell_price_mmk);
+      const chosen = it.sale_unit
+        ? units.find((u) => u.id.toLowerCase() === it.sale_unit!.toLowerCase())
+        : undefined;
+      const saleQty = it.sale_qty ?? 0;
+      const qty = it.sale_unit && saleQty > 0 ? saleQty : it.qty_issued;
+      const amount = it.sell_price_mmk * Math.max(0, it.qty_issued);
+      const price = chosen
+        ? chosen.price_mmk
+        : saleQty > 0
+          ? Math.round(amount / saleQty)
+          : it.sell_price_mmk;
+      const pack = packFromItem(it);
+      otKinds.push({ kind: "item", index: entry.index });
+      otRows.push({
+        key: `item-${it.seq}`,
+        title: `${it.code} — ${it.name}`,
+        packLabel: formatPackCompact(pack),
+        packTitle: formatPackPreview(pack),
+        qty,
+        unitId: chosen?.id ?? (it.sale_unit || null),
+        units: chosen
+          ? units.map((u) => ({ id: u.id, label: u.label }))
+          : it.sale_unit
+            ? [{ id: it.sale_unit, label: it.sale_unit }]
+            : [],
+        priceMmk: price,
+        amountMmk: amount,
+        removable: true,
+      });
+    } else {
+      const s = services[entry.index];
+      otKinds.push({ kind: "service", index: entry.index });
+      otRows.push({
+        key: `svc-${s.seq}`,
+        title: `${s.code} — ${s.description}`,
+        qty: s.qty,
+        priceMmk: s.unit_price_mmk,
+        amountMmk: s.qty * s.unit_price_mmk,
+        removable: true,
+      });
+    }
+  }
   if (doctorFeeMmk > 0) {
     otKinds.push({ kind: "fee" });
     otRows.push({
@@ -704,189 +678,6 @@ export function OtPage({ initialMode = "list" }: { initialMode?: "list" | "case"
       locked: true,
       removable: false,
     });
-  }
-
-  if (mode === "list") {
-    return (
-      <section className="classic-list-panel">
-        <div className="drug-setup-title-row">
-          <h2 className="drug-setup-title">{t("navOtHistory")}</h2>
-          <button type="button" className="btn primary" onClick={openNew}>
-            {t("newCase")}
-          </button>
-        </div>
-        <p className="hint">{t("otHint")}</p>
-        <div className="list-toolbar">
-          <Typeahead
-            label={t("search")}
-            value={q}
-            onChange={setQ}
-            placeholder={t("searchCasePlaceholder")}
-            loadSuggestions={async (term) => listOtCases(term, statusFilter)}
-            getKey={(c) => c.id}
-            renderOption={(c) => (
-              <>
-                <span className="typeahead-title">
-                  {c.case_no} — {c.patient_name}
-                </span>
-                <span className="typeahead-sub">
-                  {c.status.toUpperCase()}
-                  {c.procedure_name ? ` · ${c.procedure_name}` : ""}
-                </span>
-              </>
-            )}
-            onPick={(c) => {
-              setQ(c.case_no);
-              void openCase(c.id);
-            }}
-            onSubmitWithoutPick={() =>
-              void reloadList().catch((err) => setError(String(err)))
-            }
-          />
-          <label className="field">
-            {t("status")}
-            <select
-              value={statusFilter}
-              onChange={(e) => {
-                setStatusFilter(e.target.value);
-                void reloadList(q, e.target.value).catch((err) => setError(String(err)));
-              }}
-            >
-              <option value="">{t("all")}</option>
-              <option value="draft">{t("draft")}</option>
-              <option value="billed">{t("billed")}</option>
-            </select>
-          </label>
-          <button
-            type="button"
-            className="btn ghost"
-            onClick={() => void reloadList().catch((e) => setError(String(e)))}
-          >
-            {t("search")}
-          </button>
-        </div>
-        {error ? <p className="form-error">{error}</p> : null}
-        <ul className="data-list">
-          {cases.length === 0 ? <li className="empty-row">{t("noOtCasesYet")}</li> : null}
-          {cases.map((c) => (
-            <li key={c.id}>
-              <div>
-                <p className="row-title">
-                  {c.case_no} · {c.patient_name}
-                </p>
-                <p className="row-sub">
-                  {c.status.toUpperCase()}
-                  {c.procedure_name ? ` · ${c.procedure_name}` : ""}
-                  {c.doctor_name ? ` · ${c.doctor_name}` : ""}
-                </p>
-              </div>
-              <div className="btn-row">
-                <button type="button" className="btn ghost" onClick={() => void openCase(c.id)}>
-                  {t("open")}
-                </button>
-                {c.ot_bill_id ? (
-                  <button
-                    type="button"
-                    className="btn ghost"
-                    onClick={() => void openBill(c.ot_bill_id!)}
-                  >
-                    {t("bill")}
-                  </button>
-                ) : null}
-              </div>
-            </li>
-          ))}
-        </ul>
-      </section>
-    );
-  }
-
-  if (mode === "bill" && bill) {
-    const billDraft = bill.status === "draft";
-    return (
-      <section className="classic-list-panel">
-        <div className="btn-row">
-          <button
-            type="button"
-            className="btn ghost"
-            onClick={() => {
-              setMode("case");
-              if (caseId) void openCase(caseId);
-            }}
-          >
-            {t("backCase")}
-          </button>
-          <span className="hint">
-            {bill.bill_no} · {bill.status.toUpperCase()} · case {bill.case_no}
-          </span>
-        </div>
-        <div className="card-form">
-          <p className="row-title">
-            {bill.patient_name}
-            {bill.doctor_name ? ` · ${bill.doctor_name}` : ""}
-          </p>
-          <p className="row-sub">{bill.procedure_name || t("otBillTitle")}</p>
-          <div className="bill-lines">
-            <div className="bill-lines-head">
-              <span>{t("code")}</span>
-              <span>{t("description")}</span>
-              <span className="num">{t("qty")}</span>
-              <span className="num">{t("price")}</span>
-              <span className="num">{t("amount")}</span>
-              <span />
-            </div>
-            {(bill.lines ?? []).map((l) => (
-              <div key={l.id ?? `${l.code}-${l.description}`} className="bill-lines-row">
-                <span>{l.code || "—"}</span>
-                <span>{l.description}</span>
-                <span className="num">{l.qty}</span>
-                <span className="num">{formatMMK(l.unit_price_mmk)}</span>
-                <span className="num">{formatMMK(l.line_total_mmk)}</span>
-                <span />
-              </div>
-            ))}
-          </div>
-          <p className="bill-total">
-            {t("totalLabel")}: {formatMMK(bill.total_mmk)} {t("mmk")}
-          </p>
-          {error ? <p className="form-error">{error}</p> : null}
-          {okMsg ? <p className="form-ok">{okMsg}</p> : null}
-          <div className="btn-row">
-            {billDraft ? (
-              <button type="button" className="btn primary" disabled={busy} onClick={() => void doPayBill()}>
-                {t("payCash")}
-              </button>
-            ) : null}
-          </div>
-          <div className="btn-row btn-row-print">
-            <button
-              type="button"
-              className="btn print"
-              disabled={busy}
-              onClick={() => void printOtBill(bill.id).catch((e) => setError(String(e)))}
-            >
-              {t("print")}
-            </button>
-          </div>
-          {bill.status !== "void" ? (
-            <div className="nested-form">
-              <label className="field">
-                {t("voidReason")}
-                <input
-                  value={voidReason}
-                  onChange={(e) => setVoidReason(e.target.value)}
-                  placeholder={t("voidOtPlaceholder")}
-                />
-              </label>
-              <button type="button" className="btn ghost danger" disabled={busy} onClick={() => void doVoidBill()}>
-                {t("voidBill")}
-              </button>
-            </div>
-          ) : null}
-          {billDraft ? <p className="hint">{t("otBillPayHint")}</p> : null}
-        </div>
-      </section>
-    );
   }
 
   return (
@@ -901,6 +692,7 @@ export function OtPage({ initialMode = "list" }: { initialMode?: "list" | "case"
                 <span className="opd-bill-label">{t("idName")}</span>
                 <input
                   className="opd-bill-input grow"
+                  data-focus="bill-patient"
                   value={patientName}
                   disabled={!isDraft}
                   onChange={(e) => setPatientName(e.target.value)}
@@ -1013,7 +805,9 @@ export function OtPage({ initialMode = "list" }: { initialMode?: "list" | "case"
               </div>
               <div className="opd-bill-field">
                 <span className="opd-bill-label">{t("status")}</span>
-                <span className="opd-bill-readonly">{caseStatus.toUpperCase()}</span>
+                <span className="opd-bill-readonly">
+                  {moneyStatusLabel(bill?.status ?? caseStatus, t)}
+                </span>
               </div>
               {bill?.bill_no ? (
                 <div className="opd-bill-field">
@@ -1134,10 +928,6 @@ export function OtPage({ initialMode = "list" }: { initialMode?: "list" | "case"
                 <span>{formatMMK(estimatedTotal)}</span>
               </div>
               <div className="opd-bill-total-row">
-                <span>{t("discount")}</span>
-                <span>0</span>
-              </div>
-              <div className="opd-bill-total-row">
                 <span>{t("paid")}</span>
                 <span>{formatMMK(paidAmount)}</span>
               </div>
@@ -1145,6 +935,11 @@ export function OtPage({ initialMode = "list" }: { initialMode?: "list" | "case"
                 <span>{t("balance")}</span>
                 <span>{formatMMK(balanceAmount)}</span>
               </div>
+              <BillCollectNote
+                status={bill?.status ?? "draft"}
+                balance={balanceAmount}
+                sideEffect="ot"
+              />
             </div>
           </div>
 
@@ -1153,22 +948,18 @@ export function OtPage({ initialMode = "list" }: { initialMode?: "list" | "case"
         </div>
 
         <aside className="opd-bill-rail" aria-label={t("billActions")}>
-          <button
-            type="button"
-            className="opd-bill-rail-btn"
-            disabled={busy}
+          <BillPayPrintButton
+            status={bill?.status ?? "draft"}
+            busy={busy}
             onClick={() => void doPrintAndPay()}
-          >
-            <span>{t("print")}</span>
-            <kbd>F7</kbd>
-          </button>
+          />
           <button
             type="button"
             className="opd-bill-rail-btn"
             disabled={busy || !isDraft}
             onClick={() => void saveDraft()}
           >
-            <span>{t("confirm")}</span>
+            <span>{t("saveDraft")}</span>
             <kbd>F5</kbd>
           </button>
           <button
@@ -1192,6 +983,15 @@ export function OtPage({ initialMode = "list" }: { initialMode?: "list" | "case"
           <button type="button" className="opd-bill-rail-btn" disabled={busy} onClick={doCancelForm}>
             <span>{t("cancel")}</span>
             <kbd>F10</kbd>
+          </button>
+          <button
+            type="button"
+            className={`opd-bill-rail-btn${!isDraft ? " opd-bill-rail-btn--accent" : ""}`}
+            disabled={busy}
+            onClick={doNewBill}
+          >
+            <span>{t("newBill")}</span>
+            <kbd>F2</kbd>
           </button>
         </aside>
       </section>

@@ -266,11 +266,12 @@ func buildDailyCash(db *sql.DB, date string) (*cashReport, error) {
 	}
 
 	phRows, err := db.Query(`
-		SELECT b.bill_no, b.patient_name, '', b.total_mmk,
+		SELECT b.bill_no, b.patient_name, '',
+		       CASE WHEN b.bill_no LIKE 'RT-%' THEN -b.total_mmk ELSE b.total_mmk END,
 		       COALESCE(b.paid_at, ''), COALESCE(u.display_name, '')
 		FROM pharmacy_bills b
 		LEFT JOIN users u ON u.id = b.paid_by_user_id
-		WHERE b.status = 'paid' AND date(b.paid_at) = date(?)
+		WHERE b.status = 'paid' AND b.bill_no NOT LIKE 'TO-%' AND date(b.paid_at) = date(?)
 		ORDER BY b.paid_at ASC, b.id ASC
 	`, date)
 	if err != nil {

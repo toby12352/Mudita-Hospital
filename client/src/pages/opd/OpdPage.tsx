@@ -209,6 +209,13 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
     }
   }
 
+  function receiptPreviewOpts(billNoPaid: string) {
+    return {
+      title: t("receiptPaidTitle").replace("{bill}", billNoPaid),
+      note: t("receiptAlreadyPaidNote"),
+    };
+  }
+
   async function doPrint() {
     setBusy(true);
     setError(null);
@@ -216,7 +223,7 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
     try {
       let id = billId;
       if (billStatus === "paid" && id) {
-        await printOpdBill(id);
+        await printOpdBill(id, receiptPreviewOpts(billNo));
         return;
       }
       if (!isDraft) {
@@ -227,8 +234,12 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
       if (id == null) throw new Error(userMessage("Save failed"));
       const paid = await payOpdBill(id);
       applySavedBill(paid);
-      setOkMsg(`${t("paid")} ${paid.bill_no}`);
-      await printOpdBill(id);
+      setOkMsg(t("paidReceiptReady").replace("{bill}", paid.bill_no));
+      try {
+        await printOpdBill(id, receiptPreviewOpts(paid.bill_no));
+      } catch {
+        setError(t("receiptFailedReprint").replace("{bill}", paid.bill_no));
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Print failed");
     } finally {
@@ -247,6 +258,23 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
   function doCancel() {
     if (!window.confirm(t("confirmCancelBill"))) return;
     resetEditor();
+  }
+
+  function focusBillPatient() {
+    window.requestAnimationFrame(() => {
+      document.querySelector<HTMLInputElement>('[data-focus="bill-patient"]')?.focus();
+    });
+  }
+
+  function doNewBill() {
+    const finished = billStatus === "paid" || billStatus === "void";
+    if (!finished) {
+      const dirty =
+        Boolean(patientName.trim()) || lines.length > 0 || billId != null || Boolean(billNo);
+      if (dirty && !window.confirm(t("confirmNewBill"))) return;
+    }
+    resetEditor();
+    focusBillPatient();
   }
 
   async function addByCode(code: string): Promise<OpdService | null> {
@@ -345,13 +373,18 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
       if (key === "F10") {
         e.preventDefault();
         if (!busy) doCancel();
+        return;
+      }
+      if (key === "F2") {
+        e.preventDefault();
+        if (!busy) doNewBill();
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // Intentional: handlers close over latest state each render.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- shortcut wiring
-  }, [dialog, busy, isDraft, billId, billStatus, lines, patientName]);
+  }, [dialog, busy, isDraft, billId, billStatus, billNo, lines, patientName]);
 
   const displayWhen = formatDisplayWhen(createdAt, nowTick);
 
@@ -398,6 +431,7 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
         onHistory={() => setDialog("history")}
         onDelete={() => setDialog("delete")}
         onCancel={doCancel}
+        onNewBill={doNewBill}
       />
       {dialog ? (
         <OpdBillListDialog

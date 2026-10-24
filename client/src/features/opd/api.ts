@@ -140,13 +140,16 @@ export async function voidOpdBill(id: number, reason: string): Promise<OpdBill> 
 }
 
 /** Fetch printable HTML and show in-app receipt preview (no popup). */
-export async function printOpdBill(id: number): Promise<void> {
-  return fetchAndPreviewPrint(
-    `/api/opd/bills/${id}/print`,
-    getApiBase,
-    getStoredToken,
-    { title: "OPD receipt", receipt: true },
-  );
+export async function printOpdBill(
+  id: number,
+  opts?: { title?: string; note?: string; onPrinted?: () => void | Promise<void> },
+): Promise<void> {
+  return fetchAndPreviewPrint(`/api/opd/bills/${id}/print`, getApiBase, getStoredToken, {
+    title: opts?.title ?? "OPD receipt",
+    note: opts?.note,
+    receipt: true,
+    onPrinted: opts?.onPrinted,
+  });
 }
 
 export function lineTotal(qty: number, price: number): number {

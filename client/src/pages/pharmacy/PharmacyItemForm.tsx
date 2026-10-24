@@ -15,6 +15,7 @@ import {
 import { DatePicker } from "@/shared/DatePicker";
 import { useI18n } from "@/shared/i18n";
 import { FormSection } from "@/shared/FormSection";
+import { PharmacyItemLots } from "./PharmacyItemLots";
 
 const UNIT_I18N: Record<string, string> = {
   Box: "packUnitBox",
@@ -89,6 +90,7 @@ export function PharmacyItemForm({
     }
     return initial.relations.slice(0, 2);
   });
+  const [batchNo, setBatchNo] = useState("");
   const [expiry, setExpiry] = useState("");
   const [quantity, setQuantity] = useState("");
   const [buyOuter, setBuyOuter] = useState(editing ? String(editing.buy_price_mmk) : "");
@@ -203,7 +205,8 @@ export function PharmacyItemForm({
           ...body,
           initial_qty: qty > 0 ? qty : undefined,
           initial_qty_unit: "purchase",
-          expiry_date: expiry.trim() || undefined,
+          batch_no: qty > 0 ? batchNo.trim() : undefined,
+          expiry_date: qty > 0 ? expiry.trim() : undefined,
         });
       }
       onSaved(saved);
@@ -355,16 +358,33 @@ export function PharmacyItemForm({
         ) : null}
 
         {!editing ? (
-          <label className="field field-compact">
-            <span>{t("expiry")}</span>
-            <DatePicker
-              value={expiry}
-              onChange={setExpiry}
-              disabled={busy}
-              placeholder={t("expiryPlaceholder")}
-            />
-          </label>
-        ) : null}
+          <div className="field-row">
+            <label className="field">
+              <span>{t("batchNumber")}</span>
+              <input
+                value={batchNo}
+                onChange={(e) => setBatchNo(e.target.value)}
+                disabled={busy}
+              />
+            </label>
+            <label className="field field-compact">
+              <span>{t("expiry")}</span>
+              <DatePicker
+                value={expiry}
+                onChange={setExpiry}
+                disabled={busy}
+                placeholder={t("expiryPlaceholder")}
+              />
+            </label>
+          </div>
+        ) : (
+          <PharmacyItemLots
+            batches={editing.batches}
+            stockUnit={editing.stock_unit || editing.pack_l3_unit || ""}
+            showOnHand
+            onHand={editing.stock_main}
+          />
+        )}
       </FormSection>
 
       <FormSection title={t("pricing")} titleId="pharmacy-item-pricing">

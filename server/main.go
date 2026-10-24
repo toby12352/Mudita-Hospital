@@ -90,8 +90,8 @@ func main() {
 	mux.Handle("/api/reports/", &handlers.Reports{DB: sqlDB})
 	// Dashboard analytics (Admin / settings only)
 	mux.Handle("/api/dashboard/", &handlers.Dashboard{DB: sqlDB})
-	mux.Handle("/api/demo/", &handlers.Demo{DB: sqlDB})
-	mux.Handle("/api/demo", &handlers.Demo{DB: sqlDB})
+	mux.Handle("/api/demo/", &handlers.Demo{DB: sqlDB, AllowTraining: cfg.AllowTraining})
+	mux.Handle("/api/demo", &handlers.Demo{DB: sqlDB, AllowTraining: cfg.AllowTraining})
 
 	handlers.StartScheduler(sqlDB, backupDir, cfg.BackupIntervalHours)
 
@@ -100,6 +100,9 @@ func main() {
 	log.Printf("config: %s", cfgFile)
 	log.Printf("SQLite (WAL): %s", dbPath)
 	log.Printf("backups: %s (interval %dh)", backupDir, cfg.BackupIntervalHours)
+	if cfg.AllowTraining {
+		log.Printf("training seed/reset: enabled")
+	}
 	if cfg.Host == "127.0.0.1" || cfg.Host == "localhost" {
 		log.Printf("bind: localhost only — clinic PCs cannot connect; set host to 0.0.0.0 for LAN")
 	} else {

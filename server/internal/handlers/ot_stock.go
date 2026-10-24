@@ -16,19 +16,32 @@ type otReturnRequest struct {
 }
 
 type otStockBatch struct {
-	ID         int64   `json:"id"`
-	ItemID     int64   `json:"item_id"`
-	ItemCode   string  `json:"item_code"`
-	ItemName   string  `json:"item_name"`
-	StockUnit  string  `json:"stock_unit"`
-	BatchNo    string  `json:"batch_no"`
-	ExpiryDate *string `json:"expiry_date"`
-	Qty        int64   `json:"qty"`
+	ID           int64   `json:"id"`
+	ItemID       int64   `json:"item_id"`
+	ItemCode     string  `json:"item_code"`
+	ItemName     string  `json:"item_name"`
+	StockUnit    string  `json:"stock_unit"`
+	Dosage       string  `json:"dosage"`
+	BuyPriceMMK  int64   `json:"buy_price_mmk"`
+	SellPriceMMK int64   `json:"sell_price_mmk"`
+	PackL1Qty    int64   `json:"pack_l1_qty"`
+	PackL1Unit   string  `json:"pack_l1_unit"`
+	PackL2Qty    int64   `json:"pack_l2_qty"`
+	PackL2Unit   string  `json:"pack_l2_unit"`
+	PackL3Qty    int64   `json:"pack_l3_qty"`
+	PackL3Unit   string  `json:"pack_l3_unit"`
+	BatchNo      string  `json:"batch_no"`
+	ExpiryDate   *string `json:"expiry_date"`
+	Qty          int64   `json:"qty"`
 }
 
 func (h *OT) listOtStock(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.DB.Query(`
 		SELECT b.id, b.item_id, i.code, i.name, COALESCE(i.stock_unit, 'Piece'),
+		       COALESCE(i.dosage, ''), i.buy_price_mmk, i.sell_price_mmk,
+		       COALESCE(i.pack_l1_qty, 1), COALESCE(i.pack_l1_unit, 'Box'),
+		       COALESCE(i.pack_l2_qty, 1), COALESCE(i.pack_l2_unit, 'Strip'),
+		       COALESCE(i.pack_l3_qty, 1), COALESCE(i.pack_l3_unit, 'Tablet'),
 		       b.batch_no, b.expiry_date, b.qty
 		FROM ot_batches b
 		JOIN items i ON i.id = b.item_id
@@ -49,6 +62,8 @@ func (h *OT) listOtStock(w http.ResponseWriter, r *http.Request) {
 		var expiry sql.NullString
 		if err := rows.Scan(
 			&b.ID, &b.ItemID, &b.ItemCode, &b.ItemName, &b.StockUnit,
+			&b.Dosage, &b.BuyPriceMMK, &b.SellPriceMMK,
+			&b.PackL1Qty, &b.PackL1Unit, &b.PackL2Qty, &b.PackL2Unit, &b.PackL3Qty, &b.PackL3Unit,
 			&b.BatchNo, &expiry, &b.Qty,
 		); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "scan failed"})
@@ -230,8 +245,92 @@ func findOrCreateOtBatch(tx *sql.Tx, itemID int64, batchNo string, expiry *strin
 	return batchID, nil
 }
 
-// fefoDeductOtSale takes unexpired OT cupboard batches, earliest expiry first.
-// Blank expiry still sells and sorts after dated stock.
+// labelOtBatch sets batch_no and expiry_date on an existing cupboard row.
+// Quantity is not changed. Only a row missing a batch number or expiry can be labeled.
+func (h *OT) labelOtBatch(w http.ResponseWriter, r *http.Request, path string) {
+	idPart := strings.TrimSuffix(strings.TrimPrefix(path, "/stock/"), "/label")
+	otBatchID, ok := parseID("/" + idPart)
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid id"})
+		return
+	}
+
+	var req labelBatchRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
+		return
+	}
+	batchNo, expiry, reqErr := requireBatchIdentity(req.BatchNo, req.ExpiryDate)
+	if reqErr != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": reqErr.Error()})
+		return
+	}
+
+	tx, err := h.DB.Begin()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "tx failed"})
+		return
+	}
+	defer tx.Rollback()
+
+	var oldNo string
+	var oldExp sql.NullString
+	var qty int64
+	err = tx.QueryRow(`
+		SELECT batch_no, expiry_date, qty FROM ot_batches WHERE id = ?
+	`, otBatchID).Scan(&oldNo, &oldExp, &qty)
+	if err == sql.ErrNoRows {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "batch not found"})
+		return
+	}
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "batch load failed"})
+		return
+	}
+	if !batchUnlabeled(oldNo, oldExp) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "batch already labeled"})
+		return
+	}
+
+	if _, err := tx.Exec(`
+		UPDATE ot_batches
+		SET batch_no = ?, expiry_date = ?, updated_at = datetime('now')
+		WHERE id = ?
+	`, batchNo, *expiry, otBatchID); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "label failed"})
+		return
+	}
+	var after int64
+	if err := tx.QueryRow(`SELECT qty FROM ot_batches WHERE id = ?`, otBatchID).Scan(&after); err != nil || after != qty {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "label failed"})
+		return
+	}
+
+	if err := tx.Commit(); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "commit failed"})
+		return
+	}
+
+	user := middleware.UserFromContext(r.Context())
+	uid := user.ID
+	oldExpiry := ""
+	if oldExp.Valid {
+		oldExpiry = oldExp.String
+	}
+	audit.WriteAudit(h.DB, &uid, "label_batch", "ot_batch", &otBatchID, map[string]any{
+		"qty":          qty,
+		"old_batch_no": oldNo, "old_expiry_date": oldExpiry,
+		"batch_no": batchNo, "expiry_date": *expiry,
+	})
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"id": otBatchID, "batch_no": batchNo, "expiry_date": *expiry, "qty": qty,
+	})
+}
+
+// fefoDeductOtSale takes OT cupboard batches, earliest expiry first.
+// A null or blank expiry sells after every unexpired dated batch.
+// A batch dated before today (Asia/Yangon) stays in the cupboard.
 func fefoDeductOtSale(tx *sql.Tx, billID, lineID, itemID, qty, actorUserID int64) error {
 	if qty <= 0 {
 		return fmt.Errorf("qty must be > 0")
@@ -239,9 +338,13 @@ func fefoDeductOtSale(tx *sql.Tx, billID, lineID, itemID, qty, actorUserID int64
 	rows, err := tx.Query(`
 		SELECT id, qty FROM ot_batches
 		WHERE item_id = ? AND qty > 0
-		  AND (expiry_date IS NULL OR expiry_date = '' OR date(expiry_date) >= date(?))
-		ORDER BY CASE WHEN expiry_date IS NULL OR expiry_date = '' THEN 1 ELSE 0 END,
-		         expiry_date ASC, id ASC
+		  AND (
+		    expiry_date IS NULL OR expiry_date = ''
+		    OR date(expiry_date) >= date(?)
+		  )
+		ORDER BY
+		  CASE WHEN expiry_date IS NULL OR expiry_date = '' THEN 1 ELSE 0 END,
+		  expiry_date ASC, id ASC
 	`, itemID, localToday())
 	if err != nil {
 		return fmt.Errorf("stock query failed")

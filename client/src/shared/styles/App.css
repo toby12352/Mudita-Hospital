@@ -108,7 +108,8 @@ body,
 
 /* Fill-and-scroll desks: the page fills this box; a pane inside it scrolls. */
 .shell-classic .app-content:has(> .opd-bill-desk),
-.shell-classic .app-content:has(> .drug-setup) {
+.shell-classic .app-content:has(> .drug-setup),
+.shell-classic .app-content:has(> .desk-maintenance) {
   overflow: hidden;
 }
 
@@ -319,6 +320,19 @@ body,
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.desk-maintenance > .tabs {
+  flex-shrink: 0;
+}
+
+.desk-maintenance > .drug-setup,
+.desk-maintenance > .classic-list-panel {
+  flex: 1;
+  min-height: 0;
 }
 
 .brand .eyebrow,
@@ -1396,10 +1410,24 @@ body,
   border-bottom: 1px solid var(--border);
 }
 
+.print-preview-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
 .print-preview-title {
   margin: 0;
   font-size: 1rem;
   font-weight: 650;
+}
+
+.print-preview-note {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: var(--muted, #5b6472);
 }
 
 .print-preview-actions {
@@ -2178,7 +2206,7 @@ body,
   padding: 0.65rem 0.45rem;
   background: var(--bg);
   border-left: 1px solid var(--border);
-  min-width: 7.75rem;
+  min-width: 9rem;
   min-height: 0;
   overflow: auto;
 }
@@ -2201,24 +2229,53 @@ body,
   transition: var(--transition-fast);
 }
 
-/* Confirm (F5) is the second rail action across OPD / Pharmacy / OT */
-.opd-bill-rail-btn:nth-child(2) {
+.opd-bill-rail-btn-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  min-width: 0;
+  text-align: left;
+}
+
+.opd-bill-rail-btn-label {
+  line-height: 1.2;
+}
+
+.opd-bill-rail-btn-sub {
+  font-size: 0.68rem;
+  font-weight: 600;
+  line-height: 1.2;
+  opacity: 0.9;
+}
+
+.opd-bill-collect-note {
+  margin: 0.35rem 0 0;
+  max-width: 16rem;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--muted, #5b6472);
+  text-align: right;
+}
+
+/* Confirm (draft) or New bill (finished) — accent is class-driven, not nth-child */
+.opd-bill-rail-btn--accent {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--accent-ink);
 }
 
-.opd-bill-rail-btn:nth-child(2):hover:not(:disabled) {
+.opd-bill-rail-btn--accent:hover:not(:disabled) {
   background: var(--accent-hover);
   border-color: var(--accent-hover);
 }
 
-.opd-bill-rail-btn:nth-child(2):active:not(:disabled) {
+.opd-bill-rail-btn--accent:active:not(:disabled) {
   background: var(--accent-pressed);
   border-color: var(--accent-pressed);
 }
 
-.opd-bill-rail-btn:hover:not(:disabled):not(:nth-child(2)) {
+.opd-bill-rail-btn:hover:not(:disabled):not(.opd-bill-rail-btn--accent) {
   background: var(--bg);
   border-color: var(--border-strong);
 }
@@ -2445,6 +2502,16 @@ body,
   font-size: 0.88rem;
 }
 
+.drug-setup-table-head.opd-master-cols,
+.drug-setup-table-row.opd-master-cols {
+  grid-template-columns: 1fr 1fr;
+}
+
+.drug-setup-table-head.opd-service-cols,
+.drug-setup-table-row.opd-service-cols {
+  grid-template-columns: 4.5rem 1fr;
+}
+
 .drug-setup-table-head {
   background: var(--bg);
   color: var(--ink);
@@ -2569,7 +2636,7 @@ body,
   flex-direction: column;
   gap: 0.55rem;
   margin-top: 0.35rem;
-  min-height: 0;
+  flex-shrink: 0;
 }
 
 .drug-setup-action-row {
@@ -2580,8 +2647,9 @@ body,
   display: flex;
   flex-direction: column;
   gap: 0.45rem;
-  min-height: 0;
-  overflow: auto;
+  min-height: auto;
+  flex-shrink: 0;
+  overflow: visible;
 }
 
 .drug-setup-panel-title {
@@ -2676,6 +2744,19 @@ body,
   max-height: 14rem;
 }
 
+/* Restock/View: grow with content; one scroll on .drug-setup-detail-pane */
+.drug-setup-panel .drug-setup-batch-table,
+.drug-setup-panel .drug-setup-history-table {
+  flex: none;
+  max-height: none;
+  overflow: visible;
+}
+
+.drug-setup-panel .drug-setup-batch-head,
+.drug-setup-panel .drug-setup-history-head {
+  position: static;
+}
+
 .drug-setup-batch-head,
 .drug-setup-batch-row {
   display: grid;
@@ -2684,6 +2765,20 @@ body,
   align-items: center;
   padding: 0.3rem 0.45rem;
   font-size: 0.85rem;
+}
+
+.pharmacy-item-lots {
+  margin-top: 0.5rem;
+}
+
+.pharmacy-item-lots-table {
+  max-height: 10rem;
+  margin-top: 0.35rem;
+}
+
+.pharmacy-item-lots-head,
+.pharmacy-item-lots-row {
+  grid-template-columns: 1.6fr 4rem 5.5rem;
 }
 
 .drug-setup-batch-head,
@@ -2784,13 +2879,58 @@ body,
   flex-shrink: 0;
 }
 
-.ot-stock-return .field-compact input {
+.ot-stock-return .field-compact input,
+.ot-stock-return > input[type="number"] {
   width: 5.5rem;
   flex-shrink: 0;
 }
 
 .ot-stock-return .btn {
   white-space: nowrap;
+}
+
+.drug-setup-table-head.ot-cupboard-cols,
+.drug-setup-table-row.ot-cupboard-cols {
+  grid-template-columns: 4.5rem 1fr 5.5rem;
+}
+
+.ot-cupboard-batches {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.75rem;
+  flex-shrink: 0;
+}
+
+.ot-cupboard-batch-head,
+.ot-cupboard-batch-row {
+  grid-template-columns: 1.4fr 4rem 5.5rem minmax(11rem, 1.4fr);
+}
+
+.ot-cupboard-batch-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.ot-cupboard-batch-row .ot-stock-return {
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.ot-cupboard-batch-row .ot-stock-return > input[type="number"] {
+  width: 4.25rem;
+  font: inherit;
+  padding: 0.28rem 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--bg-input);
+}
+
+.ot-cupboard-label {
+  padding: 0 0.45rem 0.35rem;
+  flex-wrap: wrap;
 }
 
 @media (max-width: 900px) {

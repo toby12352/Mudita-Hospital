@@ -4,6 +4,8 @@ import { userMessage } from "@/shared/errors";
 
 export type PrintPreviewOptions = {
   title?: string;
+  /** Short note under the title (e.g. bill already marked paid). */
+  note?: string;
   /** Narrow thermal receipt chrome (~80mm). Default true for bills. */
   receipt?: boolean;
   /** Called after the preview Print button runs contentWindow.print(). */
@@ -45,9 +47,20 @@ export function openPrintPreview(html: string, opts: PrintPreviewOptions = {}): 
   const toolbar = document.createElement("div");
   toolbar.className = "print-preview-toolbar";
 
+  const headingWrap = document.createElement("div");
+  headingWrap.className = "print-preview-heading";
+
   const heading = document.createElement("h2");
   heading.className = "print-preview-title";
   heading.textContent = title;
+  headingWrap.append(heading);
+
+  if (opts.note) {
+    const note = document.createElement("p");
+    note.className = "print-preview-note";
+    note.textContent = opts.note;
+    headingWrap.append(note);
+  }
 
   const actions = document.createElement("div");
   actions.className = "print-preview-actions";
@@ -71,7 +84,7 @@ export function openPrintPreview(html: string, opts: PrintPreviewOptions = {}): 
   iframe.setAttribute("sandbox", "allow-modals allow-same-origin allow-scripts");
 
   actions.append(printBtn, closeBtn);
-  toolbar.append(heading, actions);
+  toolbar.append(headingWrap, actions);
   frameWrap.append(iframe);
   card.append(toolbar, frameWrap);
   overlay.append(card);

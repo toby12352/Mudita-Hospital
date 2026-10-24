@@ -124,8 +124,10 @@ Open `http://localhost:1420` in a browser.
 | POST | `/api/auth/change-password` | Bearer |
 | GET / PUT | `/api/settings` | Bearer + Admin (`settings`) |
 | GET / POST | `/api/doctors` | Bearer + Admin (`settings`) or OPD (`opd`) |
+| GET | `/api/doctors/history` | Bearer + Admin (`settings`) or OPD (`opd`) — create/update/deactivate audit for doctors |
 | GET / PUT / DELETE | `/api/doctors/{id}` | Bearer + Admin (`settings`) or OPD (`opd`) |
 | GET / POST | `/api/services` | Bearer + Admin (`settings`) or OPD (`opd`) |
+| GET | `/api/services/history` | Bearer + Admin (`settings`) or OPD (`opd`) — create/update/deactivate audit for services |
 | GET / PUT / DELETE | `/api/services/{id}` | Bearer + Admin (`settings`) or OPD (`opd`) |
 | GET / POST | `/api/users` | Bearer + Admin (`manage_users`) |
 | PUT | `/api/users/{id}` | Bearer + Admin (`manage_users`) |
@@ -134,9 +136,15 @@ Open `http://localhost:1420` in a browser.
 | POST | `/api/pharmacy/items/{id}/restock` | Bearer + `pharmacy` |
 | POST | `/api/pharmacy/items/{id}/adjust` | Bearer + Admin only |
 | GET | `/api/pharmacy/items/{id}/batches` | Bearer + `pharmacy` |
+| POST | `/api/pharmacy/items/{id}/batches/{batchId}/label` | Bearer + `pharmacy` — set batch number and expiry on a MAIN row; qty unchanged |
 | GET | `/api/pharmacy/movements` | Bearer + `pharmacy` |
 | GET | `/api/pharmacy/locations` | Bearer + `pharmacy` |
-| POST | `/api/pharmacy/transfers` | Bearer + `pharmacy` — chosen MAIN batch qty → OT cupboard |
+| GET / POST | `/api/pharmacy/bills` | Bearer + `pharmacy` — POST body may set `kind: "return"` (`RT-######`) or `kind: "transfer"` (`TO-######`); default sale is `PH-######`. GET `?kind=sale\|return\|transfer` filters history |
+| GET / PUT | `/api/pharmacy/bills/{id}` | Bearer + `pharmacy` |
+| POST | `/api/pharmacy/bills/{id}/pay` | Bearer + `pharmacy` — sale deducts FEFO; return credits unlabeled MAIN. `TO-` slips are rejected |
+| POST | `/api/pharmacy/bills/{id}/transfer` | Bearer + `pharmacy` — confirm a draft `TO-` slip. Saleable MAIN qty moves into the OT cupboard. Batch number and expiry are copied as stored, including blanks |
+| POST | `/api/pharmacy/bills/{id}/void` | Bearer + `pharmacy` — sale restores; return reverses credit when stock remains; a confirmed transfer moves qty back from the OT cupboard when that qty is still there |
+| GET | `/api/pharmacy/bills/{id}/print` | Bearer + `pharmacy` — HTML receipt / return slip |
 | GET | `/api/opd/catalog/doctors` | Bearer + `opd` |
 | GET | `/api/opd/catalog/services` | Bearer + `opd` |
 | GET | `/api/opd/catalog/items` | Bearer + `opd` |
@@ -148,6 +156,7 @@ Open `http://localhost:1420` in a browser.
 | GET | `/api/opd/bills/{id}/print` | Bearer + `opd` (HTML + OS print) |
 | GET | `/api/ot/stock` | Bearer + `ot` — cupboard on hand |
 | POST | `/api/ot/stock/{id}/return` | Bearer + `ot` — cupboard qty back to MAIN |
+| POST | `/api/ot/stock/{id}/label` | Bearer + `ot` — set batch number and expiry on a cupboard row; qty unchanged |
 | GET | `/api/ot/catalog/doctors` | Bearer + `ot` (includes OT fee) |
 | GET | `/api/ot/catalog/services` | Bearer + `ot` |
 | GET | `/api/ot/catalog/items` | Bearer + `ot` — on-hand is `ot_batches`, not MAIN |
@@ -171,23 +180,23 @@ Open `http://localhost:1420` in a browser.
 | GET | `/api/reports/near-expiry/print` | Bearer — HTML print |
 | GET | `/api/dashboard/overview` | Bearer + Admin (`settings`) — combined cash for the date |
 | GET | `/api/dashboard/daily-report` | Bearer + Admin — combined cash, prior day, and bill lines |
-| GET | `/api/demo/status` | Bearer + Admin |
-| POST | `/api/demo/seed` | Bearer + Admin — DEMO- catalog + sample paid OPD |
-| POST | `/api/demo/reset` | Bearer + Admin — wipe DEMO-/[TRAINING] then re-seed |
+| GET | `/api/demo/status` | Bearer + Admin — `enabled: false` unless training is turned on. Does not write. |
+| POST | `/api/demo/seed` | Bearer + Admin — 403 unless `MUDITA_ALLOW_TRAINING=1` (or `allow_training`). DEMO- catalog + sample paid OPD |
+| POST | `/api/demo/reset` | Bearer + Admin — 403 unless training is on. Wipe DEMO-/[TRAINING] then re-seed |
 
 Send `Authorization: Bearer <token>` (also accepts `mudita_session` cookie).
 
 OPD, OT, and Pharmacy cannot open hospital Settings, manage users, backup, or training, and cannot list another desk's bills. OPD can maintain doctors and services from its portal (same `/api/doctors` and `/api/services` as Admin). Admin Settings tabs: Hospital, Doctors, Services, Users, Backup, **Training**. Combined cash is on the admin dashboard, not inside a clinic portal.
 
-**Pharmacy:** Admin + Pharmacy. Stock on hand = sum of `item_batches.qty` at `MAIN`. Restock writes a `PURCHASE` movement. **Send to OT** moves a chosen MAIN batch into the OT cupboard. **FEFO:** pharmacy sale and an OPD item line take the earliest `expiry_date` at `MAIN`. OT bill pay takes the earliest expiry on `ot_batches`. Both skip batches dated before today (blank expiry still sells, after dated stock). Admin adjust-down still uses earliest expiry, including expired batches. Bill prices come from the item catalog. Unknown item codes cannot be restocked — create the item first. Pack quantities and the small unit cannot change while a batch still has quantity.
+**Pharmacy:** Admin + Pharmacy. Stock on hand = sum of `item_batches.qty` at `MAIN`. Restock and opening stock accept an optional batch number and expiry, and restock writes a `PURCHASE` movement. A positive adjustment that creates a batch uses the same optional identity. **Transfer to OT** is a `TO-######` slip. Confirm moves saleable MAIN qty into the OT cupboard the same way a sale picks stock: earliest expiry first, then a blank expiry. A date before today stays on the shelf. Batch number and expiry are copied onto the OT row, including blanks. The slip is not pharmacy cash. **FEFO:** pharmacy sale and an OPD item line take the earliest `expiry_date` at `MAIN`. OT bill pay takes the earliest expiry on `ot_batches`. Both skip batches dated before today. A blank expiry is taken after every dated batch. Labeling a row later does not change quantity. Admin adjust-down still uses earliest expiry, including expired and unlabeled batches. Bill prices come from the item catalog. Unknown item codes cannot be restocked — create the item first. Pack quantities and the small unit cannot change while a batch still has quantity.
 
 **OPD:** Admin + OPD. Portal nav: Doctors, Services, Bill. OPD can create, edit, and deactivate doctors and services (not hospital settings, users, backup, or training). Draft bill lines use the service catalog price and the doctor's consultation fee (one consultation, quantity 1). Medicines are billed in Pharmacy. Pay cash → print HTML. Void with reason restores stock when a paid line was an item. Bill numbers `OPD-000001`…. Totals in MMK. Catalog endpoints remain for read-only lookup while billing.
 
 **OT:** Admin + OT. Draft bill from the OT cupboard, doctor OT fee, and optional services → cash pay → print. Case numbers `OT-######`; bills `OTB-######`. Pay writes `SALE` on `ot_batches` and `ot_bill_stock_allocs`. Void restores those batches and returns the case to draft. Issue and reconcile are gone. History lists OT bills only.
 
-**OT cupboard:** Pharmacy sends a chosen `MAIN` batch and qty (`POST /api/pharmacy/transfers`). The same batch number and expiry land in `ot_batches`; pharmacy `MAIN` qty drops in that same transaction, with a `stock_movements` row, an `ot_stock_movements` row, and one `stock_transfers` row. OT returns qty the same way in reverse. A qty the source does not hold is rejected and changes nothing. Migration `011_ot_stock` copies existing `OT_FLOOR` qty into `ot_batches`. Migration `012_ot_bill_stock` returns leftover `OT_RESERVED` qty to `MAIN` and turns open issued or reconciled cases into draft bill documents. Paying an OT bill deducts `ot_batches`. Dashboard stock value counts MAIN and `ot_batches` only.
+**OT cupboard:** Pharmacy confirms a Transfer to OT slip (`POST /api/pharmacy/bills/{id}/transfer`). Saleable MAIN qty moves in one transaction. The same batch number and expiry, including blanks, land in `ot_batches`, with a `stock_movements` row, an `ot_stock_movements` row, and one `stock_transfers` row linked to the slip. OT returns qty the other way. A qty the source does not hold is rejected and changes nothing. Void of that slip puts the qty back only when the cupboard still holds it. Migration `011_ot_stock` copies existing `OT_FLOOR` qty into `ot_batches`. Migration `012_ot_bill_stock` returns leftover `OT_RESERVED` qty to `MAIN` and turns open issued or reconciled cases into draft bill documents. Paying an OT bill deducts `ot_batches`. Dashboard stock value counts MAIN and `ot_batches` only. Transfer slips are excluded from pharmacy cash.
 
-**Reports:** Each clinic desk's daily cash is its own paid bills. Combined OPD + OT + pharmacy cash is the admin dashboard. Low stock and near expiry (pharmacy) are MAIN only. UI language **English / မြန်မာ**. Help or `?` opens shortcuts; **Print cheat sheet** / [`docs/CHEATSHEET.md`](docs/CHEATSHEET.md) for laminate. Admin **Settings → Training** seeds/resets `DEMO-` / `[TRAINING]` data only.
+**Reports:** Each clinic desk's daily cash is its own paid bills. Combined OPD + OT + pharmacy cash is the admin dashboard. Low stock and near expiry (pharmacy) are MAIN only. UI language **English / မြန်မာ**. Help or `?` opens shortcuts; **Print cheat sheet** / [`docs/CHEATSHEET.md`](docs/CHEATSHEET.md) for laminate. Admin **Settings → Training** seeds/resets `DEMO-` / `[TRAINING]` data only when the server is started with `MUDITA_ALLOW_TRAINING=1`. A hospital install leaves that off.
 
 ## Config
 
@@ -203,7 +212,7 @@ OPD, OT, and Pharmacy cannot open hospital Settings, manage users, backup, or tr
 }
 ```
 
-Env overrides: `MUDITA_HOST`, `MUDITA_PORT`, `MUDITA_DB_PATH`, `MUDITA_BACKUP_DIR`, `MUDITA_BACKUP_INTERVAL_HOURS`.
+Env overrides: `MUDITA_HOST`, `MUDITA_PORT`, `MUDITA_DB_PATH`, `MUDITA_BACKUP_DIR`, `MUDITA_BACKUP_INTERVAL_HOURS`, `MUDITA_ALLOW_TRAINING` (`1` turns training seed/reset on). A missing `allow_training` key stays off.
 
 - **Localhost bind** (`127.0.0.1`): only this PC (dev default).
 - **LAN bind**: packaged server uses `"host": "0.0.0.0"` so clinic clients connect to `http://SERVER_IP:8080`.

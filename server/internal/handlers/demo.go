@@ -15,8 +15,10 @@ import (
 
 // Demo handles Admin training seed / reset (settings permission).
 // Training rows are tagged with codes/names containing DEMO- or [TRAINING].
+// Seed and reset stay off unless AllowTraining is set from config.
 type Demo struct {
-	DB *sql.DB
+	DB            *sql.DB
+	AllowTraining bool
 }
 
 func (h *Demo) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -38,6 +40,10 @@ func (h *Demo) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Demo) status(w http.ResponseWriter, r *http.Request) {
+	if !h.AllowTraining {
+		writeJSON(w, http.StatusOK, map[string]any{"enabled": false})
+		return
+	}
 	var doctors, services, items, opdBills, otBills, phBills int
 	_ = h.DB.QueryRow(`SELECT COUNT(1) FROM doctors WHERE name LIKE '%[TRAINING]%' OR name LIKE 'Dr Demo%'`).Scan(&doctors)
 	_ = h.DB.QueryRow(`SELECT COUNT(1) FROM services WHERE code LIKE 'DEMO-%'`).Scan(&services)
@@ -46,17 +52,29 @@ func (h *Demo) status(w http.ResponseWriter, r *http.Request) {
 	_ = h.DB.QueryRow(`SELECT COUNT(1) FROM ot_bills WHERE patient_name LIKE '%[TRAINING]%'`).Scan(&otBills)
 	_ = h.DB.QueryRow(`SELECT COUNT(1) FROM pharmacy_bills WHERE patient_name LIKE '%[TRAINING]%'`).Scan(&phBills)
 	writeJSON(w, http.StatusOK, map[string]any{
-		"training_doctors":         doctors,
-		"training_services":        services,
-		"training_items":           items,
-		"training_opd_bills":       opdBills,
-		"training_ot_bills":        otBills,
-		"training_pharmacy_bills":  phBills,
-		"seeded":                   doctors > 0 || services > 0 || items > 0,
+		"enabled":                 true,
+		"training_doctors":        doctors,
+		"training_services":       services,
+		"training_items":          items,
+		"training_opd_bills":      opdBills,
+		"training_ot_bills":       otBills,
+		"training_pharmacy_bills": phBills,
+		"seeded":                  doctors > 0 || services > 0 || items > 0,
 	})
 }
 
+func (h *Demo) trainingOff(w http.ResponseWriter) bool {
+	if h.AllowTraining {
+		return false
+	}
+	writeJSON(w, http.StatusForbidden, map[string]string{"error": "training is off on this server"})
+	return true
+}
+
 func (h *Demo) seed(w http.ResponseWriter, r *http.Request) {
+	if h.trainingOff(w) {
+		return
+	}
 	user := middleware.UserFromContext(r.Context())
 	uid := user.ID
 
@@ -131,6 +149,9 @@ func (h *Demo) seed(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Demo) reset(w http.ResponseWriter, r *http.Request) {
+	if h.trainingOff(w) {
+		return
+	}
 	user := middleware.UserFromContext(r.Context())
 	uid := user.ID
 
@@ -207,11 +228,11 @@ func (h *Demo) reset(w http.ResponseWriter, r *http.Request) {
 	}
 
 	audit.WriteAudit(h.DB, &uid, "demo_reset", "training", nil, map[string]any{
-		"opd_bills":       len(opdIDs),
-		"pharmacy_bills":  len(phIDs),
-		"ot_bills":        len(otBillIDs),
-		"ot_cases":        len(otCaseIDs),
-		"items":           len(itemIDs),
+		"opd_bills":      len(opdIDs),
+		"pharmacy_bills": len(phIDs),
+		"ot_bills":       len(otBillIDs),
+		"ot_cases":       len(otCaseIDs),
+		"items":          len(itemIDs),
 	})
 
 	// Re-seed clean training set
@@ -290,7 +311,7 @@ func ensureTrainingItems(tx *sql.Tx, actorUID int64) ([]int64, int, error) {
 		expiryOffsetDays     int
 	}
 	specs := []spec{
-		{"DEMO-PARA", "Paracetamol 500mg [TRAINING]", "Tablet", 20, 50, 100, 40, 60},   // low stock
+		{"DEMO-PARA", "Paracetamol 500mg [TRAINING]", "Tablet", 20, 50, 100, 40, 60},     // low stock
 		{"DEMO-NS", "Normal Saline 500ml [TRAINING]", "Injection", 200, 500, 20, 80, 30}, // near expiry
 		{"DEMO-GLOVE", "Sterile Gloves [TRAINING]", "OT", 100, 250, 10, 200, 180},
 	}
@@ -413,7 +434,7 @@ func ensureTrainingPharmacyBill(tx *sql.Tx, actorUID int64, itemIDs []int64) (in
 		return 0, nil
 	}
 
-	billNo, err := nextPharmacyBillNo(tx)
+	billNo, err := nextPharmacyBillNo(tx, "PH")
 	if err != nil {
 		return 0, fmt.Errorf("pharmacy bill seq: %w", err)
 	}

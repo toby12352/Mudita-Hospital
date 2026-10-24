@@ -42,13 +42,38 @@ export function shortcutsForView(
   t: (k: string) => string,
 ): DeskShortcut[] {
   const billKeys: DeskShortcut[] = [
-    { key: "F5", label: t("confirm") },
-    { key: "F7", label: t("print") },
+    { key: "F2", label: t("newBill") },
+    { key: "F5", label: t("saveDraft") },
+    { key: "F7", label: t("payAndPrint") },
     { key: "F8", label: t("delete") },
     { key: "F9", label: t("history") },
     { key: "F10", label: t("cancel") },
     { key: "^F8", label: t("vDelete") },
   ];
+
+  if (view === "pharmacy_transfer") {
+    return [
+      { key: "F2", label: t("newTransfer") },
+      { key: "F5", label: t("saveDraft") },
+      { key: "F7", label: t("transferAction") },
+      { key: "F8", label: t("delete") },
+      { key: "F9", label: t("history") },
+      { key: "F10", label: t("cancel") },
+      { key: "^F8", label: t("vDelete") },
+    ];
+  }
+
+  if (view === "pharmacy_return") {
+    return [
+      { key: "F2", label: t("newReturn") },
+      { key: "F5", label: t("saveDraft") },
+      { key: "F7", label: t("returnAndPrint") },
+      { key: "F8", label: t("delete") },
+      { key: "F9", label: t("history") },
+      { key: "F10", label: t("cancel") },
+      { key: "^F8", label: t("vDelete") },
+    ];
+  }
 
   if (view === "pharmacy_billing" || (view === "opd" && (intent.opdScreen ?? "bill") === "bill")) {
     return billKeys;

@@ -35,13 +35,14 @@ type RowSnapshot = {
 export function cartRevealTarget(
   prev: RowSnapshot[],
   next: RowSnapshot[],
-): string | "top" | null {
+): string | "top" | "end" | null {
   if (next.length < prev.length) return null;
 
   if (next.length === prev.length + 1) {
     const prevKeys = new Set(prev.map((r) => r.key));
     const added = next.filter((r) => !prevKeys.has(r.key));
-    if (added.length === 1) return added[0].key;
+    // Stick to the bottom of the pane (Pharmacy-style) for a single append.
+    if (added.length === 1) return "end";
   }
 
   if (next.length === prev.length) {
@@ -178,6 +179,10 @@ export function BillLineGrid({
     if (!body || target == null) return;
     if (target === "top") {
       body.scrollTop = 0;
+      return;
+    }
+    if (target === "end") {
+      body.scrollTop = body.scrollHeight;
       return;
     }
     const rowEl = body.querySelector<HTMLElement>(

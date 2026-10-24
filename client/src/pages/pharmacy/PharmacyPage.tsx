@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState } from "react";
 import {
   formatItemCode,
   formatPackCompact,
+  getPharmacyItem,
   listPharmacyItems,
   packFromItem,
   packLevelsFromItemPack,
@@ -12,6 +13,7 @@ import {
 } from "@/features/pharmacy/api";
 import { useI18n } from "@/shared/i18n";
 import { PharmacyItemForm } from "./PharmacyItemForm";
+import { PharmacyItemLots } from "./PharmacyItemLots";
 import { PharmacyItemsTab } from "./PharmacyItemsTab";
 import { PharmacyMovementsTab } from "./PharmacyMovementsTab";
 
@@ -32,9 +34,11 @@ export function PharmacyPage({
   const [filterQ, setFilterQ] = useState("");
   const [list, setList] = useState<PharmacyItem[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selectedDetail, setSelectedDetail] = useState<PharmacyItem | null>(null);
   const [editing, setEditing] = useState<PharmacyItem | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [listEpoch, setListEpoch] = useState(0);
+  const [detailEpoch, setDetailEpoch] = useState(0);
   const [busyId, setBusyId] = useState<number | null>(null);
 
   async function reload(search = filterQ) {
@@ -67,7 +71,33 @@ export function PharmacyPage({
     if (content instanceof HTMLElement) content.scrollTop = 0;
   }, [mode]);
 
+  useEffect(() => {
+    if (selectedId == null || creating || mode === "form") {
+      setSelectedDetail(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const item = await getPharmacyItem(selectedId);
+        if (!cancelled) setSelectedDetail(item);
+      } catch (e) {
+        if (!cancelled) {
+          setSelectedDetail(null);
+          setError(e instanceof Error ? e.message : "Load failed");
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId, creating, mode, detailEpoch, listEpoch]);
+
   const selected = list.find((i) => i.id === selectedId) ?? null;
+  const infoItem =
+    selectedDetail && selected && selectedDetail.id === selected.id
+      ? selectedDetail
+      : selected;
 
   function openCreate() {
     setCreating(true);
@@ -83,10 +113,16 @@ export function PharmacyPage({
     setCreating(false);
   }
 
-  function openEdit(item: PharmacyItem) {
+  async function openEdit(item: PharmacyItem) {
     setCreating(false);
-    setEditing(item);
-    setMode("form");
+    setError(null);
+    try {
+      const full = await getPharmacyItem(item.id);
+      setEditing(full);
+      setMode("form");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Load failed");
+    }
   }
 
   function backToItems() {
@@ -257,7 +293,7 @@ export function PharmacyPage({
                 item.id === selectedId && !creating ? " selected" : ""
               }${!item.active ? " inactive" : ""}`}
               onClick={() => selectItem(item.id)}
-              onDoubleClick={() => openEdit(item)}
+              onDoubleClick={() => void openEdit(item)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();
@@ -308,29 +344,35 @@ export function PharmacyPage({
             <h3 className="drug-setup-title" style={{ fontSize: "1.1rem" }}>
               {t("drugInfo")}
             </h3>
-            {selected ? (
+            {infoItem ? (
               <>
                 <div className="drug-info-field">
                   <span className="drug-info-label">{t("brandName")}</span>
-                  <span className="drug-info-input">{selected.name}</span>
+                  <span className="drug-info-input">{infoItem.name}</span>
                 </div>
                 <div className="drug-info-field">
                   <span className="drug-info-label">{t("dosage")}</span>
-                  <span className="drug-info-input">{selected.dosage || "—"}</span>
+                  <span className="drug-info-input">{infoItem.dosage || "—"}</span>
                 </div>
                 <div className="drug-info-field">
                   <span className="drug-info-label">{t("packingSize")}</span>
                   <span className="drug-info-input">
-                    {formatPackCompact(packFromItem(selected))}
+                    {formatPackCompact(packFromItem(infoItem))}
                   </span>
                 </div>
+                <PharmacyItemLots
+                  batches={infoItem.batches}
+                  stockUnit={infoItem.stock_unit || infoItem.pack_l3_unit || ""}
+                  showOnHand
+                  onHand={infoItem.stock_main}
+                />
                 {(() => {
-                  const pack = packFromItem(selected);
+                  const pack = packFromItem(infoItem);
                   const levels = packLevelsFromItemPack(pack);
                   const slots = packPriceSlots(
                     levels,
-                    selected.buy_price_mmk,
-                    sellOuterFromSmallest(pack, selected.sell_price_mmk),
+                    infoItem.buy_price_mmk,
+                    sellOuterFromSmallest(pack, infoItem.sell_price_mmk),
                   );
                   return (
                     <div className="drug-info-price-grid" aria-label={t("pricing")}>
@@ -348,16 +390,19 @@ export function PharmacyPage({
                   );
                 })()}
                 <div className="btn-row" style={{ marginTop: "0.75rem" }}>
-                  <button type="button" className="btn primary" onClick={() => openEdit(selected)}>
+                  <button type="button" className="btn primary" onClick={() => void openEdit(infoItem)}>
                     {t("edit")}
                   </button>
                 </div>
                 <PharmacyItemsTab
                   isAdmin={isAdmin}
-                  onEdit={openEdit}
-                  selectedId={selected.id}
+                  onEdit={(item) => void openEdit(item)}
+                  selectedId={infoItem.id}
                   embedDetail
-                  onChanged={() => setListEpoch((n) => n + 1)}
+                  onChanged={() => {
+                    setListEpoch((n) => n + 1);
+                    setDetailEpoch((n) => n + 1);
+                  }}
                 />
               </>
             ) : (

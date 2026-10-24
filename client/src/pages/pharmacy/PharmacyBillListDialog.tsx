@@ -1,5 +1,9 @@
 import { useEffect, useState } from "react";
-import { listPharmacyBills, type PharmacyBill } from "@/features/pharmacy/api";
+import {
+  listPharmacyBills,
+  type PharmacyBill,
+  type PharmacyBillKind,
+} from "@/features/pharmacy/api";
 import { formatMMK } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
 
@@ -7,12 +11,19 @@ export type PharmacyBillListDialogMode = "history" | "delete";
 
 type Props = {
   mode: PharmacyBillListDialogMode;
+  kind?: PharmacyBillKind;
   onClose: () => void;
   onOpen: (id: number) => void;
   onVoid: (id: number, reason: string) => Promise<void>;
 };
 
-export function PharmacyBillListDialog({ mode, onClose, onOpen, onVoid }: Props) {
+export function PharmacyBillListDialog({
+  mode,
+  kind = "sale",
+  onClose,
+  onOpen,
+  onVoid,
+}: Props) {
   const { t } = useI18n();
   const [bills, setBills] = useState<PharmacyBill[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -27,7 +38,7 @@ export function PharmacyBillListDialog({ mode, onClose, onOpen, onVoid }: Props)
       setLoading(true);
       setError(null);
       try {
-        const list = await listPharmacyBills("");
+        const list = await listPharmacyBills("", "", kind);
         if (!cancelled) setBills(list);
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Load failed");
@@ -38,7 +49,7 @@ export function PharmacyBillListDialog({ mode, onClose, onOpen, onVoid }: Props)
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [kind]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {

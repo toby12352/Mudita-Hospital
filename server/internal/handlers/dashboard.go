@@ -787,9 +787,11 @@ func buildCashTrends(db *sql.DB, from, to string) ([]trendPoint, error) {
 	}
 
 	phRows, err := db.Query(`
-		SELECT date(paid_at), COUNT(*), COALESCE(SUM(total_mmk), 0)
+		SELECT date(paid_at), COUNT(*), COALESCE(SUM(
+			CASE WHEN bill_no LIKE 'RT-%' THEN -total_mmk ELSE total_mmk END
+		), 0)
 		FROM pharmacy_bills
-		WHERE status = 'paid' AND date(paid_at) BETWEEN date(?) AND date(?)
+		WHERE status = 'paid' AND bill_no NOT LIKE 'TO-%' AND date(paid_at) BETWEEN date(?) AND date(?)
 		GROUP BY date(paid_at)
 	`, from, to)
 	if err != nil {
@@ -955,16 +957,18 @@ func buildPharmacyMargin(db *sql.DB, from, to string) (*pharmacyMarginReport, er
 			SELECT COALESCE(bl.item_id, 0),
 			       COALESCE(NULLIF(TRIM(bl.code), ''), COALESCE(i.code, '')),
 			       COALESCE(NULLIF(TRIM(bl.description), ''), COALESCE(i.name, '(item)')),
-			       COALESCE(bl.stock_qty, 0),
-			       COALESCE(bl.line_total_mmk, 0),
+			       CASE WHEN b.bill_no LIKE 'RT-%' THEN -COALESCE(bl.stock_qty, 0) ELSE COALESCE(bl.stock_qty, 0) END,
+			       CASE WHEN b.bill_no LIKE 'RT-%' THEN -COALESCE(bl.line_total_mmk, 0) ELSE COALESCE(bl.line_total_mmk, 0) END,
 			       CAST(ROUND(
-			         COALESCE(bl.stock_qty, 0) * COALESCE(i.buy_price_mmk, 0) * 1.0 /
+			         (CASE WHEN b.bill_no LIKE 'RT-%' THEN -COALESCE(bl.stock_qty, 0) ELSE COALESCE(bl.stock_qty, 0) END)
+			         * COALESCE(i.buy_price_mmk, 0) * 1.0 /
 			         CASE WHEN COALESCE(i.units_per_purchase, 1) < 1 THEN 1 ELSE i.units_per_purchase END
 			       ) AS INTEGER)
 			FROM pharmacy_bill_lines bl
 			JOIN pharmacy_bills b ON b.id = bl.bill_id
 			LEFT JOIN items i ON i.id = bl.item_id
 			WHERE b.status = 'paid'
+			  AND b.bill_no NOT LIKE 'TO-%'
 			  AND date(b.paid_at) BETWEEN date(?) AND date(?)
 		)
 		GROUP BY item_id, code, name

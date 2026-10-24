@@ -40,8 +40,9 @@ client/src/
     format.ts           # formatMMK
     Typeahead.tsx
     BillLineGrid.tsx  # shared blank-row cart for OPD, OT, and Pharmacy
-                      # grows through 10 committed rows then scrolls; reveals
-                      # the single added or merged row inside the cart pane
+                      # grows through 10 committed rows then sticks to the
+                      # bottom when one row is appended; quantity edits still
+                      # reveal that one row inside the cart pane
     FormSection.tsx
     cheatsheet.ts
     styles/App.css
@@ -111,7 +112,7 @@ Do not bypass health or auth for convenience in production paths.
 ## Clinic chrome / navigation
 
 - Authenticated clinic desk: light Fluent-style chrome — radio bar (`.desk-radio-bar`) for portal sections on a white/neutral surface with accent for the active section, `#F8F9FB` work area, and a bottom status strip (`.desk-status-bar`) with F-key hints, date, and `Day (user)`. Language, help, logout, and Server IP sit on the right of the radio bar.
-- Bill screens use the light action column (`.opd-bill-rail`) with Confirm F5 (primary) / Print F7 / History F9 / V.Delete ^F8 / Cancel F10. List and Drug Setup screens omit the rail.
+- Bill screens use the light action column (`.opd-bill-rail`) with Print F7 / Confirm F5 (accent while draft) / History F9 / V.Delete ^F8 / Cancel F10 / New bill F2 (accent when finished). Accent uses `.opd-bill-rail-btn--accent`. List and Drug Setup screens omit the rail.
 - Admin chooses a portal from `PortalPicker`; desk roles land in one portal. Still **no React Router** — `View` + optional `NavIntent` in `app/types.ts`, remount pages with a changing `key` when the same view opens with a different intent.
 - Dashboard uses the same radio bar + status footer (no left sidebar).
 - UI zoom: `mudita_ui_scale` in `localStorage` via `shared/uiScale.ts`; Ctrl/Cmd `+` / `-` / `0` anywhere.

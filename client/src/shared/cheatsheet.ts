@@ -39,19 +39,20 @@ export function cheatSheetHTML(): string {
       <li>Home → <strong>OPD</strong> → Bill.</li>
       <li>Patient name → doctor → add <strong>service</strong> or consultation (no medicines here).</li>
       <li class="my">လူနာအမည် → ဆရာဝန် → ဝန်ဆောင်မှု / consultation။ ဆေးသည် Pharmacy Billing တွင်။</li>
-      <li><strong>Confirm (F5)</strong> = draft. <strong>Print (F7)</strong> = save + pay + print preview.</li>
-      <li><strong>History (F9)</strong> · <strong>V.Delete (^F8)</strong> void with reason · <strong>Cancel (F10)</strong> clears form.</li>
+      <li><strong>Save draft (F5)</strong> = unpaid bill. <strong>Pay &amp; print (F7)</strong> = save + mark paid + receipt preview.</li>
+      <li class="my">မူကြမ်းသိမ်း (F5) = မပေးရသေး။ ပေးပြီး ပရင့် (F7) = သိမ်း + ပေးပြီးမှတ် + ပြေစာ။</li>
+      <li><strong>History (F9)</strong> · <strong>V.Delete (^F8)</strong> void with reason · <strong>Cancel (F10)</strong> clears form · <strong>New bill (F2)</strong> next patient.</li>
       <li>First receipt: printer <strong>EPSON TM-T82 Receipt</strong>, paper <strong>80 mm</strong>.</li>
     </ul>
   </section>
   <section>
     <h2>3. OT cupboard / ခွဲစိတ် ဆေးဗီရို</h2>
     <ul>
-      <li>Pharmacy: item → View → <strong>Send to OT</strong> (batch + qty). Stock moves in that step.</li>
-      <li class="my">ဆေးဆိုင်က အသုတ်နှင့် အရေအတွက်ကို OT ဆေးဗီရိုသို့ ပို့သည်။</li>
+      <li>Pharmacy: <strong>Transfer to OT</strong> → add medicines → <strong>Transfer</strong>, then <strong>Confirm transfer</strong>. Saleable stock moves. Batch number and expiry are optional.</li>
+      <li class="my">ဆေးဆိုင်က OT သို့ လွှဲ တွင် ဆေးထည့်ပြီး အတည်ပြုမှ ဆေးဗီရိုသို့ ရောက်သည်။ အသုတ်နံပါတ် မထည့်လည်း ရသည်။</li>
       <li>OT cupboard: <strong>Return to pharmacy</strong> for unused qty.</li>
-      <li>New OT bill from cupboard on hand → <strong>Pay cash</strong> → Print. Pay deducts qty. Void puts it back.</li>
-      <li class="my">ဘေလ်ပေးချေမှ လက်ကျန်ကျသည်။ မသုံးသော အရေအတွက်ကို ဆေးဆိုင်သို့ ပြန်ပို့ပါ။</li>
+      <li>New OT bill from cupboard on hand → <strong>Pay &amp; print (F7)</strong> marks paid and opens receipt. Pay deducts qty. Void puts it back.</li>
+      <li class="my">ပေးပြီး ပရင့် (F7) က ပေးပြီးမှတ်ပြီး ဆေးဗီရိုလျှော့သည်။ မသုံးသော အရေအတွက်ကို ဆေးဆိုင်သို့ ပြန်ပို့ပါ။</li>
     </ul>
   </section>
   <section>
@@ -59,7 +60,16 @@ export function cheatSheetHTML(): string {
     <ul>
       <li>Home → <strong>Pharmacy Billing</strong> → New bill → add medicines by code.</li>
       <li>Enter qty in <strong>billing units</strong> (e.g. mL); system converts to stock units.</li>
-      <li><strong>Pay cash</strong> deducts stock (FEFO) → Print. Void restores stock.</li>
+      <li><strong>Save draft (F5)</strong> keeps unpaid. <strong>Pay &amp; print (F7)</strong> marks paid, deducts stock (FEFO), opens receipt. Void restores stock.</li>
+      <li class="my">မူကြမ်းသိမ်း (F5)။ ပေးပြီး ပရင့် (F7) = ပေးပြီးမှတ် + စတော့လျှော့ + ပြေစာ။</li>
+    </ul>
+  </section>
+  <section>
+    <h2>4b. Pharmacy Return in / ဆေးပြန်သွင်း</h2>
+    <ul>
+      <li>Pharmacy portal → <strong>Return in</strong> → add returned medicines by code (same form as sales).</li>
+      <li><strong>Return &amp; print (F7)</strong> puts qty back into MAIN, refunds cash on the day book, opens the slip.</li>
+      <li class="my">ပြန်သွင်းပြီး ပရင့် (F7) = MAIN စတော့ပြန်ထည့် + နေ့စာအုပ်တွင် ငွေပြန်အမ်း + စလစ်။</li>
     </ul>
   </section>
   <section>
@@ -68,7 +78,7 @@ export function cheatSheetHTML(): string {
       <li><strong>Pharmacy Stock</strong> → set purchase / stock / billing units + conversion.</li>
       <li><strong>Restock</strong> in boxes or stock units (cannot restock unknown code).</li>
       <li class="my">မသိသော ကုဒ်ကို restock မရ — အရင် item ဖန်တီးပါ။</li>
-      <li>View a MAIN batch → <strong>Send to OT</strong>. Low stock / near expiry are MAIN only.</li>
+      <li>Low stock / near expiry are MAIN only. Send stock from <strong>Transfer to OT</strong>.</li>
     </ul>
   </section>
   <section>
