@@ -27,6 +27,39 @@ func TestResolveItemPackThreeUnitBoxCardTablet(t *testing.T) {
 	}
 }
 
+func TestRestockStockQty(t *testing.T) {
+	item := pharmacyItem{
+		PackL1Qty: 1, PackL1Unit: "Box",
+		PackL2Qty: 10, PackL2Unit: "Card",
+		PackL3Qty: 10, PackL3Unit: "Tablet",
+		UnitsPerPurchase: 100,
+	}
+	if q, u, err := restockStockQty(item, 2, ""); err != "" || q != 200 || u != "purchase" {
+		t.Fatalf("purchase default = %d %q %q", q, u, err)
+	}
+	if q, u, err := restockStockQty(item, 2, "purchase"); err != "" || q != 200 || u != "purchase" {
+		t.Fatalf("purchase = %d %q %q", q, u, err)
+	}
+	if q, u, err := restockStockQty(item, 5, "stock"); err != "" || q != 5 || u != "stock" {
+		t.Fatalf("stock = %d %q %q", q, u, err)
+	}
+	if q, u, err := restockStockQty(item, 3, "Card"); err != "" || q != 30 || u != "Card" {
+		t.Fatalf("card = %d %q %q", q, u, err)
+	}
+	if q, u, err := restockStockQty(item, 2, "Box"); err != "" || q != 200 || u != "Box" {
+		t.Fatalf("box = %d %q %q", q, u, err)
+	}
+	if q, u, err := restockStockQty(item, 7, "Tablet"); err != "" || q != 7 || u != "Tablet" {
+		t.Fatalf("tablet = %d %q %q", q, u, err)
+	}
+	if _, _, err := restockStockQty(item, 1, "Bottle"); err != "unknown unit" {
+		t.Fatalf("unknown unit err = %q", err)
+	}
+	if _, _, err := restockStockQty(item, 0, "Card"); err == "" {
+		t.Fatal("expected qty must be > 0")
+	}
+}
+
 func TestSaleUnitFactor(t *testing.T) {
 	bottle := itemPack{L1Qty: 1, L1Unit: "Bottle", L2Qty: 150, L2Unit: "Tablet", L3Qty: 1, L3Unit: "Tablet"}
 	if f, name, ok := saleUnitFactor(bottle, "bottle"); !ok || f != 150 || name != "Bottle" {

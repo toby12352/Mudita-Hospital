@@ -1100,3 +1100,110 @@ func TestTrainingOffUnlessEnabled(t *testing.T) {
 		t.Fatalf("status %s", w.Body.String())
 	}
 }
+
+func TestDeletePharmacyItem(t *testing.T) {
+	sqlDB := openTestDB(t)
+	_, token := insertSession(t, sqlDB, "Pharmacy", 0)
+	h := &Pharmacy{DB: sqlDB}
+	later := time.Now().In(yangon).AddDate(0, 0, 40).Format("2006-01-02")
+
+	okID := insertItem(t, sqlDB, "DEL1", "Delete me", 100, 50)
+	insertBatch(t, sqlDB, okID, "LOT", later, 20)
+	if _, err := sqlDB.Exec(`
+		INSERT INTO stock_movements (item_id, location_code, movement_type, qty_delta, reason)
+		VALUES (?, 'MAIN', 'PURCHASE', 20, 'Restock')
+	`, okID); err != nil {
+		t.Fatal(err)
+	}
+	w := doJSON(h, http.MethodPost, fmt.Sprintf("/api/pharmacy/items/%d/delete", okID), token, `{}`)
+	mustCode(t, w, http.StatusOK)
+	var n int
+	if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM items WHERE id = ?`, okID).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatalf("item still present")
+	}
+	if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM item_batches WHERE item_id = ?`, okID).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatalf("batches not cascaded")
+	}
+
+	blockID := insertItem(t, sqlDB, "DEL2", "On a bill", 100, 50)
+	if _, err := sqlDB.Exec(`
+		INSERT INTO pharmacy_bills (bill_no, patient_name, status, total_mmk)
+		VALUES ('PH-DEL', 'P', 'draft', 0)
+	`); err != nil {
+		t.Fatal(err)
+	}
+	var billID int64
+	if err := sqlDB.QueryRow(`SELECT id FROM pharmacy_bills WHERE bill_no = 'PH-DEL'`).Scan(&billID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sqlDB.Exec(`
+		INSERT INTO pharmacy_bill_lines (
+			bill_id, item_id, code, description, billing_qty, stock_qty, unit_price_mmk, line_total_mmk
+		) VALUES (?, ?, 'DEL2', 'On a bill', 1, 1, 50, 50)
+	`, billID, blockID); err != nil {
+		t.Fatal(err)
+	}
+	w = doJSON(h, http.MethodPost, fmt.Sprintf("/api/pharmacy/items/%d/delete", blockID), token, `{}`)
+	mustCode(t, w, http.StatusConflict)
+	if !strings.Contains(w.Body.String(), "item is on a bill or transfer") {
+		t.Fatalf("body %s", w.Body.String())
+	}
+	if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM items WHERE id = ?`, blockID).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("blocked item was deleted")
+	}
+}
+
+func TestRestockPackUnit(t *testing.T) {
+	sqlDB := openTestDB(t)
+	_, token := insertSession(t, sqlDB, "Admin", 0)
+	h := &Pharmacy{DB: sqlDB}
+
+	res, err := sqlDB.Exec(`
+		INSERT INTO items (
+			code, name, category, buy_price_mmk, sell_price_mmk,
+			pack_l1_qty, pack_l1_unit, pack_l2_qty, pack_l2_unit, pack_l3_qty, pack_l3_unit,
+			units_per_purchase, purchase_unit, stock_unit, billing_unit
+		) VALUES (
+			'PACKRST', 'Pack restock', 'Tablet', 1000, 10,
+			1, 'Box', 10, 'Card', 10, 'Tablet',
+			100, 'Box', 'Tablet', 'Tablet'
+		)
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	itemID, _ := res.LastInsertId()
+
+	w := doJSON(h, http.MethodPost, fmt.Sprintf("/api/pharmacy/items/%d/restock", itemID), token,
+		`{"qty":3,"qty_unit":"Card"}`)
+	mustCode(t, w, http.StatusOK)
+	if mainQty(t, sqlDB, itemID) != 30 {
+		t.Fatalf("card restock qty %d, want 30", mainQty(t, sqlDB, itemID))
+	}
+
+	w = doJSON(h, http.MethodPost, fmt.Sprintf("/api/pharmacy/items/%d/restock", itemID), token,
+		`{"qty":1,"qty_unit":"Bottle"}`)
+	mustCode(t, w, http.StatusBadRequest)
+	if !strings.Contains(w.Body.String(), "unknown unit") {
+		t.Fatalf("body %s", w.Body.String())
+	}
+	if mainQty(t, sqlDB, itemID) != 30 {
+		t.Fatalf("rejected restock changed qty to %d", mainQty(t, sqlDB, itemID))
+	}
+
+	w = doJSON(h, http.MethodPost, fmt.Sprintf("/api/pharmacy/items/%d/restock", itemID), token,
+		`{"qty":1,"qty_unit":"stock"}`)
+	mustCode(t, w, http.StatusOK)
+	if mainQty(t, sqlDB, itemID) != 31 {
+		t.Fatalf("stock restock qty %d, want 31", mainQty(t, sqlDB, itemID))
+	}
+}

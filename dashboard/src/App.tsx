@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useState, type ReactNode } from "react";
 import brandLogo from "./assets/logo.png";
 import {
   fetchHealth,
@@ -20,12 +20,12 @@ import {
   storeSession,
   type User,
 } from "./auth";
-import { DeskStatusBar } from "./components/layout/DeskStatusBar";
-import { RadioBar } from "./components/layout/RadioBar";
 import { ServerBadge, type ConnState } from "./components/layout/ServerBadge";
+import { Sidebar } from "./components/layout/Sidebar";
+import { WorkspaceHeader } from "./components/layout/WorkspaceHeader";
 import { userMessage } from "./errors";
 import { useI18n } from "./i18n";
-import type { PageId } from "./nav";
+import { PAGE_TITLE_KEY, type PageId } from "./nav";
 import { AuditPage } from "./pages/Audit";
 import { DailyReportPage } from "./pages/DailyReport";
 import { MasterDataPage } from "./pages/MasterData";
@@ -212,48 +212,33 @@ function App() {
 
   if (needsServerSetup) {
     return (
-      <main className="shell">
-        <header className="brand">
-          <div className="brand-lockup">
-            <img src={brandLogo} alt="" className="brand-logo brand-logo--lg" />
-            <div>
-              <p className="eyebrow">{t("brand")}</p>
-              <h1>{t("serverIp")}</h1>
-              <p className="lede">Enter the hospital server address on this LAN (port 8080).</p>
-            </div>
-          </div>
-        </header>
+      <AuthFrame
+        title={t("serverIp")}
+        lede="Enter the hospital server address on this LAN (port 8080)."
+      >
         <LanguageSwitcher locale={locale} onChange={setLocale} t={t} />
         <ServerSetupForm
           initial={getApiBase()}
           onSave={finishServerSetup}
           onUseLocal={() => finishServerSetup("http://127.0.0.1:8080")}
         />
-      </main>
+      </AuthFrame>
     );
   }
 
   if (booting) {
     return (
       <main className="shell">
-        <p className="lede">{t("restoringSession")}</p>
+        <section className="auth-card">
+          <p className="lede">{t("restoringSession")}</p>
+        </section>
       </main>
     );
   }
 
   if (!user) {
     return (
-      <main className="shell">
-        <header className="brand">
-          <div className="brand-lockup">
-            <img src={brandLogo} alt="" className="brand-logo brand-logo--lg" />
-            <div>
-              <p className="eyebrow">{t("brand")}</p>
-              <h1>{t("signIn")}</h1>
-              <p className="lede">{t("offlineLan")}</p>
-            </div>
-          </div>
-        </header>
+      <AuthFrame title={t("signIn")} lede={t("offlineLan")}>
         <LanguageSwitcher locale={locale} onChange={setLocale} t={t} />
         <ServerBadge
           conn={conn}
@@ -268,25 +253,18 @@ function App() {
           disabled={conn === "offline"}
           t={t}
         />
-      </main>
+      </AuthFrame>
     );
   }
 
   if (user.must_change_password) {
     return (
-      <main className="shell">
-        <header className="brand">
-          <div className="brand-lockup">
-            <img src={brandLogo} alt="" className="brand-logo brand-logo--lg" />
-            <div>
-              <p className="eyebrow">{t("brand")}</p>
-              <h1>{t("changePassword")}</h1>
-              <p className="lede">Required on first login for {user.username}</p>
-            </div>
-          </div>
-        </header>
+      <AuthFrame
+        title={t("changePassword")}
+        lede={`Required on first login for ${user.username}`}
+      >
         <ChangePasswordForm onDone={handlePasswordChanged} onCancel={handleLogout} />
-      </main>
+      </AuthFrame>
     );
   }
 
@@ -294,53 +272,60 @@ function App() {
   void permissions;
 
   return (
-    <div className="app-frame app-frame--classic">
-      <RadioBar
-        page={page}
-        onNavigate={setPage}
-        t={t}
-        trailing={
-          <div className="desk-radio-trailing-inner">
-            <ServerBadge
-              conn={conn}
-              detail={detail}
-              onChangeServer={openServerSetup}
-              onRetry={() => setApiEpoch((n) => n + 1)}
-              t={t}
-              compact
-            />
-            <div className="lang-switch lang-compact" role="group" aria-label={t("language")}>
-              <button
-                type="button"
-                className={`btn ghost ${locale === "en" ? "lang-active" : ""}`}
-                onClick={() => setLocale("en")}
-              >
-                {t("english")}
-              </button>
-              <button
-                type="button"
-                className={`btn ghost ${locale === "my" ? "lang-active" : ""}`}
-                onClick={() => setLocale("my")}
-              >
-                {t("myanmar")}
-              </button>
-            </div>
-            <button type="button" className="btn ghost compact" onClick={() => void handleLogout()}>
-              {t("logOut")}
-            </button>
-          </div>
-        }
-      />
-      <div className="app-main app-main--classic">
-        {page === "overview" ? <OverviewPage t={t} /> : null}
-        {page === "revenue" ? <RevenuePage t={t} /> : null}
-        {page === "stock" ? <StockPage t={t} /> : null}
-        {page === "daily" ? <DailyReportPage t={t} /> : null}
-        {page === "master" ? <MasterDataPage t={t} /> : null}
-        {page === "audit" ? <AuditPage t={t} /> : null}
+    <div className="dash-shell">
+      <Sidebar page={page} onNavigate={setPage} t={t} />
+      <div className="dash-workspace">
+        <WorkspaceHeader
+          title={t(PAGE_TITLE_KEY[page])}
+          user={user}
+          locale={locale}
+          onLocale={setLocale}
+          onLogout={() => void handleLogout()}
+          conn={conn}
+          detail={detail}
+          onChangeServer={openServerSetup}
+          onRetry={() => setApiEpoch((n) => n + 1)}
+          t={t}
+        />
+        <div className="dash-workspace-body">
+          {page === "overview" ? <OverviewPage t={t} /> : null}
+          {page === "revenue" ? <RevenuePage t={t} /> : null}
+          {page === "stock" ? <StockPage t={t} /> : null}
+          {page === "daily" ? <DailyReportPage t={t} /> : null}
+          {page === "master" ? <MasterDataPage t={t} /> : null}
+          {page === "audit" ? <AuditPage t={t} /> : null}
+        </div>
       </div>
-      <DeskStatusBar username={user.display_name || user.username} t={t} />
     </div>
+  );
+}
+
+function AuthFrame({
+  title,
+  lede,
+  children,
+}: {
+  title: string;
+  lede: string;
+  children: ReactNode;
+}) {
+  const { t } = useI18n();
+  return (
+    <main className="shell">
+      <section className="auth-card">
+        <header className="brand">
+          <div className="brand-lockup">
+            <img src={brandLogo} alt="" className="brand-logo brand-logo--lg" />
+            <div>
+              <p className="eyebrow">{t("brand")}</p>
+              <h1>{title}</h1>
+              <p className="lede">{lede}</p>
+            </div>
+          </div>
+        </header>
+        {children}
+      </section>
+    </main>
   );
 }
 

@@ -1,0 +1,114 @@
+﻿     83     175  Yuatta
+    130    1652  24 Oct 2026
+    131    1441  Dote:
+    187    1717  7:57 PY
+    325     198  Psticular
+    325    1113  Paracul*
+    327     849  Kyat
+    327    1761  Kyat
+    442    1741  55000
+    493    1107  AOBUne phosphotase(ALP)
+    494    1743  10000
+    546    1107  Aterqy• Screennq Panel
+    602     809  sooooo
+    602    1107  Aterqy• Screennq Panel II
+    654    1107  Aterqy• Screennq Panel III
+    705    1107  AN•A (Screentnq )
+    706     809  sooooo
+    706    1740  21000
+    707     328  Ream
+    758     827  10000
+    758    1741  ssooo
+    759     192  Doctor Fee
+    759    1107  Arm -nRNP
+    810     327  Chone
+    810     827  15000
+    810    1107  Arm phosphottpsd Ab Panel
+    810    1739  gsooo
+    862    1741  soooo
+    866     193  ECG
+    866     844  7000
+    918     825  soooo
+    918    1107  Arm-d0UA
+    918    1755  gooo
+    919     192  Fu moezstson
+    970     333  ECHO YA
+    970     824  75000
+    971    1107  Arm-HAV
+   1022     320  USG
+   1022     823  60000
+   1074     192  Synna Pump
+   1074     825  soooo
+   1074    1743  i 7000
+   1075    1107  Arm-HAV
+   1125    1107  Arm-Hec (Quoitaeve)
+   1126     823  45000
+   1126    1756  7000
+   1176    1107  Arm-Hbc (teal) quonetotrve
+   1178    1740  20000
+   1182     192  USG
+   1182     823  45000
+   1232    1107  Arm-HBc (quarmtotr.•e)
+   1234     192  USG
+   1234     825  soooo
+   1234    1740  20000
+   1285    1107  Anti-Hbe act)
+   1286     192  USG
+   1286     823  40000
+   1286    1755  6500
+   1338     844  2500
+   1338    1757  5500
+   1339     191  Water
+   1390     845  5000
+   1390    1755  6500
+   1391     192  X Føm
+   1391    1107  Arm-HCV
+   1442    1107  Arm-HIV i & 2
+   1498     844  2500
+   1498    1107  Arm-HIV i & 2
+   1498    1756  7500
+   1549    1107  Arm-HIV & 2 .P 24 antqen(ECL)
+   1550    1740  25000
+   1601    1107  Arm-Yubenan Hormone(AYH)
+   1602    1723  150000
+   1654    1740  26000
+   1710    1740  25000
+   1711    1107  Arm-TPO
+   1760    1107  Azmc find RE
+   1762    1740  20000
+   1814    1740  20000
+   1815    1195  Combo
+   1864    1109  ecta (B-CTX)
+   1866    1741  55000
+   1918    1740  23000
+   1919    1109  ecta
+   1973    1109  Blirubn (oontuq*ed)
+   1974    1756  7000
+   2024    1109  Blirubn (unoontuqotod)
+   2026    1743  10000
+   2078    1757  5500
+   2128    1107  C.A5(i5.3)
+   2130    1740  21000
+   2180    1107  ca g (19.9)
+   2182    1740  38500
+   2234    1740  27000
+   2290    1107  Chik
+   2290    1743  12000
+   2342    1755  8500
+   2394    1107  CRYB
+   2394    1740  25000
+   2444    1107  Comp'enent 3 (C-3)
+   2446    1743  i 7000
+   2496    1107  Comp'enent 4 (C-4)
+   2498    1743  i 7000
+   2550    1107  Coomb •s test
+   2550    1755  gooo
+   2606    1740  30000
+   2656    1107  C-peNde (InsWtn Pende)
+   2658    1740  25000
+   2710    1740  25000
+   2711    1107  Creaentne
+   2762    1107  CSFCyøsoq,•
+   2762    1740  25000
+   2813    1107  CT trochomotg)
+   2814    1740  22000

@@ -238,12 +238,9 @@ export function MasterDataPage({ t }: Props) {
   }
 
   return (
-    <div className="page">
+    <div className="page page-frame">
       <div className="page-header">
-        <div>
-          <h2>{t("masterData")}</h2>
-          <p className="lede muted">{t("masterLede")}</p>
-        </div>
+        <p className="lede muted">{t("masterLede")}</p>
         <div className="page-actions">
           <button type="button" className="btn ghost" onClick={() => void onExport()}>
             {t("exportCsv")}
@@ -312,10 +309,10 @@ export function MasterDataPage({ t }: Props) {
                   <th />
                   <th>{t("code")}</th>
                   <th>{t("name")}</th>
-                  <th>{t("buyPrice")}</th>
-                  <th>{t("sellPrice")}</th>
-                  <th>{t("reorder")}</th>
-                  <th>{t("onHand")}</th>
+                  <th className="num">{t("buyPrice")}</th>
+                  <th className="num">{t("sellPrice")}</th>
+                  <th className="num">{t("reorder")}</th>
+                  <th className="num">{t("onHand")}</th>
                   <th>{t("active")}</th>
                 </tr>
               </thead>
@@ -353,7 +350,7 @@ export function MasterDataPage({ t }: Props) {
                   <th />
                   <th>{t("code")}</th>
                   <th>{t("name")}</th>
-                  <th>{t("price")}</th>
+                  <th className="num">{t("price")}</th>
                   <th>{t("active")}</th>
                 </tr>
               </thead>
@@ -386,11 +383,11 @@ export function MasterDataPage({ t }: Props) {
               <thead>
                 <tr>
                   <th />
-                  <th>ID</th>
+                  <th className="num">ID</th>
                   <th>{t("name")}</th>
                   <th>{t("specialty")}</th>
-                  <th>{t("consultFee")}</th>
-                  <th>{t("otFee")}</th>
+                  <th className="num">{t("consultFee")}</th>
+                  <th className="num">{t("otFee")}</th>
                   <th>{t("active")}</th>
                 </tr>
               </thead>

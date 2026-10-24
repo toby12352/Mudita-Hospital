@@ -1,0 +1,14 @@
+Disable Schedule:
+Get-ScheduledTask | Where-Object { $_.TaskName -match 'Mudita' } | Format-Table TaskName, State
+Disable-ScheduledTask -TaskName "MuditaHospitalAPI" -ErrorAction SilentlyContinue
+Stop-ScheduledTask -TaskName "MuditaHospitalAPI" -ErrorAction SilentlyContinue
+
+Kill the server:
+Get-Process mudita-api -ErrorAction SilentlyContinue | Stop-Process -Force
+
+Check where it is listening:
+netstat -ano | findstr :8080
+
+Stop the listener:
+Stop-Process -Id 17472 -Force
+Stop-Process -Id 2548 -Force

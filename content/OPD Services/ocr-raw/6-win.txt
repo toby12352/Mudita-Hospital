@@ -1,0 +1,182 @@
+﻿    117     129  Psticular
+    117    1046  Particul•
+    119     782  Kyat
+    119    1694  Kyat
+    183     125  Nurse Abd Fee
+    183     776  3000
+    183    1107  casteoee
+    183    1673  soooo
+    237    1040  RA (Quotrve)
+    238     759  15000
+    238    1672  20000
+    239     125  Nurse Fee
+    289    1224  Fee (F042500
+    290     759  10000
+    291     124  Nurse Fee
+    341     125  Nurse Fee (Aung Aung San)
+    342     756  20000
+    342    1672  25000
+    343    1040  Retz count
+    392    1040  Retro (Screemnq)
+    394     124  Nurse, w Phyo
+    394     759  10000
+    394    1672  30000
+    445    1040  Retro Confrmaton
+    446     123  OCOS Wth
+    446     739  450000
+    446    1672  30000
+    502     123  OCOS COLONO SCOPE
+    502     739  850000
+    502    1040  Rh antibody tere
+    502    1688  7000
+    554     123  OGTT
+    554     755  40000
+    554    1672  25000
+    555    1040  Room Fee
+    606     123  OT Padme
+    606     740  sooooo
+    606    1689  sooo
+    607    1040  room Fee
+    657    1040  Room Fee (Foe
+    658     123  OT Fee
+    658     743  150000
+    709    1040  Room Fee (hall)
+    710     123  OT Ynor Poo.sqe
+    710     743  150000
+    710    1672  25000
+    762     741  700000
+    762    1040  Ryie•s Tube Fee
+    762    1675  10000
+    814     739  450000
+    814    1040  Ryse•s Tube Fee
+    814    1675  isooo
+    870     756  25000
+    870    1672  25000
+    920    1039  zope (OCDS)
+    922     216  Stena
+    922     756  35000
+    922    1652  250000
+    973    1039  scope (upper
+    973    1276  Lo«e)
+    974     755  45000
+    974    1651  450000
+   1026     123  Ox-nen
+   1026     755  45000
+   1026    1652  200000
+   1027    1039  zope tkpoate
+   1077     244  (Small)
+   1078     756  25000
+   1078    1652  250000
+   1079    1039  scope Zhpoae
+   1134     124  Pooæqe
+   1134     741  700000
+   1134    1040  Sape Yodsene
+   1134    1652  250000
+   1186     124  Pooæqe
+   1186     739  400000
+   1186    1040  Sape Pac•oqe
+   1186    1652  350000
+   1238     124  Pooæqe
+   1238     740  250000
+   1238    1689  sooo
+   1290     124  Pooæqe
+   1290     741  sooooo
+   1290    1040  Section CCS
+   1290    1672  20000
+   1346     124  Pooæqe
+   1346     739  450000
+   1346    1040  Semen
+   1346    1672  30000
+   1398     124  Pooæqe
+   1398     740  sooooo
+   1398    1040  Serum Amy bse
+   1398    1672  30000
+   1450     125  p so.cetl
+   1450     756  25000
+   1450    1040  Serum 812
+   1450    1671  41000
+   1502     757  soooo
+   1502    1040  Serum ecta HCG
+   1502    1672  3sooo
+   1552     125  pod SrC&S
+   1554    1040  Serum BØrubtn
+   1554    1671  45000
+   1609    1039  serum Cotuot Le€el
+   1610     743  100000
+   1610    1672  24000
+   1660    1040  Serum fo'5te
+   1662     755  45000
+   1714     755  85000
+   1714    1040  Serum
+   1714    1675  15000
+   1715     124  Pop
+   1766    1040  Serum Osmo•rr,•
+   1766    1672  20000
+   1767     124  PCV
+   1818     124  P hob
+   1818     756  20000
+   1818    1040  Sen' ee
+   1818    1675  15000
+   1870     755  gamo
+   1870    1040  Sen' ee
+   1870    1675  10000
+   1871     124  Phobther»y
+   1925     124  PEurot fiusd Cybbqy•
+   1925    1040  Senee (35000) Foc
+   1926     757  55000
+   1978    1040  Senee
+   2030     759  i 7000
+   2030    1040  Sen•ee Suction
+   2030    1673  soooo
+   2082     759  16000
+   2082    1688  3500
+   2083     124  peazum
+   2134     124  PPE Servoce
+   2134     757  soooo
+   2134    1040  Sktn cas
+   2134    1671  45000
+   2186     124  PPE Wth Intoeon Fee
+   2186     755  40000
+   2186    1040  Sodium
+   2186    1675  15000
+   2242     759  10000
+   2242    1117  Blir.bn
+   2242    1675  18500
+   2293     124  PR (toc)
+   2294    1040  Spnnee Pump 'Jed
+   2294    1675  isooo
+   2345    1040  Sputum AFP (3
+   2346     755  91000
+   2346    1672  35000
+   2347     124  Pro BNP
+   2398     755  82500
+   2398    1040  SP'JT'JY cas
+   2398    1672  3sooo
+   2399     124  Pro•.BNP
+   2448     124  Procscmnn(quone)
+   2450     757  55000
+   2450    1040  Sputum Gene-Xpert
+   2450    1672  30000
+   2506     124  Preo Sape
+   2506     759  10000
+   2506    1040  Stehtna Wth Orestnq
+   2506    1673  soooo
+   2557     124  PSA (Free)
+   2557    1040  stool cas (Vtek-2)
+   2558     756  33000
+   2558    1671  40000
+   2609     124  PSAfiota1)
+   2610     756  33000
+   2610    1040  stool For FIT
+   2610    1671  60000
+   2662     756  20000
+   2662    1040  stool For H-Py',oti Aq
+   2662    1672  25000
+   2718     124  PT/INR urgent
+   2718     757  soooo
+   2718    1040  Stool For Redo:tna Sugar
+   2718    1675  12000
+   2770     124  PT/INR utqent
+   2770     756  32000
+   2770    1040  Stool Occur Ood
+   2770    1672  20000

@@ -920,10 +920,77 @@ body,
   border-color: var(--danger-border);
 }
 
+.btn.danger {
+  background: var(--danger);
+  color: #fff;
+  border-color: var(--danger);
+}
+
+.btn.danger:hover:not(:disabled) {
+  filter: brightness(0.92);
+}
+
+.btn.danger:active:not(:disabled) {
+  filter: brightness(0.85);
+}
+
 .settings-panel {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+}
+
+/* Settings form controls — match billing-desk chrome without shrinking padding. */
+.settings-panel .field input,
+.settings-panel .field select {
+  border-radius: 6px;
+  border-color: #d5dce5;
+}
+
+.settings-panel .field input:hover:not(:disabled):not(:focus),
+.settings-panel .field select:hover:not(:disabled):not(:focus) {
+  border-color: #c5cdd8;
+}
+
+.settings-panel .field input:focus,
+.settings-panel .field select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
+  background: var(--bg-input);
+}
+
+.settings-panel .field input::placeholder {
+  color: #94a3b8;
+}
+
+.settings-panel .field input:disabled,
+.settings-panel .field select:disabled {
+  color: var(--muted);
+  background-color: #f8fafc;
+  border-color: #d5dce5;
+  cursor: not-allowed;
+  opacity: 1;
+}
+
+.settings-panel .field select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23667085' d='M1.41 0L6 4.58L10.59 0L12 1.41l-6 6-6-6z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  background-size: 0.75rem;
+  padding-right: 2rem;
+}
+
+.settings-panel .field input[type="number"]::-webkit-outer-spin-button,
+.settings-panel .field input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.settings-panel .field input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
 }
 
 .tabs-bar {
@@ -1825,6 +1892,20 @@ body,
   color: var(--muted);
 }
 
+/* Billing desk Fluent tokens — OPD / OT / Pharmacy sales, return, transfer */
+.opd-bill-desk,
+.opd-bill-dialog {
+  --radius-control: 6px;
+  --border: #d5dce5;
+  --border-strong: #c5cdd8;
+  --placeholder: #94a3b8;
+  --focus-ring: 0 0 0 3px rgba(37, 99, 235, 0.18);
+  --bill-header-bg: #f3f5f8;
+  --bill-row-hover: #f1f5f9;
+  --bg-panel: #ffffff;
+  --bg-input: #ffffff;
+}
+
 /* OPD bill desk (legacy-style form) */
 .opd-bill-desk {
   display: grid;
@@ -1898,15 +1979,18 @@ body,
   flex: 1;
   min-width: 0;
   font: inherit;
+  font-size: 0.875rem;
   padding: 0.28rem 0.45rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-control);
   background: var(--bg-input);
+  color: var(--ink);
+  transition: var(--transition-fast);
 }
 
 .opd-bill-label {
   flex: 0 0 5.5rem;
-  font-size: 0.82rem;
+  font-size: 0.8125rem;
   font-weight: 600;
   color: var(--muted);
   background: transparent;
@@ -1918,17 +2002,47 @@ body,
   flex: 1;
   min-width: 0;
   font: inherit;
+  font-size: 0.875rem;
   padding: 0.28rem 0.45rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-control);
   background: var(--bg-input);
+  color: var(--ink);
+  transition: var(--transition-fast);
+}
+
+.opd-bill-input::placeholder,
+.opd-bill-field--typeahead .typeahead input::placeholder,
+.opd-bill-grid .typeahead.bill-line-typeahead input::placeholder {
+  color: var(--placeholder);
+}
+
+.opd-bill-input:hover:not(:disabled):not(:focus),
+.opd-bill-field--typeahead .typeahead input:hover:not(:disabled):not(:focus),
+.opd-bill-desk .bill-unit-select:hover:not(:disabled):not(:focus),
+.opd-bill-grid-row .qty-input:hover:not(:disabled):not(:focus) {
+  border-color: var(--border-strong);
 }
 
 .opd-bill-input:focus,
-.opd-bill-field--typeahead .typeahead input:focus {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
+.opd-bill-field--typeahead .typeahead input:focus,
+.opd-bill-desk .bill-unit-select:focus,
+.opd-bill-grid .typeahead.bill-line-typeahead input:focus,
+.opd-bill-grid-row .qty-input:focus {
+  outline: none;
   border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+
+.opd-bill-input:disabled,
+.opd-bill-field--typeahead .typeahead input:disabled,
+.opd-bill-desk .bill-unit-select:disabled,
+.opd-bill-grid-row .qty-input:disabled {
+  color: var(--muted);
+  background: #f8fafc;
+  border-color: var(--border);
+  cursor: not-allowed;
+  opacity: 1;
 }
 
 .opd-bill-input.grow {
@@ -1948,8 +2062,11 @@ body,
 
 .opd-bill-readonly {
   flex: 1;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   padding: 0.28rem 0.2rem;
+  color: var(--muted);
+  background: transparent;
+  border: none;
 }
 
 .opd-bill-add-row {
@@ -1977,6 +2094,7 @@ body,
   max-height: calc(var(--bill-line-row-height) * 10);
   overflow: auto;
   overflow-anchor: none;
+  scrollbar-gutter: stable;
 }
 
 .opd-bill-grid-entries {
@@ -1985,6 +2103,8 @@ body,
   z-index: 3;
   border-top: 1px solid var(--border);
   background: var(--bg-panel);
+  /* Same inset as the body's reserved scrollbar, so entry columns match the rows. */
+  padding-inline-end: var(--bill-scroll-gutter, 0px);
 }
 
 .opd-bill-grid-head,
@@ -1993,7 +2113,12 @@ body,
   grid-template-columns: minmax(0, 1fr) 4.5rem 5.5rem 5.5rem 2.25rem;
   gap: 0.35rem;
   align-items: center;
-  padding: 0.35rem 0.5rem;
+  padding: 0.4rem 0.75rem;
+}
+
+.opd-bill-grid-body .empty-row {
+  margin: 0;
+  padding: 0.65rem 0.75rem;
 }
 
 .opd-bill-grid--units .opd-bill-grid-head,
@@ -2012,15 +2137,16 @@ body,
 }
 
 .opd-bill-grid-head {
-  background: var(--bg);
+  background: var(--bill-header-bg);
   color: var(--ink);
   font-size: 0.78rem;
-  font-weight: 650;
+  font-weight: 600;
   letter-spacing: 0.02em;
   position: sticky;
   top: 0;
   z-index: 1;
   border-bottom: 1px solid var(--border);
+  padding-inline-end: calc(0.75rem + var(--bill-scroll-gutter, 0px));
 }
 
 .opd-bill-grid-head .num,
@@ -2032,36 +2158,59 @@ body,
   height: var(--bill-line-row-height);
   box-sizing: border-box;
   border-bottom: 1px solid var(--border);
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   line-height: 1.2;
 }
 
 .opd-bill-grid-row .btn {
   padding: 0.15rem 0.35rem;
   line-height: 1.2;
-  font-size: 0.9rem;
+  font-size: 0.8125rem;
+  border-radius: var(--radius-control);
+}
+
+.opd-bill-grid-row .btn.ghost.danger,
+.opd-bill-grid-row .btn.ghost.danger:hover:not(:disabled),
+.opd-bill-grid-row .btn.ghost.danger:active:not(:disabled) {
+  background: transparent;
+  color: var(--danger);
+  border-color: var(--danger-border);
+}
+
+.opd-bill-grid-row .btn.ghost.danger:hover:not(:disabled) {
+  border-color: var(--danger);
 }
 
 .opd-bill-grid-row .qty-input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   padding: 0.15rem 0.3rem;
   line-height: 1.2;
+  font-size: 0.875rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--bg-input);
+  color: var(--ink);
 }
 
 .opd-bill-grid-row .bill-unit-select {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   padding: 0.1rem 0.2rem;
   line-height: 1.2;
 }
 
-.opd-bill-grid-row:nth-child(even) {
-  background: var(--bg);
+.opd-bill-grid-body .opd-bill-grid-row:nth-child(even) {
+  background: #fafbfc;
 }
 
 .opd-bill-grid-row:hover {
-  background: var(--accent-soft);
+  background: var(--bill-row-hover);
 }
 
 .bill-line-title,
-.bill-line-picked,
 .bill-line-pack {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2073,6 +2222,9 @@ body,
 }
 
 .opd-bill-grid .typeahead.bill-line-typeahead {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   margin: 0;
   gap: 0;
   font-size: inherit;
@@ -2081,8 +2233,14 @@ body,
 
 .opd-bill-grid .typeahead.bill-line-typeahead input {
   width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   padding: 0.25rem 0.35rem;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--bg-input);
+  color: var(--ink);
 }
 
 .bill-line-unit {
@@ -2101,7 +2259,7 @@ body,
   background: var(--bg-panel);
   border: 1px solid var(--border);
   border-radius: var(--radius-control);
-  box-shadow: 0 4px 16px rgba(31, 41, 55, 0.1);
+  box-shadow: 0 2px 8px rgba(31, 41, 55, 0.08);
 }
 
 .bill-unit-option {
@@ -2120,23 +2278,30 @@ body,
 
 .bill-unit-option:hover,
 .bill-unit-option.active {
-  background: var(--accent-soft);
+  background: var(--bill-row-hover, #f1f5f9);
 }
 
 .bill-unit-select {
   width: 100%;
   font: inherit;
-  font-size: 0.85rem;
+  font-size: 0.8125rem;
   color: var(--ink);
   background: var(--bg-input);
   border: 1px solid var(--border);
   border-radius: var(--radius-control);
   padding: 0.2rem 0.25rem;
+  transition: var(--transition-fast);
 }
 
 .opd-bill-consult {
   flex: 0 0 auto;
   white-space: nowrap;
+}
+
+.opd-bill-desk .btn.action {
+  border-radius: 6px;
+  font-size: 0.8125rem;
+  font-weight: 600;
 }
 
 .opd-bill-footer {
@@ -2185,9 +2350,9 @@ body,
   justify-content: space-between;
   gap: 1rem;
   padding: 0.28rem 0.55rem;
-  background: var(--bg);
+  background: var(--bill-header-bg);
   color: var(--ink);
-  font-size: 0.85rem;
+  font-size: 0.8125rem;
   font-weight: 600;
 }
 
@@ -2204,7 +2369,7 @@ body,
   flex-direction: column;
   gap: 0.4rem;
   padding: 0.65rem 0.45rem;
-  background: var(--bg);
+  background: var(--bill-header-bg);
   border-left: 1px solid var(--border);
   min-width: 9rem;
   min-height: 0;
@@ -2218,15 +2383,29 @@ body,
   gap: 0.5rem;
   width: 100%;
   font: inherit;
-  font-size: 0.82rem;
-  font-weight: 650;
+  font-size: 0.8125rem;
+  font-weight: 600;
   padding: 0.55rem 0.5rem;
   border: 1px solid var(--border);
-  border-radius: var(--radius-control);
+  border-radius: 6px;
   background: var(--bg-panel);
   color: var(--ink);
   cursor: pointer;
   transition: var(--transition-fast);
+}
+
+.opd-bill-rail-btn-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.opd-bill-rail-btn-main > svg {
+  display: block;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
 }
 
 .opd-bill-rail-btn-text {
@@ -2275,30 +2454,205 @@ body,
   border-color: var(--accent-pressed);
 }
 
-.opd-bill-rail-btn:hover:not(:disabled):not(.opd-bill-rail-btn--accent) {
-  background: var(--bg);
+.opd-bill-rail-btn:hover:not(:disabled):not(.opd-bill-rail-btn--accent):not(.opd-bill-rail-btn--danger) {
+  background: #f8fafc;
   border-color: var(--border-strong);
 }
 
+.opd-bill-rail-btn:active:not(:disabled):not(.opd-bill-rail-btn--accent):not(.opd-bill-rail-btn--danger) {
+  background: #f1f5f9;
+  border-color: var(--border-strong);
+}
+
+.opd-bill-rail-btn--danger {
+  background: var(--bg-panel);
+  color: var(--danger);
+  border-color: var(--danger-border);
+}
+
+.opd-bill-rail-btn--danger:hover:not(:disabled) {
+  background: #fef7f7;
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.opd-bill-rail-btn--danger:active:not(:disabled) {
+  background: #fdeeee;
+  border-color: var(--danger);
+}
+
 .opd-bill-rail-btn:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+
+.opd-bill-rail-btn--accent:focus-visible {
+  border-color: var(--accent-hover);
+  box-shadow: var(--focus-ring);
 }
 
 .opd-bill-rail-btn:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
 .opd-bill-rail-btn kbd {
   font-family: Consolas, "Courier New", monospace;
-  font-size: 0.72rem;
-  font-weight: 600;
-  opacity: 0.85;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  opacity: 1;
   border: none;
   background: transparent;
-  color: inherit;
+  color: var(--muted);
   padding: 0;
+  flex-shrink: 0;
+}
+
+.opd-bill-rail-btn--accent kbd,
+.opd-bill-rail-btn--danger kbd {
+  color: inherit;
+  opacity: 0.75;
+}
+
+.alert-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(26, 31, 46, 0.35);
+}
+
+.alert-dialog {
+  position: relative;
+  width: min(22rem, calc(100% - 2rem));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 1.75rem 1.5rem 1.25rem;
+  background: var(--bg-panel);
+  border-radius: 28px;
+  box-shadow: 0 18px 48px rgba(31, 41, 55, 0.16);
+  text-align: center;
+}
+
+.alert-dialog-close {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--danger-border);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--danger);
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.alert-dialog > .alert-dialog-close {
+  position: absolute;
+  top: 0.85rem;
+  right: 0.85rem;
+}
+
+.alert-dialog-close:hover:not(:disabled) {
+  background: rgba(198, 40, 40, 0.06);
+}
+
+.alert-dialog-close:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.alert-dialog-close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.alert-dialog-badge {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 5.5rem;
+  height: 5.5rem;
+  margin-top: 0.35rem;
+}
+
+.alert-dialog-badge-glow {
+  position: absolute;
+  inset: -0.35rem;
+  border-radius: 999px;
+  background: radial-gradient(
+    circle,
+    rgba(198, 40, 40, 0.22) 0%,
+    rgba(198, 40, 40, 0.08) 45%,
+    transparent 70%
+  );
+  pointer-events: none;
+}
+
+.alert-dialog-badge-circle {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 4.5rem;
+  height: 4.5rem;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--danger);
+  box-shadow: 0 2px 10px rgba(31, 41, 55, 0.08);
+}
+
+.alert-dialog-title {
+  margin: 0.15rem 0 0;
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.3;
+}
+
+.alert-dialog-body {
+  margin: 0;
+  max-width: 18rem;
+  color: var(--muted);
+  font-size: 0.98rem;
+  line-height: 1.55;
+}
+
+.alert-dialog-ok {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 0.35rem;
+  padding: 0.65rem 1rem;
+  border: none;
+  border-radius: var(--radius-control);
+  background: #f3f4f6;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.alert-dialog-ok:hover {
+  background: #e8eaed;
+}
+
+.alert-dialog-ok:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .opd-bill-dialog-overlay {
@@ -2322,7 +2676,7 @@ body,
   background: var(--bg-panel);
   border-radius: var(--radius-dialog);
   border: 1px solid var(--border);
-  box-shadow: 0 4px 16px rgba(31, 41, 55, 0.1);
+  box-shadow: 0 2px 10px rgba(31, 41, 55, 0.08);
 }
 
 .opd-bill-dialog-head {
@@ -2371,13 +2725,13 @@ body,
 }
 
 .opd-bill-dialog-row:hover {
-  background: var(--accent-soft);
+  background: var(--bill-row-hover);
 }
 
 .opd-bill-dialog-row--selected {
   background: var(--accent-soft);
-  outline: 2px solid var(--accent-border);
-  outline-offset: -2px;
+  outline: 1px solid var(--accent-border);
+  outline-offset: -1px;
 }
 
 .opd-bill-dialog-row-main {
@@ -2392,6 +2746,33 @@ body,
   flex-wrap: wrap;
   gap: 0.65rem;
   align-items: flex-end;
+}
+
+.opd-bill-dialog-footer .btn.action {
+  border-radius: 6px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.opd-bill-dialog-footer .btn.action.danger:hover:not(:disabled) {
+  border-color: var(--danger);
+}
+
+.opd-bill-dialog-footer .field input {
+  font-size: 0.875rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--bg-input);
+}
+
+.opd-bill-dialog-footer .field input::placeholder {
+  color: var(--placeholder);
+}
+
+.opd-bill-dialog-footer .field input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
 }
 
 .pharmacy-bill-add {
@@ -2595,6 +2976,24 @@ body,
   border-color: var(--accent);
 }
 
+.drug-info-qty-unit {
+  display: flex;
+  gap: 0.35rem;
+  align-items: stretch;
+  min-width: 0;
+}
+
+.drug-info-qty-unit input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.drug-info-qty-unit select {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 5.5rem;
+}
+
 .drug-info-price-grid {
   display: grid;
   grid-template-columns: 5rem 1fr 1fr;
@@ -2706,6 +3105,87 @@ body,
   color: var(--danger);
   border-color: var(--danger-border);
   background: var(--bg-panel);
+}
+
+.drug-setup-detail-pane .btn.danger {
+  background: var(--danger);
+  color: #fff;
+  border-color: var(--danger);
+}
+
+/* Drug Setup and OT cupboard action buttons. Scoped so other .btn stay at 5px. */
+.btn.action,
+.drug-setup-detail-pane .btn.action {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border-radius: 12px;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.88rem;
+  font-weight: 600;
+  line-height: 1.2;
+  background: var(--bg-panel);
+  color: var(--ink);
+  border: 1px solid var(--border);
+}
+
+.btn.action svg,
+.drug-setup-detail-pane .btn.action svg {
+  display: block;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+
+.btn.action:hover:not(:disabled):not(.primary):not(.danger):not(.on),
+.drug-setup-detail-pane .btn.action:hover:not(:disabled):not(.primary):not(.danger):not(.on) {
+  background: var(--bg);
+  color: var(--ink);
+  border-color: var(--border-strong);
+}
+
+.btn.action.primary,
+.drug-setup-detail-pane .btn.action.primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+}
+
+.btn.action.primary:hover:not(:disabled),
+.drug-setup-detail-pane .btn.action.primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  color: var(--accent-ink);
+}
+
+.btn.action.on,
+.drug-setup-detail-pane .btn.action.on {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent-border);
+}
+
+.btn.action.on:hover:not(:disabled),
+.drug-setup-detail-pane .btn.action.on:hover:not(:disabled) {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.btn.action.danger,
+.drug-setup-detail-pane .btn.action.danger {
+  background: var(--bg-panel);
+  color: var(--danger);
+  border-color: var(--danger-border);
+  filter: none;
+}
+
+.btn.action.danger:hover:not(:disabled),
+.drug-setup-detail-pane .btn.action.danger:hover:not(:disabled) {
+  background: var(--bg-panel);
+  color: var(--danger);
+  border-color: var(--danger);
+  filter: none;
 }
 
 .drug-setup-detail-pane .date-picker {

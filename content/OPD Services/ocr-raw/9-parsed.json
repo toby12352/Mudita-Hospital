@@ -1,0 +1,524 @@
+[
+  {
+    "page": 9,
+    "side": "L",
+    "y": 164.8,
+    "kind": "header",
+    "particular": "Shwe Bhone",
+    "price_mmk": null,
+    "score": 0.858
+  },
+  {
+    "page": 9,
+    "side": "L",
+    "y": 1166.8,
+    "kind": "item",
+    "particular": "Aedtikc fuid Cytoosy",
+    "price_mmk": 10000,
+    "score": 0.892
+  },
+  {
+    "page": 9,
+    "side": "L",
+    "y": 1222.7,
+    "kind": "item",
+    "particular": "Allerqen Test Food",
+    "price_mmk": 150000,
+    "score": 0.937
+  },
+  {
+    "page": 9,
+    "side": "L",
+    "y": 1275.8,
+    "kind": "item",
+    "particular": "Allerqen TestInhalotion",
+    "price_mmk": 150000,
+    "score": 0.906
+  },
+  {
+    "page": 9,
+    "side": "L",
+    "y": 1330.3,
+    "kind": "item",
+    "particular": "Allerqen Test Pollen",
+    "price_mmk": 150000,
+    "score": 0.947
+  },
+  {
+    "page": 9,
+    "side": "L",
+    "y": 1383.3,
+    "kind": "item",
+    "particular": "Anti HBs(Quantitative)",
+    "price_mmk": 39450,
+    "score": 0.901
+  },
+  {
+    "page": 9,
+    "side": "L",
+    "y": 1432.0,
+    "kind": "item",
+    "particular": "Ascitc flud Cytoloqy",
+    "price_mmk": 15000,
+    "score": 0.913
+  },
+  {
+    "page": 9,
+    "side": "L",
+    "y": 1487.9,
+    "kind": "item",
+    "particular": "Asctc flud RE",
+    "price_mmk": 20000,
+    "score": 0.863
+  },
+  {
+    "page": 9,
+    "side": "L",
+    "y": 1541.0,
+    "kind": "item",
+    "particular": "ASO (Qusntl)",
+    "price_mmk": 0,
+    "score": 0.646
+  },
+  {
+    "page": 9,
+    "side": "L",
+    "y": 1595.4,
+    "kind": "item",
+    "particular": "Beb HCG",
+    "price_mmk": 19900,
+    "score": 0.73
+  },
+  {
+    "page": 9,
+    "side": "L",
+    "y": 1648.5,
+    "kind": "item",
+    "particular": "Caclum",
+    "price_mmk": 15000,
+    "score": 0.864
+  },
+  {
+    "page": 9,
+    "side": "L",
+    "y": 1700.1,
+    "kind": "item",
+    "particular": "Corrected Calclum",
+    "price_mmk": 17000,
+    "score": 0.939
+  },
+  {
+    "page": 9,
+    "side": "L",
+    "y": 1751.7,
+    "kind": "item",
+    "particular": "Denque Ab (lqG/lqM)",
+    "price_mmk": 22000,
+    "score": 0.902
+  },
+  {
+    "page": 9,
+    "side": "L",
+    "y": 1803.3,
+    "kind": "item",
+    "particular": "Denque NS1 Aq",
+    "price_mmk": 13500,
+    "score": 0.895
+  },
+  {
+    "page": 9,
+    "side": "L",
+    "y": 1859.2,
+    "kind": "item",
+    "particular": "DNA (Ds)",
+    "price_mmk": 65000,
+    "score": 0.944
+  },
+  {
+    "page": 9,
+    "side": "L",
+    "y": 1909.4,
+    "kind": "item",
+    "particular": "FDP/ D-DImer",
+    "price_mmk": 17000,
+    "score": 0.955
+  },
+  {
+    "page": 9,
+    "side": "L",
+    "y": 1961.0,
+    "kind": "item",
+    "particular": "Fluid AFB",
+    "price_mmk": 4500,
+    "score": 0.946
+  },
+  {
+    "page": 9,
+    "side": "L",
+    "y": 2015.5,
+    "kind": "item",
+    "particular": "Free T3",
+    "price_mmk": 25000,
+    "score": 0.932
+  },
+  {
+    "page": 9,
+    "side": "L",
+    "y": 2067.1,
+    "kind": "item",
+    "particular": "Free T4",
+    "price_mmk": 25000,
+    "score": 0.923
+  },
+  {
+    "page": 9,
+    "side": "L",
+    "y": 2121.5,
+    "kind": "item",
+    "particular": "Gene x-Pert",
+    "price_mmk": 45000,
+    "score": 0.93
+  },
+  {
+    "page": 9,
+    "side": "L",
+    "y": 2173.1,
+    "kind": "item",
+    "particular": "GGT",
+    "price_mmk": 6000,
+    "score": 0.997
+  },
+  {
+    "page": 9,
+    "side": "L",
+    "y": 2227.6,
+    "kind": "item",
+    "particular": "H pylorl (Ab) serum",
+    "price_mmk": 15000,
+    "score": 0.916
+  },
+  {
+    "page": 9,
+    "side": "L",
+    "y": 2279.2,
+    "kind": "item",
+    "particular": "Hb Ekoctrophoresk",
+    "price_mmk": 47000,
+    "score": 0.92
+  },
+  {
+    "page": 9,
+    "side": "L",
+    "y": 2332.3,
+    "kind": "item",
+    "particular": "HBs Aa (Quantl)",
+    "price_mmk": 34500,
+    "score": 0.89
+  },
+  {
+    "page": 9,
+    "side": "L",
+    "y": 2383.9,
+    "kind": "item",
+    "particular": "HBV DNAVIRALLOAD",
+    "price_mmk": 140000,
+    "score": 0.97
+  },
+  {
+    "page": 9,
+    "side": "L",
+    "y": 2432.6,
+    "kind": "item",
+    "particular": "HEV Ab(Quantl)",
+    "price_mmk": 37500,
+    "score": 0.909
+  },
+  {
+    "page": 9,
+    "side": "L",
+    "y": 2491.4,
+    "kind": "item",
+    "particular": "HCV Ansbody(O\uff09",
+    "price_mmk": 35000,
+    "score": 0.838
+  },
+  {
+    "page": 9,
+    "side": "L",
+    "y": 2544.4,
+    "kind": "item",
+    "particular": "HIV Ab (Quantl)",
+    "price_mmk": 34500,
+    "score": 0.866
+  },
+  {
+    "page": 9,
+    "side": "L",
+    "y": 2594.6,
+    "kind": "item",
+    "particular": "hs CRP (Qusntl)",
+    "price_mmk": 27000,
+    "score": 0.885
+  },
+  {
+    "page": 9,
+    "side": "L",
+    "y": 2647.6,
+    "kind": "item",
+    "particular": "IGRA",
+    "price_mmk": 0,
+    "score": 0.72
+  },
+  {
+    "page": 9,
+    "side": "L",
+    "y": 2700.7,
+    "kind": "item",
+    "particular": "Interferon Gamma Rekase Esay",
+    "price_mmk": 150000,
+    "score": 0.847
+  },
+  {
+    "page": 9,
+    "side": "L",
+    "y": 2755.1,
+    "kind": "item",
+    "particular": "LDH",
+    "price_mmk": 15000,
+    "score": 0.954
+  },
+  {
+    "page": 9,
+    "side": "R",
+    "y": 167.7,
+    "kind": "item",
+    "particular": "Moqneslum",
+    "price_mmk": 15000,
+    "score": 0.765
+  },
+  {
+    "page": 9,
+    "side": "R",
+    "y": 220.8,
+    "kind": "item",
+    "particular": "Malaria (Fllm)",
+    "price_mmk": 3500,
+    "score": 0.859
+  },
+  {
+    "page": 9,
+    "side": "R",
+    "y": 275.2,
+    "kind": "item",
+    "particular": "Maaria (ICT)",
+    "price_mmk": 9500,
+    "score": 0.805
+  },
+  {
+    "page": 9,
+    "side": "R",
+    "y": 326.8,
+    "kind": "item",
+    "particular": "Phosphorous",
+    "price_mmk": 12000,
+    "score": 0.919
+  },
+  {
+    "page": 9,
+    "side": "R",
+    "y": 379.9,
+    "kind": "item",
+    "particular": "Pkaural Flud RE",
+    "price_mmk": 16500,
+    "score": 0.87
+  },
+  {
+    "page": 9,
+    "side": "R",
+    "y": 432.9,
+    "kind": "item",
+    "particular": "probin Eectrophorest",
+    "price_mmk": 8,
+    "score": 0.847
+  },
+  {
+    "page": 9,
+    "side": "R",
+    "y": 487.4,
+    "kind": "item",
+    "particular": "RA (QuSll)",
+    "price_mmk": 6500,
+    "score": 0.82
+  },
+  {
+    "page": 9,
+    "side": "R",
+    "y": 541.9,
+    "kind": "item",
+    "particular": "Retkc count",
+    "price_mmk": 25000,
+    "score": 0.962
+  },
+  {
+    "page": 9,
+    "side": "R",
+    "y": 593.5,
+    "kind": "item",
+    "particular": "Serum Iron",
+    "price_mmk": 6500,
+    "score": 0.956
+  },
+  {
+    "page": 9,
+    "side": "R",
+    "y": 640.8,
+    "kind": "item",
+    "particular": "Sputum AFB",
+    "price_mmk": 29800,
+    "score": 0.989
+  },
+  {
+    "page": 9,
+    "side": "R",
+    "y": 695.2,
+    "kind": "item",
+    "particular": "Stool Occut Blood",
+    "price_mmk": 20000,
+    "score": 0.941
+  },
+  {
+    "page": 9,
+    "side": "R",
+    "y": 748.3,
+    "kind": "item",
+    "particular": "TB Quanti Feron",
+    "price_mmk": 150000,
+    "score": 0.929
+  },
+  {
+    "page": 9,
+    "side": "R",
+    "y": 801.3,
+    "kind": "item",
+    "particular": "TIBC",
+    "price_mmk": 6800,
+    "score": 0.702
+  },
+  {
+    "page": 9,
+    "side": "R",
+    "y": 857.2,
+    "kind": "item",
+    "particular": "TPHA (QuSntl)",
+    "price_mmk": 22000,
+    "score": 0.904
+  },
+  {
+    "page": 9,
+    "side": "R",
+    "y": 907.4,
+    "kind": "item",
+    "particular": "Urinary Pratein 24hr",
+    "price_mmk": 25000,
+    "score": 0.928
+  },
+  {
+    "page": 9,
+    "side": "R",
+    "y": 957.6,
+    "kind": "item",
+    "particular": "Urine AFB",
+    "price_mmk": 4500,
+    "score": 0.975
+  },
+  {
+    "page": 9,
+    "side": "R",
+    "y": 1013.5,
+    "kind": "item",
+    "particular": "Widal Tes",
+    "price_mmk": 585,
+    "score": 0.641
+  },
+  {
+    "page": 9,
+    "side": "R",
+    "y": 1063.6,
+    "kind": "item",
+    "particular": "Wound Swsb C&S (Vitek-2)+Bottl",
+    "price_mmk": 55000,
+    "score": 0.877
+  },
+  {
+    "page": 9,
+    "side": "R",
+    "y": 1115.2,
+    "kind": "header",
+    "particular": "Ultrasound",
+    "price_mmk": null,
+    "score": 0.644
+  },
+  {
+    "page": 9,
+    "side": "R",
+    "y": 1171.1,
+    "kind": "item",
+    "particular": "USG (Bresy/Neck)",
+    "price_mmk": 35000,
+    "score": 0.903
+  },
+  {
+    "page": 9,
+    "side": "R",
+    "y": 1224.2,
+    "kind": "item",
+    "particular": "USG (Bresy/Neck)",
+    "price_mmk": 35000,
+    "score": 0.92
+  },
+  {
+    "page": 9,
+    "side": "R",
+    "y": 1275.8,
+    "kind": "item",
+    "particular": "USG RadloloqitFoe",
+    "price_mmk": 5000,
+    "score": 0.786
+  },
+  {
+    "page": 9,
+    "side": "R",
+    "y": 1434.9,
+    "kind": "item",
+    "particular": "Xrsy(10*12in)",
+    "price_mmk": 0,
+    "score": 0.559
+  },
+  {
+    "page": 9,
+    "side": "R",
+    "y": 1486.5,
+    "kind": "item",
+    "particular": "Xray(14+14in)",
+    "price_mmk": 35000,
+    "score": 0.854
+  },
+  {
+    "page": 9,
+    "side": "R",
+    "y": 1533.8,
+    "kind": "item",
+    "particular": "X-ray (Neck)",
+    "price_mmk": 35000,
+    "score": 0.965
+  },
+  {
+    "page": 9,
+    "side": "R",
+    "y": 1592.6,
+    "kind": "item",
+    "particular": "X-ray Resding",
+    "price_mmk": 5000,
+    "score": 0.896
+  }
+]

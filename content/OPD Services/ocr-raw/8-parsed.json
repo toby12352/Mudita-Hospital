@@ -1,0 +1,632 @@
+[
+  {
+    "page": 8,
+    "side": "L",
+    "y": 221.2,
+    "kind": "item",
+    "particular": "(VIVID IQ)ECHO MA",
+    "price_mmk": 60000,
+    "score": 0.909
+  },
+  {
+    "page": 8,
+    "side": "L",
+    "y": 272.6,
+    "kind": "item",
+    "particular": "Cam Used",
+    "price_mmk": 5000,
+    "score": 0.872
+  },
+  {
+    "page": 8,
+    "side": "L",
+    "y": 325.5,
+    "kind": "item",
+    "particular": "Coheterllmton Foe",
+    "price_mmk": 15000,
+    "score": 0.748
+  },
+  {
+    "page": 8,
+    "side": "L",
+    "y": 374.0,
+    "kind": "item",
+    "particular": "CF Foes",
+    "price_mmk": 25000,
+    "score": 0.85
+  },
+  {
+    "page": 8,
+    "side": "L",
+    "y": 429.7,
+    "kind": "item",
+    "particular": "CF Foes",
+    "price_mmk": 0,
+    "score": 0.555
+  },
+  {
+    "page": 8,
+    "side": "L",
+    "y": 485.3,
+    "kind": "item",
+    "particular": "CF On CallFees",
+    "price_mmk": null,
+    "score": 0.869
+  },
+  {
+    "page": 8,
+    "side": "L",
+    "y": 538.1,
+    "kind": "item",
+    "particular": "clotest",
+    "price_mmk": 45000,
+    "score": 0.979
+  },
+  {
+    "page": 8,
+    "side": "L",
+    "y": 591.0,
+    "kind": "item",
+    "particular": "Covid Antibady",
+    "price_mmk": 15000,
+    "score": 0.94
+  },
+  {
+    "page": 8,
+    "side": "L",
+    "y": 640.9,
+    "kind": "item",
+    "particular": "Covid Test (Swsb)",
+    "price_mmk": 25000,
+    "score": 0.91
+  },
+  {
+    "page": 8,
+    "side": "L",
+    "y": 689.4,
+    "kind": "item",
+    "particular": "Covid Test (Swsb)",
+    "price_mmk": 0,
+    "score": 0.562
+  },
+  {
+    "page": 8,
+    "side": "L",
+    "y": 745.1,
+    "kind": "orphan_price",
+    "particular": "",
+    "price_mmk": 25000,
+    "score": 0.999
+  },
+  {
+    "page": 8,
+    "side": "L",
+    "y": 797.9,
+    "kind": "item",
+    "particular": "Day Care",
+    "price_mmk": 20000,
+    "score": 0.971
+  },
+  {
+    "page": 8,
+    "side": "L",
+    "y": 852.2,
+    "kind": "item",
+    "particular": "Day Care",
+    "price_mmk": 0,
+    "score": 0.808
+  },
+  {
+    "page": 8,
+    "side": "L",
+    "y": 905.0,
+    "kind": "item",
+    "particular": "Day Care",
+    "price_mmk": 35000,
+    "score": 0.945
+  },
+  {
+    "page": 8,
+    "side": "L",
+    "y": 956.4,
+    "kind": "item",
+    "particular": "Day Care",
+    "price_mmk": 25000,
+    "score": 0.949
+  },
+  {
+    "page": 8,
+    "side": "L",
+    "y": 1009.2,
+    "kind": "item",
+    "particular": "Day Care+ Servke",
+    "price_mmk": null,
+    "score": 0.911
+  },
+  {
+    "page": 8,
+    "side": "L",
+    "y": 1062.0,
+    "kind": "orphan_price",
+    "particular": "",
+    "price_mmk": 500000,
+    "score": 0.985
+  },
+  {
+    "page": 8,
+    "side": "L",
+    "y": 1117.7,
+    "kind": "item",
+    "particular": "Depeem",
+    "price_mmk": 900000,
+    "score": 0.684
+  },
+  {
+    "page": 8,
+    "side": "L",
+    "y": 1164.8,
+    "kind": "item",
+    "particular": "Depocite +Fumidication",
+    "price_mmk": 50000,
+    "score": 0.844
+  },
+  {
+    "page": 8,
+    "side": "L",
+    "y": 1223.3,
+    "kind": "item",
+    "particular": "sunooaa",
+    "price_mmk": -19500,
+    "score": 0.691
+  },
+  {
+    "page": 8,
+    "side": "L",
+    "y": 1276.1,
+    "kind": "item",
+    "particular": "Diccount10%",
+    "price_mmk": 0,
+    "score": 0.617
+  },
+  {
+    "page": 8,
+    "side": "L",
+    "y": 1330.4,
+    "kind": "item",
+    "particular": "Dkco unt 20%",
+    "price_mmk": -12600,
+    "score": 0.907
+  },
+  {
+    "page": 8,
+    "side": "L",
+    "y": 1383.2,
+    "kind": "item",
+    "particular": "Dkc0unt 30%",
+    "price_mmk": -36900,
+    "score": 0.887
+  },
+  {
+    "page": 8,
+    "side": "L",
+    "y": 1434.6,
+    "kind": "item",
+    "particular": "Dkcount 50%",
+    "price_mmk": null,
+    "score": 0.952
+  },
+  {
+    "page": 8,
+    "side": "L",
+    "y": 1487.4,
+    "kind": "item",
+    "particular": "Doctor Foe",
+    "price_mmk": null,
+    "score": 0.88
+  },
+  {
+    "page": 8,
+    "side": "L",
+    "y": 1535.9,
+    "kind": "item",
+    "particular": "Doctor Fee",
+    "price_mmk": 0,
+    "score": 0.581
+  },
+  {
+    "page": 8,
+    "side": "L",
+    "y": 1593.0,
+    "kind": "item",
+    "particular": "Doctor Fee (foc)",
+    "price_mmk": null,
+    "score": 0.94
+  },
+  {
+    "page": 8,
+    "side": "L",
+    "y": 1645.8,
+    "kind": "item",
+    "particular": "Doctor Fee + Scope",
+    "price_mmk": 25000,
+    "score": 0.899
+  },
+  {
+    "page": 8,
+    "side": "L",
+    "y": 1692.9,
+    "kind": "item",
+    "particular": "Doctor Intorm Fees",
+    "price_mmk": 15000,
+    "score": 0.944
+  },
+  {
+    "page": 8,
+    "side": "L",
+    "y": 1748.6,
+    "kind": "item",
+    "particular": "Doctor On Call Fee",
+    "price_mmk": 10000,
+    "score": 0.922
+  },
+  {
+    "page": 8,
+    "side": "L",
+    "y": 1802.8,
+    "kind": "item",
+    "particular": "Drersina",
+    "price_mmk": 15000,
+    "score": 0.941
+  },
+  {
+    "page": 8,
+    "side": "L",
+    "y": 1854.2,
+    "kind": "item",
+    "particular": "Dressing Box Used",
+    "price_mmk": 10000,
+    "score": 0.915
+  },
+  {
+    "page": 8,
+    "side": "L",
+    "y": 1907.0,
+    "kind": "item",
+    "particular": "Dressing Charqes With Suture",
+    "price_mmk": 17000,
+    "score": 0.923
+  },
+  {
+    "page": 8,
+    "side": "L",
+    "y": 1964.1,
+    "kind": "item",
+    "particular": "Dressing Use",
+    "price_mmk": 15000,
+    "score": 0.841
+  },
+  {
+    "page": 8,
+    "side": "L",
+    "y": 2012.7,
+    "kind": "item",
+    "particular": "Dressing With Stiching",
+    "price_mmk": 8,
+    "score": 0.891
+  },
+  {
+    "page": 8,
+    "side": "L",
+    "y": 2066.9,
+    "kind": "item",
+    "particular": "FeblDropper",
+    "price_mmk": 6000,
+    "score": 0.923
+  },
+  {
+    "page": 8,
+    "side": "L",
+    "y": 2115.4,
+    "kind": "item",
+    "particular": "Home Care",
+    "price_mmk": 50000,
+    "score": 0.975
+  },
+  {
+    "page": 8,
+    "side": "L",
+    "y": 2168.2,
+    "kind": "item",
+    "particular": "Ho me Servkce",
+    "price_mmk": null,
+    "score": 0.875
+  },
+  {
+    "page": 8,
+    "side": "L",
+    "y": 2221.1,
+    "kind": "item",
+    "particular": "INPLANEX",
+    "price_mmk": null,
+    "score": 0.991
+  },
+  {
+    "page": 8,
+    "side": "L",
+    "y": 2278.2,
+    "kind": "item",
+    "particular": "IUCT",
+    "price_mmk": 50000,
+    "score": 0.965
+  },
+  {
+    "page": 8,
+    "side": "L",
+    "y": 2331.0,
+    "kind": "item",
+    "particular": "KARL STROZ",
+    "price_mmk": 50000,
+    "score": 0.989
+  },
+  {
+    "page": 8,
+    "side": "L",
+    "y": 2380.9,
+    "kind": "item",
+    "particular": "Lab Technkclan Fee",
+    "price_mmk": 15000,
+    "score": 0.883
+  },
+  {
+    "page": 8,
+    "side": "L",
+    "y": 2433.8,
+    "kind": "item",
+    "particular": "Lab Usad For PPE",
+    "price_mmk": 0,
+    "score": 0.631
+  },
+  {
+    "page": 8,
+    "side": "L",
+    "y": 2486.6,
+    "kind": "item",
+    "particular": "Kedkol Cover",
+    "price_mmk": 45000,
+    "score": 0.848
+  },
+  {
+    "page": 8,
+    "side": "L",
+    "y": 2538.0,
+    "kind": "item",
+    "particular": "Kedlol Cover",
+    "price_mmk": 25000,
+    "score": 0.823
+  },
+  {
+    "page": 8,
+    "side": "L",
+    "y": 2592.2,
+    "kind": "item",
+    "particular": "Minor Room Foe",
+    "price_mmk": 60000,
+    "score": 0.893
+  },
+  {
+    "page": 8,
+    "side": "L",
+    "y": 2647.9,
+    "kind": "item",
+    "particular": "MO On Call Foc",
+    "price_mmk": 15000,
+    "score": 0.853
+  },
+  {
+    "page": 8,
+    "side": "L",
+    "y": 2700.7,
+    "kind": "item",
+    "particular": "Nebullor",
+    "price_mmk": 0,
+    "score": 0.724
+  },
+  {
+    "page": 8,
+    "side": "L",
+    "y": 2752.1,
+    "kind": "item",
+    "particular": "OGDS",
+    "price_mmk": null,
+    "score": 0.99
+  },
+  {
+    "page": 8,
+    "side": "L",
+    "y": 2753.5,
+    "kind": "item",
+    "particular": "DDODCE",
+    "price_mmk": null,
+    "score": 0.697
+  },
+  {
+    "page": 8,
+    "side": "R",
+    "y": 164.2,
+    "kind": "item",
+    "particular": "OGDS",
+    "price_mmk": 400000,
+    "score": 0.994
+  },
+  {
+    "page": 8,
+    "side": "R",
+    "y": 219.8,
+    "kind": "item",
+    "particular": "Oxyqen",
+    "price_mmk": 45000,
+    "score": 0.894
+  },
+  {
+    "page": 8,
+    "side": "R",
+    "y": 269.8,
+    "kind": "item",
+    "particular": "Pocksqe",
+    "price_mmk": 100000,
+    "score": 0.824
+  },
+  {
+    "page": 8,
+    "side": "R",
+    "y": 322.6,
+    "kind": "item",
+    "particular": "Pocksqe",
+    "price_mmk": 250000,
+    "score": 0.872
+  },
+  {
+    "page": 8,
+    "side": "R",
+    "y": 374.0,
+    "kind": "item",
+    "particular": "Phone Bl1",
+    "price_mmk": 3000,
+    "score": 0.825
+  },
+  {
+    "page": 8,
+    "side": "R",
+    "y": 426.8,
+    "kind": "item",
+    "particular": "Phototherapy",
+    "price_mmk": 0,
+    "score": 0.968
+  },
+  {
+    "page": 8,
+    "side": "R",
+    "y": 482.5,
+    "kind": "item",
+    "particular": "Prode",
+    "price_mmk": 5000,
+    "score": 0.86
+  },
+  {
+    "page": 8,
+    "side": "R",
+    "y": 535.3,
+    "kind": "item",
+    "particular": "Reqktrstion Fee",
+    "price_mmk": 2500,
+    "score": 0.905
+  },
+  {
+    "page": 8,
+    "side": "R",
+    "y": 589.5,
+    "kind": "item",
+    "particular": "RT Wrkt",
+    "price_mmk": 35000,
+    "score": 0.93
+  },
+  {
+    "page": 8,
+    "side": "R",
+    "y": 639.5,
+    "kind": "item",
+    "particular": "Soope",
+    "price_mmk": 10000,
+    "score": 0.735
+  },
+  {
+    "page": 8,
+    "side": "R",
+    "y": 690.9,
+    "kind": "item",
+    "particular": "Section Mschine",
+    "price_mmk": 10000,
+    "score": 0.901
+  },
+  {
+    "page": 8,
+    "side": "R",
+    "y": 743.7,
+    "kind": "item",
+    "particular": "Service",
+    "price_mmk": 10000,
+    "score": 0.886
+  },
+  {
+    "page": 8,
+    "side": "R",
+    "y": 795.1,
+    "kind": "item",
+    "particular": "TVS",
+    "price_mmk": 65000,
+    "score": 0.98
+  },
+  {
+    "page": 8,
+    "side": "R",
+    "y": 852.2,
+    "kind": "item",
+    "particular": "USG (Chest)",
+    "price_mmk": 45000,
+    "score": 0.969
+  },
+  {
+    "page": 8,
+    "side": "R",
+    "y": 903.6,
+    "kind": "header",
+    "particular": "Package",
+    "price_mmk": null,
+    "score": 0.868
+  },
+  {
+    "page": 8,
+    "side": "R",
+    "y": 956.4,
+    "kind": "item",
+    "particular": "AFP",
+    "price_mmk": 20000,
+    "score": 0.996
+  },
+  {
+    "page": 8,
+    "side": "R",
+    "y": 1006.3,
+    "kind": "item",
+    "particular": "Pocksqe",
+    "price_mmk": 10000000,
+    "score": 0.748
+  },
+  {
+    "page": 8,
+    "side": "R",
+    "y": 1060.6,
+    "kind": "header",
+    "particular": "Shaving",
+    "price_mmk": null,
+    "score": 0.865
+  },
+  {
+    "page": 8,
+    "side": "R",
+    "y": 1113.4,
+    "kind": "item",
+    "particular": "PSA (Free)",
+    "price_mmk": null,
+    "score": 0.935
+  },
+  {
+    "page": 8,
+    "side": "R",
+    "y": 1166.2,
+    "kind": "item",
+    "particular": "Shavina",
+    "price_mmk": 2500,
+    "score": 0.938
+  }
+]

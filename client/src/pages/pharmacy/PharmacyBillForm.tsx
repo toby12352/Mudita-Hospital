@@ -6,6 +6,8 @@ import {
   pharmacyLineSaleView,
   saleUnitsFromPack,
 } from "@/features/pharmacy/api";
+import { ActionIcon } from "@/shared/ActionIcon";
+import { AlertDialog } from "@/shared/AlertDialog";
 import { BillLineGrid, createBillLineEntry } from "@/shared/BillLineGrid";
 import { BillCollectNote, BillPayPrintButton, moneyStatusLabel } from "@/shared/BillPayPrint";
 import { formatMMK } from "@/shared/format";
@@ -32,6 +34,7 @@ type Props = {
   kind?: "sale" | "return" | "transfer";
   /** Transfer desk: Transfer was pressed and Confirm transfer is showing. */
   awaitingConfirm?: boolean;
+  onDismissError: () => void;
   onPatientName: (v: string) => void;
   onPatientPhone: (v: string) => void;
   onPatientAge: (v: string) => void;
@@ -287,7 +290,6 @@ export function PharmacyBillForm(props: Props) {
           </div>
         </div>
 
-        {error ? <p className="form-error">{error}</p> : null}
         {okMsg ? <p className="form-ok">{okMsg}</p> : null}
       </div>
 
@@ -300,9 +302,12 @@ export function PharmacyBillForm(props: Props) {
               disabled={busy || !isDraft || awaitingConfirm}
               onClick={props.onTransfer}
             >
-              <span className="opd-bill-rail-btn-text">
-                <span className="opd-bill-rail-btn-label">{t("transferAction")}</span>
-                <span className="opd-bill-rail-btn-sub">{t("transferCheckLines")}</span>
+              <span className="opd-bill-rail-btn-main">
+                <ActionIcon name="transfer" />
+                <span className="opd-bill-rail-btn-text">
+                  <span className="opd-bill-rail-btn-label">{t("transferAction")}</span>
+                  <span className="opd-bill-rail-btn-sub">{t("transferCheckLines")}</span>
+                </span>
               </span>
               {awaitingConfirm ? null : <kbd>F7</kbd>}
             </button>
@@ -313,9 +318,12 @@ export function PharmacyBillForm(props: Props) {
                 disabled={busy}
                 onClick={props.onConfirmTransfer}
               >
-                <span className="opd-bill-rail-btn-text">
-                  <span className="opd-bill-rail-btn-label">{t("confirmTransfer")}</span>
-                  <span className="opd-bill-rail-btn-sub">{t("movesToOtCupboard")}</span>
+                <span className="opd-bill-rail-btn-main">
+                  <ActionIcon name="transfer" />
+                  <span className="opd-bill-rail-btn-text">
+                    <span className="opd-bill-rail-btn-label">{t("confirmTransfer")}</span>
+                    <span className="opd-bill-rail-btn-sub">{t("movesToOtCupboard")}</span>
+                  </span>
                 </span>
                 <kbd>F7</kbd>
               </button>
@@ -336,15 +344,29 @@ export function PharmacyBillForm(props: Props) {
           disabled={busy || !isDraft}
           onClick={props.onConfirm}
         >
-          <span>{t("saveDraft")}</span>
+          <span className="opd-bill-rail-btn-main">
+            <ActionIcon name="check" />
+            <span>{t("saveDraft")}</span>
+          </span>
           <kbd>F5</kbd>
         </button>
         <button type="button" className="opd-bill-rail-btn" disabled={busy} onClick={props.onHistory}>
-          <span>{t("history")}</span>
+          <span className="opd-bill-rail-btn-main">
+            <ActionIcon name="history" />
+            <span>{t("history")}</span>
+          </span>
           <kbd>F9</kbd>
         </button>
-        <button type="button" className="opd-bill-rail-btn" disabled={busy} onClick={props.onDelete}>
-          <span>{t("vDelete")}</span>
+        <button
+          type="button"
+          className="opd-bill-rail-btn opd-bill-rail-btn--danger"
+          disabled={busy}
+          onClick={props.onDelete}
+        >
+          <span className="opd-bill-rail-btn-main">
+            <ActionIcon name="trash" />
+            <span>{t("vDelete")}</span>
+          </span>
           <kbd>^F8</kbd>
         </button>
         <button type="button" className="opd-bill-rail-btn" disabled={busy} onClick={props.onCancel}>
@@ -357,10 +379,15 @@ export function PharmacyBillForm(props: Props) {
           disabled={busy}
           onClick={props.onNewBill}
         >
-          <span>{isTransfer ? t("newTransfer") : isReturn ? t("newReturn") : t("newBill")}</span>
+          <span className="opd-bill-rail-btn-main">
+            <ActionIcon name="plus" />
+            <span>{isTransfer ? t("newTransfer") : isReturn ? t("newReturn") : t("newBill")}</span>
+          </span>
           <kbd>F2</kbd>
         </button>
       </aside>
+
+      <AlertDialog message={error ?? ""} onClose={props.onDismissError} />
     </section>
   );
 }

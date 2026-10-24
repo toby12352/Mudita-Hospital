@@ -5,6 +5,7 @@ import {
   type DoctorHistoryRow,
   type ServiceHistoryRow,
 } from "@/features/settings/masterData";
+import { ActionIcon } from "@/shared/ActionIcon";
 import { formatMMK } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
 
@@ -113,13 +114,14 @@ export function OpdCatalogHistory({
             </label>
             <button
               type="button"
-              className="btn ghost"
+              className="btn action"
               onClick={() =>
                 void reload(q).catch((err) =>
                   setError(err instanceof Error ? err.message : "Search failed"),
                 )
               }
             >
+              <ActionIcon name="search" />
               {t("search")}
             </button>
           </div>

@@ -77,12 +77,9 @@ export function StockPage({ t }: Props) {
     })) ?? [];
 
   return (
-    <div className="page">
+    <div className="page page-frame">
       <div className="page-header">
-        <div>
-          <h2>{t("stock")}</h2>
-          <p className="lede muted">{t("stockLede")}</p>
-        </div>
+        <p className="lede muted">{t("stockLede")}</p>
         <div className="page-actions">
           <div className="range-toggle" role="group" aria-label={t("slowWindow")}>
             {[60, 90, 180].map((d) => (
@@ -151,8 +148,10 @@ export function StockPage({ t }: Props) {
             />
           </div>
 
-          <p className="muted tiny estimate-note">{data.note}</p>
-          <p className="muted tiny estimate-note">{data.turns_note}</p>
+          <div>
+            <p className="muted tiny estimate-note">{data.note}</p>
+            <p className="muted tiny estimate-note">{data.turns_note}</p>
+          </div>
 
           <div className="split-panels">
             <section className="panel">
@@ -186,49 +185,53 @@ export function StockPage({ t }: Props) {
               ) : (
                 <p className="empty-state">{t("noNearExpiry")}</p>
               )}
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>{t("bucket")}</th>
-                    <th className="num">{t("batches")}</th>
-                    <th className="num">{t("qty")}</th>
-                    <th className="num">{t("value")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.expiry_buckets.map((b) => (
-                    <tr key={b.key}>
-                      <td>{b.key === "expired" ? t("expired") : b.label}</td>
-                      <td className="num">{b.batches}</td>
-                      <td className="num">{formatMMK(b.qty)}</td>
-                      <td className="num">{formatMMK(b.value_mmk)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </section>
-
-            <section className="panel">
-              <h3>{t("byLocation")}</h3>
-              {data.by_location.length ? (
+              <div className="table-scroll">
                 <table className="data-table">
                   <thead>
                     <tr>
-                      <th>{t("location")}</th>
+                      <th>{t("bucket")}</th>
+                      <th className="num">{t("batches")}</th>
                       <th className="num">{t("qty")}</th>
                       <th className="num">{t("value")}</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {data.by_location.map((row) => (
-                      <tr key={row.location_code}>
-                        <td>{locLabel(row.location_code, t)}</td>
-                        <td className="num">{formatMMK(row.qty)}</td>
-                        <td className="num">{formatMMK(row.value_mmk)}</td>
+                    {data.expiry_buckets.map((b) => (
+                      <tr key={b.key}>
+                        <td>{b.key === "expired" ? t("expired") : b.label}</td>
+                        <td className="num">{b.batches}</td>
+                        <td className="num">{formatMMK(b.qty)}</td>
+                        <td className="num">{formatMMK(b.value_mmk)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+              </div>
+            </section>
+
+            <section className="panel">
+              <h3>{t("byLocation")}</h3>
+              {data.by_location.length ? (
+                <div className="table-scroll">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>{t("location")}</th>
+                        <th className="num">{t("qty")}</th>
+                        <th className="num">{t("value")}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.by_location.map((row) => (
+                        <tr key={row.location_code}>
+                          <td>{locLabel(row.location_code, t)}</td>
+                          <td className="num">{formatMMK(row.qty)}</td>
+                          <td className="num">{formatMMK(row.value_mmk)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               ) : (
                 <p className="empty-state">{t("noStock")}</p>
               )}
@@ -241,28 +244,30 @@ export function StockPage({ t }: Props) {
                 {t("lowStock")} ({data.low_stock_count})
               </h3>
               {data.low_stock.length ? (
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>{t("item")}</th>
-                      <th className="num">{t("onHand")}</th>
-                      <th className="num">{t("reorder")}</th>
-                      <th className="num">{t("deficit")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.low_stock.slice(0, 25).map((row) => (
-                      <tr key={row.id}>
-                        <td>
-                          <span className="code-chip">{row.code}</span> {row.name}
-                        </td>
-                        <td className="num">{row.stock_main}</td>
-                        <td className="num">{row.reorder_level}</td>
-                        <td className="num">{row.deficit}</td>
+                <div className="table-scroll">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>{t("item")}</th>
+                        <th className="num">{t("onHand")}</th>
+                        <th className="num">{t("reorder")}</th>
+                        <th className="num">{t("deficit")}</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {data.low_stock.slice(0, 25).map((row) => (
+                        <tr key={row.id}>
+                          <td>
+                            <span className="code-chip">{row.code}</span> {row.name}
+                          </td>
+                          <td className="num">{row.stock_main}</td>
+                          <td className="num">{row.reorder_level}</td>
+                          <td className="num">{row.deficit}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               ) : (
                 <p className="empty-state">{t("noLowStock")}</p>
               )}
@@ -273,36 +278,38 @@ export function StockPage({ t }: Props) {
                 {t("slowMovers")} ({data.slow_mover_count})
               </h3>
               {data.slow_movers.length ? (
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>{t("item")}</th>
-                      <th className="num">{t("qty")}</th>
-                      <th className="num">{t("value")}</th>
-                      <th>{t("lastSale")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.slow_movers.map((row) => (
-                      <tr key={row.item_id}>
-                        <td>
-                          <span className="code-chip">{row.code}</span> {row.name}
-                        </td>
-                        <td className="num">{formatMMK(row.qty_on_hand)}</td>
-                        <td className="num">{formatMMK(row.value_mmk)}</td>
-                        <td>
-                          {row.last_sale_date
-                            ? `${row.last_sale_date}${
-                                row.days_since_sale != null
-                                  ? ` (${row.days_since_sale}d)`
-                                  : ""
-                              }`
-                            : t("neverSold")}
-                        </td>
+                <div className="table-scroll">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>{t("item")}</th>
+                        <th className="num">{t("qty")}</th>
+                        <th className="num">{t("value")}</th>
+                        <th>{t("lastSale")}</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {data.slow_movers.map((row) => (
+                        <tr key={row.item_id}>
+                          <td>
+                            <span className="code-chip">{row.code}</span> {row.name}
+                          </td>
+                          <td className="num">{formatMMK(row.qty_on_hand)}</td>
+                          <td className="num">{formatMMK(row.value_mmk)}</td>
+                          <td>
+                            {row.last_sale_date
+                              ? `${row.last_sale_date}${
+                                  row.days_since_sale != null
+                                    ? ` (${row.days_since_sale}d)`
+                                    : ""
+                                }`
+                              : t("neverSold")}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               ) : (
                 <p className="empty-state">{t("noSlowMovers")}</p>
               )}

@@ -348,6 +348,7 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
     function onKey(e: KeyboardEvent) {
       if (dialog) return;
       if (document.querySelector(".print-preview-overlay")) return;
+      if (document.querySelector(".alert-dialog-overlay")) return;
 
       const key = e.key;
       if (key === "F5") {
@@ -409,6 +410,7 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
         error={error}
         okMsg={okMsg}
         isDraft={isDraft}
+        onDismissError={() => setError(null)}
         onPatientName={setPatientName}
         onPatientPhone={setPatientPhone}
         onPatientAge={setPatientAge}

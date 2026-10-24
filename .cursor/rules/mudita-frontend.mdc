@@ -26,6 +26,15 @@ Full guide: `@docs/standards/FRONTEND.md` · Conventions: `@docs/standards/CONVE
 - JSON types: `snake_case`, money `*_mmk`
 - Print through existing server HTML + `print.ts` overlay
 
+## Clinic UI (`client/` only)
+
+Full pattern: `@docs/standards/FRONTEND.md` → **Clinic design system**.
+
+- New desk list/toolbar actions → `.btn.action` + `ActionIcon` when the metaphor is clear; outline danger (`.btn.action.danger`), not solid red fills on lists/rails
+- Bill desks → extend `.opd-bill-desk` tokens and `.opd-bill-rail-btn` (accent / outline / danger); do not invent a second rail
+- Form Save/Create may stay `.btn.primary` where that matches an existing form footer
+- **Do not** apply this system to `dashboard/`
+
 ## Reference apps
 
-Dashboard modular layout is the clinic migration target. Copy OPD for simple bills, OT for multi-step, Pharmacy for stock.
+Dashboard modular layout is the clinic migration target. Copy OPD for simple bills, OT for multi-step, Pharmacy for stock. Match nearest clinic screen for action buttons (Drug Setup / bill rail), not the dashboard.

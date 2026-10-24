@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { formatMMK } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
 import { Typeahead } from "@/shared/Typeahead";
@@ -158,6 +158,7 @@ export function BillLineGrid({
 }: GridProps) {
   const { t } = useI18n();
   const showEntries = draft && entries.length > 0;
+  const gridRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const prevSnapRef = useRef<RowSnapshot[] | null>(null);
   const gridClass = [
@@ -167,6 +168,20 @@ export function BillLineGrid({
   ]
     .filter(Boolean)
     .join(" ");
+
+  useLayoutEffect(() => {
+    const body = bodyRef.current;
+    const grid = gridRef.current;
+    if (!body || !grid) return;
+    const apply = () => {
+      const gutter = Math.max(0, body.offsetWidth - body.clientWidth);
+      grid.style.setProperty("--bill-scroll-gutter", `${gutter}px`);
+    };
+    apply();
+    const observer = new ResizeObserver(apply);
+    observer.observe(body);
+    return () => observer.disconnect();
+  }, []);
 
   useLayoutEffect(() => {
     const next = snapshotRows(rows);
@@ -192,7 +207,7 @@ export function BillLineGrid({
   }, [rows]);
 
   return (
-    <div className={gridClass}>
+    <div className={gridClass} ref={gridRef}>
       <div className="opd-bill-grid-head">
         <span>{itemHeader}</span>
         {showPackColumn ? <span>{t("packingSize")}</span> : null}
@@ -222,7 +237,7 @@ export function BillLineGrid({
       {showEntries ? (
         <div className="opd-bill-grid-entries">
           {entries.map((entry) => (
-            <div key={entry.key}>{entry.node}</div>
+            <Fragment key={entry.key}>{entry.node}</Fragment>
           ))}
         </div>
       ) : null}
@@ -450,27 +465,45 @@ function EntryRow<T>({
   }
 
   function commitPicked(item: T, n: number, unit: BillLineUnitOption | null) {
+    pickedRef.current = null;
     entry.onCommit(item, n, unit);
     resetEntry();
   }
 
   function finishQty(raw: string) {
-    if (!picked) return;
-    const options = entry.unitsFor(picked);
+    const item = pickedRef.current;
+    if (!item) return;
+    const options = entry.unitsFor(item);
     if (showUnitColumn && options.length > 0) {
-      const chosen = unitId ? options.find((u) => u.id === unitId) : undefined;
+      const chosen = unitIdRef.current
+        ? options.find((u) => u.id === unitIdRef.current)
+        : undefined;
       if (!chosen) {
         openSelect(unitRef.current);
         return;
       }
       const n = parseWholeQty(raw);
       if (n == null) return;
-      commitPicked(picked, n, chosen);
+      commitPicked(item, n, chosen);
       return;
     }
     const n = parseWholeQty(raw);
     if (n == null) return;
-    commitPicked(picked, n, options.length === 1 ? options[0] : null);
+    commitPicked(item, n, options.length === 1 ? options[0] : null);
+  }
+
+  function clearPickForEdit(next: string) {
+    if (!pickedRef.current) {
+      setText(next);
+      return;
+    }
+    submitSeq.current += 1;
+    pickedRef.current = null;
+    unitIdRef.current = "";
+    setPicked(null);
+    setQty("");
+    setUnitId("");
+    setText(next);
   }
 
   function chooseUnit(id: string) {
@@ -505,30 +538,41 @@ function EntryRow<T>({
   }
 
   return (
-    <div className="opd-bill-grid-row bill-line-entry" ref={rowRef}>
+    <div
+      className="opd-bill-grid-row bill-line-entry"
+      ref={rowRef}
+      onBlur={(e) => {
+        const next = e.relatedTarget;
+        if (next instanceof Node && rowRef.current?.contains(next)) return;
+        if (e.target === qtyRef.current) return;
+        finishQty(qtyRef.current?.value ?? "");
+      }}
+    >
       <span className="bill-line-cell">
-        {picked ? (
-          <span className="bill-line-picked">{entry.itemTitle(picked)}</span>
-        ) : (
-          <Typeahead
-            inputRef={inputRef}
-            className="bill-line-typeahead"
-            ariaLabel={entry.ariaLabel}
-            value={text}
-            onChange={setText}
-            placeholder={entry.placeholder}
-            loadSuggestions={entry.loadSuggestions}
-            getKey={entry.getKey}
-            renderOption={entry.renderOption}
-            onPick={(item) => {
-              setPicked(item);
-              setQty("");
-              setUnitId("");
-              setText("");
-            }}
-            onSubmitWithoutPick={() => void submitCode()}
-          />
-        )}
+        <Typeahead
+          inputRef={inputRef}
+          className="bill-line-typeahead"
+          ariaLabel={entry.ariaLabel}
+          value={picked ? entry.itemTitle(picked) : text}
+          onChange={clearPickForEdit}
+          placeholder={entry.placeholder}
+          loadSuggestions={entry.loadSuggestions}
+          getKey={entry.getKey}
+          renderOption={entry.renderOption}
+          onPick={(item) => {
+            setPicked(item);
+            setQty("");
+            setUnitId("");
+            setText("");
+          }}
+          onSubmitWithoutPick={() => {
+            if (pickedRef.current) {
+              qtyRef.current?.focus();
+              return;
+            }
+            void submitCode();
+          }}
+        />
       </span>
       {showPackColumn ? (
         <span className="bill-line-pack" title={packTitle || undefined}>
@@ -545,11 +589,12 @@ function EntryRow<T>({
           inputMode="numeric"
           onChange={(e) => setQty(e.target.value)}
           onBlur={(e) => {
-            if (!picked) return;
+            if (!pickedRef.current) return;
             const next = e.relatedTarget;
             if (next instanceof Node && unitRef.current?.contains(next)) return;
             if (unitRef.current != null && next === unitRef.current) return;
-            finishQty(qty);
+            if (inputRef.current != null && next === inputRef.current) return;
+            finishQty(e.currentTarget.value);
           }}
           onKeyDown={(e) => {
             if (e.key === "Escape") {

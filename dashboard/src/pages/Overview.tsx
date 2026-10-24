@@ -69,21 +69,20 @@ export function OverviewPage({ t }: Props) {
   const hasTrendCash = trends.some((p) => p.grand_total_mmk > 0);
 
   return (
-    <div className="page">
+    <div className="page page-frame">
       <div className="page-header">
-        <div>
-          <h2>{t("overview")}</h2>
-          <p className="lede muted">{t("voidsHint")}</p>
+        <p className="lede muted">{t("voidsHint")}</p>
+        <div className="page-actions">
+          <button type="button" className="btn ghost" onClick={() => setEpoch((n) => n + 1)}>
+            {t("refresh")}
+          </button>
         </div>
-        <button type="button" className="btn ghost" onClick={() => setEpoch((n) => n + 1)}>
-          {t("refresh")}
-        </button>
       </div>
 
       {error ? <p className="form-error">{error}</p> : null}
       {loading && !overview ? <p className="muted">{t("loading")}</p> : null}
 
-      <div className="kpi-strip">
+      <div className="kpi-strip kpi-strip--seven">
         <KpiCard
           label={t("cashToday")}
           value={overview ? formatMMK(overview.grand_total_mmk) : "—"}

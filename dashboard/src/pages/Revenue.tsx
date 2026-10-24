@@ -91,12 +91,9 @@ export function RevenuePage({ t }: Props) {
   const rangeBills = trends.reduce((s, p) => s + p.bill_count, 0);
 
   return (
-    <div className="page">
+    <div className="page page-frame">
       <div className="page-header">
-        <div>
-          <h2>{t("revenue")}</h2>
-          <p className="lede muted">{t("revenueLede")}</p>
-        </div>
+        <p className="lede muted">{t("revenueLede")}</p>
         <div className="page-actions">
           <div className="range-toggle" role="group" aria-label={t("dateRange")}>
             {([7, 30] as RangeDays[]).map((d) => (
@@ -119,7 +116,7 @@ export function RevenuePage({ t }: Props) {
       {error ? <p className="form-error">{error}</p> : null}
       {loading && !trends.length && !margin ? <p className="muted">{t("loading")}</p> : null}
 
-      <div className="kpi-strip">
+      <div className="kpi-strip kpi-strip--four">
         <KpiMini label={t("cashInRange")} value={formatMMK(rangeCash)} sub={t("mmk")} accent />
         <KpiMini
           label={t("billCount")}
@@ -144,7 +141,7 @@ export function RevenuePage({ t }: Props) {
         {chartData.length === 0 || rangeCash === 0 ? (
           <p className="empty-state">{t("noRevenueData")}</p>
         ) : (
-          <div className="chart-box">
+          <div className="chart-box chart-stack">
             <ResponsiveContainer width="100%" height={280}>
               <BarChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                 <CartesianGrid stroke={GRID} vertical={false} />

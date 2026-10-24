@@ -7,6 +7,7 @@ import {
   packPriceSlots,
   sellOuterFromSmallest,
 } from "@/features/pharmacy/api";
+import { ActionIcon } from "@/shared/ActionIcon";
 import { DatePicker } from "@/shared/DatePicker";
 import { useI18n } from "@/shared/i18n";
 
@@ -296,7 +297,8 @@ export function OtStockPage() {
                         aria-label={t("qtyToReturn")}
                         placeholder={t("qty")}
                       />
-                      <button type="submit" className="btn ghost" disabled={busy}>
+                      <button type="submit" className="btn action" disabled={busy}>
+                        <ActionIcon name="undo" />
                         {t("returnToPharmacy")}
                       </button>
                     </form>
@@ -347,7 +349,8 @@ function OtLabelFields({
         <span>{t("expiry")}</span>
         <DatePicker value={exp} onChange={setExp} disabled={busy} />
       </label>
-      <button type="submit" className="btn ghost" disabled={busy}>
+      <button type="submit" className="btn action" disabled={busy}>
+        <ActionIcon name="check" />
         {t("saveLabel")}
       </button>
     </form>

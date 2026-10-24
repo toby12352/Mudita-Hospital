@@ -46,12 +46,9 @@ export function AuditPage({ t }: Props) {
   }, [entity, epoch, t]);
 
   return (
-    <div className="page">
+    <div className="page page-frame">
       <div className="page-header">
-        <div>
-          <h2>{t("audit")}</h2>
-          <p className="lede muted">{t("auditLede")}</p>
-        </div>
+        <p className="lede muted">{t("auditLede")}</p>
         <div className="page-actions">
           <input
             className="input"
@@ -94,7 +91,7 @@ export function AuditPage({ t }: Props) {
                   <th>{t("actor")}</th>
                   <th>{t("action")}</th>
                   <th>{t("entity")}</th>
-                  <th>ID</th>
+                  <th className="num">ID</th>
                   <th>{t("detail")}</th>
                 </tr>
               </thead>

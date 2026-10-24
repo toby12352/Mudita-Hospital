@@ -481,6 +481,7 @@ export function PharmacyBillingPage({
     function onKey(e: KeyboardEvent) {
       if (dialog) return;
       if (document.querySelector(".print-preview-overlay")) return;
+      if (document.querySelector(".alert-dialog-overlay")) return;
 
       const key = e.key;
       if (key === "F5") {
@@ -547,6 +548,7 @@ export function PharmacyBillingPage({
         isDraft={isDraft}
         kind={kind}
         awaitingConfirm={awaitingConfirm}
+        onDismissError={() => setError(null)}
         onPatientName={setPatientName}
         onPatientPhone={setPatientPhone}
         onPatientAge={setPatientAge}

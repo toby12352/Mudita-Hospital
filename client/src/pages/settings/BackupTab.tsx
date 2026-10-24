@@ -6,6 +6,8 @@ import {
   restoreBackup,
   type BackupInfo,
 } from "@/features/settings/backup";
+import { ActionIcon } from "@/shared/ActionIcon";
+
 export function BackupTab() {
   const [dir, setDir] = useState("");
   const [list, setList] = useState<BackupInfo[]>([]);
@@ -106,10 +108,11 @@ export function BackupTab() {
               </div>
               <button
                 type="button"
-                className="btn ghost danger"
+                className="btn action danger"
                 disabled={busy}
                 onClick={() => void doRestore(b.name)}
               >
+                <ActionIcon name="undo" />
                 Restore
               </button>
             </li>

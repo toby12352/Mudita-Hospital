@@ -1,0 +1,587 @@
+[
+  {
+    "page": 1,
+    "side": "L",
+    "y": 597.7,
+    "kind": "orphan_price",
+    "particular": "",
+    "price_mmk": 500000,
+    "score": 0.994
+  },
+  {
+    "page": 1,
+    "side": "L",
+    "y": 647.1,
+    "kind": "header",
+    "particular": "ECG",
+    "price_mmk": null,
+    "score": 0.997
+  },
+  {
+    "page": 1,
+    "side": "L",
+    "y": 702.6,
+    "kind": "item",
+    "particular": "Depolt Retun",
+    "price_mmk": 500000,
+    "score": 0.697
+  },
+  {
+    "page": 1,
+    "side": "L",
+    "y": 755.0,
+    "kind": "item",
+    "particular": "Doctor Fee",
+    "price_mmk": 10000,
+    "score": 0.888
+  },
+  {
+    "page": 1,
+    "side": "L",
+    "y": 801.4,
+    "kind": "item",
+    "particular": "Dressing Charqe",
+    "price_mmk": 15000,
+    "score": 0.946
+  },
+  {
+    "page": 1,
+    "side": "L",
+    "y": 859.8,
+    "kind": "item",
+    "particular": "ECG",
+    "price_mmk": 7000,
+    "score": 0.997
+  },
+  {
+    "page": 1,
+    "side": "L",
+    "y": 913.8,
+    "kind": "item",
+    "particular": "Fumidicatilon",
+    "price_mmk": 50000,
+    "score": 0.818
+  },
+  {
+    "page": 1,
+    "side": "L",
+    "y": 964.7,
+    "kind": "item",
+    "particular": "Portobe ECHO MA",
+    "price_mmk": 75000,
+    "score": 0.884
+  },
+  {
+    "page": 1,
+    "side": "L",
+    "y": 1015.6,
+    "kind": "item",
+    "particular": "Portobe USG",
+    "price_mmk": 60000,
+    "score": 0.925
+  },
+  {
+    "page": 1,
+    "side": "L",
+    "y": 1066.6,
+    "kind": "item",
+    "particular": "Syring Pump",
+    "price_mmk": 50000,
+    "score": 0.947
+  },
+  {
+    "page": 1,
+    "side": "L",
+    "y": 1120.5,
+    "kind": "item",
+    "particular": "USG",
+    "price_mmk": 45000,
+    "score": 0.987
+  },
+  {
+    "page": 1,
+    "side": "L",
+    "y": 1175.9,
+    "kind": "item",
+    "particular": "USG (Brest/Nedx)",
+    "price_mmk": 45000,
+    "score": 0.917
+  },
+  {
+    "page": 1,
+    "side": "L",
+    "y": 1229.8,
+    "kind": "item",
+    "particular": "USG (Doppler)",
+    "price_mmk": 50000,
+    "score": 0.956
+  },
+  {
+    "page": 1,
+    "side": "L",
+    "y": 1282.3,
+    "kind": "item",
+    "particular": "USG (Thyroid)",
+    "price_mmk": 40000,
+    "score": 0.963
+  },
+  {
+    "page": 1,
+    "side": "L",
+    "y": 1330.2,
+    "kind": "item",
+    "particular": "water",
+    "price_mmk": 2500,
+    "score": 0.928
+  },
+  {
+    "page": 1,
+    "side": "L",
+    "y": 1385.6,
+    "kind": "item",
+    "particular": "X ray Flm",
+    "price_mmk": 5000,
+    "score": 0.917
+  },
+  {
+    "page": 1,
+    "side": "L",
+    "y": 1436.6,
+    "kind": "header",
+    "particular": "Glucometer",
+    "price_mmk": null,
+    "score": 0.676
+  },
+  {
+    "page": 1,
+    "side": "L",
+    "y": 1492.0,
+    "kind": "item",
+    "particular": "RBS",
+    "price_mmk": 2500,
+    "score": 0.978
+  },
+  {
+    "page": 1,
+    "side": "R",
+    "y": 383.5,
+    "kind": "header",
+    "particular": "Kaung Pyae Sone",
+    "price_mmk": null,
+    "score": 0.772
+  },
+  {
+    "page": 1,
+    "side": "R",
+    "y": 434.4,
+    "kind": "item",
+    "particular": "ACTH",
+    "price_mmk": 55000,
+    "score": 0.992
+  },
+  {
+    "page": 1,
+    "side": "R",
+    "y": 488.3,
+    "kind": "item",
+    "particular": "Allkallne phosphatase(ALP)",
+    "price_mmk": 10000,
+    "score": 0.825
+  },
+  {
+    "page": 1,
+    "side": "R",
+    "y": 540.8,
+    "kind": "item",
+    "particular": "Alcrqy Scroennq PanelI",
+    "price_mmk": 86000,
+    "score": 0.826
+  },
+  {
+    "page": 1,
+    "side": "R",
+    "y": 597.7,
+    "kind": "item",
+    "particular": "Allerqy Scroennq Panel Il",
+    "price_mmk": 86000,
+    "score": 0.785
+  },
+  {
+    "page": 1,
+    "side": "R",
+    "y": 650.1,
+    "kind": "item",
+    "particular": "AlerqyScroennq Panel Ill",
+    "price_mmk": 86000,
+    "score": 0.857
+  },
+  {
+    "page": 1,
+    "side": "R",
+    "y": 699.6,
+    "kind": "item",
+    "particular": "ANaA (Screenina)",
+    "price_mmk": 21000,
+    "score": 0.869
+  },
+  {
+    "page": 1,
+    "side": "R",
+    "y": 750.5,
+    "kind": "item",
+    "particular": "Antl -nRNP",
+    "price_mmk": 55000,
+    "score": 0.935
+  },
+  {
+    "page": 1,
+    "side": "R",
+    "y": 804.4,
+    "kind": "item",
+    "particular": "Anti phocphollpld Ab Panel",
+    "price_mmk": 95000,
+    "score": 0.898
+  },
+  {
+    "page": 1,
+    "side": "R",
+    "y": 858.3,
+    "kind": "item",
+    "particular": "AntI-CCP",
+    "price_mmk": 50000,
+    "score": 0.931
+  },
+  {
+    "page": 1,
+    "side": "R",
+    "y": 913.8,
+    "kind": "item",
+    "particular": "Antl-dsDNA",
+    "price_mmk": 9000,
+    "score": 0.847
+  },
+  {
+    "page": 1,
+    "side": "R",
+    "y": 966.2,
+    "kind": "item",
+    "particular": "AntI-HAV (IqG)",
+    "price_mmk": 16000,
+    "score": 0.915
+  },
+  {
+    "page": 1,
+    "side": "R",
+    "y": 1012.6,
+    "kind": "item",
+    "particular": "AntI-HAV (IqM)",
+    "price_mmk": 16000,
+    "score": 0.868
+  },
+  {
+    "page": 1,
+    "side": "R",
+    "y": 1068.1,
+    "kind": "item",
+    "particular": "Antl-HAV (IqN+IqG)",
+    "price_mmk": 17000,
+    "score": 0.884
+  },
+  {
+    "page": 1,
+    "side": "R",
+    "y": 1122.0,
+    "kind": "item",
+    "particular": "Antl-HBc(QusItatve)",
+    "price_mmk": 7000,
+    "score": 0.806
+  },
+  {
+    "page": 1,
+    "side": "R",
+    "y": 1174.4,
+    "kind": "item",
+    "particular": "Anti-Hbc(total)Quanutative",
+    "price_mmk": 20000,
+    "score": 0.863
+  },
+  {
+    "page": 1,
+    "side": "R",
+    "y": 1229.8,
+    "kind": "item",
+    "particular": "Anti-HBcIqM(Quantitate)",
+    "price_mmk": 20000,
+    "score": 0.829
+  },
+  {
+    "page": 1,
+    "side": "R",
+    "y": 1282.3,
+    "kind": "item",
+    "particular": "Antl-Hbe (ICT)",
+    "price_mmk": 6500,
+    "score": 0.909
+  },
+  {
+    "page": 1,
+    "side": "R",
+    "y": 1334.7,
+    "kind": "item",
+    "particular": "Anti-HBs(qualitatve)",
+    "price_mmk": 5500,
+    "score": 0.838
+  },
+  {
+    "page": 1,
+    "side": "R",
+    "y": 1385.6,
+    "kind": "item",
+    "particular": "AntI-HCV",
+    "price_mmk": 6500,
+    "score": 0.933
+  },
+  {
+    "page": 1,
+    "side": "R",
+    "y": 1435.1,
+    "kind": "item",
+    "particular": "AntI-HIV1&2(ECL)",
+    "price_mmk": 15000,
+    "score": 0.905
+  },
+  {
+    "page": 1,
+    "side": "R",
+    "y": 1495.0,
+    "kind": "item",
+    "particular": "Anti-HIV1&2(Qusltatve)",
+    "price_mmk": 7500,
+    "score": 0.796
+  },
+  {
+    "page": 1,
+    "side": "R",
+    "y": 1547.4,
+    "kind": "item",
+    "particular": "Antl-HIV1&2,P24Sntqen\uff08ECL\uff09",
+    "price_mmk": 25000,
+    "score": 0.842
+  },
+  {
+    "page": 1,
+    "side": "R",
+    "y": 1598.3,
+    "kind": "item",
+    "particular": "Antl-Mullerian Hormone(AMH)",
+    "price_mmk": 150000,
+    "score": 0.887
+  },
+  {
+    "page": 1,
+    "side": "R",
+    "y": 1647.8,
+    "kind": "item",
+    "particular": "Anti-SM",
+    "price_mmk": 26000,
+    "score": 0.845
+  },
+  {
+    "page": 1,
+    "side": "R",
+    "y": 1703.2,
+    "kind": "item",
+    "particular": "AntI-TPO",
+    "price_mmk": 25000,
+    "score": 0.916
+  },
+  {
+    "page": 1,
+    "side": "R",
+    "y": 1757.1,
+    "kind": "item",
+    "particular": "Ascitikc fuid RE",
+    "price_mmk": 20000,
+    "score": 0.841
+  },
+  {
+    "page": 1,
+    "side": "R",
+    "y": 1811.1,
+    "kind": "item",
+    "particular": "B,C,R Combo (HbsAq,AntI-HCV,Antl",
+    "price_mmk": 20000,
+    "score": 0.849
+  },
+  {
+    "page": 1,
+    "side": "R",
+    "y": 1859.0,
+    "kind": "item",
+    "particular": "Beta cross lap (B-CTX)",
+    "price_mmk": 55000,
+    "score": 0.817
+  },
+  {
+    "page": 1,
+    "side": "R",
+    "y": 1911.4,
+    "kind": "item",
+    "particular": "Beta HCG(Quantitstive)",
+    "price_mmk": 23000,
+    "score": 0.85
+  },
+  {
+    "page": 1,
+    "side": "R",
+    "y": 1966.9,
+    "kind": "item",
+    "particular": "Bllrubn (conjuqoted)",
+    "price_mmk": 7000,
+    "score": 0.899
+  },
+  {
+    "page": 1,
+    "side": "R",
+    "y": 2020.8,
+    "kind": "item",
+    "particular": "Bllrubn (unconjuqsted)",
+    "price_mmk": 10000,
+    "score": 0.891
+  },
+  {
+    "page": 1,
+    "side": "R",
+    "y": 2074.7,
+    "kind": "item",
+    "particular": "Bllrubn(Total)",
+    "price_mmk": 5500,
+    "score": 0.949
+  },
+  {
+    "page": 1,
+    "side": "R",
+    "y": 2121.1,
+    "kind": "item",
+    "particular": "CA 5 (15.3)",
+    "price_mmk": 21000,
+    "score": 0.983
+  },
+  {
+    "page": 1,
+    "side": "R",
+    "y": 2178.1,
+    "kind": "item",
+    "particular": "C 9 (19.9)",
+    "price_mmk": 38500,
+    "score": 0.946
+  },
+  {
+    "page": 1,
+    "side": "R",
+    "y": 2230.5,
+    "kind": "item",
+    "particular": "Cerulopbsmin",
+    "price_mmk": 27000,
+    "score": 0.972
+  },
+  {
+    "page": 1,
+    "side": "R",
+    "y": 2284.4,
+    "kind": "item",
+    "particular": "Chikunquanya antibody",
+    "price_mmk": 12000,
+    "score": 0.963
+  },
+  {
+    "page": 1,
+    "side": "R",
+    "y": 2335.4,
+    "kind": "item",
+    "particular": "CK",
+    "price_mmk": 8500,
+    "score": 0.937
+  },
+  {
+    "page": 1,
+    "side": "R",
+    "y": 2384.8,
+    "kind": "item",
+    "particular": "CKMB",
+    "price_mmk": 25000,
+    "score": 0.97
+  },
+  {
+    "page": 1,
+    "side": "R",
+    "y": 2440.2,
+    "kind": "item",
+    "particular": "Complement 3 (C-3)",
+    "price_mmk": 17000,
+    "score": 0.928
+  },
+  {
+    "page": 1,
+    "side": "R",
+    "y": 2492.6,
+    "kind": "item",
+    "particular": "Complement4(C-4)",
+    "price_mmk": 17000,
+    "score": 0.935
+  },
+  {
+    "page": 1,
+    "side": "R",
+    "y": 2540.6,
+    "kind": "item",
+    "particular": "Coomb's test",
+    "price_mmk": 9000,
+    "score": 0.955
+  },
+  {
+    "page": 1,
+    "side": "R",
+    "y": 2599.0,
+    "kind": "item",
+    "particular": "Cortkol",
+    "price_mmk": 0,
+    "score": 0.688
+  },
+  {
+    "page": 1,
+    "side": "R",
+    "y": 2652.9,
+    "kind": "item",
+    "particular": "C-peptide (Insulln Peptide)",
+    "price_mmk": 25000,
+    "score": 0.949
+  },
+  {
+    "page": 1,
+    "side": "R",
+    "y": 2703.9,
+    "kind": "item",
+    "particular": "Crea tnine ckea rance",
+    "price_mmk": 25000,
+    "score": 0.879
+  },
+  {
+    "page": 1,
+    "side": "R",
+    "y": 2756.3,
+    "kind": "item",
+    "particular": "CSF Cytoloqy",
+    "price_mmk": 25000,
+    "score": 0.909
+  },
+  {
+    "page": 1,
+    "side": "R",
+    "y": 2808.7,
+    "kind": "item",
+    "particular": "CT(Chlamyda trochomats)",
+    "price_mmk": 22000,
+    "score": 0.892
+  }
+]

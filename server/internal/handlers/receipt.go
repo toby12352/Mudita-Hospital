@@ -28,9 +28,11 @@ body{
 .hospital{font-size:13px;font-weight:700;margin:0 0 2px;text-transform:uppercase;letter-spacing:0.02em}
 .addr,.tel{margin:0;font-size:10px;word-wrap:break-word}
 .sep{margin:6px 0;border:0;border-top:1px dashed #000}
-.row{display:flex;justify-content:space-between;gap:4px;margin:1px 0}
-.row .label{flex:0 0 auto;color:#222}
-.row .val{flex:1;text-align:right;word-break:break-word}
+.row{display:flex;justify-content:flex-start;gap:6px;margin:1px 0}
+.row .label{flex:0 0 12ch;color:#222}
+.row .val{flex:1;text-align:left;word-break:break-word}
+.section-title{font-weight:700;margin:6px 0 2px}
+.note-body{margin:0 0 4px;white-space:pre-wrap;word-wrap:break-word}
 .line{margin:6px 0 2px}
 .line-desc{word-wrap:break-word}
 .line-meta{display:flex;justify-content:space-between;gap:6px;font-size:10px}
@@ -111,17 +113,25 @@ func renderThermalReceiptHTML(hosp *hospitalSettings, bill receiptBill) string {
 	writeReceiptKV(&b, "Date", bill.DateLabel)
 	writeReceiptKV(&b, "Status", strings.ToUpper(bill.Status))
 
-	patient := bill.PatientName
-	if bill.PatientPhone != "" {
-		patient += " · " + bill.PatientPhone
+	name := strings.TrimSpace(bill.PatientName)
+	phone := strings.TrimSpace(bill.PatientPhone)
+	gender := strings.TrimSpace(bill.PatientGender)
+	hasPatient := name != "" || phone != "" || bill.PatientAge != nil || gender != ""
+	if hasPatient {
+		b.WriteString(`<p class="section-title">Patient</p>`)
+		if name != "" {
+			writeReceiptKV(&b, "Name", name)
+		}
+		if bill.PatientAge != nil {
+			writeReceiptKV(&b, "Age", fmt.Sprintf("%d", *bill.PatientAge))
+		}
+		if phone != "" {
+			writeReceiptKV(&b, "Phone", phone)
+		}
+		if gender != "" {
+			writeReceiptKV(&b, "Sex", gender)
+		}
 	}
-	if bill.PatientAge != nil {
-		patient += fmt.Sprintf(" · Age %d", *bill.PatientAge)
-	}
-	if bill.PatientGender != "" {
-		patient += " · " + bill.PatientGender
-	}
-	writeReceiptKV(&b, "Patient", patient)
 
 	if bill.DoctorName != "" {
 		writeReceiptKV(&b, "Doctor", bill.DoctorName)
@@ -129,8 +139,13 @@ func renderThermalReceiptHTML(hosp *hospitalSettings, bill receiptBill) string {
 	if bill.ProcedureName != "" {
 		writeReceiptKV(&b, "Procedure", bill.ProcedureName)
 	}
-	if bill.Note != "" {
-		writeReceiptKV(&b, "Note", bill.Note)
+
+	note := strings.TrimSpace(bill.Note)
+	if note != "" {
+		b.WriteString(`<p class="section-title">Note</p>`)
+		b.WriteString(`<p class="note-body">`)
+		b.WriteString(html.EscapeString(note))
+		b.WriteString(`</p>`)
 	}
 
 	b.WriteString(`<hr class="sep"/>`)

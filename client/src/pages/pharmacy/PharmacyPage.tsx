@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useState } from "react";
 import {
+  deletePharmacyItem,
   formatItemCode,
   formatPackCompact,
   getPharmacyItem,
@@ -11,6 +12,8 @@ import {
   updatePharmacyItem,
   type PharmacyItem,
 } from "@/features/pharmacy/api";
+import { ActionIcon } from "@/shared/ActionIcon";
+import { DialogCloseButton } from "@/shared/DialogCloseButton";
 import { useI18n } from "@/shared/i18n";
 import { PharmacyItemForm } from "./PharmacyItemForm";
 import { PharmacyItemLots } from "./PharmacyItemLots";
@@ -40,6 +43,9 @@ export function PharmacyPage({
   const [listEpoch, setListEpoch] = useState(0);
   const [detailEpoch, setDetailEpoch] = useState(0);
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   async function reload(search = filterQ) {
     const data = await listPharmacyItems(search.trim(), listOpts);
@@ -149,6 +155,53 @@ export function PharmacyPage({
     }
   }
 
+  function openDeleteConfirm() {
+    setDeleteError(null);
+    setDeleteConfirm(true);
+  }
+
+  function closeDeleteConfirm() {
+    if (deleteBusy) return;
+    setDeleteConfirm(false);
+    setDeleteError(null);
+  }
+
+  async function confirmDeleteItem() {
+    if (selectedId == null) return;
+    const deletedId = selectedId;
+    const prevIdx = list.findIndex((i) => i.id === deletedId);
+    const preferId = list[prevIdx + 1]?.id ?? list[prevIdx - 1]?.id ?? null;
+    setDeleteBusy(true);
+    setDeleteError(null);
+    try {
+      await deletePharmacyItem(deletedId);
+      setDeleteConfirm(false);
+      const data = await listPharmacyItems(filterQ.trim(), listOpts);
+      setList(data);
+      const nextId =
+        (preferId != null && data.some((i) => i.id === preferId) ? preferId : null) ??
+        data[0]?.id ??
+        null;
+      setSelectedId(nextId);
+      setSelectedDetail(null);
+      setListEpoch((n) => n + 1);
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "Delete failed");
+    } finally {
+      setDeleteBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!deleteConfirm) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") closeDeleteConfirm();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- close while dialog open
+  }, [deleteConfirm, deleteBusy]);
+
   async function toggleActive(item: PharmacyItem, active: boolean) {
     setError(null);
     setBusyId(item.id);
@@ -222,21 +275,20 @@ export function PharmacyPage({
         <div className="drug-setup-title-row">
           <h2 className="drug-setup-title">{t("drugSetup")}</h2>
           <div className="tabs">
-            <button
-              type="button"
-              className={`tab${creating ? " active" : ""}`}
-              onClick={openCreate}
-            >
+            <button type="button" className="btn action primary" onClick={openCreate}>
+              <ActionIcon name="plus" />
               {t("newBadge")}
             </button>
             <button
               type="button"
-              className={`tab${filterOpen ? " active" : ""}`}
+              className={`btn action${filterOpen ? " on" : ""}`}
               onClick={() => setFilterOpen((v) => !v)}
             >
+              <ActionIcon name="filter" />
               {t("filter")}
             </button>
-            <button type="button" className="tab" onClick={() => setMode("history")}>
+            <button type="button" className="btn action" onClick={() => setMode("history")}>
+              <ActionIcon name="history" />
               {t("itemHistoryLink")}
             </button>
           </div>
@@ -262,7 +314,7 @@ export function PharmacyPage({
             />
             <button
               type="button"
-              className="btn ghost"
+              className="btn action"
               onClick={() =>
                 void reload(filterQ)
                   .then((data) => {
@@ -271,6 +323,7 @@ export function PharmacyPage({
                   .catch((err) => setError(err instanceof Error ? err.message : "Search failed"))
               }
             >
+              <ActionIcon name="search" />
               {t("search")}
             </button>
           </div>
@@ -390,8 +443,18 @@ export function PharmacyPage({
                   );
                 })()}
                 <div className="btn-row" style={{ marginTop: "0.75rem" }}>
-                  <button type="button" className="btn primary" onClick={() => void openEdit(infoItem)}>
+                  <button type="button" className="btn action" onClick={() => void openEdit(infoItem)}>
+                    <ActionIcon name="edit" />
                     {t("edit")}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn action danger"
+                    onClick={openDeleteConfirm}
+                    disabled={deleteBusy}
+                  >
+                    <ActionIcon name="trash" />
+                    {t("delete")}
                   </button>
                 </div>
                 <PharmacyItemsTab
@@ -411,6 +474,53 @@ export function PharmacyPage({
           </>
         )}
       </div>
+
+      {deleteConfirm && infoItem ? (
+        <div
+          className="opd-bill-dialog-overlay"
+          role="presentation"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeDeleteConfirm();
+          }}
+        >
+          <div
+            className="opd-bill-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-item-dialog-title"
+          >
+            <div className="opd-bill-dialog-head">
+              <h2 id="delete-item-dialog-title" className="opd-bill-dialog-title">
+                {t("delete")}
+              </h2>
+              <DialogCloseButton onClick={closeDeleteConfirm} disabled={deleteBusy} />
+            </div>
+            <p className="hint">
+              {formatItemCode(infoItem.code)} · {infoItem.name}
+            </p>
+            <p>{t("deleteItemConfirm")}</p>
+            {deleteError ? <p className="form-error">{deleteError}</p> : null}
+            <div className="btn-row" style={{ justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                className="btn ghost"
+                onClick={closeDeleteConfirm}
+                disabled={deleteBusy}
+              >
+                {t("cancel")}
+              </button>
+              <button
+                type="button"
+                className="btn danger"
+                onClick={() => void confirmDeleteItem()}
+                disabled={deleteBusy}
+              >
+                {t("delete")}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

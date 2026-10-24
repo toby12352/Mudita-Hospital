@@ -6,6 +6,7 @@ import {
   updateService,
   type Service,
 } from "@/features/settings/masterData";
+import { ActionIcon } from "@/shared/ActionIcon";
 import { Typeahead } from "@/shared/Typeahead";
 import { useI18n } from "@/shared/i18n";
 export function ServicesTab() {
@@ -129,7 +130,7 @@ export function ServicesTab() {
             {busy ? t("saving") : editing ? t("updateService") : t("addService")}
           </button>
           {editing ? (
-            <button type="button" className="btn ghost" disabled={busy} onClick={startCreate}>
+            <button type="button" className="btn action" disabled={busy} onClick={startCreate}>
               {t("cancelEdit")}
             </button>
           ) : null}
@@ -171,13 +172,14 @@ export function ServicesTab() {
           />
           <button
             type="button"
-            className="btn ghost"
+            className="btn action"
             onClick={() =>
               void reload(q).catch((err) =>
                 setError(err instanceof Error ? err.message : "Search failed"),
               )
             }
           >
+            <ActionIcon name="search" />
             {t("search")}
           </button>
         </div>
@@ -195,13 +197,14 @@ export function ServicesTab() {
                 </p>
               </div>
               <div className="btn-row">
-                <button type="button" className="btn ghost" onClick={() => startEdit(s)} disabled={busy}>
+                <button type="button" className="btn action" onClick={() => startEdit(s)} disabled={busy}>
+                  <ActionIcon name="edit" />
                   {t("edit")}
                 </button>
                 {s.active ? (
                   <button
                     type="button"
-                    className="btn ghost danger"
+                    className="btn action danger"
                     onClick={() => void onDeactivate(s.id)}
                     disabled={busy}
                   >

@@ -1,0 +1,122 @@
+﻿    101      73  Psticular
+    101     990  Particul•
+    103     726  Kyat
+    103    1638  Kyat
+    167    1595  400000
+    222     149  O IO) ECHO
+    222     699  60000
+    222    1615  45000
+    223     983  Ox nen
+    274      67  Cam used
+    274     721  5000
+    274     984  Pockme
+    274    1599  100000
+    326      67  Caseteria»n Fee
+    326     703  15000
+    326     984  Pockme
+    326    1596  250000
+    377     984  Phone Bit
+    378      67  CF Fees
+    378     700  25000
+    378    1632  3000
+    430     703  10000
+    430    1615  goooo
+    431      67  CF Fees
+    431     984  Phototherapy
+    486      67  CF on cou Fees
+    486    1633  sooo
+    487     984  Prode
+    538     699  45000
+    538    1632  2500
+    539     984  Reqgtrotson Fee
+    590      67  Covod A*ibody•
+    590     703  15000
+    590    1616  3sooo
+    591     984  RT Wret
+    640      67  Cowd Tet ( SROS)
+    642     700  25000
+    642    1619  10000
+    693      67  Covod Tet ( Swob)
+    694     700  35000
+    694     984  Season Yochtne
+    694    1619  10000
+    746      67  CTG
+    746     700  25000
+    746     984  Sen ee
+    746    1619  10000
+    798    1615  6sooo
+    802     135  We
+    802     700  20000
+    852     984  USG (Chet)
+    854     135  Core
+    854     700  30000
+    854    1615  45000
+    906     135  We
+    906     700  35000
+    958     135  Core
+    958     700  25000
+    958    1616  20000
+   1010      69  Day We Sense
+   1010     984  Pockme
+   1010    1563  10000000
+   1062     685  sooooo
+   1117     984  PSA (Free)
+   1118     683  sooooo
+   1170     228  Fumodzotson
+   1170     701  soooo
+   1170     984  SFsv•nq
+   1170    1632  2500
+   1222     688  -19500
+   1223      68  Otzount
+   1274     708  -1000
+   1275      69  Ogoount
+   1330      69  Ogoount 20%
+   1330     688  -12600
+   1382     688  -36900
+   1383      68  ogoount
+   1435      69  Ogoount
+   1486     700  35000
+   1538     687  100000
+   1539      69  Doctor Fee
+   1592      69  Doctor Fee (foc)
+   1646      68  Doctor Fee Sape
+   1646     700  25000
+   1698     703  15000
+   1699      69  Doctor Fees
+   1750     227  COu Fee
+   1750     703  10000
+   1802     703  15000
+   1858     205  Box Used
+   1858     703  10000
+   1910     203  Charqu Wm S'Rure
+   1910     703  i 7000
+   1962     703  15000
+   1963     204  use
+   2014     203  Wth Stschtnq
+   2014     699  80000
+   2066      68  Feal Dropper
+   2066     719  6000
+   2118     701  soooo
+   2119      68  Home Core
+   2170      68  Home Sen•oce
+   2227      69  IN P',ANEX
+   2278     701  soooo
+   2279      69  lucr
+   2330      68  KARL STROZ
+   2330     701  soooo
+   2382      68  Lab Fee
+   2382     703  15000
+   2434      68  Lab Used For PPE
+   2434     701  soooo
+   2490      68  Yod•l Cover
+   2490     699  45000
+   2542      69  Yed•l Covet
+   2542     700  25000
+   2594     699  60000
+   2595      68  Ytnot Room Fee
+   2646      69  yo on COu Fee
+   2646     703  15000
+   2702      69  Nebular
+   2702     700  30000
+   2754      67  ocns
+   2754     684  300000

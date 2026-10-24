@@ -1,5 +1,6 @@
 /** Shared Pay & print / Reprint control for OPD, OT, and Pharmacy bill rails. */
 
+import { ActionIcon } from "@/shared/ActionIcon";
 import { useI18n } from "@/shared/i18n";
 
 export type CollectSideEffect = "none" | "pharmacy" | "ot" | "pharmacy_return";
@@ -48,13 +49,16 @@ export function BillPayPrintButton(props: {
       disabled={busy || isVoid}
       onClick={onClick}
     >
-      <span className="opd-bill-rail-btn-text">
-        <span className="opd-bill-rail-btn-label">
-          {willCollect ? (collectLabel ?? t("payAndPrint")) : t("reprint")}
+      <span className="opd-bill-rail-btn-main">
+        <ActionIcon name="print" />
+        <span className="opd-bill-rail-btn-text">
+          <span className="opd-bill-rail-btn-label">
+            {willCollect ? (collectLabel ?? t("payAndPrint")) : t("reprint")}
+          </span>
+          {willCollect ? (
+            <span className="opd-bill-rail-btn-sub">{collectSubLabel ?? t("marksPaid")}</span>
+          ) : null}
         </span>
-        {willCollect ? (
-          <span className="opd-bill-rail-btn-sub">{collectSubLabel ?? t("marksPaid")}</span>
-        ) : null}
       </span>
       <kbd>F7</kbd>
     </button>

@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
 import { listOtCases, type OtCase } from "@/features/ot/api";
+import { ActionIcon } from "@/shared/ActionIcon";
+import { AlertDialog } from "@/shared/AlertDialog";
+import { DialogCloseButton } from "@/shared/DialogCloseButton";
 import { useI18n } from "@/shared/i18n";
 
 function sortRecentFirst(rows: OtCase[]): OtCase[] {
@@ -64,10 +67,10 @@ export function OtHistoryModal({
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        onClose();
-      }
+      if (e.key !== "Escape") return;
+      if (document.querySelector(".alert-dialog-overlay")) return;
+      e.preventDefault();
+      onClose();
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -122,13 +125,10 @@ export function OtHistoryModal({
           <h2 id="ot-history-dialog-title" className="opd-bill-dialog-title">
             {mode === "history" ? t("otDeskHistoryTitle") : t("otDeskDeleteTitle")}
           </h2>
-          <button type="button" className="btn ghost" onClick={onClose}>
-            {t("cancel")}
-          </button>
+          <DialogCloseButton onClick={onClose} />
         </div>
 
         {loading ? <p className="hint">{t("loading")}</p> : null}
-        {error ? <p className="form-error">{error}</p> : null}
 
         <ul className="opd-bill-dialog-list">
           {!loading && rows.length === 0 ? (
@@ -178,10 +178,11 @@ export function OtHistoryModal({
             </label>
             <button
               type="button"
-              className="btn ghost danger"
+              className="btn action danger"
               disabled={busy || !canVoid}
               onClick={() => void handleDelete()}
             >
+              <ActionIcon name="trash" />
               {busy ? "…" : t("delete")}
             </button>
           </div>
@@ -189,6 +190,7 @@ export function OtHistoryModal({
           <p className="hint">{t("billHistoryHint")}</p>
         )}
       </div>
+      <AlertDialog message={error ?? ""} onClose={() => setError(null)} />
     </div>
   );
 }

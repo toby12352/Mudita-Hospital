@@ -75,7 +75,7 @@ export function TrainingTab({ t }: { t: (k: string) => string }) {
           <button type="button" className="btn primary" disabled={busy} onClick={() => void doSeed()}>
             {busy ? t("busy") : t("seedTraining")}
           </button>
-          <button type="button" className="btn ghost" disabled={busy} onClick={() => void doReset()}>
+          <button type="button" className="btn action danger" disabled={busy} onClick={() => void doReset()}>
             {t("resetTraining")}
           </button>
         </div>

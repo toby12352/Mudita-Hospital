@@ -1035,3 +1035,30 @@ func TestPortalCashVisibility(t *testing.T) {
 		}
 	})
 }
+
+// Fractional buy-per-tablet must round to integer MMK so Scan into int64 succeeds.
+func TestStockHealthRoundsFractionalValue(t *testing.T) {
+	sqlDB := openTestDB(t)
+	itemID := insertItem(t, sqlDB, "FRAC1", "Fractional", 1000, 200)
+	if _, err := sqlDB.Exec(`UPDATE items SET units_per_purchase = 3, pack_l3_qty = 3 WHERE id = ?`, itemID); err != nil {
+		t.Fatal(err)
+	}
+	insertBatch(t, sqlDB, itemID, "MAIN-F", "2026-11-01", 1)
+	insertOtBatch(t, sqlDB, itemID, "OT-F", "2026-11-01", 1)
+
+	rep, err := buildStockHealth(sqlDB, 90, 30)
+	if err != nil {
+		t.Fatalf("buildStockHealth: %v", err)
+	}
+	// 1 tablet × 1000 MMK / 3 ≈ 333.33 → ROUND → 333 each location.
+	if rep.TotalQty != 2 || rep.TotalValueMMK != 666 {
+		t.Fatalf("qty=%d value=%d want qty=2 value=666", rep.TotalQty, rep.TotalValueMMK)
+	}
+	seen := map[string]int64{}
+	for _, row := range rep.ByLocation {
+		seen[row.LocationCode] = row.ValueMMK
+	}
+	if seen["MAIN"] != 333 || seen["OT"] != 333 {
+		t.Fatalf("by_location values %+v", rep.ByLocation)
+	}
+}

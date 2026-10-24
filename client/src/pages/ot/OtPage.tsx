@@ -27,6 +27,8 @@ import {
   saleUnitsFromPack,
   type SaleUnit,
 } from "@/features/pharmacy/api";
+import { ActionIcon } from "@/shared/ActionIcon";
+import { AlertDialog } from "@/shared/AlertDialog";
 import { BillLineGrid, createBillLineEntry, type BillLineGridRow } from "@/shared/BillLineGrid";
 import { BillCollectNote, BillPayPrintButton, moneyStatusLabel } from "@/shared/BillPayPrint";
 import { userMessage } from "@/shared/errors";
@@ -564,6 +566,7 @@ export function OtPage() {
     function onKey(e: KeyboardEvent) {
       if (dialog) return;
       if (document.querySelector(".print-preview-overlay")) return;
+      if (document.querySelector(".alert-dialog-overlay")) return;
       const key = e.key;
       if (key === "F5") {
         e.preventDefault();
@@ -943,7 +946,6 @@ export function OtPage() {
             </div>
           </div>
 
-          {error ? <p className="form-error">{error}</p> : null}
           {okMsg ? <p className="form-ok">{okMsg}</p> : null}
         </div>
 
@@ -959,7 +961,10 @@ export function OtPage() {
             disabled={busy || !isDraft}
             onClick={() => void saveDraft()}
           >
-            <span>{t("saveDraft")}</span>
+            <span className="opd-bill-rail-btn-main">
+              <ActionIcon name="check" />
+              <span>{t("saveDraft")}</span>
+            </span>
             <kbd>F5</kbd>
           </button>
           <button
@@ -968,16 +973,22 @@ export function OtPage() {
             disabled={busy}
             onClick={() => setDialog("history")}
           >
-            <span>{t("history")}</span>
+            <span className="opd-bill-rail-btn-main">
+              <ActionIcon name="history" />
+              <span>{t("history")}</span>
+            </span>
             <kbd>F9</kbd>
           </button>
           <button
             type="button"
-            className="opd-bill-rail-btn"
+            className="opd-bill-rail-btn opd-bill-rail-btn--danger"
             disabled={busy}
             onClick={() => setDialog("delete")}
           >
-            <span>{t("vDelete")}</span>
+            <span className="opd-bill-rail-btn-main">
+              <ActionIcon name="trash" />
+              <span>{t("vDelete")}</span>
+            </span>
             <kbd>^F8</kbd>
           </button>
           <button type="button" className="opd-bill-rail-btn" disabled={busy} onClick={doCancelForm}>
@@ -990,10 +1001,15 @@ export function OtPage() {
             disabled={busy}
             onClick={doNewBill}
           >
-            <span>{t("newBill")}</span>
+            <span className="opd-bill-rail-btn-main">
+              <ActionIcon name="plus" />
+              <span>{t("newBill")}</span>
+            </span>
             <kbd>F2</kbd>
           </button>
         </aside>
+
+        <AlertDialog message={error ?? ""} onClose={() => setError(null)} />
       </section>
 
       {dialog ? (

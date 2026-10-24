@@ -124,8 +124,8 @@ type itemUpdateRequest struct {
 }
 
 type restockRequest struct {
-	Qty          int64  `json:"qty"`      // boxes when qty_unit omitted/purchase
-	QtyUnit      string `json:"qty_unit"` // purchase | stock (default purchase)
+	Qty          int64  `json:"qty"`
+	QtyUnit      string `json:"qty_unit"` // purchase | stock | pack unit name (Box, Card, …)
 	BatchNo      string `json:"batch_no"`
 	ExpiryDate   string `json:"expiry_date"`
 	BuyPriceMMK  *int64 `json:"buy_price_mmk,omitempty"`  // per box
@@ -177,6 +177,8 @@ func (h *Pharmacy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.restock(w, r, path)
 		case strings.HasPrefix(path, "/items/") && strings.HasSuffix(path, "/adjust") && r.Method == http.MethodPost:
 			h.adjust(w, r, path)
+		case strings.HasPrefix(path, "/items/") && strings.HasSuffix(path, "/delete") && r.Method == http.MethodPost:
+			h.deleteItem(w, r, path)
 		case strings.HasPrefix(path, "/items/") && strings.HasSuffix(path, "/label") && r.Method == http.MethodPost:
 			h.labelBatch(w, r, path)
 		case strings.HasPrefix(path, "/items/") && strings.HasSuffix(path, "/batches") && r.Method == http.MethodGet:
@@ -665,14 +667,10 @@ func (h *Pharmacy) restock(w http.ResponseWriter, r *http.Request, path string) 
 		return
 	}
 
-	stockQty := req.Qty
-	qtyUnit := strings.TrimSpace(req.QtyUnit)
-	if qtyUnit == "" || strings.EqualFold(qtyUnit, "purchase") {
-		upp := existing.UnitsPerPurchase
-		if upp < 1 {
-			upp = 1
-		}
-		stockQty = req.Qty * upp
+	stockQty, auditUnit, convErr := restockStockQty(existing, req.Qty, req.QtyUnit)
+	if convErr != "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": convErr})
+		return
 	}
 
 	tx, err := h.DB.Begin()
@@ -728,7 +726,7 @@ func (h *Pharmacy) restock(w http.ResponseWriter, r *http.Request, path string) 
 	}
 
 	audit.WriteAudit(h.DB, &uid, "restock", "item", &id, map[string]any{
-		"qty": stockQty, "qty_entered": req.Qty, "qty_unit": qtyUnit,
+		"qty": stockQty, "qty_entered": req.Qty, "qty_unit": auditUnit,
 		"batch_id": batchID, "batch_no": batchNo, "expiry_date": expiry,
 	})
 

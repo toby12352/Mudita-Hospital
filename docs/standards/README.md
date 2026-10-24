@@ -26,7 +26,7 @@ Start here when joining the codebase or opening a new Agent chat. Read only the 
 | Doc | When to read |
 |-----|----------------|
 | [ARCHITECTURE.md](./ARCHITECTURE.md) | System map, apps, data flow, dependency rules |
-| [FRONTEND.md](./FRONTEND.md) | Folder layout, React patterns, i18n, CSS, storage keys |
+| [FRONTEND.md](./FRONTEND.md) | Folder layout, React patterns, i18n, CSS, storage keys; clinic action buttons / design system (client only) |
 | [BACKEND.md](./BACKEND.md) | Handlers, auth, migrations, API shape |
 | [CONVENTIONS.md](./CONVENTIONS.md) | Naming, money, errors, roles, bill prefixes |
 | [ADDING_A_FEATURE.md](./ADDING_A_FEATURE.md) | Step-by-step playbook for a new domain |

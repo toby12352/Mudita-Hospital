@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"database/sql"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -339,6 +340,7 @@ func (h *Dashboard) stock(w http.ResponseWriter, r *http.Request) {
 	}
 	rep, err := buildStockHealth(h.DB, slowDays, cogsDays)
 	if err != nil {
+		log.Printf("dashboard stock: %v", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "stock failed"})
 		return
 	}
@@ -454,16 +456,20 @@ func stockValueByLocation(db *sql.DB) ([]stockLocValue, int64, int64, error) {
 		FROM (
 			SELECT 'MAIN' AS location_code,
 			       b.qty AS qty,
-			       b.qty * COALESCE(i.buy_price_mmk, 0) * 1.0 /
-			         CASE WHEN COALESCE(i.units_per_purchase, 1) < 1 THEN 1 ELSE i.units_per_purchase END AS value_mmk
+			       CAST(ROUND(
+			         b.qty * COALESCE(i.buy_price_mmk, 0) * 1.0 /
+			         CASE WHEN COALESCE(i.units_per_purchase, 1) < 1 THEN 1 ELSE i.units_per_purchase END
+			       ) AS INTEGER) AS value_mmk
 			FROM item_batches b
 			JOIN items i ON i.id = b.item_id
 			WHERE i.active = 1 AND b.qty > 0 AND b.location_code = 'MAIN'
 			UNION ALL
 			SELECT 'OT',
 			       ob.qty,
-			       ob.qty * COALESCE(i.buy_price_mmk, 0) * 1.0 /
+			       CAST(ROUND(
+			         ob.qty * COALESCE(i.buy_price_mmk, 0) * 1.0 /
 			         CASE WHEN COALESCE(i.units_per_purchase, 1) < 1 THEN 1 ELSE i.units_per_purchase END
+			       ) AS INTEGER)
 			FROM ot_batches ob
 			JOIN items i ON i.id = ob.item_id
 			WHERE i.active = 1 AND ob.qty > 0
@@ -577,15 +583,19 @@ func listSlowMovers(db *sql.DB, slowDays int, asOf string) ([]slowMoverRow, erro
 		       ), 0) AS qty_on_hand,
 		       COALESCE((
 		         SELECT SUM(
-		           b.qty * COALESCE(i.buy_price_mmk, 0) * 1.0 /
-		           CASE WHEN COALESCE(i.units_per_purchase, 1) < 1 THEN 1 ELSE i.units_per_purchase END
+		           CAST(ROUND(
+		             b.qty * COALESCE(i.buy_price_mmk, 0) * 1.0 /
+		             CASE WHEN COALESCE(i.units_per_purchase, 1) < 1 THEN 1 ELSE i.units_per_purchase END
+		           ) AS INTEGER)
 		         )
 		         FROM item_batches b
 		         WHERE b.item_id = i.id AND b.location_code = 'MAIN' AND b.qty > 0
 		       ), 0) + COALESCE((
 		         SELECT SUM(
-		           ob.qty * COALESCE(i.buy_price_mmk, 0) * 1.0 /
-		           CASE WHEN COALESCE(i.units_per_purchase, 1) < 1 THEN 1 ELSE i.units_per_purchase END
+		           CAST(ROUND(
+		             ob.qty * COALESCE(i.buy_price_mmk, 0) * 1.0 /
+		             CASE WHEN COALESCE(i.units_per_purchase, 1) < 1 THEN 1 ELSE i.units_per_purchase END
+		           ) AS INTEGER)
 		         )
 		         FROM ot_batches ob
 		         WHERE ob.item_id = i.id AND ob.qty > 0

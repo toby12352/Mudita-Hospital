@@ -6,6 +6,7 @@ import {
   updateDoctor,
   type Doctor,
 } from "@/features/settings/masterData";
+import { ActionIcon } from "@/shared/ActionIcon";
 import { Typeahead } from "@/shared/Typeahead";
 import { useI18n } from "@/shared/i18n";
 export function DoctorsTab() {
@@ -132,7 +133,7 @@ export function DoctorsTab() {
             {busy ? t("saving") : editing ? t("updateDoctor") : t("addDoctor")}
           </button>
           {editing ? (
-            <button type="button" className="btn ghost" disabled={busy} onClick={startCreate}>
+            <button type="button" className="btn action" disabled={busy} onClick={startCreate}>
               {t("cancelEdit")}
             </button>
           ) : null}
@@ -176,13 +177,14 @@ export function DoctorsTab() {
           />
           <button
             type="button"
-            className="btn ghost"
+            className="btn action"
             onClick={() =>
               void reload(q).catch((err) =>
                 setError(err instanceof Error ? err.message : "Search failed"),
               )
             }
           >
+            <ActionIcon name="search" />
             {t("search")}
           </button>
         </div>
@@ -202,13 +204,14 @@ export function DoctorsTab() {
                 </p>
               </div>
               <div className="btn-row">
-                <button type="button" className="btn ghost" onClick={() => startEdit(d)} disabled={busy}>
+                <button type="button" className="btn action" onClick={() => startEdit(d)} disabled={busy}>
+                  <ActionIcon name="edit" />
                   {t("edit")}
                 </button>
                 {d.active ? (
                   <button
                     type="button"
-                    className="btn ghost danger"
+                    className="btn action danger"
                     onClick={() => void onDeactivate(d.id)}
                     disabled={busy}
                   >

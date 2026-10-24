@@ -1,0 +1,902 @@
+[
+  {
+    "page": 5,
+    "side": "L",
+    "y": 193.3,
+    "kind": "item",
+    "particular": "Dressing With Suture",
+    "price_mmk": 0,
+    "score": 0.67
+  },
+  {
+    "page": 5,
+    "side": "L",
+    "y": 246.5,
+    "kind": "item",
+    "particular": "EGFR",
+    "price_mmk": 5000,
+    "score": 0.993
+  },
+  {
+    "page": 5,
+    "side": "L",
+    "y": 301.1,
+    "kind": "item",
+    "particular": "Ekoctrolytes",
+    "price_mmk": 24000,
+    "score": 0.936
+  },
+  {
+    "page": 5,
+    "side": "L",
+    "y": 352.7,
+    "kind": "item",
+    "particular": "ENA Pronke",
+    "price_mmk": 196000,
+    "score": 0.857
+  },
+  {
+    "page": 5,
+    "side": "L",
+    "y": 404.4,
+    "kind": "item",
+    "particular": "ESR",
+    "price_mmk": 0,
+    "score": 0.645
+  },
+  {
+    "page": 5,
+    "side": "L",
+    "y": 454.5,
+    "kind": "item",
+    "particular": "Estrogen Level",
+    "price_mmk": 0,
+    "score": 0.7
+  },
+  {
+    "page": 5,
+    "side": "L",
+    "y": 509.2,
+    "kind": "item",
+    "particular": "Evening Cortkol",
+    "price_mmk": 37800,
+    "score": 0.915
+  },
+  {
+    "page": 5,
+    "side": "L",
+    "y": 563.8,
+    "kind": "item",
+    "particular": "Extra Bed",
+    "price_mmk": 10000,
+    "score": 0.929
+  },
+  {
+    "page": 5,
+    "side": "L",
+    "y": 613.9,
+    "kind": "item",
+    "particular": "FDP/ D-DImer",
+    "price_mmk": 50000,
+    "score": 0.96
+  },
+  {
+    "page": 5,
+    "side": "L",
+    "y": 670.0,
+    "kind": "item",
+    "particular": "Ferritn",
+    "price_mmk": null,
+    "score": 0.933
+  },
+  {
+    "page": 5,
+    "side": "L",
+    "y": 721.7,
+    "kind": "item",
+    "particular": "Ferritn",
+    "price_mmk": 32000,
+    "score": 0.944
+  },
+  {
+    "page": 5,
+    "side": "L",
+    "y": 771.8,
+    "kind": "item",
+    "particular": "ddoaiao",
+    "price_mmk": 10000,
+    "score": 0.503
+  },
+  {
+    "page": 5,
+    "side": "L",
+    "y": 822.0,
+    "kind": "item",
+    "particular": "Fbrhagen",
+    "price_mmk": 21000,
+    "score": 0.854
+  },
+  {
+    "page": 5,
+    "side": "L",
+    "y": 881.1,
+    "kind": "item",
+    "particular": "Fluid (Vnek - 2)",
+    "price_mmk": 25000,
+    "score": 0.857
+  },
+  {
+    "page": 5,
+    "side": "L",
+    "y": 931.2,
+    "kind": "item",
+    "particular": "Fluid cas",
+    "price_mmk": 40000,
+    "score": 0.885
+  },
+  {
+    "page": 5,
+    "side": "L",
+    "y": 981.4,
+    "kind": "item",
+    "particular": "Fluid Cytoloay",
+    "price_mmk": 0,
+    "score": 0.551
+  },
+  {
+    "page": 5,
+    "side": "L",
+    "y": 1036.0,
+    "kind": "item",
+    "particular": "FSH",
+    "price_mmk": 28000,
+    "score": 0.992
+  },
+  {
+    "page": 5,
+    "side": "L",
+    "y": 1083.2,
+    "kind": "item",
+    "particular": "G6PD saoeninq (Quant)",
+    "price_mmk": 29000,
+    "score": 0.867
+  },
+  {
+    "page": 5,
+    "side": "L",
+    "y": 1145.2,
+    "kind": "item",
+    "particular": "GCFLU PadkSqe",
+    "price_mmk": 43000,
+    "score": 0.784
+  },
+  {
+    "page": 5,
+    "side": "L",
+    "y": 1193.9,
+    "kind": "item",
+    "particular": "GGT",
+    "price_mmk": 15000,
+    "score": 0.999
+  },
+  {
+    "page": 5,
+    "side": "L",
+    "y": 1247.1,
+    "kind": "item",
+    "particular": "ungois",
+    "price_mmk": 10000,
+    "score": 0.647
+  },
+  {
+    "page": 5,
+    "side": "L",
+    "y": 1298.7,
+    "kind": "item",
+    "particular": "Glucose (F,R,2hr PP)",
+    "price_mmk": 10000,
+    "score": 0.863
+  },
+  {
+    "page": 5,
+    "side": "L",
+    "y": 1354.8,
+    "kind": "item",
+    "particular": "H pylorl (Aa) serum",
+    "price_mmk": 25000,
+    "score": 0.932
+  },
+  {
+    "page": 5,
+    "side": "L",
+    "y": 1409.4,
+    "kind": "item",
+    "particular": "h pylorl (ICT)",
+    "price_mmk": 10000,
+    "score": 0.932
+  },
+  {
+    "page": 5,
+    "side": "L",
+    "y": 1459.6,
+    "kind": "item",
+    "particular": "HAV (IqG+IqN)",
+    "price_mmk": 86,
+    "score": 0.833
+  },
+  {
+    "page": 5,
+    "side": "L",
+    "y": 1511.2,
+    "kind": "item",
+    "particular": "HAV (IqG)",
+    "price_mmk": 35000,
+    "score": 0.977
+  },
+  {
+    "page": 5,
+    "side": "L",
+    "y": 1565.8,
+    "kind": "item",
+    "particular": "HAV (lqH)",
+    "price_mmk": null,
+    "score": 0.879
+  },
+  {
+    "page": 5,
+    "side": "L",
+    "y": 1619.0,
+    "kind": "item",
+    "particular": "Hb Ekoctrophoresk",
+    "price_mmk": 0,
+    "score": 0.533
+  },
+  {
+    "page": 5,
+    "side": "L",
+    "y": 1670.6,
+    "kind": "item",
+    "particular": "Hb Elkoctrophoresk",
+    "price_mmk": 82000,
+    "score": 0.899
+  },
+  {
+    "page": 5,
+    "side": "L",
+    "y": 1725.2,
+    "kind": "item",
+    "particular": "Hb%",
+    "price_mmk": 10000,
+    "score": 0.995
+  },
+  {
+    "page": 5,
+    "side": "L",
+    "y": 1776.9,
+    "kind": "item",
+    "particular": "HbAIC",
+    "price_mmk": 29000,
+    "score": 0.848
+  },
+  {
+    "page": 5,
+    "side": "L",
+    "y": 1824.1,
+    "kind": "item",
+    "particular": "Hbs Ab (Antl Body)",
+    "price_mmk": 35000,
+    "score": 0.937
+  },
+  {
+    "page": 5,
+    "side": "L",
+    "y": 1875.8,
+    "kind": "item",
+    "particular": "Hbs Ab( Quantl)",
+    "price_mmk": 34500,
+    "score": 0.96
+  },
+  {
+    "page": 5,
+    "side": "L",
+    "y": 1931.8,
+    "kind": "item",
+    "particular": "HBs Aa (ssssy)",
+    "price_mmk": 18000,
+    "score": 0.836
+  },
+  {
+    "page": 5,
+    "side": "L",
+    "y": 1983.5,
+    "kind": "item",
+    "particular": "Hbs Aa (Comfirm)",
+    "price_mmk": 34500,
+    "score": 0.964
+  },
+  {
+    "page": 5,
+    "side": "L",
+    "y": 2036.6,
+    "kind": "item",
+    "particular": "HBs Aa(Screenng)",
+    "price_mmk": 8,
+    "score": 0.897
+  },
+  {
+    "page": 5,
+    "side": "L",
+    "y": 2089.7,
+    "kind": "item",
+    "particular": "HBV Combo",
+    "price_mmk": 15000,
+    "score": 0.968
+  },
+  {
+    "page": 5,
+    "side": "L",
+    "y": 2141.4,
+    "kind": "item",
+    "particular": "HBV DNA VIRALQAD",
+    "price_mmk": 180000,
+    "score": 0.966
+  },
+  {
+    "page": 5,
+    "side": "L",
+    "y": 2193.0,
+    "kind": "item",
+    "particular": "HBV Viral Losd",
+    "price_mmk": 150000,
+    "score": 0.911
+  },
+  {
+    "page": 5,
+    "side": "L",
+    "y": 2250.6,
+    "kind": "item",
+    "particular": "HCV Ab (Confrm)",
+    "price_mmk": 34500,
+    "score": 0.95
+  },
+  {
+    "page": 5,
+    "side": "L",
+    "y": 2299.3,
+    "kind": "item",
+    "particular": "HCV Ab (Screening)",
+    "price_mmk": 11000,
+    "score": 0.901
+  },
+  {
+    "page": 5,
+    "side": "L",
+    "y": 2356.9,
+    "kind": "item",
+    "particular": "HCV DNA VIRAL LOAD",
+    "price_mmk": 150000,
+    "score": 0.944
+  },
+  {
+    "page": 5,
+    "side": "L",
+    "y": 2411.5,
+    "kind": "item",
+    "particular": "HCV Genotype",
+    "price_mmk": 0,
+    "score": 0.684
+  },
+  {
+    "page": 5,
+    "side": "L",
+    "y": 2463.1,
+    "kind": "item",
+    "particular": "HCV Genotype",
+    "price_mmk": null,
+    "score": 0.942
+  },
+  {
+    "page": 5,
+    "side": "L",
+    "y": 2516.2,
+    "kind": "item",
+    "particular": "HEV RNA Quantitatve",
+    "price_mmk": 140000,
+    "score": 0.876
+  },
+  {
+    "page": 5,
+    "side": "L",
+    "y": 2563.5,
+    "kind": "item",
+    "particular": "HCV Viral Load",
+    "price_mmk": 150000,
+    "score": 0.937
+  },
+  {
+    "page": 5,
+    "side": "L",
+    "y": 2621.0,
+    "kind": "item",
+    "particular": "HDL",
+    "price_mmk": 6,
+    "score": 0.964
+  },
+  {
+    "page": 5,
+    "side": "L",
+    "y": 2668.3,
+    "kind": "item",
+    "particular": "Hepostk B combo",
+    "price_mmk": 15000,
+    "score": 0.901
+  },
+  {
+    "page": 5,
+    "side": "L",
+    "y": 2722.9,
+    "kind": "item",
+    "particular": "Hah Vsqinal Swob",
+    "price_mmk": 70000,
+    "score": 0.835
+  },
+  {
+    "page": 5,
+    "side": "L",
+    "y": 2781.9,
+    "kind": "item",
+    "particular": "HIV Ab(Scroeninq)",
+    "price_mmk": 13000,
+    "score": 0.861
+  },
+  {
+    "page": 5,
+    "side": "R",
+    "y": 188.9,
+    "kind": "item",
+    "particular": "HIV Ab(Anty Body)",
+    "price_mmk": 0,
+    "score": 0.671
+  },
+  {
+    "page": 5,
+    "side": "R",
+    "y": 246.5,
+    "kind": "item",
+    "particular": "HIv confirnation Test",
+    "price_mmk": 34500,
+    "score": 0.911
+  },
+  {
+    "page": 5,
+    "side": "R",
+    "y": 299.6,
+    "kind": "item",
+    "particular": "HIV VIRAL LOAD",
+    "price_mmk": 150000,
+    "score": 0.948
+  },
+  {
+    "page": 5,
+    "side": "R",
+    "y": 348.3,
+    "kind": "item",
+    "particular": "Home Lab Foe",
+    "price_mmk": 10000,
+    "score": 0.933
+  },
+  {
+    "page": 5,
+    "side": "R",
+    "y": 404.4,
+    "kind": "item",
+    "particular": "Home Servkce",
+    "price_mmk": 17000,
+    "score": 0.839
+  },
+  {
+    "page": 5,
+    "side": "R",
+    "y": 457.5,
+    "kind": "item",
+    "particular": "hc Tro ponin T",
+    "price_mmk": 50000,
+    "score": 0.926
+  },
+  {
+    "page": 5,
+    "side": "R",
+    "y": 510.6,
+    "kind": "item",
+    "particular": "HVS C&S",
+    "price_mmk": 50000,
+    "score": 0.949
+  },
+  {
+    "page": 5,
+    "side": "R",
+    "y": 563.8,
+    "kind": "item",
+    "particular": "ICU Nurses Fee",
+    "price_mmk": 75000,
+    "score": 0.899
+  },
+  {
+    "page": 5,
+    "side": "R",
+    "y": 611.0,
+    "kind": "item",
+    "particular": "Implant Psckaqe",
+    "price_mmk": 150000,
+    "score": 0.921
+  },
+  {
+    "page": 5,
+    "side": "R",
+    "y": 664.1,
+    "kind": "item",
+    "particular": "IND Padse",
+    "price_mmk": 0,
+    "score": 0.86
+  },
+  {
+    "page": 5,
+    "side": "R",
+    "y": 715.8,
+    "kind": "item",
+    "particular": "dwng uosnyut",
+    "price_mmk": 20000,
+    "score": 0.805
+  },
+  {
+    "page": 5,
+    "side": "R",
+    "y": 770.4,
+    "kind": "item",
+    "particular": "Injection fee",
+    "price_mmk": 15000,
+    "score": 0.856
+  },
+  {
+    "page": 5,
+    "side": "R",
+    "y": 823.5,
+    "kind": "item",
+    "particular": "Injection fee",
+    "price_mmk": 7000,
+    "score": 0.874
+  },
+  {
+    "page": 5,
+    "side": "R",
+    "y": 879.6,
+    "kind": "item",
+    "particular": "Insrutment Foe",
+    "price_mmk": 8,
+    "score": 0.89
+  },
+  {
+    "page": 5,
+    "side": "R",
+    "y": 934.2,
+    "kind": "item",
+    "particular": "IUXCT Packsqe",
+    "price_mmk": 150000,
+    "score": 0.823
+  },
+  {
+    "page": 5,
+    "side": "R",
+    "y": 985.8,
+    "kind": "item",
+    "particular": "KARL STROZ",
+    "price_mmk": 100000,
+    "score": 0.963
+  },
+  {
+    "page": 5,
+    "side": "R",
+    "y": 1034.5,
+    "kind": "item",
+    "particular": "Lab Technkcan Fon",
+    "price_mmk": 20000,
+    "score": 0.847
+  },
+  {
+    "page": 5,
+    "side": "R",
+    "y": 1084.7,
+    "kind": "item",
+    "particular": "posn qo7",
+    "price_mmk": 5000,
+    "score": 0.647
+  },
+  {
+    "page": 5,
+    "side": "R",
+    "y": 1143.8,
+    "kind": "item",
+    "particular": "p5n 907",
+    "price_mmk": 5000,
+    "score": 0.561
+  },
+  {
+    "page": 5,
+    "side": "R",
+    "y": 1196.9,
+    "kind": "item",
+    "particular": "Laproscope",
+    "price_mmk": 0,
+    "score": 0.76
+  },
+  {
+    "page": 5,
+    "side": "R",
+    "y": 1248.5,
+    "kind": "item",
+    "particular": "LDL",
+    "price_mmk": 17000,
+    "score": 0.968
+  },
+  {
+    "page": 5,
+    "side": "R",
+    "y": 1300.2,
+    "kind": "item",
+    "particular": "LDL( Direc)",
+    "price_mmk": 26250,
+    "score": 0.902
+  },
+  {
+    "page": 5,
+    "side": "R",
+    "y": 1353.3,
+    "kind": "item",
+    "particular": "LE cell",
+    "price_mmk": 8000,
+    "score": 0.868
+  },
+  {
+    "page": 5,
+    "side": "R",
+    "y": 1405.0,
+    "kind": "item",
+    "particular": "Leptosplral Anty Body",
+    "price_mmk": 0,
+    "score": 0.801
+  },
+  {
+    "page": 5,
+    "side": "R",
+    "y": 1461.0,
+    "kind": "item",
+    "particular": "Ln",
+    "price_mmk": 19000,
+    "score": 0.586
+  },
+  {
+    "page": 5,
+    "side": "R",
+    "y": 1512.7,
+    "kind": "item",
+    "particular": "LH",
+    "price_mmk": 28000,
+    "score": 0.896
+  },
+  {
+    "page": 5,
+    "side": "R",
+    "y": 1559.9,
+    "kind": "item",
+    "particular": "Lipid Profilke",
+    "price_mmk": 55400,
+    "score": 0.794
+  },
+  {
+    "page": 5,
+    "side": "R",
+    "y": 1619.0,
+    "kind": "item",
+    "particular": "Lher Function Test",
+    "price_mmk": 35000,
+    "score": 0.903
+  },
+  {
+    "page": 5,
+    "side": "R",
+    "y": 1670.6,
+    "kind": "item",
+    "particular": "Lowe GI Doctor Fee",
+    "price_mmk": null,
+    "score": 0.937
+  },
+  {
+    "page": 5,
+    "side": "R",
+    "y": 1719.3,
+    "kind": "item",
+    "particular": "Lower G1",
+    "price_mmk": 0,
+    "score": 0.536
+  },
+  {
+    "page": 5,
+    "side": "R",
+    "y": 1775.4,
+    "kind": "item",
+    "particular": "Lumber Puncture (LP)",
+    "price_mmk": 50000,
+    "score": 0.987
+  },
+  {
+    "page": 5,
+    "side": "R",
+    "y": 1827.0,
+    "kind": "item",
+    "particular": "Ma Moh Moh Ln (Nurse)",
+    "price_mmk": 10000,
+    "score": 0.921
+  },
+  {
+    "page": 5,
+    "side": "R",
+    "y": 1880.2,
+    "kind": "item",
+    "particular": "Matchina",
+    "price_mmk": 20000,
+    "score": 0.886
+  },
+  {
+    "page": 5,
+    "side": "R",
+    "y": 1931.8,
+    "kind": "item",
+    "particular": "Medkcal Cover",
+    "price_mmk": 55000,
+    "score": 0.91
+  },
+  {
+    "page": 5,
+    "side": "R",
+    "y": 1983.5,
+    "kind": "item",
+    "particular": "Medkcal Cover",
+    "price_mmk": 0,
+    "score": 0.68
+  },
+  {
+    "page": 5,
+    "side": "R",
+    "y": 2039.6,
+    "kind": "item",
+    "particular": "Medical Cover",
+    "price_mmk": 75000,
+    "score": 0.866
+  },
+  {
+    "page": 5,
+    "side": "R",
+    "y": 2091.2,
+    "kind": "item",
+    "particular": "Medkcal Cover (Foc)",
+    "price_mmk": 0,
+    "score": 0.522
+  },
+  {
+    "page": 5,
+    "side": "R",
+    "y": 2139.9,
+    "kind": "item",
+    "particular": "Mo Drexing Charqe",
+    "price_mmk": 5000,
+    "score": 0.887
+  },
+  {
+    "page": 5,
+    "side": "R",
+    "y": 2193.0,
+    "kind": "item",
+    "particular": "Mo Drlp Fee",
+    "price_mmk": 10000,
+    "score": 0.905
+  },
+  {
+    "page": 5,
+    "side": "R",
+    "y": 2250.6,
+    "kind": "item",
+    "particular": "Mo Injection Fee",
+    "price_mmk": 5000,
+    "score": 0.928
+  },
+  {
+    "page": 5,
+    "side": "R",
+    "y": 2303.7,
+    "kind": "item",
+    "particular": "Mo Injection Fee",
+    "price_mmk": 10000,
+    "score": 0.925
+  },
+  {
+    "page": 5,
+    "side": "R",
+    "y": 2356.9,
+    "kind": "item",
+    "particular": "Koniar Used",
+    "price_mmk": 40000,
+    "score": 0.8
+  },
+  {
+    "page": 5,
+    "side": "R",
+    "y": 2407.0,
+    "kind": "item",
+    "particular": "Morning Cortkol",
+    "price_mmk": null,
+    "score": 0.95
+  },
+  {
+    "page": 5,
+    "side": "R",
+    "y": 2460.2,
+    "kind": "item",
+    "particular": "Morning Cortiko ne",
+    "price_mmk": 29000,
+    "score": 0.919
+  },
+  {
+    "page": 5,
+    "side": "R",
+    "y": 2514.8,
+    "kind": "item",
+    "particular": "MP (FIm)",
+    "price_mmk": 19000,
+    "score": 0.926
+  },
+  {
+    "page": 5,
+    "side": "R",
+    "y": 2566.4,
+    "kind": "item",
+    "particular": "MP (ICT)",
+    "price_mmk": 16000,
+    "score": 0.89
+  },
+  {
+    "page": 5,
+    "side": "R",
+    "y": 2619.6,
+    "kind": "item",
+    "particular": "Mycopbsms IGG",
+    "price_mmk": 50000,
+    "score": 0.912
+  },
+  {
+    "page": 5,
+    "side": "R",
+    "y": 2669.7,
+    "kind": "item",
+    "particular": "Mycopbsms IGN",
+    "price_mmk": null,
+    "score": 0.843
+  },
+  {
+    "page": 5,
+    "side": "R",
+    "y": 2672.7,
+    "kind": "item",
+    "particular": "000O5",
+    "price_mmk": null,
+    "score": 0.665
+  },
+  {
+    "page": 5,
+    "side": "R",
+    "y": 2777.5,
+    "kind": "item",
+    "particular": "Nephro Stomy",
+    "price_mmk": 150000,
+    "score": 0.959
+  }
+]

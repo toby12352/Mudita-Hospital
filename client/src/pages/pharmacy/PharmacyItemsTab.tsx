@@ -14,7 +14,9 @@ import {
   listStockMovements,
   packFromItem,
   restockItem,
+  saleUnitsFromPack,
   type PharmacyItem,
+  type SaleUnit,
   type StockMovement,
 } from "@/features/pharmacy/api";
 import { DatePicker } from "@/shared/DatePicker";
@@ -45,6 +47,7 @@ export function PharmacyItemsTab({
   const [itemMovements, setItemMovements] = useState<StockMovement[]>([]);
 
   const [restockQty, setRestockQty] = useState("");
+  const [restockUnitId, setRestockUnitId] = useState("");
   const [restockBatchNo, setRestockBatchNo] = useState("");
   const [restockExpiry, setRestockExpiry] = useState("");
   const [restockBuy, setRestockBuy] = useState("");
@@ -68,8 +71,13 @@ export function PharmacyItemsTab({
     setNotice(null);
   }
 
+  function restockUnitsFor(item: PharmacyItem): SaleUnit[] {
+    return saleUnitsFromPack(packFromItem(item), item.sell_price_mmk || 0);
+  }
+
   function resetRestockFields(item: PharmacyItem) {
     setRestockQty("");
+    setRestockUnitId("");
     setRestockBatchNo("");
     setRestockExpiry("");
     setRestockBuy(String(item.buy_price_mmk || 0));
@@ -229,16 +237,21 @@ export function PharmacyItemsTab({
     try {
       const qty = Number(restockQty);
       if (!qty || qty <= 0) throw new Error(userMessage("Restock qty must be > 0"));
+      const unitKey = restockUnitId.trim();
+      if (!unitKey) throw new Error(t("chooseUnit"));
+      const units = restockUnitsFor(panelItem);
+      const chosen = units.find((u) => u.id.toLowerCase() === unitKey.toLowerCase());
+      if (!chosen) throw new Error(userMessage("unknown unit"));
       const body: {
         qty: number;
-        qty_unit?: "purchase" | "stock";
+        qty_unit?: string;
         batch_no: string;
         expiry_date: string;
         buy_price_mmk?: number;
         sell_price_mmk?: number;
       } = {
         qty,
-        qty_unit: "purchase",
+        qty_unit: chosen.id,
         batch_no: restockBatchNo.trim(),
         expiry_date: restockExpiry.trim(),
       };
@@ -448,7 +461,7 @@ export function PharmacyItemsTab({
         <div className="btn-row drug-setup-action-row">
           <button
             type="button"
-            className={`btn ghost${panelMode === "restock" ? " primary" : ""}`}
+            className={`btn action${panelMode === "restock" ? " on" : ""}`}
             disabled={busy || selectedId == null}
             onClick={() => selectedId != null && void openRestock(selectedId)}
           >
@@ -456,7 +469,7 @@ export function PharmacyItemsTab({
           </button>
           <button
             type="button"
-            className={`btn ghost${panelMode === "view" ? " primary" : ""}`}
+            className={`btn action${panelMode === "view" ? " on" : ""}`}
             disabled={busy || selectedId == null}
             onClick={() => selectedId != null && void openView(selectedId)}
           >
@@ -465,7 +478,7 @@ export function PharmacyItemsTab({
           {panelItem?.active ? (
             <button
               type="button"
-              className="btn ghost danger"
+              className="btn action danger"
               onClick={() => panelItem && void onDeactivate(panelItem.id)}
               disabled={busy}
             >
@@ -499,39 +512,71 @@ export function PharmacyItemsTab({
             </p>
 
             <form className="drug-setup-panel-form" onSubmit={(e) => void onRestock(e)}>
-              <div className="drug-info-field">
-                <span className="drug-info-label">{t("quantityBoxes")}</span>
-                <input
-                  className="drug-info-input"
-                  type="number"
-                  min={1}
-                  value={restockQty}
-                  onChange={(e) => setRestockQty(e.target.value)}
-                  required
-                  disabled={busy}
-                />
-              </div>
-              <div className="drug-info-field">
-                <span className="drug-info-label">{t("batchNumber")}</span>
-                <input
-                  className="drug-info-input"
-                  value={restockBatchNo}
-                  onChange={(e) => setRestockBatchNo(e.target.value)}
-                  disabled={busy}
-                />
-              </div>
-              <div className="drug-info-field">
-                <span className="drug-info-label">{t("expiry")}</span>
-                <DatePicker value={restockExpiry} onChange={setRestockExpiry} disabled={busy} />
-              </div>
-              {restockQty && Number(restockQty) > 0 ? (
-                <p className="hint">
-                  {t("willAdd")}{" "}
-                  {Number(restockQty) *
-                    Math.max(1, panelItem.units_per_purchase || panelItem.pack_size || 1)}{" "}
-                  {panelItem.pack_l3_unit || panelItem.stock_unit || "units"} {t("toInStock")}
-                </p>
-              ) : null}
+              {(() => {
+                const units = restockUnitsFor(panelItem);
+                const chosen = restockUnitId.trim()
+                  ? units.find((u) => u.id.toLowerCase() === restockUnitId.trim().toLowerCase())
+                  : undefined;
+                const smallest =
+                  panelItem.pack_l3_unit || panelItem.stock_unit || "units";
+                return (
+                  <>
+                    <div className="drug-info-field">
+                      <span className="drug-info-label">{t("quantity")}</span>
+                      <div className="drug-info-qty-unit">
+                        <input
+                          className="drug-info-input"
+                          type="number"
+                          min={1}
+                          value={restockQty}
+                          onChange={(e) => setRestockQty(e.target.value)}
+                          required
+                          disabled={busy}
+                          aria-label={t("quantity")}
+                        />
+                        <select
+                          className="drug-info-input"
+                          value={restockUnitId}
+                          onChange={(e) => setRestockUnitId(e.target.value)}
+                          disabled={busy || units.length === 0}
+                          required
+                          aria-label={t("restockUnit")}
+                        >
+                          <option value="">{t("chooseUnit")}</option>
+                          {units.map((u) => (
+                            <option key={u.id} value={u.id}>
+                              {u.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    <div className="drug-info-field">
+                      <span className="drug-info-label">{t("batchNumber")}</span>
+                      <input
+                        className="drug-info-input"
+                        value={restockBatchNo}
+                        onChange={(e) => setRestockBatchNo(e.target.value)}
+                        disabled={busy}
+                      />
+                    </div>
+                    <div className="drug-info-field">
+                      <span className="drug-info-label">{t("expiry")}</span>
+                      <DatePicker
+                        value={restockExpiry}
+                        onChange={setRestockExpiry}
+                        disabled={busy}
+                      />
+                    </div>
+                    {chosen && restockQty && Number(restockQty) > 0 ? (
+                      <p className="hint">
+                        {t("willAdd")} {Number(restockQty) * chosen.factor} {smallest}{" "}
+                        {t("toInStock")}
+                      </p>
+                    ) : null}
+                  </>
+                );
+              })()}
               <div className="drug-info-field">
                 <span className="drug-info-label">{t("buyPricePerBox")}</span>
                 <input
@@ -555,7 +600,11 @@ export function PharmacyItemsTab({
                 />
               </div>
               {error ? <p className="form-error">{error}</p> : null}
-              <button type="submit" className="btn primary" disabled={busy || !panelItem.active}>
+              <button
+                type="submit"
+                className="btn primary"
+                disabled={busy || !panelItem.active || !restockUnitId.trim()}
+              >
                 {t("restock")}
               </button>
             </form>
@@ -627,39 +676,70 @@ export function PharmacyItemsTab({
 
             <form className="nested-form" onSubmit={(e) => void onRestock(e)}>
               <h3 className="section-title">{t("restock")}</h3>
-              <div className="field-row">
-                <label className="field">
-                  <span>{t("quantityBoxes")}</span>
-                  <input
-                    type="number"
-                    min={1}
-                    value={restockQty}
-                    onChange={(e) => setRestockQty(e.target.value)}
-                    required
-                    disabled={busy}
-                  />
-                </label>
-                <label className="field">
-                  <span>{t("batchNumber")}</span>
-                  <input
-                    value={restockBatchNo}
-                    onChange={(e) => setRestockBatchNo(e.target.value)}
-                    disabled={busy}
-                  />
-                </label>
-                <label className="field field-compact">
-                  <span>{t("expiry")}</span>
-                  <DatePicker value={restockExpiry} onChange={setRestockExpiry} disabled={busy} />
-                </label>
-              </div>
-              {restockQty && Number(restockQty) > 0 ? (
-                <p className="hint">
-                  {t("willAdd")}{" "}
-                  {Number(restockQty) *
-                    Math.max(1, panelItem.units_per_purchase || panelItem.pack_size || 1)}{" "}
-                  {panelItem.pack_l3_unit || panelItem.stock_unit || "units"} {t("toInStock")}
-                </p>
-              ) : null}
+              {(() => {
+                const units = restockUnitsFor(panelItem);
+                const chosen = restockUnitId.trim()
+                  ? units.find((u) => u.id.toLowerCase() === restockUnitId.trim().toLowerCase())
+                  : undefined;
+                const smallest =
+                  panelItem.pack_l3_unit || panelItem.stock_unit || "units";
+                return (
+                  <>
+                    <div className="field-row">
+                      <label className="field">
+                        <span>{t("quantity")}</span>
+                        <div className="drug-info-qty-unit">
+                          <input
+                            type="number"
+                            min={1}
+                            value={restockQty}
+                            onChange={(e) => setRestockQty(e.target.value)}
+                            required
+                            disabled={busy}
+                            aria-label={t("quantity")}
+                          />
+                          <select
+                            value={restockUnitId}
+                            onChange={(e) => setRestockUnitId(e.target.value)}
+                            disabled={busy || units.length === 0}
+                            required
+                            aria-label={t("restockUnit")}
+                          >
+                            <option value="">{t("chooseUnit")}</option>
+                            {units.map((u) => (
+                              <option key={u.id} value={u.id}>
+                                {u.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </label>
+                      <label className="field">
+                        <span>{t("batchNumber")}</span>
+                        <input
+                          value={restockBatchNo}
+                          onChange={(e) => setRestockBatchNo(e.target.value)}
+                          disabled={busy}
+                        />
+                      </label>
+                      <label className="field field-compact">
+                        <span>{t("expiry")}</span>
+                        <DatePicker
+                          value={restockExpiry}
+                          onChange={setRestockExpiry}
+                          disabled={busy}
+                        />
+                      </label>
+                    </div>
+                    {chosen && restockQty && Number(restockQty) > 0 ? (
+                      <p className="hint">
+                        {t("willAdd")} {Number(restockQty) * chosen.factor} {smallest}{" "}
+                        {t("toInStock")}
+                      </p>
+                    ) : null}
+                  </>
+                );
+              })()}
               <div className="field-row">
                 <label className="field">
                   <span>{t("buyPricePerBox")}</span>
@@ -683,7 +763,11 @@ export function PharmacyItemsTab({
                 </label>
               </div>
               {error ? <p className="form-error">{error}</p> : null}
-              <button type="submit" className="btn primary" disabled={busy || !panelItem.active}>
+              <button
+                type="submit"
+                className="btn primary"
+                disabled={busy || !panelItem.active || !restockUnitId.trim()}
+              >
                 {t("restock")}
               </button>
             </form>

@@ -1,0 +1,686 @@
+[
+  {
+    "page": 7,
+    "side": "L",
+    "y": 172.7,
+    "kind": "item",
+    "particular": "StoolRE",
+    "price_mmk": 8,
+    "score": 0.882
+  },
+  {
+    "page": 7,
+    "side": "L",
+    "y": 226.0,
+    "kind": "item",
+    "particular": "Sucton",
+    "price_mmk": 10000,
+    "score": 0.985
+  },
+  {
+    "page": 7,
+    "side": "L",
+    "y": 279.3,
+    "kind": "item",
+    "particular": "sucdion dp C&s",
+    "price_mmk": 35000,
+    "score": 0.786
+  },
+  {
+    "page": 7,
+    "side": "L",
+    "y": 335.4,
+    "kind": "item",
+    "particular": "srens",
+    "price_mmk": 0,
+    "score": 0.6
+  },
+  {
+    "page": 7,
+    "side": "L",
+    "y": 382.9,
+    "kind": "item",
+    "particular": "Syring Pump",
+    "price_mmk": 0,
+    "score": 0.676
+  },
+  {
+    "page": 7,
+    "side": "L",
+    "y": 436.2,
+    "kind": "item",
+    "particular": "T&DP",
+    "price_mmk": 15000,
+    "score": 0.971
+  },
+  {
+    "page": 7,
+    "side": "L",
+    "y": 486.6,
+    "kind": "item",
+    "particular": "() 1)",
+    "price_mmk": 25000,
+    "score": 0.636
+  },
+  {
+    "page": 7,
+    "side": "L",
+    "y": 539.8,
+    "kind": "item",
+    "particular": "(1C01)E1",
+    "price_mmk": 25000,
+    "score": 0.572
+  },
+  {
+    "page": 7,
+    "side": "L",
+    "y": 593.1,
+    "kind": "item",
+    "particular": "T4 (Free)",
+    "price_mmk": 25000,
+    "score": 0.925
+  },
+  {
+    "page": 7,
+    "side": "L",
+    "y": 644.9,
+    "kind": "item",
+    "particular": "T4 (Tob1)",
+    "price_mmk": 25000,
+    "score": 0.767
+  },
+  {
+    "page": 7,
+    "side": "L",
+    "y": 701.0,
+    "kind": "item",
+    "particular": "Tapping Dressing Fees",
+    "price_mmk": 20000,
+    "score": 0.876
+  },
+  {
+    "page": 7,
+    "side": "L",
+    "y": 752.9,
+    "kind": "item",
+    "particular": "TBICT",
+    "price_mmk": 20000,
+    "score": 0.978
+  },
+  {
+    "page": 7,
+    "side": "L",
+    "y": 807.6,
+    "kind": "item",
+    "particular": "Tele Medicine",
+    "price_mmk": 20000,
+    "score": 0.925
+  },
+  {
+    "page": 7,
+    "side": "L",
+    "y": 860.8,
+    "kind": "item",
+    "particular": "Total Choestorol",
+    "price_mmk": 11000,
+    "score": 0.917
+  },
+  {
+    "page": 7,
+    "side": "L",
+    "y": 915.5,
+    "kind": "item",
+    "particular": "totalchokesterol",
+    "price_mmk": 9500,
+    "score": 0.943
+  },
+  {
+    "page": 7,
+    "side": "L",
+    "y": 964.5,
+    "kind": "item",
+    "particular": "Total Proteh",
+    "price_mmk": 8,
+    "score": 0.88
+  },
+  {
+    "page": 7,
+    "side": "L",
+    "y": 1013.4,
+    "kind": "item",
+    "particular": "Triglyceride",
+    "price_mmk": 10000,
+    "score": 0.894
+  },
+  {
+    "page": 7,
+    "side": "L",
+    "y": 1069.6,
+    "kind": "item",
+    "particular": "Troponin -T (Quantl)",
+    "price_mmk": null,
+    "score": 0.941
+  },
+  {
+    "page": 7,
+    "side": "L",
+    "y": 1122.8,
+    "kind": "item",
+    "particular": "Troponin T(Qustatve)",
+    "price_mmk": 55100,
+    "score": 0.902
+  },
+  {
+    "page": 7,
+    "side": "L",
+    "y": 1176.1,
+    "kind": "item",
+    "particular": "(sbnKeueno)i-uuodos",
+    "price_mmk": 0,
+    "score": 0.59
+  },
+  {
+    "page": 7,
+    "side": "L",
+    "y": 1225.0,
+    "kind": "item",
+    "particular": "Troponin -T(Qustiatve)",
+    "price_mmk": 50000,
+    "score": 0.882
+  },
+  {
+    "page": 7,
+    "side": "L",
+    "y": 1279.7,
+    "kind": "item",
+    "particular": "TSH",
+    "price_mmk": 25000,
+    "score": 0.997
+  },
+  {
+    "page": 7,
+    "side": "L",
+    "y": 1335.9,
+    "kind": "item",
+    "particular": "TSH Receptor Antbody",
+    "price_mmk": 56000,
+    "score": 0.965
+  },
+  {
+    "page": 7,
+    "side": "L",
+    "y": 1386.3,
+    "kind": "item",
+    "particular": "UACR",
+    "price_mmk": 20000,
+    "score": 0.915
+  },
+  {
+    "page": 7,
+    "side": "L",
+    "y": 1436.6,
+    "kind": "item",
+    "particular": "1an",
+    "price_mmk": 50000,
+    "score": 0.554
+  },
+  {
+    "page": 7,
+    "side": "L",
+    "y": 1489.9,
+    "kind": "item",
+    "particular": "UPPER GI",
+    "price_mmk": null,
+    "score": 0.927
+  },
+  {
+    "page": 7,
+    "side": "L",
+    "y": 1541.7,
+    "kind": "item",
+    "particular": "UPPER GI Dodor Fee",
+    "price_mmk": null,
+    "score": 0.906
+  },
+  {
+    "page": 7,
+    "side": "L",
+    "y": 1602.2,
+    "kind": "item",
+    "particular": "Urea",
+    "price_mmk": 10000,
+    "score": 0.892
+  },
+  {
+    "page": 7,
+    "side": "L",
+    "y": 1652.6,
+    "kind": "item",
+    "particular": "Urea & Eecdrolytes",
+    "price_mmk": 35000,
+    "score": 0.881
+  },
+  {
+    "page": 7,
+    "side": "L",
+    "y": 1705.8,
+    "kind": "item",
+    "particular": "Ures (BUN)",
+    "price_mmk": 12000,
+    "score": 0.791
+  },
+  {
+    "page": 7,
+    "side": "L",
+    "y": 1756.2,
+    "kind": "item",
+    "particular": "Urqen Fees",
+    "price_mmk": 35000,
+    "score": 0.88
+  },
+  {
+    "page": 7,
+    "side": "L",
+    "y": 1806.6,
+    "kind": "item",
+    "particular": "Uric scid",
+    "price_mmk": 13000,
+    "score": 0.882
+  },
+  {
+    "page": 7,
+    "side": "L",
+    "y": 1859.9,
+    "kind": "item",
+    "particular": "Urhary Bence Jone Prot",
+    "price_mmk": null,
+    "score": 0.933
+  },
+  {
+    "page": 7,
+    "side": "L",
+    "y": 1911.7,
+    "kind": "item",
+    "particular": "Urhary Ketone Body",
+    "price_mmk": 20000,
+    "score": 0.962
+  },
+  {
+    "page": 7,
+    "side": "L",
+    "y": 1967.8,
+    "kind": "item",
+    "particular": "Urhe (Amylase)",
+    "price_mmk": 35000,
+    "score": 0.884
+  },
+  {
+    "page": 7,
+    "side": "L",
+    "y": 2019.6,
+    "kind": "item",
+    "particular": "Urhe (REME/U-10 poro)",
+    "price_mmk": null,
+    "score": 0.849
+  },
+  {
+    "page": 7,
+    "side": "L",
+    "y": 2072.9,
+    "kind": "item",
+    "particular": "Urhe ACR",
+    "price_mmk": 0,
+    "score": 0.781
+  },
+  {
+    "page": 7,
+    "side": "L",
+    "y": 2123.3,
+    "kind": "item",
+    "particular": "Urhe Albumin Creatinine Ratio",
+    "price_mmk": 0,
+    "score": 0.724
+  },
+  {
+    "page": 7,
+    "side": "L",
+    "y": 2176.5,
+    "kind": "item",
+    "particular": "Urne Cas",
+    "price_mmk": 40000,
+    "score": 0.775
+  },
+  {
+    "page": 7,
+    "side": "L",
+    "y": 2228.4,
+    "kind": "item",
+    "particular": "Urne For Hca",
+    "price_mmk": 10000,
+    "score": 0.867
+  },
+  {
+    "page": 7,
+    "side": "L",
+    "y": 2281.6,
+    "kind": "item",
+    "particular": "Urne Osmolarity",
+    "price_mmk": 35000,
+    "score": 0.928
+  },
+  {
+    "page": 7,
+    "side": "L",
+    "y": 2336.3,
+    "kind": "item",
+    "particular": "Urhe Protein/Crea tnine rotio",
+    "price_mmk": 28000,
+    "score": 0.868
+  },
+  {
+    "page": 7,
+    "side": "L",
+    "y": 2388.2,
+    "kind": "item",
+    "particular": "Urne RE",
+    "price_mmk": 9,
+    "score": 0.901
+  },
+  {
+    "page": 7,
+    "side": "L",
+    "y": 2442.9,
+    "kind": "item",
+    "particular": "Urhe UCG",
+    "price_mmk": 0,
+    "score": 0.701
+  },
+  {
+    "page": 7,
+    "side": "L",
+    "y": 2496.1,
+    "kind": "item",
+    "particular": "Urhe,Sutum,Swsb,CSF,Stool,HVs(",
+    "price_mmk": 27000,
+    "score": 0.806
+  },
+  {
+    "page": 7,
+    "side": "L",
+    "y": 2543.6,
+    "kind": "item",
+    "particular": "Used For Level-2",
+    "price_mmk": 0,
+    "score": 0.812
+  },
+  {
+    "page": 7,
+    "side": "L",
+    "y": 2598.3,
+    "kind": "item",
+    "particular": "USG",
+    "price_mmk": 35000,
+    "score": 0.983
+  },
+  {
+    "page": 7,
+    "side": "L",
+    "y": 2651.6,
+    "kind": "item",
+    "particular": "USG (Artery)",
+    "price_mmk": 60000,
+    "score": 0.974
+  },
+  {
+    "page": 7,
+    "side": "L",
+    "y": 2706.3,
+    "kind": "item",
+    "particular": "USG (bres)",
+    "price_mmk": 55000,
+    "score": 0.971
+  },
+  {
+    "page": 7,
+    "side": "L",
+    "y": 2759.6,
+    "kind": "item",
+    "particular": "usq (Ches)",
+    "price_mmk": null,
+    "score": 0.859
+  },
+  {
+    "page": 7,
+    "side": "R",
+    "y": 172.7,
+    "kind": "item",
+    "particular": "USG (DVD)",
+    "price_mmk": 9,
+    "score": 0.914
+  },
+  {
+    "page": 7,
+    "side": "R",
+    "y": 226.0,
+    "kind": "item",
+    "particular": "USG (Face)",
+    "price_mmk": 50000,
+    "score": 0.962
+  },
+  {
+    "page": 7,
+    "side": "R",
+    "y": 280.7,
+    "kind": "item",
+    "particular": "USG (Neck)",
+    "price_mmk": 65000,
+    "score": 0.969
+  },
+  {
+    "page": 7,
+    "side": "R",
+    "y": 332.5,
+    "kind": "item",
+    "particular": "USG (Scrotum)",
+    "price_mmk": 55000,
+    "score": 0.969
+  },
+  {
+    "page": 7,
+    "side": "R",
+    "y": 385.8,
+    "kind": "item",
+    "particular": "USG (TVS)",
+    "price_mmk": 65000,
+    "score": 0.995
+  },
+  {
+    "page": 7,
+    "side": "R",
+    "y": 433.3,
+    "kind": "item",
+    "particular": "USG Guide With Dresdinq Used",
+    "price_mmk": 150000,
+    "score": 0.869
+  },
+  {
+    "page": 7,
+    "side": "R",
+    "y": 492.3,
+    "kind": "item",
+    "particular": "USG(Doppbr)",
+    "price_mmk": 70000,
+    "score": 0.961
+  },
+  {
+    "page": 7,
+    "side": "R",
+    "y": 544.1,
+    "kind": "item",
+    "particular": "VDRL",
+    "price_mmk": 22000,
+    "score": 0.924
+  },
+  {
+    "page": 7,
+    "side": "R",
+    "y": 596.0,
+    "kind": "item",
+    "particular": "VDRL",
+    "price_mmk": 10000,
+    "score": 0.921
+  },
+  {
+    "page": 7,
+    "side": "R",
+    "y": 644.9,
+    "kind": "item",
+    "particular": "VDRL (Carbon Antlgen)",
+    "price_mmk": 20000,
+    "score": 0.897
+  },
+  {
+    "page": 7,
+    "side": "R",
+    "y": 701.0,
+    "kind": "item",
+    "particular": "VE Trey",
+    "price_mmk": 10000,
+    "score": 0.977
+  },
+  {
+    "page": 7,
+    "side": "R",
+    "y": 755.7,
+    "kind": "item",
+    "particular": "veneseaion",
+    "price_mmk": 20000,
+    "score": 0.804
+  },
+  {
+    "page": 7,
+    "side": "R",
+    "y": 807.6,
+    "kind": "item",
+    "particular": "Vamn D",
+    "price_mmk": 45000,
+    "score": 0.898
+  },
+  {
+    "page": 7,
+    "side": "R",
+    "y": 858.0,
+    "kind": "item",
+    "particular": "VHS",
+    "price_mmk": 40000,
+    "score": 0.793
+  },
+  {
+    "page": 7,
+    "side": "R",
+    "y": 912.7,
+    "kind": "item",
+    "particular": "Wheel Chair",
+    "price_mmk": 5000,
+    "score": 0.876
+  },
+  {
+    "page": 7,
+    "side": "R",
+    "y": 964.5,
+    "kind": "item",
+    "particular": "Widal Tes",
+    "price_mmk": 17000,
+    "score": 0.889
+  },
+  {
+    "page": 7,
+    "side": "R",
+    "y": 1014.9,
+    "kind": "item",
+    "particular": "Xray",
+    "price_mmk": 0,
+    "score": 0.536
+  },
+  {
+    "page": 7,
+    "side": "R",
+    "y": 1068.1,
+    "kind": "item",
+    "particular": "Xray (GUT)",
+    "price_mmk": 40000,
+    "score": 0.96
+  },
+  {
+    "page": 7,
+    "side": "R",
+    "y": 1122.8,
+    "kind": "item",
+    "particular": "Xray (KUB)",
+    "price_mmk": 45000,
+    "score": 0.876
+  },
+  {
+    "page": 7,
+    "side": "R",
+    "y": 1174.6,
+    "kind": "item",
+    "particular": "x ray (skal)",
+    "price_mmk": 40000,
+    "score": 0.892
+  },
+  {
+    "page": 7,
+    "side": "R",
+    "y": 1225.0,
+    "kind": "item",
+    "particular": "Xray (Thor",
+    "price_mmk": 45000,
+    "score": 0.929
+  },
+  {
+    "page": 7,
+    "side": "R",
+    "y": 1276.9,
+    "kind": "item",
+    "particular": "x ray Readina",
+    "price_mmk": null,
+    "score": 0.858
+  },
+  {
+    "page": 7,
+    "side": "R",
+    "y": 1333.0,
+    "kind": "item",
+    "particular": "Xray(Chest)",
+    "price_mmk": 35000,
+    "score": 0.916
+  },
+  {
+    "page": 7,
+    "side": "R",
+    "y": 1389.1,
+    "kind": "item",
+    "particular": "X-Ray (Foc)",
+    "price_mmk": 29000,
+    "score": 0.901
+  },
+  {
+    "page": 7,
+    "side": "R",
+    "y": 1439.5,
+    "kind": "item",
+    "particular": "x-ray Dkcount (30%)",
+    "price_mmk": -7500,
+    "score": 0.899
+  },
+  {
+    "page": 7,
+    "side": "R",
+    "y": 1494.2,
+    "kind": "item",
+    "particular": "Z N Stain",
+    "price_mmk": 12000,
+    "score": 0.884
+  }
+]

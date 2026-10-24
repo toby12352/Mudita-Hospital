@@ -6,6 +6,7 @@ import {
   updateService,
   type Service,
 } from "@/features/settings/masterData";
+import { ActionIcon } from "@/shared/ActionIcon";
 import { formatMMK } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
 import { OpdCatalogHistory } from "./OpdCatalogHistory";
@@ -159,21 +160,20 @@ export function OpdServicesPage() {
         <div className="drug-setup-title-row">
           <h2 className="drug-setup-title">{t("serviceSetup")}</h2>
           <div className="tabs">
-            <button
-              type="button"
-              className={`tab${creating ? " active" : ""}`}
-              onClick={openCreate}
-            >
+            <button type="button" className="btn action primary" onClick={openCreate}>
+              <ActionIcon name="plus" />
               {t("newBadge")}
             </button>
             <button
               type="button"
-              className={`tab${filterOpen ? " active" : ""}`}
+              className={`btn action${filterOpen ? " on" : ""}`}
               onClick={() => setFilterOpen((v) => !v)}
             >
+              <ActionIcon name="filter" />
               {t("filter")}
             </button>
-            <button type="button" className="tab" onClick={() => setMode("history")}>
+            <button type="button" className="btn action" onClick={() => setMode("history")}>
+              <ActionIcon name="history" />
               {t("catalogHistoryLink")}
             </button>
           </div>
@@ -199,7 +199,7 @@ export function OpdServicesPage() {
             />
             <button
               type="button"
-              className="btn ghost"
+              className="btn action"
               onClick={() =>
                 void reload(filterQ)
                   .then((data) => {
@@ -208,6 +208,7 @@ export function OpdServicesPage() {
                   .catch((err) => setError(err instanceof Error ? err.message : "Search failed"))
               }
             >
+              <ActionIcon name="search" />
               {t("search")}
             </button>
           </div>
@@ -321,16 +322,17 @@ export function OpdServicesPage() {
                 <div className="btn-row drug-setup-actions">
                   <button
                     type="button"
-                    className="btn ghost"
+                    className="btn action"
                     disabled={busy}
                     onClick={() => openEdit(selected)}
                   >
+                    <ActionIcon name="edit" />
                     {t("edit")}
                   </button>
                   {selected.active ? (
                     <button
                       type="button"
-                      className="btn ghost danger"
+                      className="btn action danger"
                       disabled={busy}
                       onClick={() => void onDeactivate(selected.id)}
                     >

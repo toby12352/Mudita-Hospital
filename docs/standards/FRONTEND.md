@@ -90,6 +90,42 @@ export async function createOpdBill(body: OpdBillWrite): Promise<OpdBill> { /* a
 - Prefer BEM-ish / kebab class names already used (e.g. `.print-preview-card--receipt`).
 - Do not introduce Tailwind or a new CSS framework without an explicit team decision.
 - Keep brand assets consistent (`assets/logo.png`, Noto Sans Myanmar for MY).
+- Clinic desk actions and bill chrome follow **Clinic design system** below. Dashboard keeps its own theme — do not copy clinic action classes into `dashboard/`.
+
+### Clinic design system
+
+Scope: **`client/` only**. Reference screens: Drug Setup / OPD maintenance, OT cupboard, bill desks (OPD, OT, Pharmacy sales / return / transfer). Settings should match when touched.
+
+**Action roles** (pick one look per control; do not invent a fourth):
+
+| Role | Look | Typical use |
+|------|------|-------------|
+| Primary | Solid accent `#2563EB`, white text | One main commit per context: New, Pay & print while collecting, form Save/Create where that is the submit |
+| Secondary / outline | Panel/white fill, light border, dark text | Search, Filter, History, Edit, Cancel, most rail tools |
+| Danger outline | Red text + red border, not a solid red fill | V.Delete, Delete, Deactivate, Restore on lists/rails |
+| Soft on | Soft blue fill (`--accent-soft`) | Toggle-open only (Filter / Restock / View) — not a second solid primary |
+
+Solid `.btn.danger` (filled red) is reserved for rare confirm dialogs that already use it (e.g. delete-item confirm). Do not use filled red on list rows or the bill rail.
+
+**Classes**
+
+- List / maintenance / settings-style actions: `.btn.action` with optional `.primary`, `.danger`, `.on` in `shared/styles/App.css` (~12px radius, icon + label row).
+- Form submits that are not “toolbar” actions may stay plain `.btn.primary` / `.btn.ghost` when matching an existing form footer.
+- Bill desks: `.opd-bill-rail-btn` with `.opd-bill-rail-btn--accent` and `.opd-bill-rail-btn--danger`. Extend the shared rail — do not invent a second action column.
+- Bill surface tokens on `.opd-bill-desk` / `.opd-bill-dialog`: `--radius-control: 6px`, `--border: #d5dce5`, `--placeholder: #94a3b8`, `--focus-ring` (blue border + soft ring). White panel/input backgrounds. Muted rail `kbd`.
+
+**Icons**
+
+- Leading 16px stroke icons via `shared/ActionIcon.tsx` (`currentColor`). Kinds today: `plus`, `search`, `filter`, `history`, `edit`, `trash`, `undo`, `check`, `print`, `transfer`.
+- Use an icon when the metaphor is obvious before reading the label.
+- Stay **text only** when an icon would crowd or confuse (e.g. Deactivate, Cancel, Restock/View on a crowded detail row).
+
+**Do not**
+
+- Full pills (`border-radius: 999px`), dark chrome, white primary fills, gradients, glass, heavy shadows.
+- New icon packages or Tailwind.
+- Change F-keys, rail order, or layout for style alone.
+- Apply this system to `dashboard/`.
 
 ## i18n
 
@@ -112,9 +148,9 @@ Do not bypass health or auth for convenience in production paths.
 ## Clinic chrome / navigation
 
 - Authenticated clinic desk: light Fluent-style chrome — radio bar (`.desk-radio-bar`) for portal sections on a white/neutral surface with accent for the active section, `#F8F9FB` work area, and a bottom status strip (`.desk-status-bar`) with F-key hints, date, and `Day (user)`. Language, help, logout, and Server IP sit on the right of the radio bar.
-- Bill screens use the light action column (`.opd-bill-rail`) with Print F7 / Confirm F5 (accent while draft) / History F9 / V.Delete ^F8 / Cancel F10 / New bill F2 (accent when finished). Accent uses `.opd-bill-rail-btn--accent`. List and Drug Setup screens omit the rail.
+- Bill screens use the light action column (`.opd-bill-rail`) with Print F7 / Save draft F5 / History F9 / V.Delete ^F8 / Cancel F10 / New bill F2. Accent is class-driven (`.opd-bill-rail-btn--accent` on Pay & print while collecting, New when finished, Transfer when that is the primary step). V.Delete uses `.opd-bill-rail-btn--danger` (outline). List and Drug Setup screens omit the rail. See **Clinic design system** under Styling.
 - Admin chooses a portal from `PortalPicker`; desk roles land in one portal. Still **no React Router** — `View` + optional `NavIntent` in `app/types.ts`, remount pages with a changing `key` when the same view opens with a different intent.
-- Dashboard uses the same radio bar + status footer (no left sidebar).
+- Dashboard signed-in chrome is a left sidebar (logo and the six pages) and a workspace header (page title plus an account menu for name, role, language, server connection, and log out). No radio bar and no bottom status strip. Server setup, login, and change-password use the same canvas and a white card.
 - UI zoom: `mudita_ui_scale` in `localStorage` via `shared/uiScale.ts`; Ctrl/Cmd `+` / `-` / `0` anywhere.
 
 ## File size guidance

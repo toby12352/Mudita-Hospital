@@ -184,6 +184,42 @@ func saleUnitFactor(p itemPack, unit string) (factor int64, canonical string, ok
 	return 0, "", false
 }
 
+// restockStockQty converts a restock qty into smallest (stock) units.
+// qty_unit: omitted/"purchase" → boxes × units_per_purchase; "stock" → as-is;
+// any other value is a pack unit name resolved via saleUnitFactor.
+func restockStockQty(item pharmacyItem, qty int64, qtyUnit string) (stockQty int64, auditUnit string, errMsg string) {
+	if qty <= 0 {
+		return 0, "", "qty must be > 0"
+	}
+	unit := strings.TrimSpace(qtyUnit)
+	if unit == "" || strings.EqualFold(unit, "purchase") {
+		upp := item.UnitsPerPurchase
+		if upp < 1 {
+			upp = 1
+		}
+		if qty > math.MaxInt64/upp {
+			return 0, "", "qty too large"
+		}
+		return qty * upp, "purchase", ""
+	}
+	if strings.EqualFold(unit, "stock") {
+		return qty, "stock", ""
+	}
+	pack := itemPack{
+		L1Qty: item.PackL1Qty, L1Unit: item.PackL1Unit,
+		L2Qty: item.PackL2Qty, L2Unit: item.PackL2Unit,
+		L3Qty: item.PackL3Qty, L3Unit: item.PackL3Unit,
+	}
+	factor, canonical, ok := saleUnitFactor(pack, unit)
+	if !ok || factor < 1 {
+		return 0, "", "unknown unit"
+	}
+	if qty > math.MaxInt64/factor {
+		return 0, "", "qty too large"
+	}
+	return qty * factor, canonical, ""
+}
+
 func packToItemUnits(p itemPack) itemUnits {
 	return itemUnits{
 		PurchaseUnit:        p.L1Unit,

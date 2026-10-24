@@ -771,11 +771,20 @@ export async function deactivatePharmacyItem(id: number): Promise<void> {
   await apiFetch(`/api/pharmacy/items/${id}`, { method: "DELETE" });
 }
 
+/** Hard-delete an unused catalog item. Fails if the item is on a bill or transfer. */
+export async function deletePharmacyItem(id: number): Promise<void> {
+  await apiFetch(`/api/pharmacy/items/${id}/delete`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
+
 export async function restockItem(
   id: number,
   body: {
     qty: number;
-    qty_unit?: "purchase" | "stock";
+    /** Pack unit name (Box, Card, Tablet, …) or legacy purchase | stock. */
+    qty_unit?: string;
     batch_no: string;
     expiry_date: string;
     buy_price_mmk?: number;

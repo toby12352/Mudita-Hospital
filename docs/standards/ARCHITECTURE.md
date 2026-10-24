@@ -109,7 +109,7 @@ Follow [Go module layout](https://go.dev/doc/modules/layout): application code s
 dashboard/src/
   App.tsx                 # shell: boot, auth, page switch
   pages/                  # one page component per nav item
-  components/layout/      # Sidebar, Topbar, ServerBadge
+  components/layout/      # Sidebar, WorkspaceHeader, AccountMenu, ServerBadge (no radio bar or status footer)
   components/kpi/         # reusable widgets
   lib/                    # format helpers
   api.ts, auth.ts, i18n.ts, …

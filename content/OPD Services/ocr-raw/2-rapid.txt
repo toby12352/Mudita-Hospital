@@ -1,0 +1,202 @@
+     75    1661 0.84  Psge 2 of g
+    142    1105 0.93  Particular
+    145    1752 0.99  Kyat
+    146     188 0.93  Particular
+    146     840 0.99  Kyat
+    209     182 0.78  Cyomogolo Vrus(CMV),IqG,Qus
+    211    1103 0.77  PVka 2
+    212     819 1.00  50000
+    212    1734 1.00  95000
+    266     186 0.73  Cytomeqolo Vrus (CMV),lqN,Qus
+    266    1103 0.92  Plateet count
+    266    1748 0.99  8000
+    267     817 1.00  50000
+    317     185 0.86  Denque (1qG/lqx)
+    318    1103 0.88  Pleural Flud AFB
+    321     817 1.00  22000
+    321    1748 0.98  8000
+    369    1102 0.89  PkuralFlud C&S ((Vitek-2)
+    372     186 0.94  Denque combo
+    374     817 1.00  15000
+    374    1734 1.00  50000
+    417    1100 0.87  Pkeural fuid Cytolaqy
+    420    1731 1.00  49500
+    421     185 0.95  Ekoctrolytes
+    426     817 1.00  24000
+    472    1733 1.00  16500
+    474    1103 0.88  Pkeural Flud RE
+    475     186 0.89  Eoanophil count
+    475     834 1.00  4500
+    529     186 0.91  Epstein Earr lqG( Quall)
+    529    1102 0.91  Plaural Flud TB Infecton
+    530    1746 1.00  9000
+    532     817 1.00  37000
+    581    1102 0.86  PNH scroenina
+    584     186 0.75  EpstcinBarrlqM(Quol)
+    586     816 1.00  37000
+    586    1734 1.00  10000
+    633    1102 0.86  Praalatonin(Quall)
+    635     186 0.90  Estrsdlo(E2)
+    636     817 0.77  DDODE
+    638    1734 1.00  12000
+    684    1100 0.91  Praakatonin(Quantitattive)
+    687     186 0.84  FacdorIx
+    689     819 1.00  18000
+    689    1734 1.00  57000
+    735    1100 0.92  Pro qesterone
+    740     186 0.84  FadorV!!!
+    741     819 0.99  18000
+    741    1733 0.65  DDDOE
+    792     186 0.86  Ferritn
+    792    1103 0.92  Probcun
+    793     817 1.00  27000
+    793    1733 1.00  31000
+    844    1103 0.92  Protnin Eectrophsphorous
+    844    1713 1.00  144000
+    846     185 0.99  FSH
+    846     817 1.00  25000
+    899     186 0.82  G6PD sooeninq(Quantl)
+    899    1103 0.88  PSA Profile(Total+Froe+Rato)
+    901     819 1.00  10000
+    901    1733 1.00  70000
+    949    1100 0.93  Pytes (Urea Bresth Test)
+    952     188 0.87  HBE Ab(Qusntitve)
+    953     817 0.72  DDODE
+    953    1734 1.00  72000
+   1000    1102 0.83  Rectal Swab C&s
+   1001     186 0.82  HBa: Aa(Qus ntitative)
+   1004    1734 1.00  40000
+   1005     817 0.74  DDODE
+   1053     185 0.83  HBe Aa(Qulltatve)
+   1053    1102 0.91  Renal Functon test (U&E ,Crea tnin
+   1056     837 1.00  6500
+   1056    1736 1.00  18500
+   1104     183 0.95  Hbs Aa (Scroeninq-ECL)
+   1104     816 1.00  13000
+   1106    1100 0.85  Rheumatold facor
+   1107    1746 1.00  9000
+   1159    1099 0.91  Rotavirus
+   1161     185 0.88  HBs Aq Axay (quans)
+   1162    1733 1.00  10000
+   1164     817 1.00  45000
+   1210     183 0.94  HBV Panel (B combo)
+   1215    1102 0.93  Serum B12
+   1216     819 1.00  15000
+   1216    1733 1.00  41000
+   1265     185 0.98  HDL
+   1265    1102 0.93  Serum folate
+   1268     892 0.53  0
+   1319     186 0.75  Hepu uglobin
+   1319    1102 0.93  Serum Iron
+   1321     817 1.00  21000
+   1321    1734 0.99  14000
+   1373     185 0.90  hiqh sensitNe CRP (Hs CRP)
+   1376     817 1.00  14000
+   1376    1102 0.91  Serum protein ekoctrophoreslSPE
+   1376    1733 0.97  85000
+   1424     183 0.95  HIV Wesern Blot(Scan)
+   1427    1748 1.00  7000
+   1428     819 1.00  50000
+   1428    1102 0.89  wnands
+   1474    1099 0.89  Sputum C&S (Vinek-2)
+   1478     185 0.91  Ho mocysteine
+   1480     817 1.00  43000
+   1480    1733 1.00  40000
+   1527     183 0.85  Immunaqlobin A (lq A/Quantl)
+   1530    1100 0.96  Stool
+   1531    1746 1.00  4000
+   1533     816 1.00  45000
+   1578    1099 0.95  Stool For AFB
+   1582     185 0.88  Immunaqlobin G (Ia G/Quantl)
+   1585     816 1.00  45000
+   1585    1734 1.00  15000
+   1634    1099 0.91  SynovalFluid
+   1637     185 0.88  Immunaqlobin M (1q M/Quantl)
+   1639    1748 1.00  7000
+   1640     816 1.00  45000
+   1688     185 0.92  Insulln
+   1690    1100 0.94  Syphill& antibody test
+   1693     817 1.00  24000
+   1693    1749 1.00  6500
+   1739     183 0.90  Iron Study (Serum Iron,TIec,Ferrt
+   1742    1102 0.84  Tocrolmue
+   1745     817 1.00  65000
+   1745    1734 1.00  60000
+   1793    1100 0.92  Testosterone (total)
+   1796     186 0.92  LAPA score
+   1797     817 1.00  15000
+   1797    1734 1.00  37000
+   1846     185 0.89  LDLChokserol (dlrect)
+   1846    1102 0.90  TFT(TSH,T3-Froe,T4-Freel)
+   1850     817 0.72  DDODE
+   1850    1733 1.00  32000
+   1896     185 0.92  LDL Chokeserol (Indirect)
+   1897    1100 0.93  TFT (TSH,T3-otal,T4-otal)
+   1902     817 1.00  26250
+   1902    1733 0.61  DDDOE
+   1953     182 1.00  LH
+   1953     816 1.00  26250
+   1954    1102 0.92  Thyraqlobulin
+   1957    1733 1.00  36000
+   2002    1102 0.91  Thyraqlobullin antibady
+   2005     182 0.64  Lpose
+   2009     817 1.00  13000
+   2056     182 0.93  Lipoprotein A
+   2057    1100 0.82  TIBC
+   2062     817 1.00  36000
+   2062    1734 1.00  22000
+   2108    1099 0.88  ToRCH IqM(combo)
+   2110     185 0.88  Lquid Base Cytoloqy (LBC)
+   2112     817 1.00  58000
+   2112    1733 1.00  22000
+   2157     183 0.84  Mabrla ICT (Aq)
+   2162    1102 0.91  Transferrin
+   2165     837 1.00  9000
+   2165    1734 1.00  50000
+   2210     183 0.74  Meases lq G
+   2212    1100 0.77  1- ujuodos1
+   2216    1807 0.62  0
+   2217     817 1.00  40000
+   2265    1099 0.71  (anO)I-ujuodo1
+   2269     186 0.76  Heases Iq H
+   2272     817 1.00  40000
+   2272    1733 1.00  23000
+   2320     185 0.86  Microfibrla (ICT)
+   2322    1102 0.94  UCG (preqnancy test)
+   2325     819 1.00  10000
+   2325    1751 1.00  5000
+   2374     185 0.87  Mycoplasma pneumonioe lqG (Qual
+   2374    1102 0.92  Urlline Chlorde(24hr)
+   2377     816 1.00  37000
+   2377    1715 1.00  110000
+   2425    1100 0.92  Urllne Chlor de(random)
+   2428     186 0.77  Mycoplasma pneumonioa IqM (Qual
+   2429     816 1.00  37000
+   2429    1749 1.00  6000
+   2477     185 0.92  Myosctk Pannel
+   2477    1102 0.93  Urlline Proten(24hr)
+   2482     804 1.00  206400
+   2482    1734 1.00  11000
+   2532    1100 0.95  Urllne Proteh(random)
+   2534     185 0.89  NG (Netslerla qono rrhoeae)
+   2537     817 1.00  22000
+   2537    1734 1.00  11000
+   2588    1103 0.95  Urinary Bence Jone Prot
+   2589     817 1.00  57500
+   2589    1733 1.00  25000
+   2637     183 1.00  OGTT
+   2638    1102 0.91  Urine (REME/U-10 para)
+   2641     817 1.00  15500
+   2641    1748 0.99  4000
+   2689    1100 0.96  Urine Abumin (24hr)
+   2692     185 0.83  Pscksqe
+   2694     801 1.00  350000
+   2694    1734 1.00  11000
+   2744     185 0.95  Parathyroid Hormone
+   2747    1102 0.94  Urine Abumin (random)
+   2749     819 1.00  50000
+   2749    1734 1.00  11000
+   2797    1102 0.90  Urine Abumin/Creotinine ratlo
+   2798     186 0.93  Phosphate
+   2800     819 1.00  12000
+   2800    1733 0.72  DDDOE

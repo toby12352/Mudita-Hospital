@@ -82,12 +82,9 @@ export function DailyReportPage({ t }: Props) {
   }
 
   return (
-    <div className="page">
+    <div className="page page-frame">
       <div className="page-header">
-        <div>
-          <h2>{t("dailyReport")}</h2>
-          <p className="lede muted">{t("dailyLede")}</p>
-        </div>
+        <p className="lede muted">{t("dailyLede")}</p>
         <div className="page-actions">
           <button
             type="button"
@@ -206,30 +203,32 @@ export function DailyReportPage({ t }: Props) {
               {t("paidBills")} — {data.date}
             </h3>
             {data.lines.length ? (
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>{t("source")}</th>
-                    <th>{t("bill")}</th>
-                    <th>{t("patient")}</th>
-                    <th>{t("doctor")}</th>
-                    <th>{t("paid")}</th>
-                    <th className="num">{t("mmk")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.lines.map((line) => (
-                    <tr key={`${line.source}-${line.bill_no}-${line.paid_at}`}>
-                      <td>{line.source}</td>
-                      <td>{line.bill_no}</td>
-                      <td>{line.patient}</td>
-                      <td>{line.doctor || "—"}</td>
-                      <td>{line.paid_at}</td>
-                      <td className="num">{formatMMK(line.total_mmk)}</td>
+              <div className="table-scroll">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>{t("source")}</th>
+                      <th>{t("bill")}</th>
+                      <th>{t("patient")}</th>
+                      <th>{t("doctor")}</th>
+                      <th>{t("paid")}</th>
+                      <th className="num">{t("mmk")}</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {data.lines.map((line) => (
+                      <tr key={`${line.source}-${line.bill_no}-${line.paid_at}`}>
+                        <td>{line.source}</td>
+                        <td>{line.bill_no}</td>
+                        <td>{line.patient}</td>
+                        <td>{line.doctor || "—"}</td>
+                        <td>{line.paid_at}</td>
+                        <td className="num">{formatMMK(line.total_mmk)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             ) : (
               <p className="empty-state">{t("noPaidBills")}</p>
             )}

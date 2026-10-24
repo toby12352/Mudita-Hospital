@@ -40,7 +40,8 @@ export function PharmacyItemLots({
         {lots.map((b) => (
           <div key={b.id} className="drug-setup-batch-row pharmacy-item-lots-row" role="listitem">
             <span>
-              {formatLocationLabel(b.location_code)} · {b.batch_no.trim() || t("none")}
+              {formatLocationLabel(b.location_code)}
+              {b.batch_no.trim() ? ` · ${b.batch_no.trim()}` : ""}
             </span>
             <span>{b.qty.toLocaleString()}</span>
             <span>{b.expiry_date || t("none")}</span>

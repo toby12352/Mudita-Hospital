@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
 import { listOpdBills, type OpdBill } from "@/features/opd/api";
+import { ActionIcon } from "@/shared/ActionIcon";
+import { AlertDialog } from "@/shared/AlertDialog";
+import { DialogCloseButton } from "@/shared/DialogCloseButton";
 import { formatMMK } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
 
@@ -42,10 +45,10 @@ export function OpdBillListDialog({ mode, onClose, onOpen, onVoid }: Props) {
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        onClose();
-      }
+      if (e.key !== "Escape") return;
+      if (document.querySelector(".alert-dialog-overlay")) return;
+      e.preventDefault();
+      onClose();
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -100,13 +103,10 @@ export function OpdBillListDialog({ mode, onClose, onOpen, onVoid }: Props) {
           <h2 id="opd-bill-dialog-title" className="opd-bill-dialog-title">
             {mode === "history" ? t("billHistory") : t("billDelete")}
           </h2>
-          <button type="button" className="btn ghost" onClick={onClose}>
-            {t("cancel")}
-          </button>
+          <DialogCloseButton onClick={onClose} />
         </div>
 
         {loading ? <p className="hint">{t("loading")}</p> : null}
-        {error ? <p className="form-error">{error}</p> : null}
 
         <ul className="opd-bill-dialog-list">
           {!loading && bills.length === 0 ? (
@@ -154,10 +154,11 @@ export function OpdBillListDialog({ mode, onClose, onOpen, onVoid }: Props) {
             </label>
             <button
               type="button"
-              className="btn ghost danger"
+              className="btn action danger"
               disabled={busy || !canVoid}
               onClick={() => void handleDelete()}
             >
+              <ActionIcon name="trash" />
               {busy ? "…" : t("delete")}
             </button>
           </div>
@@ -165,6 +166,7 @@ export function OpdBillListDialog({ mode, onClose, onOpen, onVoid }: Props) {
           <p className="hint">{t("billHistoryHint")}</p>
         )}
       </div>
+      <AlertDialog message={error ?? ""} onClose={() => setError(null)} />
     </div>
   );
 }

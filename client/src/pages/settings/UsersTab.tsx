@@ -5,6 +5,7 @@ import {
   updateUser,
   type ManagedUser,
 } from "@/features/settings/masterData";
+import { ActionIcon } from "@/shared/ActionIcon";
 import { Typeahead } from "@/shared/Typeahead";
 import { useI18n } from "@/shared/i18n";
 
@@ -161,13 +162,14 @@ export function UsersTab() {
           />
           <button
             type="button"
-            className="btn ghost"
+            className="btn action"
             onClick={() =>
               void reload(q).catch((err) =>
                 setError(err instanceof Error ? err.message : "Search failed"),
               )
             }
           >
+            <ActionIcon name="search" />
             {t("search")}
           </button>
         </div>
@@ -187,7 +189,7 @@ export function UsersTab() {
               {u.role !== "Admin" ? (
                 <button
                   type="button"
-                  className="btn ghost"
+                  className={`btn action${u.active ? " danger" : ""}`}
                   disabled={busy}
                   onClick={() => void toggleActive(u)}
                 >
