@@ -52,6 +52,8 @@ type otCase struct {
 	DoctorName      string       `json:"doctor_name"`
 	ProcedureName   string       `json:"procedure_name"`
 	Notes           string       `json:"notes"`
+	DiscountValue   int64        `json:"discount_value"`
+	DiscountUnit    string       `json:"discount_unit"`
 	Status          string       `json:"status"`
 	IssuedAt        *string      `json:"issued_at,omitempty"`
 	ReconciledAt    *string      `json:"reconciled_at,omitempty"`
@@ -73,6 +75,8 @@ type otCaseWriteRequest struct {
 	ProcedureName   string       `json:"procedure_name"`
 	Notes           string       `json:"notes"`
 	Items           []otCaseItem `json:"items"`
+	DiscountValue   int64        `json:"discount_value"`
+	DiscountUnit    string       `json:"discount_unit"`
 }
 
 type otBillLine struct {
@@ -101,6 +105,9 @@ type otBill struct {
 	ProcedureName   string       `json:"procedure_name"`
 	Status          string       `json:"status"`
 	TotalMMK        int64        `json:"total_mmk"`
+	DiscountValue   int64        `json:"discount_value"`
+	DiscountUnit    string       `json:"discount_unit"`
+	DiscountMMK     int64        `json:"discount_mmk"`
 	PaidAt          *string      `json:"paid_at,omitempty"`
 	VoidedAt        *string      `json:"voided_at,omitempty"`
 	VoidReason      string       `json:"void_reason,omitempty"`
@@ -109,9 +116,18 @@ type otBill struct {
 	Lines           []otBillLine `json:"lines,omitempty"`
 }
 
+type otServiceCharge struct {
+	LineType     string `json:"line_type"`
+	RefID        *int64 `json:"ref_id"`
+	Qty          int64  `json:"qty"`
+	UnitPriceMMK *int64 `json:"unit_price_mmk"`
+}
+
 type otCreateBillRequest struct {
 	// Optional extra service lines (used items + doctor OT fee are auto-added).
-	Services []otBillLine `json:"services"`
+	Services      []otServiceCharge `json:"services"`
+	DiscountValue int64             `json:"discount_value"`
+	DiscountUnit  string            `json:"discount_unit"`
 }
 
 type otCatalogDoctor struct {
@@ -153,6 +169,20 @@ func (h *OT) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.catalogItems(w, r)
 		case path == "/settings" && r.Method == http.MethodGet:
 			h.catalogSettings(w, r)
+		case path == "/services" && r.Method == http.MethodGet:
+			h.listOtServices(w, r)
+		case path == "/services" && r.Method == http.MethodPost:
+			h.createOtService(w, r)
+		case path == "/services/history" && r.Method == http.MethodGet:
+			h.otServiceHistory(w, r)
+		case strings.HasPrefix(path, "/services/") && strings.HasSuffix(path, "/delete") && r.Method == http.MethodPost:
+			h.deleteOtService(w, r, path)
+		case strings.HasPrefix(path, "/services/") && r.Method == http.MethodGet:
+			h.getOtService(w, r, path)
+		case strings.HasPrefix(path, "/services/") && r.Method == http.MethodPut:
+			h.updateOtService(w, r, path)
+		case strings.HasPrefix(path, "/services/") && r.Method == http.MethodDelete:
+			h.deactivateOtService(w, r, path)
 		case path == "/stock" && r.Method == http.MethodGet:
 			h.listOtStock(w, r)
 		case strings.HasPrefix(path, "/stock/") && strings.HasSuffix(path, "/return") && r.Method == http.MethodPost:
@@ -229,8 +259,54 @@ func (h *OT) catalogDoctors(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *OT) catalogServices(w http.ResponseWriter, r *http.Request) {
-	// Reuse OPD catalog shape via shared query.
-	(&OPD{DB: h.DB}).catalogServices(w, r)
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	code := strings.TrimSpace(r.URL.Query().Get("code"))
+	var rows *sql.Rows
+	var err error
+	if code != "" {
+		rows, err = h.DB.Query(`
+			SELECT id, code, name, price_mmk FROM ot_services
+			WHERE active = 1 AND code = ? COLLATE NOCASE
+		`, code)
+	} else if q != "" {
+		like := "%" + q + "%"
+		rows, err = h.DB.Query(`
+			SELECT id, code, name, price_mmk FROM ot_services
+			WHERE active = 1 AND (COALESCE(code, '') LIKE ? OR name LIKE ?)
+			ORDER BY name COLLATE NOCASE LIMIT 50
+		`, like, like)
+	} else {
+		rows, err = h.DB.Query(`
+			SELECT id, code, name, price_mmk FROM ot_services
+			WHERE active = 1
+			ORDER BY name COLLATE NOCASE LIMIT 100
+		`)
+	}
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "list failed"})
+		return
+	}
+	defer rows.Close()
+
+	out := make([]otCatalogService, 0)
+	for rows.Next() {
+		var s otCatalogService
+		var codeVal sql.NullString
+		var price sql.NullInt64
+		if err := rows.Scan(&s.ID, &codeVal, &s.Name, &price); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "scan failed"})
+			return
+		}
+		if codeVal.Valid {
+			s.Code = codeVal.String
+		}
+		if price.Valid {
+			v := price.Int64
+			s.PriceMMK = &v
+		}
+		out = append(out, s)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"services": out})
 }
 
 func (h *OT) catalogItems(w http.ResponseWriter, r *http.Request) {
@@ -245,20 +321,21 @@ func (h *OT) catalogItems(w http.ResponseWriter, r *http.Request) {
 		FROM items i`
 	var rows *sql.Rows
 	var err error
+	const onHand = `COALESCE((SELECT SUM(b.qty) FROM ot_batches b WHERE b.item_id = i.id), 0)`
 	switch {
 	case code != "":
 		rows, err = h.DB.Query(cols+`
-			WHERE i.active = 1 AND i.code = ? COLLATE NOCASE
+			WHERE i.active = 1 AND i.code = ? COLLATE NOCASE AND `+onHand+` > 0
 		`, code)
 	case q != "":
 		like := "%" + q + "%"
 		rows, err = h.DB.Query(cols+`
-			WHERE i.active = 1 AND (i.code LIKE ? OR i.name LIKE ?)
+			WHERE i.active = 1 AND (i.code LIKE ? OR i.name LIKE ?) AND `+onHand+` > 0
 			ORDER BY i.code COLLATE NOCASE LIMIT 50
 		`, like, like)
 	default:
 		rows, err = h.DB.Query(cols + `
-			WHERE i.active = 1
+			WHERE i.active = 1 AND ` + onHand + ` > 0
 			ORDER BY i.code COLLATE NOCASE LIMIT 100
 		`)
 	}
@@ -293,7 +370,8 @@ func (h *OT) listCases(w http.ResponseWriter, r *http.Request) {
 	query := `
 		SELECT id, case_no, patient_name, patient_phone, patient_age_years, patient_gender,
 			doctor_id, doctor_name, procedure_name, notes, status, issued_at, reconciled_at,
-			ot_bill_id, created_by_user_id, created_at, updated_at
+			ot_bill_id, created_by_user_id, created_at, updated_at,
+			discount_value, discount_unit
 		FROM ot_cases
 	`
 	args := make([]any, 0)
@@ -364,6 +442,11 @@ func (h *OT) createCase(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
+	discountValue, discountUnit, errMsg := normalizeDiscountInput(req.DiscountValue, req.DiscountUnit)
+	if errMsg != "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": errMsg})
+		return
+	}
 
 	caseNo, err := nextOtCaseNo(tx)
 	if err != nil {
@@ -374,11 +457,13 @@ func (h *OT) createCase(w http.ResponseWriter, r *http.Request) {
 	res, err := tx.Exec(`
 		INSERT INTO ot_cases (
 			case_no, patient_name, patient_phone, patient_age_years, patient_gender,
-			doctor_id, doctor_name, procedure_name, notes, status, created_by_user_id
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?)
+			doctor_id, doctor_name, procedure_name, notes, status, created_by_user_id,
+			discount_value, discount_unit
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?)
 	`, caseNo, req.PatientName, strings.TrimSpace(req.PatientPhone), req.PatientAgeYears,
 		strings.TrimSpace(req.PatientGender), doctorID, doctorName,
-		strings.TrimSpace(req.ProcedureName), strings.TrimSpace(req.Notes), uid)
+		strings.TrimSpace(req.ProcedureName), strings.TrimSpace(req.Notes), uid,
+		discountValue, discountUnit)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "create failed"})
 		return
@@ -474,15 +559,22 @@ func (h *OT) updateCase(w http.ResponseWriter, r *http.Request, path string) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
+	discountValue, discountUnit, errMsg := normalizeDiscountInput(req.DiscountValue, req.DiscountUnit)
+	if errMsg != "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": errMsg})
+		return
+	}
 
 	if _, err := tx.Exec(`
 		UPDATE ot_cases SET
 			patient_name = ?, patient_phone = ?, patient_age_years = ?, patient_gender = ?,
-			doctor_id = ?, doctor_name = ?, procedure_name = ?, notes = ?, updated_at = datetime('now')
+			doctor_id = ?, doctor_name = ?, procedure_name = ?, notes = ?,
+			discount_value = ?, discount_unit = ?, updated_at = datetime('now')
 		WHERE id = ?
 	`, req.PatientName, strings.TrimSpace(req.PatientPhone), req.PatientAgeYears,
 		strings.TrimSpace(req.PatientGender), doctorID, doctorName,
-		strings.TrimSpace(req.ProcedureName), strings.TrimSpace(req.Notes), id); err != nil {
+		strings.TrimSpace(req.ProcedureName), strings.TrimSpace(req.Notes),
+		discountValue, discountUnit, id); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "update failed"})
 		return
 	}
@@ -550,6 +642,11 @@ func (h *OT) createBillFromCase(w http.ResponseWriter, r *http.Request, path str
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": errMsg})
 		return
 	}
+	discountMMK, net, discountUnit, errMsg := applyBillDiscount(total, req.DiscountValue, req.DiscountUnit)
+	if errMsg != "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": errMsg})
+		return
+	}
 
 	billNo, err := nextOtBillNo(tx)
 	if err != nil {
@@ -560,10 +657,12 @@ func (h *OT) createBillFromCase(w http.ResponseWriter, r *http.Request, path str
 	res, err := tx.Exec(`
 		INSERT INTO ot_bills (
 			bill_no, case_id, case_no, patient_name, patient_phone, patient_age_years, patient_gender,
-			doctor_id, doctor_name, procedure_name, status, total_mmk, created_by_user_id
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)
+			doctor_id, doctor_name, procedure_name, status, total_mmk, created_by_user_id,
+			discount_value, discount_unit, discount_mmk
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?)
 	`, billNo, c.ID, c.CaseNo, c.PatientName, c.PatientPhone, c.PatientAgeYears, c.PatientGender,
-		c.DoctorID, c.DoctorName, c.ProcedureName, total, uid)
+		c.DoctorID, c.DoctorName, c.ProcedureName, net, uid,
+		req.DiscountValue, discountUnit, discountMMK)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "create bill failed"})
 		return
@@ -585,7 +684,7 @@ func (h *OT) createBillFromCase(w http.ResponseWriter, r *http.Request, path str
 	}
 
 	audit.WriteAudit(h.DB, &uid, "create", "ot_bill", &billID, map[string]any{
-		"bill_no": billNo, "case_no": c.CaseNo, "total_mmk": total,
+		"bill_no": billNo, "case_no": c.CaseNo, "total_mmk": net, "discount_mmk": discountMMK,
 	})
 	bill, err := loadOtBill(h.DB, billID)
 	if err != nil {
@@ -625,7 +724,7 @@ func (h *OT) listBills(w http.ResponseWriter, r *http.Request) {
 	query := `
 		SELECT id, bill_no, case_id, case_no, patient_name, patient_phone, patient_age_years, patient_gender,
 			doctor_id, doctor_name, procedure_name, status, total_mmk, paid_at, voided_at, void_reason,
-			created_at, updated_at
+			created_at, updated_at, discount_value, discount_unit, discount_mmk
 		FROM ot_bills
 	`
 	args := make([]any, 0)
@@ -688,7 +787,9 @@ func (h *OT) updateBill(w http.ResponseWriter, r *http.Request, path string) {
 		return
 	}
 	var req struct {
-		Lines []otBillLine `json:"lines"`
+		Lines         []otServiceCharge `json:"lines"`
+		DiscountValue int64             `json:"discount_value"`
+		DiscountUnit  string            `json:"discount_unit"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
@@ -732,7 +833,15 @@ func (h *OT) updateBill(w http.ResponseWriter, r *http.Request, path string) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": errMsg})
 		return
 	}
-	if _, err := tx.Exec(`UPDATE ot_bills SET total_mmk = ?, updated_at = datetime('now') WHERE id = ?`, total, id); err != nil {
+	discountMMK, net, discountUnit, errMsg := applyBillDiscount(total, req.DiscountValue, req.DiscountUnit)
+	if errMsg != "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": errMsg})
+		return
+	}
+	if _, err := tx.Exec(`
+		UPDATE ot_bills SET total_mmk = ?, discount_value = ?, discount_unit = ?, discount_mmk = ?,
+			updated_at = datetime('now') WHERE id = ?
+	`, net, req.DiscountValue, discountUnit, discountMMK, id); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "update failed"})
 		return
 	}
@@ -749,7 +858,9 @@ func (h *OT) updateBill(w http.ResponseWriter, r *http.Request, path string) {
 		return
 	}
 	uid := user.ID
-	audit.WriteAudit(h.DB, &uid, "update", "ot_bill", &id, map[string]any{"total_mmk": total})
+	audit.WriteAudit(h.DB, &uid, "update", "ot_bill", &id, map[string]any{
+		"total_mmk": net, "discount_mmk": discountMMK,
+	})
 	bill, err := loadOtBill(h.DB, id)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "reload failed"})
@@ -1097,7 +1208,8 @@ func loadOtCaseTx(tx *sql.Tx, id int64) (otCase, error) {
 	row := tx.QueryRow(`
 		SELECT id, case_no, patient_name, patient_phone, patient_age_years, patient_gender,
 			doctor_id, doctor_name, procedure_name, notes, status, issued_at, reconciled_at,
-			ot_bill_id, created_by_user_id, created_at, updated_at
+			ot_bill_id, created_by_user_id, created_at, updated_at,
+			discount_value, discount_unit
 		FROM ot_cases WHERE id = ?
 	`, id)
 	c, err := scanOtCase(row)
@@ -1127,6 +1239,7 @@ func scanOtCase(row scannable) (otCase, error) {
 		&c.ID, &c.CaseNo, &c.PatientName, &c.PatientPhone, &age, &c.PatientGender,
 		&doctorID, &c.DoctorName, &c.ProcedureName, &c.Notes, &c.Status, &issuedAt, &reconciledAt,
 		&billID, &createdBy, &c.CreatedAt, &c.UpdatedAt,
+		&c.DiscountValue, &c.DiscountUnit,
 	)
 	if err != nil {
 		return c, err
@@ -1159,8 +1272,8 @@ func scanOtCase(row scannable) (otCase, error) {
 }
 
 // otBillServiceLines keeps client service rows. Item and OT-fee rows are rebuilt from the case.
-func otBillServiceLines(in []otBillLine) ([]otBillLine, string) {
-	out := make([]otBillLine, 0)
+func otBillServiceLines(in []otServiceCharge) ([]otServiceCharge, string) {
+	out := make([]otServiceCharge, 0)
 	for _, l := range in {
 		l.LineType = strings.TrimSpace(strings.ToLower(l.LineType))
 		switch l.LineType {
@@ -1176,8 +1289,8 @@ func otBillServiceLines(in []otBillLine) ([]otBillLine, string) {
 }
 
 // buildOtBillLines prices cupboard item lines and the doctor OT fee from the catalog at bill time.
-// Service lines must have a ref_id and take services.price_mmk. Client prices are ignored.
-func buildOtBillLines(tx *sql.Tx, c otCase, services []otBillLine) ([]otBillLine, int64, string) {
+// Service lines must reference an active ot_services row. Qty is 1. Price is the case charge.
+func buildOtBillLines(tx *sql.Tx, c otCase, services []otServiceCharge) ([]otBillLine, int64, string) {
 	lines := make([]otBillLine, 0)
 	sort := 0
 	for _, it := range c.Items {
@@ -1196,10 +1309,18 @@ func buildOtBillLines(tx *sql.Tx, c otCase, services []otBillLine) ([]otBillLine
 			return nil, 0, "item load failed"
 		}
 		itemID := it.ItemID
+		lineTotal := it.QtyIssued * roundPayableMMK(price)
+		if it.SaleQty > 0 && strings.TrimSpace(it.SaleUnit) != "" {
+			factor := it.QtyIssued / it.SaleQty
+			if factor > 0 && it.SaleQty*factor == it.QtyIssued {
+				unitPrice := roundPayableMMK(price * factor)
+				lineTotal = it.SaleQty * unitPrice
+			}
+		}
 		lines = append(lines, otBillLine{
 			LineType: "item", RefID: &itemID, Code: code,
 			Description: name, Qty: it.QtyIssued, UnitPriceMMK: price,
-			LineTotalMMK: it.QtyIssued * price, SortOrder: sort,
+			LineTotalMMK: lineTotal, SortOrder: sort,
 		})
 		sort++
 	}
@@ -1228,15 +1349,18 @@ func buildOtBillLines(tx *sql.Tx, c otCase, services []otBillLine) ([]otBillLine
 		if s.RefID == nil || *s.RefID == 0 {
 			return nil, 0, "service ref_id required"
 		}
-		if s.Qty <= 0 {
-			return nil, 0, "service qty must be > 0"
+		if s.UnitPriceMMK == nil {
+			return nil, 0, "service unit_price_mmk required"
 		}
-		var code, name string
-		var price int64
+		if *s.UnitPriceMMK < 0 {
+			return nil, 0, "service unit_price_mmk must be >= 0"
+		}
+		var code sql.NullString
+		var name string
 		var active int
 		err := tx.QueryRow(`
-			SELECT code, name, price_mmk, active FROM services WHERE id = ?
-		`, *s.RefID).Scan(&code, &name, &price, &active)
+			SELECT code, name, active FROM ot_services WHERE id = ?
+		`, *s.RefID).Scan(&code, &name, &active)
 		if err == sql.ErrNoRows {
 			return nil, 0, "service not found"
 		}
@@ -1244,12 +1368,21 @@ func buildOtBillLines(tx *sql.Tx, c otCase, services []otBillLine) ([]otBillLine
 			return nil, 0, "service load failed"
 		}
 		if active != 1 {
-			return nil, 0, fmt.Sprintf("service %s is inactive", code)
+			label := name
+			if code.Valid && code.String != "" {
+				label = code.String
+			}
+			return nil, 0, fmt.Sprintf("service %s is inactive", label)
 		}
+		price := *s.UnitPriceMMK
 		ref := *s.RefID
+		svcCode := ""
+		if code.Valid {
+			svcCode = code.String
+		}
 		lines = append(lines, otBillLine{
-			LineType: "service", RefID: &ref, Code: code, Description: name,
-			Qty: s.Qty, UnitPriceMMK: price, LineTotalMMK: s.Qty * price, SortOrder: sort,
+			LineType: "service", RefID: &ref, Code: svcCode, Description: name,
+			Qty: 1, UnitPriceMMK: price, LineTotalMMK: price, SortOrder: sort,
 		})
 		sort++
 	}
@@ -1304,7 +1437,7 @@ func loadOtBill(db *sql.DB, id int64) (otBill, error) {
 	row := db.QueryRow(`
 		SELECT id, bill_no, case_id, case_no, patient_name, patient_phone, patient_age_years, patient_gender,
 			doctor_id, doctor_name, procedure_name, status, total_mmk, paid_at, voided_at, void_reason,
-			created_at, updated_at
+			created_at, updated_at, discount_value, discount_unit, discount_mmk
 		FROM ot_bills WHERE id = ?
 	`, id)
 	b, err := scanOtBill(row)
@@ -1342,7 +1475,7 @@ func scanOtBill(row scannable) (otBill, error) {
 	err := row.Scan(
 		&b.ID, &b.BillNo, &b.CaseID, &b.CaseNo, &b.PatientName, &b.PatientPhone, &age, &b.PatientGender,
 		&doctorID, &b.DoctorName, &b.ProcedureName, &b.Status, &b.TotalMMK, &paidAt, &voidedAt, &b.VoidReason,
-		&b.CreatedAt, &b.UpdatedAt,
+		&b.CreatedAt, &b.UpdatedAt, &b.DiscountValue, &b.DiscountUnit, &b.DiscountMMK,
 	)
 	if err != nil {
 		return b, err
@@ -1470,19 +1603,24 @@ func renderOtBillHTML(hosp *hospitalSettings, bill otBill, caseItems []otCaseIte
 		lines = append(lines, rl)
 	}
 	return renderThermalReceiptHTML(hosp, receiptBill{
-		Title:         "OT RECEIPT",
-		BillNo:        bill.BillNo,
-		CaseNo:        bill.CaseNo,
-		Status:        bill.Status,
-		PatientName:   bill.PatientName,
-		PatientPhone:  bill.PatientPhone,
-		PatientAge:    bill.PatientAgeYears,
-		PatientGender: bill.PatientGender,
-		DoctorName:    bill.DoctorName,
-		ProcedureName: bill.ProcedureName,
-		DateLabel:     dateLabel,
-		TotalMMK:      bill.TotalMMK,
-		VoidReason:    bill.VoidReason,
-		Lines:         lines,
+		Title:          "OT RECEIPT",
+		BillNo:         bill.BillNo,
+		CaseNo:         bill.CaseNo,
+		Status:         bill.Status,
+		PatientName:    bill.PatientName,
+		PatientPhone:   bill.PatientPhone,
+		PatientAge:     bill.PatientAgeYears,
+		PatientGender:  bill.PatientGender,
+		DoctorName:     bill.DoctorName,
+		ProcedureName:  bill.ProcedureName,
+		DateLabel:      dateLabel,
+		TotalMMK:       bill.TotalMMK + bill.DiscountMMK,
+		NetMMK:         bill.TotalMMK,
+		ShowSettlement: true,
+		DiscountMMK:    bill.DiscountMMK,
+		DiscountValue:  bill.DiscountValue,
+		DiscountUnit:   bill.DiscountUnit,
+		VoidReason:     bill.VoidReason,
+		Lines:          lines,
 	})
 }

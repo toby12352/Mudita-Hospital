@@ -2,11 +2,14 @@ import { FormEvent, useEffect, useState } from "react";
 import {
   createService,
   deactivateService,
+  listServiceCategories,
   listServices,
   updateService,
   type Service,
+  type ServiceCategory,
 } from "@/features/settings/masterData";
 import { ActionIcon } from "@/shared/ActionIcon";
+import { ServiceCategoryField } from "@/shared/ServiceCategoryField";
 import { Typeahead } from "@/shared/Typeahead";
 import { useI18n } from "@/shared/i18n";
 export function ServicesTab() {
@@ -19,6 +22,8 @@ export function ServicesTab() {
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
   const [price, setPrice] = useState("0");
+  const [categoryId, setCategoryId] = useState("");
+  const [categories, setCategories] = useState<ServiceCategory[]>([]);
 
   async function reload(search = q) {
     setList(await listServices(search.trim()));
@@ -28,8 +33,11 @@ export function ServicesTab() {
     let cancelled = false;
     (async () => {
       try {
-        const data = await listServices("");
-        if (!cancelled) setList(data);
+        const [data, cats] = await Promise.all([listServices(""), listServiceCategories("")]);
+        if (!cancelled) {
+          setList(data);
+          setCategories(cats);
+        }
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Load failed");
       }
@@ -44,6 +52,7 @@ export function ServicesTab() {
     setCode("");
     setName("");
     setPrice("0");
+    setCategoryId("");
   }
 
   function startEdit(s: Service) {
@@ -51,6 +60,7 @@ export function ServicesTab() {
     setCode(s.code);
     setName(s.name);
     setPrice(String(s.price_mmk));
+    setCategoryId(s.category_id != null ? String(s.category_id) : "");
   }
 
   async function submit(e: FormEvent) {
@@ -63,6 +73,7 @@ export function ServicesTab() {
         name: name.trim(),
         price_mmk: Number(price) || 0,
         active: true,
+        category_id: categoryId ? Number(categoryId) : null,
       };
       if (editing) {
         await updateService(editing.id, body);
@@ -124,6 +135,12 @@ export function ServicesTab() {
             placeholder={t("serviceNamePlaceholder")}
           />
         </label>
+        <ServiceCategoryField
+          value={categoryId}
+          categories={categories}
+          onChange={setCategoryId}
+          disabled={busy}
+        />
         {error ? <p className="form-error">{error}</p> : null}
         <div className="btn-row">
           <button type="submit" className="btn primary" disabled={busy}>
@@ -153,7 +170,8 @@ export function ServicesTab() {
                   {!s.active ? ` ${t("inactive")}` : ""}
                 </span>
                 <span className="typeahead-sub">
-                  {s.price_mmk.toLocaleString()} {t("mmk")} · {t("nonStock")}
+                  {s.price_mmk.toLocaleString()} {t("mmk")} · {s.category_name || t("uncategorized")} ·{" "}
+                  {t("nonStock")}
                 </span>
               </>
             )}
@@ -193,7 +211,8 @@ export function ServicesTab() {
                   {!s.active ? ` ${t("inactive")}` : ""}
                 </p>
                 <p className="row-sub">
-                  {s.price_mmk.toLocaleString()} {t("mmk")} · {t("nonStock")}
+                  {s.price_mmk.toLocaleString()} {t("mmk")} · {s.category_name || t("uncategorized")} ·{" "}
+                  {t("nonStock")}
                 </p>
               </div>
               <div className="btn-row">

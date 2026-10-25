@@ -20,14 +20,15 @@ Print this page (or use **Help → Print cheat sheet** in the app) and laminate 
 2. Patient name → doctor → add a **service** or consultation. Medicines are billed in Pharmacy.
 3. **Confirm (F5)** saves a draft. **Print (F7)** saves, marks paid, then opens the print preview.
 4. **History (F9)** opens past bills (newest first). **V.Delete (^F8)** voids a selected bill (reason required). **Cancel (F10)** clears the form. **New bill (F2)** clears for the next patient (no prompt after a paid bill).
-5. First time printing a receipt: choose **EPSON TM-T82 Receipt**, paper **80 mm**, no scaling / fit to printable width.
+5. Admin sets the **default printer** once under **Settings → Hospital**. Receipts print on that printer with no Windows dialog. Set the EPSON roll to **80 mm** in Windows printer preferences.
 
-## 3. OT cupboard and bill (nurse handover)
+## 3. OT Maintenance and bill (nurse handover)
 
-1. Pharmacy: **Transfer to OT** → add medicines → **Transfer**, then **Confirm transfer**. Saleable pharmacy stock moves into the OT cupboard. Batch number and expiry are optional and go with the qty. A date before today is left on the pharmacy shelf.
-2. OT: **OT cupboard** shows that on-hand. **Return to pharmacy** sends unused qty back. Pharmacy on-hand rises when the return is saved.
-3. OT: **Create new bill** → patient, doctor, procedure → services and items from cupboard on-hand → **Pay cash** → **Print**. Pay deducts cupboard qty. Void puts that qty back. Qty left in the cupboard is not touched.
-4. Print the pick list if the ward wants a paper list of the cart. There is no issue or reconcile step.
+1. Pharmacy: **Transfer to OT** → add medicines → **Transfer**, then **Confirm transfer**. Saleable pharmacy stock moves into OT inventory. Batch number and expiry are optional and go with the qty. A date before today is left on the pharmacy shelf.
+2. OT: **Maintenance → Inventory** shows that on-hand. **Return to pharmacy** sends unused qty back. Pharmacy on-hand rises when the return is saved.
+3. OT: **Maintenance → Services** holds OT-only services (name required; code and default price optional).
+4. OT: **Create new bill** → patient, doctor, procedure → items from OT inventory and services from OT Maintenance. Service quantity is 1; type the case price. **Pay cash** → **Print**. Pay deducts inventory qty. Void puts that qty back.
+5. Print the pick list if the ward wants a paper list of the cart. There is no issue or reconcile step.
 
 ## 4. Pharmacy
 

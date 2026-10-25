@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   createOpdBill,
   findOpdServiceByCode,
@@ -13,6 +13,11 @@ import {
   type OpdDoctor,
   type OpdService,
 } from "@/features/opd/api";
+import {
+  discountFieldsFromBill,
+  discountWrite,
+  type DiscountUnit,
+} from "@/shared/discount";
 import { userMessage } from "@/shared/errors";
 import { useI18n } from "@/shared/i18n";
 import { OpdBillForm } from "@/pages/opd/OpdBillForm";
@@ -35,6 +40,7 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
   const [billStatus, setBillStatus] = useState("draft");
   const [patientId, setPatientId] = useState<number | null>(null);
   const [patientName, setPatientName] = useState("");
+  const patientNameRef = useRef<HTMLInputElement>(null);
   const [patientPhone, setPatientPhone] = useState("");
   const [patientAge, setPatientAge] = useState("");
   const [patientGender, setPatientGender] = useState("");
@@ -42,6 +48,8 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
   const [doctorName, setDoctorName] = useState("");
   const [description, setDescription] = useState("");
   const [lines, setLines] = useState<OpdBillLine[]>([]);
+  const [discountValue, setDiscountValue] = useState("");
+  const [discountUnit, setDiscountUnit] = useState<DiscountUnit>("percent");
   const [createdAt, setCreatedAt] = useState<string | null>(null);
   const [nowTick, setNowTick] = useState(() => Date.now());
 
@@ -81,6 +89,8 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
     setDoctorName("");
     setDescription("");
     setLines([]);
+    setDiscountValue("");
+    setDiscountUnit("percent");
     setCreatedAt(null);
     setError(null);
     setOkMsg(null);
@@ -110,6 +120,9 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
           line_total_mmk: l.qty * l.unit_price_mmk,
         })),
       );
+      const discount = discountFieldsFromBill(b.discount_value, b.discount_unit);
+      setDiscountValue(discount.value);
+      setDiscountUnit(discount.unit);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Open failed");
     } finally {
@@ -128,6 +141,7 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
       doctor_name: doctorName.trim(),
       description: description.trim(),
       save_patient: true,
+      ...discountWrite(discountValue, discountUnit),
       lines: lines.map((l, i) => {
         const qty = Math.max(1, Math.floor(Number(l.qty)) || 1);
         return {
@@ -151,6 +165,8 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
     patient_id?: number | null;
     created_at: string;
     lines?: OpdBillLine[];
+    discount_value?: number;
+    discount_unit?: string;
   }) {
     setBillId(b.id);
     setBillNo(b.bill_no);
@@ -163,6 +179,9 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
         line_total_mmk: l.qty * l.unit_price_mmk,
       })),
     );
+    const discount = discountFieldsFromBill(b.discount_value, b.discount_unit);
+    setDiscountValue(discount.value);
+    setDiscountUnit(discount.unit);
   }
 
   function pickDoctor(d: OpdDoctor) {
@@ -187,8 +206,17 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
   }
 
   async function saveDraft(): Promise<number | null> {
+    if (!patientName.trim()) {
+      const el = patientNameRef.current;
+      if (el && !el.disabled) {
+        if (patientName !== "") setPatientName("");
+        if (el.value !== "") el.value = "";
+        el.reportValidity();
+        return null;
+      }
+      throw new Error(userMessage("Patient name required"));
+    }
     const body = buildBody();
-    if (!body.patient_name) throw new Error(userMessage("Patient name required"));
     const b = billId ? await updateOpdBill(billId, body) : await createOpdBill(body);
     applySavedBill(b);
     setOkMsg(`${t("saved")} ${b.bill_no}`);
@@ -231,7 +259,7 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
       }
       if (lines.length === 0) throw new Error(userMessage("Add at least one line"));
       id = await saveDraft();
-      if (id == null) throw new Error(userMessage("Save failed"));
+      if (id == null) return;
       const paid = await payOpdBill(id);
       applySavedBill(paid);
       setOkMsg(t("paidReceiptReady").replace("{bill}", paid.bill_no));
@@ -385,7 +413,7 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
     return () => window.removeEventListener("keydown", onKey);
     // Intentional: handlers close over latest state each render.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- shortcut wiring
-  }, [dialog, busy, isDraft, billId, billStatus, billNo, lines, patientName]);
+  }, [dialog, busy, isDraft, billId, billStatus, billNo, lines, patientName, discountValue, discountUnit]);
 
   const displayWhen = formatDisplayWhen(createdAt, nowTick);
 
@@ -410,7 +438,12 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
         error={error}
         okMsg={okMsg}
         isDraft={isDraft}
+        discountValue={discountValue}
+        discountUnit={discountUnit}
+        onDiscountValue={setDiscountValue}
+        onDiscountUnit={setDiscountUnit}
         onDismissError={() => setError(null)}
+        patientNameRef={patientNameRef}
         onPatientName={setPatientName}
         onPatientPhone={setPatientPhone}
         onPatientAge={setPatientAge}

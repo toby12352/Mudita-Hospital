@@ -8,7 +8,11 @@ export type ActionIconName =
   | "undo"
   | "check"
   | "print"
-  | "transfer";
+  | "transfer"
+  | "box"
+  | "clipboard"
+  | "sliders"
+  | "chevron";
 
 /** 16px stroke icon for clinic action buttons. Color follows the button. */
 export function ActionIcon({ name }: { name: ActionIconName }) {
@@ -88,5 +92,33 @@ function paths(name: ActionIconName) {
           <path {...stroke} d="M7.25 7.75L4.25 10.5 7.25 13.25" />
         </>
       );
+    case "box":
+      return (
+        <>
+          <path {...stroke} d="M2.75 5.25L8 2.75l5.25 2.5v5.5L8 13.25 2.75 10.75z" />
+          <path {...stroke} d="M2.75 5.25L8 7.75l5.25-2.5M8 7.75V13.25" />
+        </>
+      );
+    case "clipboard":
+      return (
+        <>
+          <path {...stroke} d="M5.5 3.25h5v1.5h-5z" />
+          <path {...stroke} d="M4.25 4.75h7.5v8.5h-7.5z" />
+          <path {...stroke} d="M6 8h4M6 10.25h4" />
+        </>
+      );
+    case "sliders":
+      return (
+        <>
+          <path {...stroke} d="M2.25 4h4M9.75 4h4" />
+          <path {...stroke} d="M8 2.25v3.5" />
+          <path {...stroke} d="M2.25 8h6.5M12.25 8h1.5" />
+          <path {...stroke} d="M10.5 6.25v3.5" />
+          <path {...stroke} d="M2.25 12h1.5M7.25 12h6.5" />
+          <path {...stroke} d="M5.5 10.25v3.5" />
+        </>
+      );
+    case "chevron":
+      return <path {...stroke} d="M4 6.25 8 10.25 12 6.25" />;
   }
 }

@@ -20,7 +20,7 @@ import {
   storeSession,
   type User,
 } from "./auth";
-import { ServerBadge, type ConnState } from "./components/layout/ServerBadge";
+import { type ConnState } from "./components/layout/ServerBadge";
 import { Sidebar } from "./components/layout/Sidebar";
 import { WorkspaceHeader } from "./components/layout/WorkspaceHeader";
 import { userMessage } from "./errors";
@@ -239,14 +239,17 @@ function App() {
   if (!user) {
     return (
       <AuthFrame title={t("signIn")} lede={t("offlineLan")}>
-        <LanguageSwitcher locale={locale} onChange={setLocale} t={t} />
-        <ServerBadge
-          conn={conn}
-          detail={detail}
-          onChangeServer={openServerSetup}
-          onRetry={() => setApiEpoch((n) => n + 1)}
-          t={t}
-        />
+        <div className="auth-toolbar">
+          <LanguageSwitcher locale={locale} onChange={setLocale} t={t} />
+          <button
+            type="button"
+            className="btn ghost server-ip-btn"
+            onClick={openServerSetup}
+          >
+            <span className={`status-dot status-dot-inline status-${conn}`} aria-hidden="true" />
+            {t("serverIp")}
+          </button>
+        </div>
         <LoginForm
           onSubmit={handleLogin}
           error={authError}

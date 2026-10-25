@@ -42,6 +42,9 @@ type opdBill struct {
 	Description     string        `json:"description"`
 	Status          string        `json:"status"`
 	TotalMMK        int64         `json:"total_mmk"`
+	DiscountValue   int64         `json:"discount_value"`
+	DiscountUnit    string        `json:"discount_unit"`
+	DiscountMMK     int64         `json:"discount_mmk"`
 	PaidAt          *string       `json:"paid_at,omitempty"`
 	PaidByUserID    *int64        `json:"paid_by_user_id,omitempty"`
 	VoidedAt        *string       `json:"voided_at,omitempty"`
@@ -63,6 +66,8 @@ type opdBillWriteRequest struct {
 	Description     string        `json:"description"`
 	Lines           []opdBillLine `json:"lines"`
 	SavePatient     bool          `json:"save_patient"`
+	DiscountValue   int64         `json:"discount_value"`
+	DiscountUnit    string        `json:"discount_unit"`
 }
 
 type voidRequest struct {
@@ -274,7 +279,8 @@ func (h *OPD) listBills(w http.ResponseWriter, r *http.Request) {
 	query := `
 		SELECT id, bill_no, patient_id, patient_name, patient_phone, patient_age_years, patient_gender,
 			doctor_id, doctor_name, description, status, total_mmk, paid_at, paid_by_user_id,
-			voided_at, voided_by_user_id, void_reason, created_by_user_id, created_at, updated_at
+			voided_at, voided_by_user_id, void_reason, created_by_user_id, created_at, updated_at,
+			discount_value, discount_unit, discount_mmk
 		FROM opd_bills
 	`
 	args := make([]any, 0)
@@ -341,6 +347,11 @@ func (h *OPD) createBill(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": errMsg})
 		return
 	}
+	discountMMK, net, discountUnit, errMsg := applyBillDiscount(total, req.DiscountValue, req.DiscountUnit)
+	if errMsg != "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": errMsg})
+		return
+	}
 
 	var patientID *int64
 	if req.SavePatient {
@@ -362,11 +373,12 @@ func (h *OPD) createBill(w http.ResponseWriter, r *http.Request) {
 	res, err := tx.Exec(`
 		INSERT INTO opd_bills (
 			bill_no, patient_id, patient_name, patient_phone, patient_age_years, patient_gender,
-			doctor_id, doctor_name, description, status, total_mmk, created_by_user_id
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)
+			doctor_id, doctor_name, description, status, total_mmk, created_by_user_id,
+			discount_value, discount_unit, discount_mmk
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?)
 	`, billNo, patientID, req.PatientName, strings.TrimSpace(req.PatientPhone), req.PatientAgeYears,
 		strings.TrimSpace(req.PatientGender), doctorID, doctorName, strings.TrimSpace(req.Description),
-		total, uid)
+		net, uid, req.DiscountValue, discountUnit, discountMMK)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "create failed"})
 		return
@@ -382,7 +394,7 @@ func (h *OPD) createBill(w http.ResponseWriter, r *http.Request) {
 	}
 
 	audit.WriteAudit(h.DB, &uid, "create", "opd_bill", &billID, map[string]any{
-		"bill_no": billNo, "total_mmk": total,
+		"bill_no": billNo, "total_mmk": net, "discount_mmk": discountMMK,
 	})
 
 	bill, err := loadOpdBill(h.DB, billID)
@@ -461,6 +473,11 @@ func (h *OPD) updateBill(w http.ResponseWriter, r *http.Request, path string) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": errMsg})
 		return
 	}
+	discountMMK, net, discountUnit, errMsg := applyBillDiscount(total, req.DiscountValue, req.DiscountUnit)
+	if errMsg != "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": errMsg})
+		return
+	}
 
 	var patientID *int64
 	if req.SavePatient {
@@ -475,11 +492,12 @@ func (h *OPD) updateBill(w http.ResponseWriter, r *http.Request, path string) {
 	if _, err := tx.Exec(`
 		UPDATE opd_bills SET
 			patient_id = ?, patient_name = ?, patient_phone = ?, patient_age_years = ?, patient_gender = ?,
-			doctor_id = ?, doctor_name = ?, description = ?, total_mmk = ?, updated_at = datetime('now')
+			doctor_id = ?, doctor_name = ?, description = ?, total_mmk = ?,
+			discount_value = ?, discount_unit = ?, discount_mmk = ?, updated_at = datetime('now')
 		WHERE id = ?
 	`, patientID, req.PatientName, strings.TrimSpace(req.PatientPhone), req.PatientAgeYears,
 		strings.TrimSpace(req.PatientGender), doctorID, doctorName, strings.TrimSpace(req.Description),
-		total, id); err != nil {
+		net, req.DiscountValue, discountUnit, discountMMK, id); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "update failed"})
 		return
 	}
@@ -497,7 +515,9 @@ func (h *OPD) updateBill(w http.ResponseWriter, r *http.Request, path string) {
 	}
 
 	uid := user.ID
-	audit.WriteAudit(h.DB, &uid, "update", "opd_bill", &id, map[string]any{"total_mmk": total})
+	audit.WriteAudit(h.DB, &uid, "update", "opd_bill", &id, map[string]any{
+		"total_mmk": net, "discount_mmk": discountMMK,
+	})
 
 	bill, err := loadOpdBill(h.DB, id)
 	if err != nil {
@@ -974,7 +994,8 @@ func loadOpdBill(db *sql.DB, id int64) (opdBill, error) {
 	row := db.QueryRow(`
 		SELECT id, bill_no, patient_id, patient_name, patient_phone, patient_age_years, patient_gender,
 			doctor_id, doctor_name, description, status, total_mmk, paid_at, paid_by_user_id,
-			voided_at, voided_by_user_id, void_reason, created_by_user_id, created_at, updated_at
+			voided_at, voided_by_user_id, void_reason, created_by_user_id, created_at, updated_at,
+			discount_value, discount_unit, discount_mmk
 		FROM opd_bills WHERE id = ?
 	`, id)
 	b, err := scanOpdBill(row)
@@ -1018,6 +1039,7 @@ func scanOpdBill(row scannable) (opdBill, error) {
 		&b.ID, &b.BillNo, &patientID, &b.PatientName, &b.PatientPhone, &age, &b.PatientGender,
 		&doctorID, &b.DoctorName, &b.Description, &b.Status, &b.TotalMMK, &paidAt, &paidBy,
 		&voidedAt, &voidedBy, &b.VoidReason, &createdBy, &b.CreatedAt, &b.UpdatedAt,
+		&b.DiscountValue, &b.DiscountUnit, &b.DiscountMMK,
 	)
 	if err != nil {
 		return b, err
@@ -1073,19 +1095,24 @@ func renderBillHTML(hosp *hospitalSettings, bill opdBill) string {
 		})
 	}
 	return renderThermalReceiptHTML(hosp, receiptBill{
-		Title:         "OPD RECEIPT",
-		BillNo:        bill.BillNo,
-		Status:        bill.Status,
-		PatientName:   bill.PatientName,
-		PatientPhone:  bill.PatientPhone,
-		PatientAge:    bill.PatientAgeYears,
-		PatientGender: bill.PatientGender,
-		DoctorName:    bill.DoctorName,
-		Note:          bill.Description,
-		DateLabel:     dateLabel,
-		TotalMMK:      bill.TotalMMK,
-		VoidReason:    bill.VoidReason,
-		Lines:         lines,
+		Title:          "OPD RECEIPT",
+		BillNo:         bill.BillNo,
+		Status:         bill.Status,
+		PatientName:    bill.PatientName,
+		PatientPhone:   bill.PatientPhone,
+		PatientAge:     bill.PatientAgeYears,
+		PatientGender:  bill.PatientGender,
+		DoctorName:     bill.DoctorName,
+		Note:           bill.Description,
+		DateLabel:      dateLabel,
+		TotalMMK:       bill.TotalMMK + bill.DiscountMMK,
+		NetMMK:         bill.TotalMMK,
+		ShowSettlement: true,
+		DiscountMMK:    bill.DiscountMMK,
+		DiscountValue:  bill.DiscountValue,
+		DiscountUnit:   bill.DiscountUnit,
+		VoidReason:     bill.VoidReason,
+		Lines:          lines,
 	})
 }
 

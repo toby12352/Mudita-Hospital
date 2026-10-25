@@ -643,13 +643,8 @@ func (h *Pharmacy) restock(w http.ResponseWriter, r *http.Request, path string) 
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
-	if req.Qty <= 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "qty must be > 0"})
-		return
-	}
-	batchNo, expiry, reqErr := optionalBatchIdentity(req.BatchNo, req.ExpiryDate)
-	if reqErr != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": reqErr.Error()})
+	if req.Qty < 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "qty must be >= 0"})
 		return
 	}
 
@@ -667,10 +662,23 @@ func (h *Pharmacy) restock(w http.ResponseWriter, r *http.Request, path string) 
 		return
 	}
 
-	stockQty, auditUnit, convErr := restockStockQty(existing, req.Qty, req.QtyUnit)
-	if convErr != "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": convErr})
-		return
+	var batchNo string
+	var expiry *string
+	var stockQty int64
+	var auditUnit string
+	if req.Qty > 0 {
+		var reqErr error
+		batchNo, expiry, reqErr = optionalBatchIdentity(req.BatchNo, req.ExpiryDate)
+		if reqErr != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": reqErr.Error()})
+			return
+		}
+		var convErr string
+		stockQty, auditUnit, convErr = restockStockQty(existing, req.Qty, req.QtyUnit)
+		if convErr != "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": convErr})
+			return
+		}
 	}
 
 	tx, err := h.DB.Begin()
@@ -704,20 +712,23 @@ func (h *Pharmacy) restock(w http.ResponseWriter, r *http.Request, path string) 
 		}
 	}
 
-	batchID, err := findOrCreateBatch(tx, id, "MAIN", batchNo, expiry, stockQty)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "batch failed"})
-		return
-	}
-
 	user := middleware.UserFromContext(r.Context())
 	uid := user.ID
-	if _, err := tx.Exec(`
-		INSERT INTO stock_movements (item_id, batch_id, location_code, movement_type, qty_delta, reason, actor_user_id)
-		VALUES (?, ?, 'MAIN', 'PURCHASE', ?, 'Restock', ?)
-	`, id, batchID, stockQty, uid); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "movement failed"})
-		return
+	var batchID int64
+	if req.Qty > 0 {
+		var batchErr error
+		batchID, batchErr = findOrCreateBatch(tx, id, "MAIN", batchNo, expiry, stockQty)
+		if batchErr != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "batch failed"})
+			return
+		}
+		if _, err := tx.Exec(`
+			INSERT INTO stock_movements (item_id, batch_id, location_code, movement_type, qty_delta, reason, actor_user_id)
+			VALUES (?, ?, 'MAIN', 'PURCHASE', ?, 'Restock', ?)
+		`, id, batchID, stockQty, uid); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "movement failed"})
+			return
+		}
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -725,10 +736,17 @@ func (h *Pharmacy) restock(w http.ResponseWriter, r *http.Request, path string) 
 		return
 	}
 
-	audit.WriteAudit(h.DB, &uid, "restock", "item", &id, map[string]any{
-		"qty": stockQty, "qty_entered": req.Qty, "qty_unit": auditUnit,
-		"batch_id": batchID, "batch_no": batchNo, "expiry_date": expiry,
-	})
+	if req.Qty > 0 {
+		audit.WriteAudit(h.DB, &uid, "restock", "item", &id, map[string]any{
+			"qty": stockQty, "qty_entered": req.Qty, "qty_unit": auditUnit,
+			"batch_id": batchID, "batch_no": batchNo, "expiry_date": expiry,
+		})
+	} else {
+		audit.WriteAudit(h.DB, &uid, "restock", "item", &id, map[string]any{
+			"qty": 0, "price_only": true,
+			"buy_price_mmk": buy, "sell_price_mmk": sell,
+		})
+	}
 
 	item, err := loadPharmacyItem(h.DB, id, true)
 	if err != nil {

@@ -116,7 +116,14 @@ export function lineChargeFromPack(
 ): { total: number; charge: number; error?: string } {
   const { total, error } = totalTablets(boxQty, stripQty, tabletQty, stripsPerBox, tabsPerStrip);
   if (error) return { total: 0, charge: 0, error };
-  return { total, charge: total * (sellPerTablet || 0) };
+  const sell = Math.max(0, sellPerTablet || 0);
+  const q2 = Math.max(1, stripsPerBox || 1);
+  const q3 = Math.max(1, tabsPerStrip || 1);
+  const charge =
+    Math.max(0, boxQty || 0) * roundPayableMMK(sell * q2 * q3) +
+    Math.max(0, stripQty || 0) * roundPayableMMK(sell * q3) +
+    Math.max(0, tabletQty || 0) * roundPayableMMK(sell);
+  return { total, charge };
 }
 
 function shortUnit(unit: string): string {
@@ -284,6 +291,89 @@ function roundHalfUp(n: number): number {
 }
 
 /**
+ * Snap an amount to the nearest multiple of 50 kyat (Myanmar cash notes).
+ * Halfway (remainder 25) rounds up. Positive amounts that would round to 0
+ * become 50 so a real price never collapses to free.
+ */
+export function roundPayableMMK(n: number): number {
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  const step = 50;
+  const rem = n % step;
+  let out = rem >= 25 ? n - rem + step : n - rem;
+  if (out === 0) return step;
+  return out;
+}
+
+/** Smallest units inside one of each visible pack unit. e.g. Box×2 Card×10 Tablet → [20, 10, 1]. */
+export function unitFactors(levels: PackLevels): number[] {
+  const n = levels.units.length;
+  if (n === 0) return [];
+  const factors = new Array<number>(n);
+  let factor = 1;
+  for (let i = n - 1; i >= 0; i--) {
+    factors[i] = factor;
+    if (i > 0) factor *= Math.max(1, levels.qtys[i - 1] || 1);
+  }
+  return factors;
+}
+
+/**
+ * Spread a price typed at one unit across every visible unit.
+ * The typed unit keeps the integer entered; others round half-up.
+ */
+export function pricesFromUnit(levels: PackLevels, unitIndex: number, price: number): number[] {
+  const factors = unitFactors(levels);
+  if (factors.length === 0) return [];
+  const anchor = Math.max(0, Math.min(unitIndex, factors.length - 1));
+  const anchorFactor = Math.max(1, factors[anchor] || 1);
+  const p = Math.max(0, price || 0);
+  return factors.map((f, i) =>
+    i === anchor ? roundHalfUp(p) : roundHalfUp((p * f) / anchorFactor),
+  );
+}
+
+/** Sale per smallest unit from outer buy and a markup percent (sale = purchase + %). */
+export function sellSmallestFromMarkup(
+  buyOuter: number,
+  unitsPerOuter: number,
+  percent: number,
+): number {
+  const units = Math.max(1, unitsPerOuter || 1);
+  const buy = Math.max(0, buyOuter || 0);
+  const pct = Math.max(0, percent || 0);
+  return roundHalfUp((buy / units) * (100 + pct) / 100);
+}
+
+/** Keep sale ratio when buy changes and markup % is empty. */
+export function scaleSellSmallest(
+  oldBuyOuter: number,
+  newBuyOuter: number,
+  oldSellSmallest: number,
+): number {
+  const oldBuy = Math.max(0, oldBuyOuter || 0);
+  const newBuy = Math.max(0, newBuyOuter || 0);
+  const oldSell = Math.max(0, oldSellSmallest || 0);
+  if (oldBuy <= 0 || oldSell <= 0) return oldSell;
+  return roundHalfUp((oldSell * newBuy) / oldBuy);
+}
+
+/**
+ * Whole markup percent when (sellOuter / buyOuter − 1) × 100 is within 0.05 of an integer.
+ * Otherwise null so a rounded price is not shown as a fake percent.
+ */
+export function impliedMarkupPercent(buyOuter: number, sellOuter: number): number | null {
+  const buy = Math.max(0, buyOuter || 0);
+  const sell = Math.max(0, sellOuter || 0);
+  if (buy <= 0) return null;
+  const raw = (sell / buy - 1) * 100;
+  if (raw < -0.05) return null;
+  const nearest = Math.round(raw);
+  if (nearest < 0) return null;
+  if (Math.abs(raw - nearest) > 0.05) return null;
+  return nearest;
+}
+
+/**
  * Price rows for each visible unit.
  * buyOuter / sellOuter are prices for the outermost unit; children divide by packing qty.
  * When editing from stored sell_per_smallest, pass sellOuter = sell_per_smallest * unitsPerOuter.
@@ -297,7 +387,11 @@ export function packPriceSlots(
   const slots: PackPriceSlot[] = [];
   let buy = Math.max(0, buyOuter || 0);
   let sell = Math.max(0, sellOuter || 0);
-  slots.push({ unit: levels.units[0], buy_mmk: roundHalfUp(buy), sell_mmk: roundHalfUp(sell) });
+  slots.push({
+    unit: levels.units[0],
+    buy_mmk: roundHalfUp(buy),
+    sell_mmk: roundPayableMMK(roundHalfUp(sell)),
+  });
   for (let i = 0; i < levels.qtys.length; i++) {
     const q = Math.max(1, levels.qtys[i]);
     buy = buy / q;
@@ -305,7 +399,7 @@ export function packPriceSlots(
     slots.push({
       unit: levels.units[i + 1],
       buy_mmk: roundHalfUp(buy),
-      sell_mmk: roundHalfUp(sell),
+      sell_mmk: roundPayableMMK(roundHalfUp(sell)),
     });
   }
   return slots;
@@ -367,7 +461,7 @@ export function saleUnitsFromPack(pack: ItemPack, sellPerSmallest: number): Sale
     id: unit,
     label: unit,
     factor: factors[i] ?? 1,
-    price_mmk: sell * (factors[i] ?? 1),
+    price_mmk: roundPayableMMK(sell * (factors[i] ?? 1)),
     slot: slots[i] ?? "tablet",
   }));
 }
@@ -418,7 +512,7 @@ export function pharmacyLineSaleView(line: {
     qty: line.billing_qty,
     unitId: null as string | null,
     units: [] as SaleUnit[],
-    priceMmk: line.unit_price_mmk,
+    priceMmk: roundPayableMMK(line.unit_price_mmk),
     locked: slots.length > 1,
   };
   if (slots.length !== 1) return smallest;
@@ -698,6 +792,9 @@ export type PharmacyBill = {
   description: string;
   status: string;
   total_mmk: number;
+  discount_value?: number;
+  discount_unit?: "percent" | "mmk" | string;
+  discount_mmk?: number;
   paid_at?: string | null;
   void_reason?: string;
   created_at: string;

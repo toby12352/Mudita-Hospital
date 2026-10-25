@@ -67,6 +67,8 @@ func main() {
 	mux.Handle("/api/doctors/", &handlers.Doctors{DB: sqlDB})
 	mux.Handle("/api/services", &handlers.Services{DB: sqlDB})
 	mux.Handle("/api/services/", &handlers.Services{DB: sqlDB})
+	mux.Handle("/api/service-categories", &handlers.ServiceCategories{DB: sqlDB})
+	mux.Handle("/api/service-categories/", &handlers.ServiceCategories{DB: sqlDB})
 	mux.Handle("/api/users", &handlers.Users{DB: sqlDB})
 	mux.Handle("/api/users/", &handlers.Users{DB: sqlDB})
 	// Pharmacy inventory (Admin + Pharmacy)

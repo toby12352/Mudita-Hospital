@@ -42,7 +42,7 @@ export function cheatSheetHTML(): string {
       <li><strong>Save draft (F5)</strong> = unpaid bill. <strong>Pay &amp; print (F7)</strong> = save + mark paid + receipt preview.</li>
       <li class="my">မူကြမ်းသိမ်း (F5) = မပေးရသေး။ ပေးပြီး ပရင့် (F7) = သိမ်း + ပေးပြီးမှတ် + ပြေစာ။</li>
       <li><strong>History (F9)</strong> · <strong>V.Delete (^F8)</strong> void with reason · <strong>Cancel (F10)</strong> clears form · <strong>New bill (F2)</strong> next patient.</li>
-      <li>First receipt: printer <strong>EPSON TM-T82 Receipt</strong>, paper <strong>80 mm</strong>.</li>
+      <li>Admin sets the default printer once under <strong>Settings → Hospital</strong>. Receipts print on that printer with no Windows dialog. Set the EPSON roll to <strong>80 mm</strong> in Windows printer preferences.</li>
     </ul>
   </section>
   <section>

@@ -1,0 +1,32 @@
+---
+description: Live production hospital — upgrade-safe schema, data, and installer rules
+alwaysApply: true
+---
+
+# Live production hospital
+
+This is **live hospital software** with real clinical, pharmacy, billing, and financial data. Every change is a production upgrade. Never assume `mudita.db` is empty.
+
+Full policy: `docs/standards/UPGRADES.md`
+
+## Before schema, installer, billing, or inventory work
+
+Answer all seven. If any answer is unknown, stop and investigate.
+
+1. What existing structures are affected?
+2. Is a database migration required?
+3. Will existing production data remain compatible?
+4. Will existing backups still be restorable?
+5. Will `install-server.ps1` safely upgrade existing installations?
+6. What happens if the migration fails?
+7. How will the change be tested (isolated copy, never the live hospital DB)?
+
+Do not claim an upgrade is production-safe without an isolated-database test. Do not run a production migration or live deploy without explicit authorization.
+
+## Forbidden without an explicit safe migration
+
+- Drop tables; delete rows to fit a feature
+- Rename or retype columns; add `NOT NULL` without a default or backfill
+- Reset IDs / sequences; recreate or overwrite `data\mudita.db`
+- Seed over production catalogs, stock, or bills
+- Recalculate historical bills; reset stock quantities; duplicate stock movements

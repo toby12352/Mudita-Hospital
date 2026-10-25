@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { SettingsTab } from "@/app/types";
 import { BackupTab } from "./BackupTab";
+import { CategoriesTab } from "./CategoriesTab";
 import { DoctorsTab } from "./DoctorsTab";
 import { HospitalTab } from "./HospitalTab";
 import { ServicesTab } from "./ServicesTab";
@@ -25,6 +26,7 @@ export function SettingsPage({
             { id: "hospital" as const, label: t("hospital") },
             { id: "doctors" as const, label: t("doctors") },
             { id: "services" as const, label: t("services") },
+            { id: "categories" as const, label: t("categories") },
             ...(canManageUsers ? [{ id: "users" as const, label: t("users") }] : []),
             { id: "backup" as const, label: t("backup") },
             { id: "training" as const, label: t("training") },
@@ -43,6 +45,7 @@ export function SettingsPage({
       {tab === "hospital" ? <HospitalTab /> : null}
       {tab === "doctors" ? <DoctorsTab /> : null}
       {tab === "services" ? <ServicesTab /> : null}
+      {tab === "categories" ? <CategoriesTab /> : null}
       {tab === "users" && canManageUsers ? <UsersTab /> : null}
       {tab === "backup" ? <BackupTab /> : null}
       {tab === "training" ? <TrainingTab t={t} /> : null}

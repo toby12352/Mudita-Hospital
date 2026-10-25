@@ -408,7 +408,7 @@ func TestVoidOTBillAllowsRebill(t *testing.T) {
 	`, doctorID); err != nil {
 		t.Fatal(err)
 	}
-	res, err = sqlDB.Exec(`INSERT INTO services (code, name, price_mmk) VALUES ('OTSVC', 'OT dressing', 4000)`)
+	res, err = sqlDB.Exec(`INSERT INTO ot_services (code, name, price_mmk) VALUES ('OTSVC', 'OT dressing', 4000)`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -466,7 +466,7 @@ func TestVoidOTBillAllowsRebill(t *testing.T) {
 		t.Fatal(err)
 	}
 	w = doJSON(h, http.MethodPost, fmt.Sprintf("/api/ot/cases/%d/bill", caseID), token, fmt.Sprintf(`{
-		"services": [{"line_type":"service","ref_id":%d,"description":"hack","qty":2,"unit_price_mmk":1}]
+		"services": [{"line_type":"service","ref_id":%d,"description":"hack","qty":2,"unit_price_mmk":4000}]
 	}`, serviceID))
 	mustCode(t, w, http.StatusCreated)
 	var bill otBill
@@ -476,8 +476,8 @@ func TestVoidOTBillAllowsRebill(t *testing.T) {
 	if bill.ID == oldBillID {
 		t.Fatal("second bill reused the voided id")
 	}
-	if bill.TotalMMK != 1800+12000+8000 {
-		t.Fatalf("total %d, want catalog item 1800 + OT fee 12000 + service 8000", bill.TotalMMK)
+	if bill.TotalMMK != 1800+12000+4000 {
+		t.Fatalf("total %d, want catalog item 1800 + OT fee 12000 + service 4000", bill.TotalMMK)
 	}
 	var sawItem, sawFee, sawService bool
 	for _, l := range bill.Lines {
@@ -487,7 +487,7 @@ func TestVoidOTBillAllowsRebill(t *testing.T) {
 		case "ot_fee":
 			sawFee = l.UnitPriceMMK == 12000 && l.Qty == 1
 		case "service":
-			sawService = l.UnitPriceMMK == 4000 && l.Qty == 2 && l.Code == "OTSVC"
+			sawService = l.UnitPriceMMK == 4000 && l.Qty == 1 && l.Code == "OTSVC"
 		}
 	}
 	if !sawItem || !sawFee || !sawService {
@@ -603,6 +603,20 @@ func TestBatchIdentityAndBlankExpiry(t *testing.T) {
 		// units_per_purchase is 10: three qty-2 receipts (60) plus one qty-1 receipt (10).
 		if mainQty(t, sqlDB, itemID) != 75 {
 			t.Fatalf("restock qty %d, want 75", mainQty(t, sqlDB, itemID))
+		}
+
+		w = doJSON(h, http.MethodPost, fmt.Sprintf("/api/pharmacy/items/%d/restock", itemID), token,
+			`{"qty":0,"buy_price_mmk":120,"sell_price_mmk":60}`)
+		mustCode(t, w, http.StatusOK)
+		if mainQty(t, sqlDB, itemID) != 75 {
+			t.Fatalf("price-only restock changed qty to %d", mainQty(t, sqlDB, itemID))
+		}
+		var buy, sell int64
+		if err := sqlDB.QueryRow(`SELECT buy_price_mmk, sell_price_mmk FROM items WHERE id = ?`, itemID).Scan(&buy, &sell); err != nil {
+			t.Fatal(err)
+		}
+		if buy != 120 || sell != 60 {
+			t.Fatalf("price-only restock prices %d/%d, want 120/60", buy, sell)
 		}
 
 		w = doJSON(h, http.MethodPost, "/api/pharmacy/items", token,

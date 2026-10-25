@@ -1,8 +1,11 @@
+import type { Ref } from "react";
 import type { OpdBillLine, OpdDoctor, OpdService } from "@/features/opd/api";
 import { ActionIcon } from "@/shared/ActionIcon";
 import { AlertDialog } from "@/shared/AlertDialog";
 import { BillLineGrid, createBillLineEntry } from "@/shared/BillLineGrid";
 import { BillCollectNote, BillPayPrintButton, moneyStatusLabel } from "@/shared/BillPayPrint";
+import { BillTotals } from "@/shared/BillTotals";
+import { discountKyats, type DiscountUnit } from "@/shared/discount";
 import { formatMMK } from "@/shared/format";
 import { Typeahead } from "@/shared/Typeahead";
 import { useI18n } from "@/shared/i18n";
@@ -26,8 +29,13 @@ type Props = {
   error: string | null;
   okMsg: string | null;
   isDraft: boolean;
+  discountValue: string;
+  discountUnit: DiscountUnit;
+  onDiscountValue: (value: string) => void;
+  onDiscountUnit: (unit: DiscountUnit) => void;
   onDismissError: () => void;
   onPatientName: (v: string) => void;
+  patientNameRef?: Ref<HTMLInputElement>;
   onPatientPhone: (v: string) => void;
   onPatientAge: (v: string) => void;
   onPatientGender: (v: string) => void;
@@ -70,11 +78,14 @@ export function OpdBillForm(props: Props) {
     error,
     okMsg,
     isDraft,
+    discountValue,
+    discountUnit,
   } = props;
 
   const total = lines.reduce((s, l) => s + l.qty * l.unit_price_mmk, 0);
-  const paid = billStatus === "paid" ? total : 0;
-  const balance = billStatus === "paid" ? 0 : total;
+  const net = Math.max(0, total - discountKyats(total, discountValue, discountUnit));
+  const paid = billStatus === "paid" ? net : 0;
+  const balance = billStatus === "paid" ? 0 : net;
   const idName =
     patientId != null
       ? `${patientId} / ${patientName}`
@@ -92,10 +103,12 @@ export function OpdBillForm(props: Props) {
             <label className="opd-bill-field">
               <span className="opd-bill-label">{t("idName")}</span>
               <input
+                ref={props.patientNameRef}
                 className="opd-bill-input grow"
                 data-focus="bill-patient"
                 value={isDraft ? patientName : idName}
                 disabled={!isDraft}
+                required={isDraft}
                 onChange={(e) => props.onPatientName(e.target.value)}
                 autoFocus
                 aria-label={t("patientName")}
@@ -112,14 +125,16 @@ export function OpdBillForm(props: Props) {
             </label>
             <label className="opd-bill-field">
               <span className="opd-bill-label">{t("age")}</span>
-              <input
-                className="opd-bill-input opd-bill-input--narrow"
-                value={patientAge}
-                disabled={!isDraft}
-                inputMode="numeric"
-                onChange={(e) => props.onPatientAge(e.target.value)}
-              />
-              <span className="opd-bill-unit">{t("ageYearsShort")}</span>
+              <span className="opd-bill-control">
+                <input
+                  className="opd-bill-input opd-bill-input--narrow"
+                  value={patientAge}
+                  disabled={!isDraft}
+                  inputMode="numeric"
+                  onChange={(e) => props.onPatientAge(e.target.value)}
+                />
+                <span className="opd-bill-unit">{t("ageYearsShort")}</span>
+              </span>
             </label>
             <label className="opd-bill-field">
               <span className="opd-bill-label">{t("gender")}</span>
@@ -137,48 +152,50 @@ export function OpdBillForm(props: Props) {
             </label>
             <div className="opd-bill-field opd-bill-field--typeahead">
               <span className="opd-bill-label">{t("doctor")}</span>
-              <Typeahead
-                value={doctorName}
-                disabled={!isDraft}
-                placeholder={t("doctorPlaceholder")}
-                onChange={(v) => {
-                  props.onDoctorName(v);
-                  props.onClearDoctorId();
-                }}
-                loadSuggestions={async (term) => {
-                  const q = term.trim().toLowerCase();
-                  if (!q) return doctors.slice(0, 8);
-                  return doctors
-                    .filter(
-                      (d) =>
-                        d.name.toLowerCase().includes(q) ||
-                        (d.specialty || "").toLowerCase().includes(q),
-                    )
-                    .slice(0, 8);
-                }}
-                getKey={(d) => d.id}
-                renderOption={(d) => (
-                  <>
-                    <span className="typeahead-title">{d.name}</span>
-                    <span className="typeahead-sub">
-                      {d.specialty || t("general")} · {t("consultAbbrev")}{" "}
-                      {formatMMK(d.consultation_mmk)} {t("mmk")}
-                    </span>
-                  </>
-                )}
-                onPick={props.onPickDoctor}
-              />
-              {isDraft ? (
-                <button
-                  type="button"
-                  className="btn action opd-bill-consult"
-                  onClick={props.onAddConsultation}
-                  disabled={!doctorId}
-                >
-                  <ActionIcon name="plus" />
-                  {t("addConsultation")}
-                </button>
-              ) : null}
+              <div className="opd-bill-control">
+                <Typeahead
+                  value={doctorName}
+                  disabled={!isDraft}
+                  placeholder={t("doctorPlaceholder")}
+                  onChange={(v) => {
+                    props.onDoctorName(v);
+                    props.onClearDoctorId();
+                  }}
+                  loadSuggestions={async (term) => {
+                    const q = term.trim().toLowerCase();
+                    if (!q) return doctors.slice(0, 8);
+                    return doctors
+                      .filter(
+                        (d) =>
+                          d.name.toLowerCase().includes(q) ||
+                          (d.specialty || "").toLowerCase().includes(q),
+                      )
+                      .slice(0, 8);
+                  }}
+                  getKey={(d) => d.id}
+                  renderOption={(d) => (
+                    <>
+                      <span className="typeahead-title">{d.name}</span>
+                      <span className="typeahead-sub">
+                        {d.specialty || t("general")} · {t("consultAbbrev")}{" "}
+                        {formatMMK(d.consultation_mmk)} {t("mmk")}
+                      </span>
+                    </>
+                  )}
+                  onPick={props.onPickDoctor}
+                />
+                {isDraft ? (
+                  <button
+                    type="button"
+                    className="btn action opd-bill-consult"
+                    onClick={props.onAddConsultation}
+                    disabled={!doctorId}
+                  >
+                    <ActionIcon name="plus" />
+                    {t("addConsultation")}
+                  </button>
+                ) : null}
+              </div>
             </div>
             <label className="opd-bill-field">
               <span className="opd-bill-label">{t("remark")}</span>
@@ -254,7 +271,11 @@ export function OpdBillForm(props: Props) {
                 onCommit: (s, qty) => props.onCommitService(s, qty),
                 onSubmitCode: props.onLookupService,
               },
-              { showUnitColumn: false },
+              {
+                showUnitColumn: false,
+                sourceLabel: t("opdServices"),
+                sourceIcon: "clipboard",
+              },
             ),
           ]}
         />
@@ -266,21 +287,17 @@ export function OpdBillForm(props: Props) {
             </span>
             {!billId ? <span className="opd-bill-new-badge">{t("newBadge")}</span> : null}
           </div>
-          <div className="opd-bill-totals">
-            <div className="opd-bill-total-row">
-              <span>{t("totalLabel")}</span>
-              <span>{formatMMK(total)}</span>
-            </div>
-            <div className="opd-bill-total-row">
-              <span>{t("paid")}</span>
-              <span>{formatMMK(paid)}</span>
-            </div>
-            <div className="opd-bill-total-row opd-bill-total-row--balance">
-              <span>{t("balance")}</span>
-              <span>{formatMMK(balance)}</span>
-            </div>
-            <BillCollectNote status={billStatus || "draft"} balance={balance} />
-          </div>
+          <BillTotals
+            total={total}
+            paid={paid}
+            balance={balance}
+            discountValue={discountValue}
+            discountUnit={discountUnit}
+            editable={isDraft}
+            onDiscountValue={props.onDiscountValue}
+            onDiscountUnit={props.onDiscountUnit}
+            note={<BillCollectNote status={billStatus || "draft"} balance={balance} />}
+          />
         </div>
 
         {okMsg ? <p className="form-ok">{okMsg}</p> : null}

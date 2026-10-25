@@ -83,7 +83,7 @@ export function ServerSetupForm({
       {error ? <p className="form-error">{error}</p> : null}
       {hint ? <p className="form-ok">{hint}</p> : null}
       <div className="btn-row">
-        <button type="submit" className="btn primary" disabled={busy || !value.trim()}>
+        <button type="submit" className="btn primary" disabled={busy}>
           {busy ? t("testing") : t("saveAndTest")}
         </button>
         {error ? (

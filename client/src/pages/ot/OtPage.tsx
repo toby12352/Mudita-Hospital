@@ -11,6 +11,7 @@ import {
   listOtServices,
   payOtBill,
   printOtBill,
+  updateOtBill,
   updateOtCase,
   voidOtBill,
   type OtBill,
@@ -24,10 +25,18 @@ import {
   formatPackCompact,
   formatPackPreview,
   packFromItem,
+  roundPayableMMK,
   saleUnitsFromPack,
   type SaleUnit,
 } from "@/features/pharmacy/api";
 import { ActionIcon } from "@/shared/ActionIcon";
+import { BillTotals } from "@/shared/BillTotals";
+import {
+  discountFieldsFromBill,
+  discountKyats,
+  discountWrite,
+  type DiscountUnit,
+} from "@/shared/discount";
 import { AlertDialog } from "@/shared/AlertDialog";
 import { BillLineGrid, createBillLineEntry, type BillLineGridRow } from "@/shared/BillLineGrid";
 import { BillCollectNote, BillPayPrintButton, moneyStatusLabel } from "@/shared/BillPayPrint";
@@ -46,7 +55,7 @@ type OtServiceLine = {
   code: string;
   description: string;
   qty: number;
-  unit_price_mmk: number;
+  unit_price_mmk: number | null;
 };
 
 type OtServiceLineFields = Omit<OtServiceLine, "seq">;
@@ -75,6 +84,7 @@ export function OtPage() {
   const [caseNo, setCaseNo] = useState("");
   const [caseStatus, setCaseStatus] = useState("draft");
   const [patientName, setPatientName] = useState("");
+  const patientNameRef = useRef<HTMLInputElement>(null);
   const [patientPhone, setPatientPhone] = useState("");
   const [patientAge, setPatientAge] = useState("");
   const [patientGender, setPatientGender] = useState("");
@@ -95,6 +105,8 @@ export function OtPage() {
   servicesRef.current = services;
 
   const [bill, setBill] = useState<OtBill | null>(null);
+  const [discountValue, setDiscountValue] = useState("");
+  const [discountUnit, setDiscountUnit] = useState<DiscountUnit>("percent");
 
   const isDraft = caseStatus === "draft";
 
@@ -147,6 +159,8 @@ export function OtPage() {
     setServices([]);
     setOtBillId(null);
     setBill(null);
+    setDiscountValue("");
+    setDiscountUnit("percent");
     setCreatedAt(null);
     setError(null);
     setOkMsg(null);
@@ -205,6 +219,11 @@ export function OtPage() {
     refreshOtOnHand(nextItems);
     setOtBillId(c.ot_bill_id ?? null);
     setCreatedAt(c.created_at || null);
+    if (!c.ot_bill_id) {
+      const discount = discountFieldsFromBill(c.discount_value, c.discount_unit);
+      setDiscountValue(discount.value);
+      setDiscountUnit(discount.unit);
+    }
   }
 
   async function openCase(id: number) {
@@ -216,6 +235,9 @@ export function OtPage() {
         const b = await getOtBill(c.ot_bill_id);
         applyCase(c, servicesFromBill(b));
         setBill(b);
+        const discount = discountFieldsFromBill(b.discount_value, b.discount_unit);
+        setDiscountValue(discount.value);
+        setDiscountUnit(discount.unit);
       } else {
         applyCase(c, []);
         setBill(null);
@@ -244,6 +266,7 @@ export function OtPage() {
       doctor_name: doctorName.trim(),
       procedure_name: procedureName.trim(),
       notes: notes.trim(),
+      ...discountWrite(discountValue, discountUnit),
       items: items.map((it) => ({
         item_id: it.item_id,
         code: it.code,
@@ -311,7 +334,7 @@ export function OtPage() {
     setError(null);
   }
 
-  function addOtService(svc: OtService, qty: number) {
+  function addOtService(svc: OtService) {
     const seq = takeSeq();
     setServices((prev) => [
       ...prev,
@@ -320,7 +343,7 @@ export function OtPage() {
         ref_id: svc.id,
         code: svc.code,
         description: svc.name,
-        qty,
+        qty: 1,
         unit_price_mmk: svc.price_mmk,
       },
     ]);
@@ -424,11 +447,21 @@ export function OtPage() {
     setError(null);
   }
 
-  async function saveDraft() {
-    if (!patientName.trim()) {
-      setError("Patient name required");
-      return;
+  function blockMissingPatientName(): boolean {
+    if (patientName.trim()) return false;
+    const el = patientNameRef.current;
+    if (el && !el.disabled) {
+      if (patientName !== "") setPatientName("");
+      if (el.value !== "") el.value = "";
+      el.reportValidity();
+      return true;
     }
+    setError("Patient name required");
+    return true;
+  }
+
+  async function saveDraft() {
+    if (blockMissingPatientName()) return;
     setBusy(true);
     setError(null);
     try {
@@ -444,10 +477,7 @@ export function OtPage() {
   }
 
   async function ensureBillReady(): Promise<OtBill | null> {
-    if (!patientName.trim()) {
-      setError("Patient name required");
-      return null;
-    }
+    if (blockMissingPatientName()) return null;
     const body = buildWrite();
     let id = caseId;
     let status = caseStatus;
@@ -462,22 +492,38 @@ export function OtPage() {
       status = updated.status;
     }
 
-    if (otBillId) {
-      const existing = bill?.id === otBillId ? bill : await getOtBill(otBillId);
-      setBill(existing);
-      return existing;
+    if (otBillId && bill?.id === otBillId && bill.status !== "draft") {
+      return bill;
     }
 
+    if (services.some((s) => s.unit_price_mmk == null)) {
+      setError(t("servicePriceRequired"));
+      return null;
+    }
     const serviceLines = services.map((s) => ({
       line_type: "service" as const,
       ref_id: s.ref_id,
       code: s.code,
       description: s.description,
-      qty: s.qty,
-      unit_price_mmk: s.unit_price_mmk,
-      line_total_mmk: s.qty * s.unit_price_mmk,
+      qty: 1,
+      unit_price_mmk: s.unit_price_mmk as number,
+      line_total_mmk: s.unit_price_mmk as number,
     }));
-    const b = await createOtBillFromCase(id!, serviceLines);
+    const discount = discountWrite(discountValue, discountUnit);
+
+    if (otBillId) {
+      const existing = bill?.id === otBillId ? bill : await getOtBill(otBillId);
+      if (existing.status !== "draft") {
+        setBill(existing);
+        return existing;
+      }
+      const updated = await updateOtBill(otBillId, serviceLines, discount);
+      setBill(updated);
+      setServices(stampServiceSeqs(servicesFromBill(updated)));
+      return updated;
+    }
+
+    const b = await createOtBillFromCase(id!, serviceLines, discount);
     setBill(b);
     setServices(stampServiceSeqs(servicesFromBill(b)));
     setOtBillId(b.id);
@@ -601,16 +647,32 @@ export function OtPage() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- desk shortcuts
-  }, [dialog, busy, isDraft, caseId, caseNo, caseStatus, patientName, items, services, otBillId, bill]);
+  }, [dialog, busy, isDraft, caseId, caseNo, caseStatus, patientName, items, services, otBillId, bill, discountValue, discountUnit]);
 
-  const itemsTotal = items.reduce(
-    (sum, it) => sum + it.sell_price_mmk * Math.max(0, it.qty_issued),
+  const itemsTotal = items.reduce((sum, it) => {
+    const units = saleUnitsFromPack(packFromItem(it), it.sell_price_mmk);
+    const chosen = it.sale_unit
+      ? units.find((u) => u.id.toLowerCase() === it.sale_unit!.toLowerCase())
+      : undefined;
+    const saleQty = it.sale_qty ?? 0;
+    if (chosen && saleQty > 0) {
+      return sum + chosen.price_mmk * saleQty;
+    }
+    return sum + roundPayableMMK(it.sell_price_mmk) * Math.max(0, it.qty_issued);
+  }, 0);
+  const servicesTotal = services.reduce(
+    (sum, s) => sum + (s.unit_price_mmk == null ? 0 : s.unit_price_mmk),
     0,
   );
-  const servicesTotal = services.reduce((sum, s) => sum + s.qty * s.unit_price_mmk, 0);
-  const estimatedTotal = bill?.total_mmk ?? itemsTotal + servicesTotal + doctorFeeMmk;
-  const paidAmount = bill?.status === "paid" ? bill.total_mmk : 0;
-  const balanceAmount = Math.max(0, estimatedTotal - paidAmount);
+  const liveGross = itemsTotal + servicesTotal + doctorFeeMmk;
+  const grossTotal = bill ? bill.total_mmk + (bill.discount_mmk ?? 0) : liveGross;
+  const discountOff = bill && bill.status !== "draft"
+    ? (bill.discount_mmk ?? 0)
+    : discountKyats(grossTotal, discountValue, discountUnit);
+  const netTotal = Math.max(0, grossTotal - discountOff);
+  const paidAmount = bill?.status === "paid" ? netTotal : 0;
+  const balanceAmount = Math.max(0, netTotal - paidAmount);
+  const discountEditable = bill ? bill.status === "draft" : isDraft;
   const displayWhen = formatDisplayWhen(createdAt, nowTick);
 
   const otKinds: Array<
@@ -633,12 +695,13 @@ export function OtPage() {
         : undefined;
       const saleQty = it.sale_qty ?? 0;
       const qty = it.sale_unit && saleQty > 0 ? saleQty : it.qty_issued;
-      const amount = it.sell_price_mmk * Math.max(0, it.qty_issued);
       const price = chosen
         ? chosen.price_mmk
-        : saleQty > 0
-          ? Math.round(amount / saleQty)
-          : it.sell_price_mmk;
+        : roundPayableMMK(it.sell_price_mmk);
+      const amount =
+        chosen && saleQty > 0
+          ? chosen.price_mmk * saleQty
+          : price * Math.max(0, it.qty_issued);
       const pack = packFromItem(it);
       otKinds.push({ kind: "item", index: entry.index });
       otRows.push({
@@ -662,10 +725,12 @@ export function OtPage() {
       otKinds.push({ kind: "service", index: entry.index });
       otRows.push({
         key: `svc-${s.seq}`,
-        title: `${s.code} — ${s.description}`,
-        qty: s.qty,
+        title: s.code ? `${s.code} — ${s.description}` : s.description,
+        qty: 1,
         priceMmk: s.unit_price_mmk,
-        amountMmk: s.qty * s.unit_price_mmk,
+        amountMmk: s.unit_price_mmk ?? 0,
+        qtyLocked: true,
+        priceEditable: true,
         removable: true,
       });
     }
@@ -694,10 +759,12 @@ export function OtPage() {
               <label className="opd-bill-field">
                 <span className="opd-bill-label">{t("idName")}</span>
                 <input
+                  ref={patientNameRef}
                   className="opd-bill-input grow"
                   data-focus="bill-patient"
                   value={patientName}
                   disabled={!isDraft}
+                  required={isDraft}
                   onChange={(e) => setPatientName(e.target.value)}
                   autoFocus
                   aria-label={t("patientName")}
@@ -714,14 +781,16 @@ export function OtPage() {
               </label>
               <label className="opd-bill-field">
                 <span className="opd-bill-label">{t("age")}</span>
-                <input
-                  className="opd-bill-input opd-bill-input--narrow"
-                  value={patientAge}
-                  disabled={!isDraft}
-                  inputMode="numeric"
-                  onChange={(e) => setPatientAge(e.target.value)}
-                />
-                <span className="opd-bill-unit">{t("ageYearsShort")}</span>
+                <span className="opd-bill-control">
+                  <input
+                    className="opd-bill-input opd-bill-input--narrow"
+                    value={patientAge}
+                    disabled={!isDraft}
+                    inputMode="numeric"
+                    onChange={(e) => setPatientAge(e.target.value)}
+                  />
+                  <span className="opd-bill-unit">{t("ageYearsShort")}</span>
+                </span>
               </label>
               <label className="opd-bill-field">
                 <span className="opd-bill-label">{t("gender")}</span>
@@ -831,10 +900,15 @@ export function OtPage() {
             rows={otRows}
             onQtyCommit={(index, qty) => {
               const kind = otKinds[index];
-              if (!kind || kind.kind === "fee") return false;
+              if (!kind || kind.kind === "fee" || kind.kind === "service") return false;
               if (kind.kind === "item") return commitOtItemQty(kind.index, qty);
+              return false;
+            }}
+            onPriceCommit={(index, priceMmk) => {
+              const kind = otKinds[index];
+              if (!kind || kind.kind !== "service") return false;
               setServices((prev) =>
-                prev.map((s, i) => (i === kind.index ? { ...s, qty } : s)),
+                prev.map((s, i) => (i === kind.index ? { ...s, unit_price_mmk: priceMmk } : s)),
               );
               return true;
             }}
@@ -889,7 +963,12 @@ export function OtPage() {
                   },
                   onSubmitCode: lookupOtItem,
                 },
-                { showUnitColumn: true, showPackColumn: true },
+                {
+                  showUnitColumn: true,
+                  showPackColumn: true,
+                  sourceLabel: t("otInventory"),
+                  sourceIcon: "box",
+                },
               ),
               createBillLineEntry<OtService>(
                 {
@@ -898,22 +977,31 @@ export function OtPage() {
                   ariaLabel: t("optionalService"),
                   loadSuggestions: async (term) => listOtServices(term),
                   getKey: (svc) => svc.id,
-                  itemTitle: (svc) => `${svc.code} — ${svc.name}`,
+                  itemTitle: (svc) => (svc.code ? `${svc.code} — ${svc.name}` : svc.name),
                   renderOption: (svc) => (
                     <>
                       <span className="typeahead-title">
-                        {svc.code} — {svc.name}
+                        {svc.code ? `${svc.code} — ${svc.name}` : svc.name}
                       </span>
                       <span className="typeahead-sub">
-                        {t("serviceType")} · {formatMMK(svc.price_mmk)} {t("mmk")}
+                        {t("serviceType")}
+                        {svc.price_mmk == null
+                          ? ""
+                          : ` · ${formatMMK(svc.price_mmk)} ${t("mmk")}`}
                       </span>
                     </>
                   ),
                   unitsFor: () => [],
-                  onCommit: (svc, qty) => addOtService(svc, qty),
+                  commitOnPick: true,
+                  onCommit: (svc) => addOtService(svc),
                   onSubmitCode: lookupOtService,
                 },
-                { showUnitColumn: true, showPackColumn: true },
+                {
+                  showUnitColumn: true,
+                  showPackColumn: true,
+                  sourceLabel: t("otServices"),
+                  sourceIcon: "clipboard",
+                },
               ),
             ]}
           />
@@ -925,25 +1013,23 @@ export function OtPage() {
               </span>
               {!caseId ? <span className="opd-bill-new-badge">{t("newBadge")}</span> : null}
             </div>
-            <div className="opd-bill-totals">
-              <div className="opd-bill-total-row">
-                <span>{t("totalLabel")}</span>
-                <span>{formatMMK(estimatedTotal)}</span>
-              </div>
-              <div className="opd-bill-total-row">
-                <span>{t("paid")}</span>
-                <span>{formatMMK(paidAmount)}</span>
-              </div>
-              <div className="opd-bill-total-row opd-bill-total-row--balance">
-                <span>{t("balance")}</span>
-                <span>{formatMMK(balanceAmount)}</span>
-              </div>
-              <BillCollectNote
-                status={bill?.status ?? "draft"}
-                balance={balanceAmount}
-                sideEffect="ot"
-              />
-            </div>
+            <BillTotals
+              total={grossTotal}
+              paid={paidAmount}
+              balance={balanceAmount}
+              discountValue={discountValue}
+              discountUnit={discountUnit}
+              editable={discountEditable}
+              onDiscountValue={setDiscountValue}
+              onDiscountUnit={setDiscountUnit}
+              note={
+                <BillCollectNote
+                  status={bill?.status ?? "draft"}
+                  balance={balanceAmount}
+                  sideEffect="ot"
+                />
+              }
+            />
           </div>
 
           {okMsg ? <p className="form-ok">{okMsg}</p> : null}

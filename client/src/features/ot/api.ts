@@ -77,8 +77,76 @@ export type OtService = {
   id: number;
   code: string;
   name: string;
-  price_mmk: number;
+  price_mmk: number | null;
 };
+
+export type OtMasterService = {
+  id: number;
+  code: string;
+  name: string;
+  price_mmk: number | null;
+  active: boolean;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type OtServiceWrite = {
+  code: string;
+  name: string;
+  price_mmk: number | null;
+  active?: boolean;
+};
+
+export async function listOtMasterServices(q = ""): Promise<OtMasterService[]> {
+  const qs = q ? `?q=${encodeURIComponent(q)}&all=1` : "?all=1";
+  const res = await apiFetch<{ services: OtMasterService[] }>(`/api/ot/services${qs}`);
+  return res.services ?? [];
+}
+
+export async function createOtMasterService(body: OtServiceWrite): Promise<OtMasterService> {
+  return apiFetch<OtMasterService>("/api/ot/services", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function updateOtMasterService(
+  id: number,
+  body: OtServiceWrite,
+): Promise<OtMasterService> {
+  return apiFetch<OtMasterService>(`/api/ot/services/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function deactivateOtMasterService(id: number): Promise<void> {
+  await apiFetch(`/api/ot/services/${id}`, { method: "DELETE" });
+}
+
+export async function deleteOtMasterService(id: number): Promise<void> {
+  await apiFetch(`/api/ot/services/${id}/delete`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
+
+export type OtServiceHistoryRow = {
+  id: number;
+  actor_username?: string;
+  action: string;
+  entity_id?: number;
+  code: string;
+  name: string;
+  detail?: string;
+  created_at: string;
+};
+
+export async function listOtServiceHistory(q = ""): Promise<OtServiceHistoryRow[]> {
+  const qs = q ? `?q=${encodeURIComponent(q)}` : "";
+  const res = await apiFetch<{ history: OtServiceHistoryRow[] }>(`/api/ot/services/history${qs}`);
+  return res.history ?? [];
+}
 
 export async function listOtServices(q = ""): Promise<OtService[]> {
   const qs = q.trim() ? `?q=${encodeURIComponent(q.trim())}` : "";
@@ -127,6 +195,8 @@ export type OtCase = {
   doctor_name: string;
   procedure_name: string;
   notes: string;
+  discount_value?: number;
+  discount_unit?: "percent" | "mmk" | string;
   status: "draft" | "issued" | "reconciled" | "billed" | "void" | string;
   issued_at?: string | null;
   reconciled_at?: string | null;
@@ -170,6 +240,9 @@ export type OtBill = {
   procedure_name: string;
   status: "draft" | "paid" | "void" | string;
   total_mmk: number;
+  discount_value?: number;
+  discount_unit?: "percent" | "mmk" | string;
+  discount_mmk?: number;
   paid_at?: string | null;
   voided_at?: string | null;
   void_reason?: string;
@@ -188,6 +261,8 @@ export type OtCaseWrite = {
   procedure_name: string;
   notes: string;
   items: OtCaseItem[];
+  discount_value?: number;
+  discount_unit?: "percent" | "mmk";
 };
 
 export async function listOtDoctors(q = ""): Promise<OtDoctor[]> {
@@ -226,10 +301,30 @@ export async function updateOtCase(id: number, body: OtCaseWrite): Promise<OtCas
 export async function createOtBillFromCase(
   caseId: number,
   services: OtBillLine[] = [],
+  discount?: { discount_value: number; discount_unit: "percent" | "mmk" },
 ): Promise<OtBill> {
   return apiFetch<OtBill>(`/api/ot/cases/${caseId}/bill`, {
     method: "POST",
-    body: JSON.stringify({ services }),
+    body: JSON.stringify({
+      services,
+      discount_value: discount?.discount_value ?? 0,
+      discount_unit: discount?.discount_unit ?? "percent",
+    }),
+  });
+}
+
+export async function updateOtBill(
+  id: number,
+  services: OtBillLine[],
+  discount?: { discount_value: number; discount_unit: "percent" | "mmk" },
+): Promise<OtBill> {
+  return apiFetch<OtBill>(`/api/ot/bills/${id}`, {
+    method: "PUT",
+    body: JSON.stringify({
+      lines: services,
+      discount_value: discount?.discount_value ?? 0,
+      discount_unit: discount?.discount_unit ?? "percent",
+    }),
   });
 }
 

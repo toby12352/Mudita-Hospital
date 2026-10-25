@@ -53,12 +53,14 @@ export function DatePicker({
   disabled,
   id,
   placeholder = "YYYY/MM/DD",
+  required = false,
 }: {
   value: string;
   onChange: (iso: string) => void;
   disabled?: boolean;
   id?: string;
   placeholder?: string;
+  required?: boolean;
 }) {
   const autoId = useId();
   const inputId = id ?? autoId;
@@ -147,6 +149,7 @@ export function DatePicker({
           value={text}
           placeholder={placeholder}
           disabled={disabled}
+          required={required}
           onChange={(e) => setText(e.target.value)}
           onBlur={() => commitText(text)}
           onFocus={() => {

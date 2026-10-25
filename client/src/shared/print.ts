@@ -1,4 +1,7 @@
+import { invoke } from "@tauri-apps/api/core";
 import { userMessage } from "@/shared/errors";
+import { t } from "@/shared/i18n";
+import { getDefaultPrinter, isTauriRuntime } from "@/shared/printerPrefs";
 
 /** In-app print preview — avoids window.open (blocked in Tauri WebView2). */
 
@@ -25,8 +28,20 @@ function onEscape(e: KeyboardEvent): void {
   if (e.key === "Escape") closePrintPreview();
 }
 
+function printButtonLabel(printer: string): string {
+  if (printer) {
+    return t("printOnPrinter").replace("{printer}", printer);
+  }
+  return t("print");
+}
+
+async function printHtmlSilent(html: string, printerName: string): Promise<void> {
+  await invoke("print_html", { html, printer_name: printerName });
+}
+
 /**
- * Show HTML in a modal iframe; user prints via iframe.contentWindow.print().
+ * Show HTML in a modal iframe; user prints via silent Tauri print (installed app)
+ * or iframe.contentWindow.print() in browser Vite.
  * No popup window — works in the installed Tauri client.
  */
 export function openPrintPreview(html: string, opts: PrintPreviewOptions = {}): void {
@@ -34,6 +49,8 @@ export function openPrintPreview(html: string, opts: PrintPreviewOptions = {}): 
 
   const title = opts.title ?? "Print preview";
   const receipt = opts.receipt !== false;
+  const printer = getDefaultPrinter();
+  const tauri = isTauriRuntime();
 
   const overlay = document.createElement("div");
   overlay.className = "print-preview-overlay";
@@ -62,18 +79,31 @@ export function openPrintPreview(html: string, opts: PrintPreviewOptions = {}): 
     headingWrap.append(note);
   }
 
+  const status = document.createElement("p");
+  status.className = "print-preview-note print-preview-status";
+  status.hidden = true;
+  headingWrap.append(status);
+
+  if (tauri && !printer) {
+    status.hidden = false;
+    status.textContent = t("printNoDefaultPrinter");
+  }
+
   const actions = document.createElement("div");
   actions.className = "print-preview-actions";
 
   const printBtn = document.createElement("button");
   printBtn.type = "button";
   printBtn.className = "btn primary";
-  printBtn.textContent = "Print";
+  printBtn.textContent = printButtonLabel(printer);
+  if (tauri && !printer) {
+    printBtn.disabled = true;
+  }
 
   const closeBtn = document.createElement("button");
   closeBtn.type = "button";
   closeBtn.className = "btn ghost";
-  closeBtn.textContent = "Close";
+  closeBtn.textContent = t("close");
 
   const frameWrap = document.createElement("div");
   frameWrap.className = receipt ? "print-preview-frame-wrap print-preview-frame-wrap--receipt" : "print-preview-frame-wrap";
@@ -96,15 +126,61 @@ export function openPrintPreview(html: string, opts: PrintPreviewOptions = {}): 
     if (e.target === overlay) closePrintPreview();
   });
   closeBtn.addEventListener("click", () => closePrintPreview());
+
+  let printing = false;
   printBtn.addEventListener("click", () => {
-    try {
-      iframe.contentWindow?.focus();
-      iframe.contentWindow?.print();
-    } catch {
-      /* user can retry */
+    if (printing) return;
+
+    const runOnPrinted = () => {
+      const cb = opts.onPrinted;
+      if (cb) void Promise.resolve(cb()).catch(() => {});
+    };
+
+    if (!tauri) {
+      try {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+      } catch {
+        /* user can retry */
+      }
+      runOnPrinted();
+      return;
     }
-    const cb = opts.onPrinted;
-    if (cb) void Promise.resolve(cb()).catch(() => {});
+
+    const target = getDefaultPrinter();
+    if (!target) {
+      status.hidden = false;
+      status.textContent = t("printNoDefaultPrinter");
+      return;
+    }
+
+    printing = true;
+    printBtn.disabled = true;
+    printBtn.textContent = t("printing");
+    status.hidden = true;
+
+    void printHtmlSilent(html, target)
+      .then(() => {
+        runOnPrinted();
+        status.hidden = false;
+        status.textContent = t("printSent");
+      })
+      .catch((err: unknown) => {
+        status.hidden = false;
+        let message = t("printFailed");
+        if (typeof err === "string" && err.trim()) message = err;
+        else if (err instanceof Error && err.message) message = err.message;
+        else if (err && typeof err === "object" && "message" in err) {
+          const m = (err as { message: unknown }).message;
+          if (typeof m === "string" && m.trim()) message = m;
+        }
+        status.textContent = message;
+      })
+      .finally(() => {
+        printing = false;
+        printBtn.disabled = false;
+        printBtn.textContent = printButtonLabel(getDefaultPrinter());
+      });
   });
 
   // srcdoc keeps auth-fetched HTML in-process without a second navigation.

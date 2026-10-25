@@ -25,12 +25,21 @@ export type Doctor = {
   updated_at?: string;
 };
 
+export type ServiceCategory = {
+  id: number;
+  name: string;
+  created_at?: string;
+  updated_at?: string;
+};
+
 export type Service = {
   id: number;
   code: string;
   name: string;
   price_mmk: number;
   active: boolean;
+  category_id: number | null;
+  category_name: string;
   created_at?: string;
   updated_at?: string;
 };
@@ -96,6 +105,13 @@ export async function deactivateDoctor(id: number): Promise<void> {
   await apiFetch(`/api/doctors/${id}`, { method: "DELETE" });
 }
 
+export async function deleteDoctor(id: number): Promise<void> {
+  await apiFetch(`/api/doctors/${id}/delete`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
+
 export type DoctorHistoryRow = {
   id: number;
   actor_username?: string;
@@ -112,6 +128,33 @@ export async function listDoctorHistory(q = ""): Promise<DoctorHistoryRow[]> {
   return res.history;
 }
 
+export async function listServiceCategories(q = ""): Promise<ServiceCategory[]> {
+  const qs = q ? `?q=${encodeURIComponent(q)}` : "";
+  const res = await apiFetch<{ categories: ServiceCategory[] }>(`/api/service-categories${qs}`);
+  return res.categories;
+}
+
+export async function createServiceCategory(body: { name: string }): Promise<ServiceCategory> {
+  return apiFetch<ServiceCategory>("/api/service-categories", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function updateServiceCategory(
+  id: number,
+  body: { name: string },
+): Promise<ServiceCategory> {
+  return apiFetch<ServiceCategory>(`/api/service-categories/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function deleteServiceCategory(id: number): Promise<void> {
+  await apiFetch(`/api/service-categories/${id}`, { method: "DELETE" });
+}
+
 export async function listServices(q = ""): Promise<Service[]> {
   const qs = q ? `?q=${encodeURIComponent(q)}&all=1` : "?all=1";
   const res = await apiFetch<{ services: Service[] }>(`/api/services${qs}`);
@@ -122,6 +165,7 @@ export async function createService(body: {
   code: string;
   name: string;
   price_mmk: number;
+  category_id?: number | null;
 }): Promise<Service> {
   return apiFetch<Service>("/api/services", {
     method: "POST",
@@ -131,7 +175,7 @@ export async function createService(body: {
 
 export async function updateService(
   id: number,
-  body: { code: string; name: string; price_mmk: number; active: boolean },
+  body: { code: string; name: string; price_mmk: number; active: boolean; category_id?: number | null },
 ): Promise<Service> {
   return apiFetch<Service>(`/api/services/${id}`, {
     method: "PUT",
@@ -141,6 +185,13 @@ export async function updateService(
 
 export async function deactivateService(id: number): Promise<void> {
   await apiFetch(`/api/services/${id}`, { method: "DELETE" });
+}
+
+export async function deleteService(id: number): Promise<void> {
+  await apiFetch(`/api/services/${id}/delete`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
 }
 
 export type ServiceHistoryRow = {

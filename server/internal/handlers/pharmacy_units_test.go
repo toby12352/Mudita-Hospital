@@ -2,6 +2,47 @@ package handlers
 
 import "testing"
 
+func TestRoundPayableMMK(t *testing.T) {
+	cases := []struct {
+		in, want int64
+	}{
+		{0, 0},
+		{1, 50},
+		{24, 50},
+		{25, 50},
+		{49, 50},
+		{50, 50},
+		{167, 150},
+		{175, 200},
+		{4000, 4000},
+		{4008, 4000},
+		{4025, 4050},
+	}
+	for _, c := range cases {
+		if got := roundPayableMMK(c.in); got != c.want {
+			t.Fatalf("roundPayableMMK(%d) = %d, want %d", c.in, got, c.want)
+		}
+	}
+}
+
+func TestPharmacyPackLineChargeBox24Bottles(t *testing.T) {
+	// Catalog sell 167/bottle (from typing box sale 4000 with 24 bottles).
+	p := itemPack{L1Qty: 1, L1Unit: "Box", L2Qty: 24, L2Unit: "Bottle", L3Qty: 1, L3Unit: "Bottle"}
+	sell := int64(167)
+	if got := pharmacyPackLineChargeMMK(1, 0, 0, sell, p); got != 4000 {
+		t.Fatalf("1 box charge = %d, want 4000", got)
+	}
+	if got := pharmacyPackLineChargeMMK(0, 1, 0, sell, p); got != 150 {
+		t.Fatalf("1 bottle (strip slot) charge = %d, want 150", got)
+	}
+	if got := pharmacyPackLineChargeMMK(0, 0, 1, sell, p); got != 150 {
+		t.Fatalf("1 bottle (tablet slot) charge = %d, want 150", got)
+	}
+	if got := pharmacyPackLineChargeMMK(0, 24, 0, sell, p); got != 3600 {
+		t.Fatalf("24 loose bottles = %d, want 3600", got)
+	}
+}
+
 func TestResolveItemPackTwoUnitBottleTablet(t *testing.T) {
 	l1, l2, l3 := int64(1), int64(150), int64(1)
 	p, err := resolveItemPack(&l1, &l2, &l3, "Bottle", "Tablet", "Tablet")

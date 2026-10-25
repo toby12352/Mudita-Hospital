@@ -119,6 +119,51 @@ func resolveItemPack(l1Qty, l2Qty, l3Qty *int64, l1Unit, l2Unit, l3Unit string) 
 	return p, ""
 }
 
+// roundPayableMMK snaps an amount to the nearest multiple of 50 kyat (Myanmar
+// cash notes). Halfway (remainder 25) rounds up. Positive amounts that would
+// round to 0 become 50 so a real price never collapses to free.
+func roundPayableMMK(n int64) int64 {
+	if n <= 0 {
+		return 0
+	}
+	const step int64 = 50
+	rem := n % step
+	var out int64
+	if rem >= 25 {
+		out = n - rem + step
+	} else {
+		out = n - rem
+	}
+	if out == 0 {
+		return step
+	}
+	return out
+}
+
+// pharmacyPackLineChargeMMK prices a mixed pack qty at payable unit prices
+// (each pack slot rounded separately), not as raw smallest-units × catalog sell.
+func pharmacyPackLineChargeMMK(boxQty, stripQty, tabletQty, sellPerSmallest int64, p itemPack) int64 {
+	sell := sellPerSmallest
+	if sell < 0 {
+		sell = 0
+	}
+	var total int64
+	if boxQty > 0 {
+		total += boxQty * roundPayableMMK(sell*tabletsPerBox(p))
+	}
+	if stripQty > 0 {
+		l3 := p.L3Qty
+		if l3 < 1 {
+			l3 = 1
+		}
+		total += stripQty * roundPayableMMK(sell*l3)
+	}
+	if tabletQty > 0 {
+		total += tabletQty * roundPayableMMK(sell)
+	}
+	return total
+}
+
 // tabletsPerBox is L3 units contained in one L1 unit (box/bottle).
 func tabletsPerBox(p itemPack) int64 {
 	return p.L2Qty * p.L3Qty

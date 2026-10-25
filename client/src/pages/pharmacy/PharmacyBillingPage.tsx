@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   createPharmacyBill,
   findItemByCode,
@@ -18,6 +18,11 @@ import {
   type PharmacyBillKind,
   type PharmacyItem,
 } from "@/features/pharmacy/api";
+import {
+  discountFieldsFromBill,
+  discountWrite,
+  type DiscountUnit,
+} from "@/shared/discount";
 import { userMessage } from "@/shared/errors";
 import { useI18n } from "@/shared/i18n";
 import {
@@ -51,15 +56,19 @@ export function PharmacyBillingPage({
   const [billNo, setBillNo] = useState("");
   const [billStatus, setBillStatus] = useState("draft");
   const [patientName, setPatientName] = useState("");
+  const patientNameRef = useRef<HTMLInputElement>(null);
   const [patientPhone, setPatientPhone] = useState("");
   const [patientAge, setPatientAge] = useState("");
   const [patientGender, setPatientGender] = useState("");
   const [description, setDescription] = useState("");
   const [lines, setLines] = useState<PharmacyBillLineView[]>([]);
+  const [discountValue, setDiscountValue] = useState("");
+  const [discountUnit, setDiscountUnit] = useState<DiscountUnit>("percent");
   const [onHandByItemId, setOnHandByItemId] = useState<Record<number, number>>({});
   const [createdAt, setCreatedAt] = useState<string | null>(null);
   const [nowTick, setNowTick] = useState(() => Date.now());
   const [awaitingConfirm, setAwaitingConfirm] = useState(false);
+  const [transferDone, setTransferDone] = useState(false);
 
   const isDraft = billStatus === "draft";
 
@@ -79,9 +88,12 @@ export function PharmacyBillingPage({
     setPatientGender("");
     setDescription("");
     setLines([]);
+    setDiscountValue("");
+    setDiscountUnit("percent");
     setOnHandByItemId({});
     setCreatedAt(null);
     setAwaitingConfirm(false);
+    setTransferDone(false);
     setError(null);
     setOkMsg(null);
   }
@@ -111,12 +123,16 @@ export function PharmacyBillingPage({
     const next = b.lines ?? [];
     setLines(next);
     refreshOnHand(next);
+    const discount = discountFieldsFromBill(b.discount_value, b.discount_unit);
+    setDiscountValue(discount.value);
+    setDiscountUnit(discount.unit);
   }
 
   async function openBill(id: number) {
     setBusy(true);
     setError(null);
     setOkMsg(null);
+    setTransferDone(false);
     try {
       const b = await getPharmacyBill(id);
       setBillId(b.id);
@@ -130,6 +146,9 @@ export function PharmacyBillingPage({
       const next = b.lines ?? [];
       setLines(next);
       refreshOnHand(next);
+      const discount = discountFieldsFromBill(b.discount_value, b.discount_unit);
+      setDiscountValue(discount.value);
+      setDiscountUnit(discount.unit);
       setCreatedAt(b.created_at);
       setAwaitingConfirm(false);
     } catch (e) {
@@ -165,6 +184,9 @@ export function PharmacyBillingPage({
       })),
       save_patient: false,
       kind,
+      ...(isTransfer
+        ? { discount_value: 0, discount_unit: "percent" as const }
+        : discountWrite(discountValue, discountUnit)),
     };
   }
 
@@ -215,8 +237,17 @@ export function PharmacyBillingPage({
   }
 
   async function saveDraft(): Promise<PharmacyBill | null> {
+    if (!isTransfer && !patientName.trim()) {
+      const el = patientNameRef.current;
+      if (el && !el.disabled) {
+        if (patientName !== "") setPatientName("");
+        if (el.value !== "") el.value = "";
+        el.reportValidity();
+        return null;
+      }
+      throw new Error(userMessage("Patient name required"));
+    }
     const body = buildBody();
-    if (!isTransfer && !body.patient_name) throw new Error(userMessage("Patient name required"));
     if (body.lines.length === 0) throw new Error(userMessage("Add at least one medicine"));
     const b = billId
       ? await updatePharmacyBill(billId, body)
@@ -269,7 +300,7 @@ export function PharmacyBillingPage({
       }
       if (lines.length === 0) throw new Error(userMessage("Add at least one medicine"));
       const saved = await saveDraft();
-      if (saved == null) throw new Error(userMessage("Save failed"));
+      if (saved == null) return;
       id = saved.id;
       const paid = await payPharmacyBill(id);
       applySavedBill(paid);
@@ -296,10 +327,11 @@ export function PharmacyBillingPage({
     setBusy(true);
     setError(null);
     setOkMsg(null);
+    setTransferDone(false);
     try {
       if (lines.length === 0) throw new Error(userMessage("Add at least one medicine"));
       const saved = await saveDraft();
-      if (saved == null) throw new Error(userMessage("Save failed"));
+      if (saved == null) return;
       setAwaitingConfirm(true);
       setOkMsg(t("transferArmed").replace("{bill}", saved.bill_no));
     } catch (e) {
@@ -319,7 +351,7 @@ export function PharmacyBillingPage({
       const done = await transferPharmacyBill(billId);
       applySavedBill(done);
       setAwaitingConfirm(false);
-      setOkMsg(t("transferredReady").replace("{bill}", done.bill_no));
+      setTransferDone(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Transfer failed");
     } finally {
@@ -408,6 +440,14 @@ export function PharmacyBillingPage({
       prev.map((row, i) => {
         if (i !== index) return row;
         if (!unit) {
+          const { charge } = lineChargeFromPack(
+            0,
+            0,
+            billing,
+            row.pack_l2_qty || 1,
+            row.pack_l3_qty || 1,
+            row.unit_price_mmk,
+          );
           return {
             ...row,
             box_qty: 0,
@@ -415,15 +455,24 @@ export function PharmacyBillingPage({
             tablet_qty: billing,
             billing_qty: billing,
             stock_qty: billing,
-            line_total_mmk: billing * row.unit_price_mmk,
+            line_total_mmk: charge,
           };
         }
+        const qtys = packQtysForSale(unit, qty);
+        const { charge } = lineChargeFromPack(
+          qtys.box_qty,
+          qtys.strip_qty,
+          qtys.tablet_qty,
+          row.pack_l2_qty || 1,
+          row.pack_l3_qty || 1,
+          row.unit_price_mmk,
+        );
         return {
           ...row,
-          ...packQtysForSale(unit, qty),
+          ...qtys,
           billing_qty: billing,
           stock_qty: billing,
-          line_total_mmk: billing * row.unit_price_mmk,
+          line_total_mmk: charge,
         };
       }),
     );
@@ -452,12 +501,21 @@ export function PharmacyBillingPage({
     setLines((prev) =>
       prev.map((row, i) => {
         if (i !== index) return row;
+        const qtys = packQtysForSale(unit, view.qty);
+        const { charge } = lineChargeFromPack(
+          qtys.box_qty,
+          qtys.strip_qty,
+          qtys.tablet_qty,
+          row.pack_l2_qty || 1,
+          row.pack_l3_qty || 1,
+          row.unit_price_mmk,
+        );
         return {
           ...row,
-          ...packQtysForSale(unit, view.qty),
+          ...qtys,
           billing_qty: billing,
           stock_qty: billing,
-          line_total_mmk: billing * row.unit_price_mmk,
+          line_total_mmk: charge,
         };
       }),
     );
@@ -525,7 +583,7 @@ export function PharmacyBillingPage({
     return () => window.removeEventListener("keydown", onKey);
     // Intentional: handlers close over latest state each render.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- shortcut wiring
-  }, [dialog, busy, isDraft, billId, billStatus, billNo, lines, patientName, awaitingConfirm, isTransfer]);
+  }, [dialog, busy, isDraft, billId, billStatus, billNo, lines, patientName, awaitingConfirm, isTransfer, discountValue, discountUnit]);
 
   const displayWhen = formatDisplayWhen(createdAt, nowTick);
 
@@ -546,9 +604,16 @@ export function PharmacyBillingPage({
         error={error}
         okMsg={okMsg}
         isDraft={isDraft}
+        discountValue={discountValue}
+        discountUnit={discountUnit}
+        onDiscountValue={setDiscountValue}
+        onDiscountUnit={setDiscountUnit}
         kind={kind}
         awaitingConfirm={awaitingConfirm}
+        transferDone={transferDone}
         onDismissError={() => setError(null)}
+        onDismissTransferDone={() => setTransferDone(false)}
+        patientNameRef={patientNameRef}
         onPatientName={setPatientName}
         onPatientPhone={setPatientPhone}
         onPatientAge={setPatientAge}

@@ -1,6 +1,6 @@
 # Mudita Hospital
 
-Offline LAN hospital desktop system (OPD, OT case-cart, pharmacy).
+Live offline LAN hospital desktop system (OPD, OT case-cart, pharmacy). Updates must preserve the existing hospital database — see [docs/standards/UPGRADES.md](docs/standards/UPGRADES.md).
 
 **Stack:** Go API + SQLite (WAL) on the server PC · Tauri 2 + React client on clinic PCs.
 
@@ -124,11 +124,16 @@ Open `http://localhost:1420` in a browser.
 | POST | `/api/auth/change-password` | Bearer |
 | GET / PUT | `/api/settings` | Bearer + Admin (`settings`) |
 | GET / POST | `/api/doctors` | Bearer + Admin (`settings`) or OPD (`opd`) |
-| GET | `/api/doctors/history` | Bearer + Admin (`settings`) or OPD (`opd`) — create/update/deactivate audit for doctors |
-| GET / PUT / DELETE | `/api/doctors/{id}` | Bearer + Admin (`settings`) or OPD (`opd`) |
+| GET | `/api/doctors/history` | Bearer + Admin (`settings`) or OPD (`opd`) — create/update/deactivate/delete audit for doctors |
+| GET / PUT / DELETE | `/api/doctors/{id}` | Bearer + Admin (`settings`) or OPD (`opd`) — DELETE soft-deactivates |
+| POST | `/api/doctors/{id}/delete` | Bearer + Admin (`settings`) or OPD (`opd`) — permanent delete |
 | GET / POST | `/api/services` | Bearer + Admin (`settings`) or OPD (`opd`) |
-| GET | `/api/services/history` | Bearer + Admin (`settings`) or OPD (`opd`) — create/update/deactivate audit for services |
-| GET / PUT / DELETE | `/api/services/{id}` | Bearer + Admin (`settings`) or OPD (`opd`) |
+| GET | `/api/services/history` | Bearer + Admin (`settings`) or OPD (`opd`) — create/update/deactivate/delete audit for services |
+| GET / PUT / DELETE | `/api/services/{id}` | Bearer + Admin (`settings`) or OPD (`opd`) — DELETE soft-deactivates |
+| POST | `/api/services/{id}/delete` | Bearer + Admin (`settings`) or OPD (`opd`) — permanent delete |
+| GET | `/api/service-categories` | Bearer + Admin (`settings`) or OPD (`opd`) |
+| POST | `/api/service-categories` | Bearer + Admin (`settings`) |
+| GET / PUT / DELETE | `/api/service-categories/{id}` | GET: Admin or OPD. PUT/DELETE: Admin. DELETE is refused while a service still uses the category |
 | GET / POST | `/api/users` | Bearer + Admin (`manage_users`) |
 | PUT | `/api/users/{id}` | Bearer + Admin (`manage_users`) |
 | GET / POST | `/api/pharmacy/items` | Bearer + `pharmacy` |
@@ -158,8 +163,12 @@ Open `http://localhost:1420` in a browser.
 | POST | `/api/ot/stock/{id}/return` | Bearer + `ot` — cupboard qty back to MAIN |
 | POST | `/api/ot/stock/{id}/label` | Bearer + `ot` — set batch number and expiry on a cupboard row; qty unchanged |
 | GET | `/api/ot/catalog/doctors` | Bearer + `ot` (includes OT fee) |
-| GET | `/api/ot/catalog/services` | Bearer + `ot` |
-| GET | `/api/ot/catalog/items` | Bearer + `ot` — on-hand is `ot_batches`, not MAIN |
+| GET | `/api/ot/catalog/services` | Bearer + `ot` — active `ot_services` only; `price_mmk` may be null |
+| GET | `/api/ot/catalog/items` | Bearer + `ot` — items with `ot_batches` qty > 0 |
+| GET / POST | `/api/ot/services` | Bearer + `ot` — OT Maintenance catalog; name required; code and `price_mmk` optional (null, not 0) |
+| GET | `/api/ot/services/history` | Bearer + `ot` |
+| GET / PUT / DELETE | `/api/ot/services/{id}` | Bearer + `ot` — DELETE soft-deactivates |
+| POST | `/api/ot/services/{id}/delete` | Bearer + `ot` — permanent delete |
 | GET | `/api/ot/settings` | Bearer + `ot` (read-only bill header) |
 | GET / POST | `/api/ot/cases` | Bearer + `ot` |
 | GET / PUT | `/api/ot/cases/{id}` | Bearer + `ot` (edit draft only) |
@@ -186,13 +195,13 @@ Open `http://localhost:1420` in a browser.
 
 Send `Authorization: Bearer <token>` (also accepts `mudita_session` cookie).
 
-OPD, OT, and Pharmacy cannot open hospital Settings, manage users, backup, or training, and cannot list another desk's bills. OPD can maintain doctors and services from its portal (same `/api/doctors` and `/api/services` as Admin). Admin Settings tabs: Hospital, Doctors, Services, Users, Backup, **Training**. Combined cash is on the admin dashboard, not inside a clinic portal.
+OPD, OT, and Pharmacy cannot open hospital Settings, manage users, backup, or training, and cannot list another desk's bills. OPD can maintain doctors and services from its portal (same `/api/doctors` and `/api/services` as Admin). OPD can assign a service category; category names are created in Admin Settings. Admin Settings tabs: Hospital, Doctors, Services, Categories, Users, Backup, **Training**. Combined cash is on the admin dashboard, not inside a clinic portal.
 
 **Pharmacy:** Admin + Pharmacy. Stock on hand = sum of `item_batches.qty` at `MAIN`. Restock and opening stock accept an optional batch number and expiry, and restock writes a `PURCHASE` movement. A positive adjustment that creates a batch uses the same optional identity. **Transfer to OT** is a `TO-######` slip. Confirm moves saleable MAIN qty into the OT cupboard the same way a sale picks stock: earliest expiry first, then a blank expiry. A date before today stays on the shelf. Batch number and expiry are copied onto the OT row, including blanks. The slip is not pharmacy cash. **FEFO:** pharmacy sale and an OPD item line take the earliest `expiry_date` at `MAIN`. OT bill pay takes the earliest expiry on `ot_batches`. Both skip batches dated before today. A blank expiry is taken after every dated batch. Labeling a row later does not change quantity. Admin adjust-down still uses earliest expiry, including expired and unlabeled batches. Bill prices come from the item catalog. Unknown item codes cannot be restocked — create the item first. Pack quantities and the small unit cannot change while a batch still has quantity.
 
-**OPD:** Admin + OPD. Portal nav: Doctors, Services, Bill. OPD can create, edit, and deactivate doctors and services (not hospital settings, users, backup, or training). Draft bill lines use the service catalog price and the doctor's consultation fee (one consultation, quantity 1). Medicines are billed in Pharmacy. Pay cash → print HTML. Void with reason restores stock when a paid line was an item. Bill numbers `OPD-000001`…. Totals in MMK. Catalog endpoints remain for read-only lookup while billing.
+**OPD:** Admin + OPD. Portal nav: Doctors, Services, Bill. OPD can create, edit, and deactivate doctors and services (not hospital settings, users, backup, or training). A service may carry one category from the admin list; leaving it blank keeps the service uncategorized. Draft bill lines use the service catalog price and the doctor's consultation fee (one consultation, quantity 1). Medicines are billed in Pharmacy. Pay cash → print HTML. Void with reason restores stock when a paid line was an item. Bill numbers `OPD-000001`…. Totals in MMK. Catalog endpoints remain for read-only lookup while billing.
 
-**OT:** Admin + OT. Draft bill from the OT cupboard, doctor OT fee, and optional services → cash pay → print. Case numbers `OT-######`; bills `OTB-######`. Pay writes `SALE` on `ot_batches` and `ot_bill_stock_allocs`. Void restores those batches and returns the case to draft. Issue and reconcile are gone. History lists OT bills only.
+**OT:** Admin + OT. Draft bill from OT inventory, doctor OT fee, and OT Maintenance services → cash pay → print. Service lines use the case price (qty 1). Case numbers `OT-######`; bills `OTB-######`. Pay writes `SALE` on `ot_batches` and `ot_bill_stock_allocs`. Void restores those batches and returns the case to draft. Issue and reconcile are gone. History lists OT bills only.
 
 **OT cupboard:** Pharmacy confirms a Transfer to OT slip (`POST /api/pharmacy/bills/{id}/transfer`). Saleable MAIN qty moves in one transaction. The same batch number and expiry, including blanks, land in `ot_batches`, with a `stock_movements` row, an `ot_stock_movements` row, and one `stock_transfers` row linked to the slip. OT returns qty the other way. A qty the source does not hold is rejected and changes nothing. Void of that slip puts the qty back only when the cupboard still holds it. Migration `011_ot_stock` copies existing `OT_FLOOR` qty into `ot_batches`. Migration `012_ot_bill_stock` returns leftover `OT_RESERVED` qty to `MAIN` and turns open issued or reconciled cases into draft bill documents. Paying an OT bill deducts `ot_batches`. Dashboard stock value counts MAIN and `ot_batches` only. Transfer slips are excluded from pharmacy cash.
 

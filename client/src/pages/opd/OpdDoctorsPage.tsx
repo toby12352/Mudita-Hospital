@@ -1,14 +1,18 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useId, useMemo, useState } from "react";
 import {
   createDoctor,
   deactivateDoctor,
+  deleteDoctor,
   listDoctors,
   updateDoctor,
   type Doctor,
 } from "@/features/settings/masterData";
+import { matchesActive, type ActiveFilterValue } from "@/shared/ActiveFilter";
 import { ActionIcon } from "@/shared/ActionIcon";
+import { CatalogFilterButton, CatalogFilterPanel } from "@/shared/CatalogListFilter";
 import { formatMMK } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
+import { CatalogDeleteDialog } from "./CatalogDeleteDialog";
 import { OpdCatalogHistory } from "./OpdCatalogHistory";
 
 export function OpdDoctorsPage() {
@@ -17,12 +21,18 @@ export function OpdDoctorsPage() {
   const [creating, setCreating] = useState(false);
   const [createKey, setCreateKey] = useState(0);
   const [filterOpen, setFilterOpen] = useState(false);
+  const filterPanelId = useId();
   const [filterQ, setFilterQ] = useState("");
+  const [activeFilter, setActiveFilter] = useState<ActiveFilterValue>("all");
   const [list, setList] = useState<Doctor[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [editing, setEditing] = useState<Doctor | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Doctor | null>(null);
+  const [deleteStep, setDeleteStep] = useState<1 | 2>(1);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const [name, setName] = useState("");
   const [specialty, setSpecialty] = useState("");
@@ -33,6 +43,21 @@ export function OpdDoctorsPage() {
     const data = await listDoctors(search.trim());
     setList(data);
     return data;
+  }
+
+  function runSearch(query: string, status = activeFilter) {
+    void reload(query)
+      .then((data) => {
+        const first = data.find((d) => matchesActive(d.active, status));
+        if (first) selectItem(first.id);
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : "Search failed"));
+  }
+
+  function resetFilters() {
+    setFilterQ("");
+    setActiveFilter("all");
+    runSearch("", "all");
   }
 
   useEffect(() => {
@@ -53,6 +78,10 @@ export function OpdDoctorsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- initial load
   }, []);
 
+  const filtered = useMemo(
+    () => list.filter((d) => matchesActive(d.active, activeFilter)),
+    [list, activeFilter],
+  );
   const selected = list.find((d) => d.id === selectedId) ?? null;
   const showForm = creating || editing != null;
 
@@ -143,6 +172,45 @@ export function OpdDoctorsPage() {
     }
   }
 
+  function openDeleteConfirm(d: Doctor) {
+    setDeleteError(null);
+    setDeleteStep(1);
+    setDeleteTarget(d);
+  }
+
+  function closeDeleteConfirm() {
+    if (deleteBusy) return;
+    setDeleteTarget(null);
+    setDeleteStep(1);
+    setDeleteError(null);
+  }
+
+  async function confirmDeleteDoctor() {
+    if (!deleteTarget) return;
+    if (deleteStep === 1) {
+      setDeleteStep(2);
+      setDeleteError(null);
+      return;
+    }
+    const d = deleteTarget;
+    setDeleteBusy(true);
+    setDeleteError(null);
+    try {
+      await deleteDoctor(d.id);
+      setDeleteTarget(null);
+      setDeleteStep(1);
+      if (editing?.id === d.id) closeForm();
+      const data = await reload();
+      if (selectedId === d.id) {
+        setSelectedId(data[0]?.id ?? null);
+      }
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "Delete failed");
+    } finally {
+      setDeleteBusy(false);
+    }
+  }
+
   if (mode === "history") {
     return (
       <OpdCatalogHistory
@@ -164,14 +232,11 @@ export function OpdDoctorsPage() {
               <ActionIcon name="plus" />
               {t("newBadge")}
             </button>
-            <button
-              type="button"
-              className={`btn action${filterOpen ? " on" : ""}`}
-              onClick={() => setFilterOpen((v) => !v)}
-            >
-              <ActionIcon name="filter" />
-              {t("filter")}
-            </button>
+            <CatalogFilterButton
+              open={filterOpen}
+              controlsId={filterPanelId}
+              onToggle={() => setFilterOpen((v) => !v)}
+            />
             <button type="button" className="btn action" onClick={() => setMode("history")}>
               <ActionIcon name="history" />
               {t("catalogHistoryLink")}
@@ -179,48 +244,26 @@ export function OpdDoctorsPage() {
           </div>
         </div>
         <p className="drug-setup-selected" aria-hidden="true" />
-        {filterOpen ? (
-          <div className="drug-setup-filter">
-            <input
-              className="drug-info-input"
-              value={filterQ}
-              onChange={(e) => setFilterQ(e.target.value)}
-              placeholder={t("doctorPlaceholder")}
-              aria-label={t("filter")}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  void reload(filterQ)
-                    .then((data) => {
-                      if (data[0]) selectItem(data[0].id);
-                    })
-                    .catch((err) => setError(err instanceof Error ? err.message : "Search failed"));
-                }
-              }}
-            />
-            <button
-              type="button"
-              className="btn action"
-              onClick={() =>
-                void reload(filterQ)
-                  .then((data) => {
-                    if (data[0]) selectItem(data[0].id);
-                  })
-                  .catch((err) => setError(err instanceof Error ? err.message : "Search failed"))
-              }
-            >
-              <ActionIcon name="search" />
-              {t("search")}
-            </button>
-          </div>
-        ) : null}
+        <CatalogFilterPanel
+          id={filterPanelId}
+          open={filterOpen}
+          query={filterQ}
+          onQueryChange={setFilterQ}
+          queryPlaceholder={t("doctorPlaceholder")}
+          searchLabel={t("searchDoctors")}
+          onSearch={() => runSearch(filterQ)}
+          active={activeFilter}
+          onActiveChange={setActiveFilter}
+          onReset={resetFilters}
+        />
         {error && !showForm ? <p className="form-error">{error}</p> : null}
         <div className="drug-setup-table" role="listbox" aria-label={t("maintenanceDoctors")}>
           <div className="drug-setup-table-head opd-master-cols">
-            <span>{t("name")}</span>
-            <span>{t("specialty")}</span>
+            <span title={t("name")}>{t("name")}</span>
+            <span title={t("specialty")}>{t("specialty")}</span>
           </div>
-          {list.length === 0 ? <p className="empty-row">{t("noDoctorsYet")}</p> : null}
-          {list.map((d) => (
+          {filtered.length === 0 ? <p className="empty-row">{t("noDoctorsYet")}</p> : null}
+          {filtered.map((d) => (
             <div
               key={d.id}
               role="option"
@@ -237,8 +280,8 @@ export function OpdDoctorsPage() {
                 }
               }}
             >
-              <span>{d.name}</span>
-              <span>{d.specialty || t("general")}</span>
+              <span title={d.name}>{d.name}</span>
+              <span title={d.specialty || t("general")}>{d.specialty || t("general")}</span>
             </div>
           ))}
         </div>
@@ -309,31 +352,33 @@ export function OpdDoctorsPage() {
             </h3>
             {selected ? (
               <>
-                <div className="drug-info-field">
-                  <span className="drug-info-label">{t("name")}</span>
-                  <span>{selected.name}</span>
+                <div className="drug-info-fields">
+                  <div className="drug-info-field">
+                    <span className="drug-info-label">{t("name")}</span>
+                    <span>{selected.name}</span>
+                  </div>
+                  <div className="drug-info-field">
+                    <span className="drug-info-label">{t("specialty")}</span>
+                    <span>{selected.specialty || t("general")}</span>
+                  </div>
+                  <div className="drug-info-field">
+                    <span className="drug-info-label">{t("consultationMmk")}</span>
+                    <span>
+                      {formatMMK(selected.fees.consultation_mmk)} {t("mmk")}
+                    </span>
+                  </div>
+                  <div className="drug-info-field">
+                    <span className="drug-info-label">{t("otFeeMmk")}</span>
+                    <span>
+                      {formatMMK(selected.fees.ot_mmk)} {t("mmk")}
+                    </span>
+                  </div>
+                  <div className="drug-info-field">
+                    <span className="drug-info-label">{t("active")}</span>
+                    <span>{selected.active ? t("active") : t("inactive")}</span>
+                  </div>
                 </div>
-                <div className="drug-info-field">
-                  <span className="drug-info-label">{t("specialty")}</span>
-                  <span>{selected.specialty || t("general")}</span>
-                </div>
-                <div className="drug-info-field">
-                  <span className="drug-info-label">{t("consultationMmk")}</span>
-                  <span>
-                    {formatMMK(selected.fees.consultation_mmk)} {t("mmk")}
-                  </span>
-                </div>
-                <div className="drug-info-field">
-                  <span className="drug-info-label">{t("otFeeMmk")}</span>
-                  <span>
-                    {formatMMK(selected.fees.ot_mmk)} {t("mmk")}
-                  </span>
-                </div>
-                <div className="drug-info-field">
-                  <span className="drug-info-label">{t("active")}</span>
-                  <span>{selected.active ? t("active") : t("inactive")}</span>
-                </div>
-                <div className="btn-row drug-setup-actions">
+                <div className="btn-row">
                   <button
                     type="button"
                     className="btn action"
@@ -353,6 +398,15 @@ export function OpdDoctorsPage() {
                       {t("deactivate")}
                     </button>
                   ) : null}
+                  <button
+                    type="button"
+                    className="btn action danger"
+                    disabled={busy || deleteBusy}
+                    onClick={() => openDeleteConfirm(selected)}
+                  >
+                    <ActionIcon name="trash" />
+                    {t("delete")}
+                  </button>
                 </div>
               </>
             ) : (
@@ -361,6 +415,21 @@ export function OpdDoctorsPage() {
           </>
         )}
       </div>
+
+      {deleteTarget ? (
+        <CatalogDeleteDialog
+          identity={deleteTarget.name}
+          message={
+            deleteStep === 1
+              ? t("confirmDeleteDoctor").replace("{name}", deleteTarget.name)
+              : t("confirmDeleteDoctorFinal").replace("{name}", deleteTarget.name)
+          }
+          busy={deleteBusy}
+          error={deleteError}
+          onCancel={closeDeleteConfirm}
+          onConfirm={() => void confirmDeleteDoctor()}
+        />
+      ) : null}
     </section>
   );
 }

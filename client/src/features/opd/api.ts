@@ -27,6 +27,9 @@ export type OpdBill = {
   description: string;
   status: "draft" | "paid" | "void" | string;
   total_mmk: number;
+  discount_value?: number;
+  discount_unit?: "percent" | "mmk" | string;
+  discount_mmk?: number;
   paid_at?: string | null;
   voided_at?: string | null;
   void_reason?: string;
@@ -67,6 +70,8 @@ export type OpdBillWrite = {
   description: string;
   lines: OpdBillLine[];
   save_patient?: boolean;
+  discount_value?: number;
+  discount_unit?: "percent" | "mmk";
 };
 
 export async function listOpdDoctors(q = ""): Promise<OpdDoctor[]> {

@@ -1,0 +1,9 @@
+[[permission]]
+identifier = "allow-list-printers"
+description = "Allow listing Windows printers installed on this PC"
+commands.allow = ["list_printers"]
+
+[[permission]]
+identifier = "allow-print-html"
+description = "Allow silent HTML print to a named printer"
+commands.allow = ["print_html"]

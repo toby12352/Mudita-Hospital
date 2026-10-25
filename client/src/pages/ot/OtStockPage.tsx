@@ -128,8 +128,6 @@ export function OtStockPage() {
     setError(null);
     setNotice(null);
     try {
-      if (!batchNo.trim()) throw new Error(t("errBatchRequired"));
-      if (!expiry.trim()) throw new Error(t("errExpiryRequired"));
       await labelOtBatch(batch.id, { batch_no: batchNo.trim(), expiry_date: expiry.trim() });
       setNotice(t("saved"));
       await reload(batch.item_id);
@@ -163,10 +161,10 @@ export function OtStockPage() {
   }
 
   return (
-    <section className="drug-setup" aria-label={t("navOtCupboard")}>
+    <section className="drug-setup" aria-label={t("maintenanceInventory")}>
       <div className="drug-setup-list-pane">
         <div className="drug-setup-title-row">
-          <h2 className="drug-setup-title">{t("navOtCupboard")}</h2>
+          <h2 className="drug-setup-title">{t("maintenanceInventory")}</h2>
         </div>
         <p className="hint">{t("otStockHint")}</p>
         <div className="drug-setup-filter">
@@ -181,36 +179,38 @@ export function OtStockPage() {
         {error && !selected ? <p className="form-error">{error}</p> : null}
         <div className="drug-setup-table" role="listbox" aria-label={t("cupboardItems")}>
           <div className="drug-setup-table-head ot-cupboard-cols">
-            <span>{t("code")}</span>
-            <span>{t("drugNameTrade")}</span>
-            <span>{t("qty")}</span>
+            <span title={t("code")}>{t("code")}</span>
+            <span title={t("drugNameTrade")}>{t("drugNameTrade")}</span>
+            <span title={t("qty")}>{t("qty")}</span>
           </div>
           {filtered.length === 0 ? <p className="empty-row">{t("noOtStock")}</p> : null}
-          {filtered.map((item) => (
-            <div
-              key={item.item_id}
-              role="option"
-              tabIndex={0}
-              aria-selected={item.item_id === activeId}
-              className={`drug-setup-table-row ot-cupboard-cols${
-                item.item_id === activeId ? " selected" : ""
-              }`}
-              onClick={() => setSelectedId(item.item_id)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  setSelectedId(item.item_id);
-                }
-              }}
-            >
-              <span>{item.item_code}</span>
-              <span>{item.item_name}</span>
-              <span>
-                {item.ot_on_hand.toLocaleString()}
-                {item.stock_unit ? ` ${item.stock_unit}` : ""}
-              </span>
-            </div>
-          ))}
+          {filtered.map((item) => {
+            const qtyText = `${item.ot_on_hand.toLocaleString()}${
+              item.stock_unit ? ` ${item.stock_unit}` : ""
+            }`;
+            return (
+              <div
+                key={item.item_id}
+                role="option"
+                tabIndex={0}
+                aria-selected={item.item_id === activeId}
+                className={`drug-setup-table-row ot-cupboard-cols${
+                  item.item_id === activeId ? " selected" : ""
+                }`}
+                onClick={() => setSelectedId(item.item_id)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setSelectedId(item.item_id);
+                  }
+                }}
+              >
+                <span title={item.item_code}>{item.item_code}</span>
+                <span title={item.item_name}>{item.item_name}</span>
+                <span title={qtyText}>{qtyText}</span>
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -222,26 +222,28 @@ export function OtStockPage() {
         {error && selected ? <p className="form-error">{error}</p> : null}
         {selected ? (
           <>
-            <div className="drug-info-field">
-              <span className="drug-info-label">{t("brandName")}</span>
-              <span className="drug-info-input">{selected.item_name}</span>
-            </div>
-            <div className="drug-info-field">
-              <span className="drug-info-label">{t("dosage")}</span>
-              <span className="drug-info-input">{selected.dosage.trim() || "—"}</span>
-            </div>
-            <div className="drug-info-field">
-              <span className="drug-info-label">{t("packingSize")}</span>
-              <span className="drug-info-input">
-                {formatPackCompact(packFromItem(selected))}
-              </span>
-            </div>
-            <div className="drug-info-field">
-              <span className="drug-info-label">{t("otOnHand")}</span>
-              <span className="drug-info-input">
-                {selected.ot_on_hand.toLocaleString()}
-                {selected.stock_unit ? ` ${selected.stock_unit}` : ""}
-              </span>
+            <div className="drug-info-fields">
+              <div className="drug-info-field">
+                <span className="drug-info-label">{t("brandName")}</span>
+                <span className="drug-info-input">{selected.item_name}</span>
+              </div>
+              <div className="drug-info-field">
+                <span className="drug-info-label">{t("dosage")}</span>
+                <span className="drug-info-input">{selected.dosage.trim() || "—"}</span>
+              </div>
+              <div className="drug-info-field">
+                <span className="drug-info-label">{t("packingSize")}</span>
+                <span className="drug-info-input">
+                  {formatPackCompact(packFromItem(selected))}
+                </span>
+              </div>
+              <div className="drug-info-field">
+                <span className="drug-info-label">{t("otOnHand")}</span>
+                <span className="drug-info-input">
+                  {selected.ot_on_hand.toLocaleString()}
+                  {selected.stock_unit ? ` ${selected.stock_unit}` : ""}
+                </span>
+              </div>
             </div>
             {(() => {
               const pack = packFromItem(selected);
@@ -347,7 +349,7 @@ function OtLabelFields({
       </label>
       <label className="field field-compact">
         <span>{t("expiry")}</span>
-        <DatePicker value={exp} onChange={setExp} disabled={busy} />
+        <DatePicker value={exp} onChange={setExp} disabled={busy} required />
       </label>
       <button type="submit" className="btn action" disabled={busy}>
         <ActionIcon name="check" />

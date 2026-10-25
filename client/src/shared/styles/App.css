@@ -30,6 +30,8 @@
   --radius-control: 5px;
   --radius-panel: 7px;
   --radius-dialog: 10px;
+  --placeholder: #64748b;
+  --focus-ring: 0 0 0 3px rgba(37, 99, 235, 0.18);
   --transition-fast: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
   font-family: "Segoe UI Variable", "Segoe UI", "Noto Sans Myanmar", "Noto Sans", sans-serif;
   font-size: 16px;
@@ -48,6 +50,11 @@ html[data-locale="my"] {
 
 * {
   box-sizing: border-box;
+}
+
+::placeholder {
+  color: var(--placeholder);
+  opacity: 1;
 }
 
 html,
@@ -69,6 +76,56 @@ body,
   min-height: 0;
   overflow: auto;
   box-sizing: border-box;
+}
+
+/* Auth gates: full-window scrollport; scrollbar at the window edge. */
+.shell.shell-auth {
+  max-width: none;
+  width: 100%;
+  margin: 0;
+  padding: 2rem 1.25rem;
+  gap: 0;
+  align-items: stretch;
+  background: var(--bg);
+}
+
+.auth-card {
+  width: min(26.5rem, 100%);
+  margin-block: auto;
+  margin-inline: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.15rem;
+  padding: 1.5rem 1.35rem 1.35rem;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.04);
+}
+
+.auth-card .brand h1 {
+  font-size: 1.6rem;
+  letter-spacing: -0.03em;
+}
+
+.auth-card .lede {
+  margin-top: 0.35rem;
+}
+
+.auth-card .card-form {
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.auth-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
 }
 
 .shell-wide {
@@ -94,6 +151,16 @@ body,
   background: var(--desk-bg);
   height: 100%;
   min-height: 0;
+  overflow: hidden;
+  flex-direction: row;
+}
+
+.desk-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
 }
 
@@ -199,53 +266,142 @@ body,
   gap: 1.5rem;
 }
 
-/* Classic radio navigation bar */
-.desk-radio-bar {
+/* Classic desk sidebar navigation */
+.desk-sidebar {
+  width: 3.25rem;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.55rem 0.4rem;
+  background: var(--bg-panel);
+  border-right: 1px solid var(--border);
+  overflow: visible;
+  transition: width 140ms ease;
+}
+
+.desk-sidebar--expanded {
+  width: 13.75rem;
+  overflow: auto;
+}
+
+.desk-nav {
+  flex: 1;
+  min-height: 0;
+  overflow: visible;
+}
+
+.desk-sidebar--expanded .desk-nav {
+  overflow: auto;
+}
+
+.desk-nav-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.desk-nav-btn,
+.desk-nav-toggle {
+  position: relative;
   display: flex;
   align-items: center;
-  justify-content: flex-start;
-  gap: 0.75rem;
+  gap: 0.65rem;
   width: 100%;
-  padding: 0.2rem 0.55rem;
+  text-align: left;
+  font: inherit;
+  font-weight: 550;
+  font-size: 0.94rem;
+  padding: 0.55rem 0.55rem;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.desk-nav-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  display: block;
+}
+
+.desk-nav-label {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.desk-sidebar:not(.desk-sidebar--expanded) .desk-nav-btn,
+.desk-sidebar:not(.desk-sidebar--expanded) .desk-nav-toggle {
+  justify-content: center;
+  gap: 0;
+  padding: 0.55rem;
+}
+
+.desk-sidebar:not(.desk-sidebar--expanded) .desk-nav-label {
+  position: absolute;
+  left: calc(100% + 0.45rem);
+  top: 50%;
+  transform: translateY(-50%);
+  margin: 0;
+  padding: 0.35rem 0.55rem;
   background: var(--bg-panel);
   color: var(--ink);
-  min-height: 2rem;
-  border-bottom: 1px solid var(--border);
-}
-
-.desk-radio-items {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.15rem 0.85rem;
-  min-width: 0;
-}
-
-.desk-radio-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  cursor: pointer;
-  font-size: 0.88rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  box-shadow: 0 2px 8px rgba(31, 41, 55, 0.1);
+  font-size: 0.85rem;
   font-weight: 600;
-  color: var(--ink);
   white-space: nowrap;
-  user-select: none;
+  overflow: visible;
+  text-overflow: clip;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 80;
 }
 
-.desk-radio-item input {
-  accent-color: var(--accent);
-  margin: 0;
-  cursor: pointer;
+.desk-sidebar:not(.desk-sidebar--expanded) .desk-nav-btn:hover .desk-nav-label,
+.desk-sidebar:not(.desk-sidebar--expanded) .desk-nav-btn:focus-visible .desk-nav-label,
+.desk-sidebar:not(.desk-sidebar--expanded) .desk-nav-toggle:hover .desk-nav-label,
+.desk-sidebar:not(.desk-sidebar--expanded) .desk-nav-toggle:focus-visible .desk-nav-label {
+  opacity: 1;
 }
 
-.desk-radio-item.active .desk-radio-label {
+.desk-nav-btn:hover,
+.desk-nav-btn:focus-visible,
+.desk-nav-toggle:hover,
+.desk-nav-toggle:focus-visible {
+  background: var(--accent-soft);
   color: var(--accent);
+  outline: none;
 }
 
-.desk-radio-item:has(input:disabled) {
-  opacity: 0.45;
+.desk-nav-btn:focus-visible,
+.desk-nav-toggle:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+
+.desk-nav-btn[aria-current="page"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 650;
+}
+
+.desk-nav-btn:disabled {
+  opacity: 0.5;
   cursor: not-allowed;
+}
+
+.desk-nav-toggle {
+  flex-shrink: 0;
+  margin-top: auto;
 }
 
 .desk-status-bar {
@@ -278,8 +434,8 @@ body,
 
 .desk-status-hint kbd {
   font-family: Consolas, "Courier New", monospace;
-  font-size: 0.75rem;
-  font-weight: 700;
+  font-size: 11px;
+  font-weight: 600;
   background: transparent;
   border: none;
   padding: 0;
@@ -460,7 +616,7 @@ body,
 }
 
 .app-nav-btn:disabled {
-  opacity: 0.4;
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
@@ -512,7 +668,7 @@ body,
 }
 
 .app-nav-menu button:disabled {
-  opacity: 0.4;
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
@@ -589,6 +745,7 @@ body,
 .status-dot.status-ok {
   background: var(--ok);
   box-shadow: none;
+  animation: pulse 1.2s ease-in-out infinite;
 }
 
 .status-offline .status-dot,
@@ -601,6 +758,13 @@ body,
 .status-dot.status-checking {
   background: var(--checking);
   box-shadow: none;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.45;
+  }
 }
 
 .status-label {
@@ -687,11 +851,6 @@ body,
   box-shadow: none;
 }
 
-.signin-chip {
-  justify-content: space-between;
-  width: 100%;
-}
-
 .muted {
   color: var(--muted);
   list-style: none;
@@ -710,6 +869,10 @@ body,
   border-radius: var(--radius-panel);
   background: var(--bg-panel);
   border: 1px solid var(--border);
+}
+
+.card-form > .btn {
+  align-self: flex-start;
 }
 
 .form-section {
@@ -771,10 +934,19 @@ body,
 
 .field input:focus,
 .field select:focus {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
+  outline: none;
   border-color: var(--accent);
+  box-shadow: var(--focus-ring);
   background: var(--bg-panel);
+}
+
+.field input:disabled,
+.field select:disabled,
+.packing-rel-row input:disabled {
+  opacity: 1;
+  color: var(--muted);
+  background-color: #f8fafc;
+  cursor: not-allowed;
 }
 
 .field-row {
@@ -791,6 +963,12 @@ body,
   .field-row.cols-3 {
     grid-template-columns: 1fr;
   }
+}
+
+.field.field-compact {
+  align-self: flex-start;
+  width: 16rem;
+  max-width: 100%;
 }
 
 .field.grow {
@@ -813,8 +991,9 @@ body,
 }
 
 .btn:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
 }
 
 .btn.primary {
@@ -916,8 +1095,17 @@ body,
 }
 
 .btn.ghost.danger {
+  background: var(--bg-panel);
   color: var(--danger);
   border-color: var(--danger-border);
+}
+
+.btn.ghost.danger:hover:not(:disabled),
+.btn.ghost.danger:active:not(:disabled) {
+  filter: none;
+  background: var(--bg-panel);
+  color: var(--danger);
+  border-color: var(--danger);
 }
 
 .btn.danger {
@@ -944,31 +1132,31 @@ body,
 .settings-panel .field input,
 .settings-panel .field select {
   border-radius: 6px;
-  border-color: #d5dce5;
+  border-color: var(--border);
 }
 
 .settings-panel .field input:hover:not(:disabled):not(:focus),
 .settings-panel .field select:hover:not(:disabled):not(:focus) {
-  border-color: #c5cdd8;
+  border-color: var(--border-strong);
 }
 
 .settings-panel .field input:focus,
 .settings-panel .field select:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
+  box-shadow: var(--focus-ring);
   background: var(--bg-input);
 }
 
 .settings-panel .field input::placeholder {
-  color: #94a3b8;
+  color: var(--placeholder);
 }
 
 .settings-panel .field input:disabled,
 .settings-panel .field select:disabled {
   color: var(--muted);
   background-color: #f8fafc;
-  border-color: #d5dce5;
+  border-color: var(--border);
   cursor: not-allowed;
   opacity: 1;
 }
@@ -1025,8 +1213,9 @@ body,
 }
 
 .tab:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
 }
 
 .tab.active {
@@ -1233,8 +1422,14 @@ body,
 }
 
 .tile:disabled {
-  opacity: 0.4;
+  opacity: 0.5;
   cursor: not-allowed;
+}
+
+.tile:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
 }
 
 .tile:not(:disabled):hover {
@@ -1322,8 +1517,9 @@ body,
 }
 
 .qty-input:focus {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
   background: var(--bg-panel);
 }
 
@@ -1364,7 +1560,7 @@ body,
 }
 
 .lang-compact .btn {
-  padding: 0.25rem 0.55rem;
+  padding: 0.35rem 0.7rem;
   font-size: 0.85rem;
 }
 
@@ -1584,8 +1780,8 @@ body,
 }
 
 .date-picker-input-wrap:focus-within {
-  border-color: var(--accent-border);
-  box-shadow: 0 0 0 2px var(--accent-soft);
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
 }
 
 .date-picker-icon-btn {
@@ -1605,6 +1801,11 @@ body,
 
 .date-picker-icon-btn:hover:not(:disabled) {
   background: var(--accent-soft);
+}
+
+.date-picker-icon-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .date-picker-icon-btn:disabled {
@@ -1658,6 +1859,11 @@ body,
   color: var(--accent);
 }
 
+.date-picker-nav:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
 .date-picker-weekdays {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
@@ -1692,6 +1898,11 @@ body,
 
 .date-picker-cell:not(.empty):hover {
   background: var(--bg);
+}
+
+.date-picker-cell:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .date-picker-cell.selected {
@@ -1759,8 +1970,9 @@ body,
 
 .packing-rel-row select:focus,
 .packing-rel-row input:focus {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
   background: var(--bg-panel);
 }
 
@@ -1768,9 +1980,14 @@ body,
   display: flex;
   align-items: center;
   justify-content: center;
+  align-self: stretch;
 }
 
 .packing-rel-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
   min-width: 2rem;
   padding: 0.25rem 0.45rem;
   line-height: 1;
@@ -1789,6 +2006,83 @@ body,
   width: 100%;
   min-width: 0;
   box-sizing: border-box;
+}
+
+/* Formula edit grid rules live after .drug-info-price-grid so they win cascade. */
+.packing-price-grid-edit > span.packing-price-corner {
+  background: transparent;
+  border-color: transparent;
+}
+
+.packing-price-grid-edit > span.packing-price-pct-head {
+  text-align: center;
+}
+
+.packing-price-markup {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  margin: 0;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 650;
+  color: var(--muted);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  box-sizing: border-box;
+  min-width: 5.5rem;
+  align-self: stretch;
+}
+
+.packing-price-markup input {
+  width: 2.75rem;
+  min-width: 0;
+  box-sizing: border-box;
+  font: inherit;
+  font-weight: 650;
+  text-align: center;
+  padding: 0.2rem 0.2rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--bg-input);
+  color: var(--text);
+}
+
+.packing-price-markup input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+
+.packing-price-op {
+  line-height: 1;
+  font-weight: 700;
+  color: var(--muted);
+  flex: 0 0 auto;
+}
+
+.packing-price-markup-hint {
+  margin: 0.15rem 0 0;
+  border: none;
+  background: transparent;
+  padding: 0;
+  font-weight: 400;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .field-row.pack-size-row {
@@ -1836,8 +2130,9 @@ body,
 
 .pack-size-controls input:focus,
 .pack-size-controls select:focus {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
   background: var(--bg-panel);
 }
 
@@ -1896,10 +2191,6 @@ body,
 .opd-bill-desk,
 .opd-bill-dialog {
   --radius-control: 6px;
-  --border: #d5dce5;
-  --border-strong: #c5cdd8;
-  --placeholder: #94a3b8;
-  --focus-ring: 0 0 0 3px rgba(37, 99, 235, 0.18);
   --bill-header-bg: #f3f5f8;
   --bill-row-hover: #f1f5f9;
   --bg-panel: #ffffff;
@@ -1948,15 +2239,18 @@ body,
 }
 
 .opd-bill-header-col {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  column-gap: 0.45rem;
+  row-gap: 0.4rem;
+  align-items: center;
 }
 
 .opd-bill-field {
-  display: flex;
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
   align-items: center;
-  gap: 0.45rem;
   min-height: 1.85rem;
 }
 
@@ -1989,13 +2283,28 @@ body,
 }
 
 .opd-bill-label {
-  flex: 0 0 5.5rem;
+  white-space: nowrap;
   font-size: 0.8125rem;
   font-weight: 600;
   color: var(--muted);
   background: transparent;
   padding: 0.2rem 0.4rem;
   border-radius: 0;
+}
+
+.opd-bill-field > .opd-bill-input,
+.opd-bill-field > .opd-bill-readonly,
+.opd-bill-field > .typeahead,
+.opd-bill-field > .opd-bill-control {
+  min-width: 0;
+  width: 100%;
+}
+
+.opd-bill-control {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
 }
 
 .opd-bill-input {
@@ -2039,7 +2348,7 @@ body,
 .opd-bill-desk .bill-unit-select:disabled,
 .opd-bill-grid-row .qty-input:disabled {
   color: var(--muted);
-  background: #f8fafc;
+  background-color: #f8fafc;
   border-color: var(--border);
   cursor: not-allowed;
   opacity: 1;
@@ -2047,6 +2356,22 @@ body,
 
 .opd-bill-input.grow {
   flex: 1 1 auto;
+}
+
+.opd-bill-desk select.opd-bill-input,
+.opd-bill-dialog select.opd-bill-input {
+  appearance: none;
+  background-color: var(--bg-input);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23667085' d='M1.41 0L6 4.58L10.59 0L12 1.41l-6 6-6-6z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  background-size: 0.75rem;
+  padding-right: 2rem;
+}
+
+.opd-bill-desk select.opd-bill-input:disabled,
+.opd-bill-dialog select.opd-bill-input:disabled {
+  background-color: #f8fafc;
 }
 
 .opd-bill-input--narrow {
@@ -2078,6 +2403,13 @@ body,
 
 .opd-bill-grid {
   --bill-line-row-height: 2.35rem;
+  --bill-cart-font: 0.875rem;
+  --bill-cart-line: 1.2;
+  --bill-cart-pad-y: 0.25rem;
+  --bill-cart-pad-x: 0.35rem;
+  --bill-cart-control-height: calc(
+    var(--bill-cart-font) * var(--bill-cart-line) + var(--bill-cart-pad-y) * 2 + 2px
+  );
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
@@ -2105,6 +2437,88 @@ body,
   background: var(--bg-panel);
   /* Same inset as the body's reserved scrollbar, so entry columns match the rows. */
   padding-inline-end: var(--bill-scroll-gutter, 0px);
+}
+
+.bill-add-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.65rem;
+  padding: 0.4rem 0.75rem 0.35rem;
+  border-bottom: 1px solid var(--border);
+  background: #fafbfc;
+}
+
+.bill-add-bar-title {
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.bill-add-segments {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  align-items: center;
+}
+
+.bill-add-segment {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  box-sizing: border-box;
+  height: var(--bill-cart-control-height);
+  margin: 0;
+  padding: var(--bill-cart-pad-y) 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--bg-panel);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: var(--bill-cart-line);
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.bill-add-segment:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+
+.bill-add-segment:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+
+.bill-add-segment--on {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.bill-add-segment--on:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.bill-add-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  box-sizing: border-box;
+  height: var(--bill-cart-control-height);
+  padding: var(--bill-cart-pad-y) 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: var(--bill-cart-line);
 }
 
 .opd-bill-grid-head,
@@ -2163,9 +2577,14 @@ body,
 }
 
 .opd-bill-grid-row .btn {
-  padding: 0.15rem 0.35rem;
-  line-height: 1.2;
-  font-size: 0.8125rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  height: var(--bill-cart-control-height);
+  padding: var(--bill-cart-pad-y) var(--bill-cart-pad-x);
+  line-height: var(--bill-cart-line);
+  font-size: var(--bill-cart-font);
   border-radius: var(--radius-control);
 }
 
@@ -2185,9 +2604,10 @@ body,
   width: 100%;
   min-width: 0;
   box-sizing: border-box;
-  padding: 0.15rem 0.3rem;
-  line-height: 1.2;
-  font-size: 0.875rem;
+  height: var(--bill-cart-control-height);
+  padding: var(--bill-cart-pad-y) var(--bill-cart-pad-x);
+  line-height: var(--bill-cart-line);
+  font-size: var(--bill-cart-font);
   border: 1px solid var(--border);
   border-radius: var(--radius-control);
   background: var(--bg-input);
@@ -2198,8 +2618,10 @@ body,
   width: 100%;
   min-width: 0;
   box-sizing: border-box;
-  padding: 0.1rem 0.2rem;
-  line-height: 1.2;
+  height: var(--bill-cart-control-height);
+  padding: var(--bill-cart-pad-y) 2rem var(--bill-cart-pad-y) var(--bill-cart-pad-x);
+  line-height: var(--bill-cart-line);
+  font-size: var(--bill-cart-font);
 }
 
 .opd-bill-grid-body .opd-bill-grid-row:nth-child(even) {
@@ -2235,8 +2657,10 @@ body,
   width: 100%;
   min-width: 0;
   box-sizing: border-box;
-  padding: 0.25rem 0.35rem;
-  font-size: 0.875rem;
+  height: var(--bill-cart-control-height);
+  padding: var(--bill-cart-pad-y) var(--bill-cart-pad-x);
+  line-height: var(--bill-cart-line);
+  font-size: var(--bill-cart-font);
   border: 1px solid var(--border);
   border-radius: var(--radius-control);
   background: var(--bg-input);
@@ -2284,12 +2708,18 @@ body,
 .bill-unit-select {
   width: 100%;
   font: inherit;
-  font-size: 0.8125rem;
+  font-size: var(--bill-cart-font, 0.875rem);
   color: var(--ink);
-  background: var(--bg-input);
+  appearance: none;
+  background-color: var(--bg-input);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23667085' d='M1.41 0L6 4.58L10.59 0L12 1.41l-6 6-6-6z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  background-size: 0.75rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-control);
-  padding: 0.2rem 0.25rem;
+  padding: var(--bill-cart-pad-y, 0.25rem) 2rem var(--bill-cart-pad-y, 0.25rem) var(--bill-cart-pad-x, 0.35rem);
+  line-height: var(--bill-cart-line, 1.2);
   transition: var(--transition-fast);
 }
 
@@ -2338,7 +2768,7 @@ body,
 }
 
 .opd-bill-totals {
-  min-width: 12rem;
+  min-width: 18rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-control);
   overflow: hidden;
@@ -2362,6 +2792,56 @@ body,
 
 .opd-bill-total-row--balance span:last-child {
   color: var(--danger);
+}
+
+.opd-bill-total-row--discount {
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.opd-bill-discount-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-left: auto;
+}
+
+.opd-bill-discount-input,
+.opd-bill-discount-unit {
+  font: inherit;
+  color: var(--ink);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  padding: 0.12rem 0.35rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.opd-bill-discount-input {
+  width: 4.2rem;
+  text-align: right;
+}
+
+.opd-bill-discount-unit {
+  width: 4.6rem;
+}
+
+.opd-bill-discount-input:focus,
+.opd-bill-discount-unit:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+
+.opd-bill-discount-input:disabled,
+.opd-bill-discount-unit:disabled {
+  opacity: 0.75;
+}
+
+.opd-bill-discount-amount {
+  min-width: 4.5rem;
+  text-align: right;
 }
 
 .opd-bill-rail {
@@ -2493,14 +2973,14 @@ body,
 }
 
 .opd-bill-rail-btn:disabled {
-  opacity: 0.45;
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
 .opd-bill-rail-btn kbd {
   font-family: Consolas, "Courier New", monospace;
-  font-size: 0.6875rem;
-  font-weight: 500;
+  font-size: 11px;
+  font-weight: 600;
   opacity: 1;
   border: none;
   background: transparent;
@@ -2535,7 +3015,7 @@ body,
   gap: 0.85rem;
   padding: 1.75rem 1.5rem 1.25rem;
   background: var(--bg-panel);
-  border-radius: 28px;
+  border-radius: var(--radius-dialog);
   box-shadow: 0 18px 48px rgba(31, 41, 55, 0.16);
   text-align: center;
 }
@@ -2550,7 +3030,7 @@ body,
   margin: 0;
   padding: 0;
   border: 1px solid var(--danger-border);
-  border-radius: 999px;
+  border-radius: var(--radius-control);
   background: #fff;
   color: var(--danger);
   cursor: pointer;
@@ -2573,8 +3053,9 @@ body,
 }
 
 .alert-dialog-close:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
 }
 
 .alert-dialog-badge {
@@ -2651,8 +3132,49 @@ body,
 }
 
 .alert-dialog-ok:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.alert-dialog--success .alert-dialog-badge-glow {
+  background: radial-gradient(
+    circle,
+    rgba(46, 125, 50, 0.22) 0%,
+    rgba(46, 125, 50, 0.08) 45%,
+    transparent 70%
+  );
+}
+
+.alert-dialog--success .alert-dialog-badge-circle {
+  color: var(--ok);
+  animation: alert-dialog-success-pop 0.35s ease-out;
+}
+
+.alert-dialog-check-path {
+  stroke-dasharray: 48;
+  stroke-dashoffset: 48;
+  animation: alert-dialog-check-draw 0.45s 0.12s ease-out forwards;
+}
+
+@keyframes alert-dialog-success-pop {
+  0% {
+    transform: scale(0.72);
+    opacity: 0.4;
+  }
+  70% {
+    transform: scale(1.06);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes alert-dialog-check-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
 }
 
 .opd-bill-dialog-overlay {
@@ -2726,6 +3248,11 @@ body,
 
 .opd-bill-dialog-row:hover {
   background: var(--bill-row-hover);
+}
+
+.opd-bill-dialog-row:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--accent), inset 0 0 0 4px rgba(37, 99, 235, 0.18);
 }
 
 .opd-bill-dialog-row--selected {
@@ -2834,6 +3361,33 @@ body,
   padding: 0.35rem 0.45rem;
 }
 
+/* Item-form and restock unit selects use the settings chevron.
+   appearance: none lets line-height apply, so Myanmar matches the input beside them. */
+.drug-setup-detail-pane > .card-form .field select,
+.drug-setup-detail-pane > .card-form .packing-rel-row select,
+.drug-setup-form-wrap .card-form .field select,
+.drug-setup-form-wrap .card-form .packing-rel-row select,
+.drug-info-qty-unit select {
+  appearance: none;
+  line-height: inherit;
+  background-color: var(--bg-input);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23667085' d='M1.41 0L6 4.58L10.59 0L12 1.41l-6 6-6-6z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.45rem center;
+  background-size: 0.75rem;
+  padding-right: 1.6rem;
+}
+
+.drug-setup-detail-pane > .card-form .field select:disabled,
+.drug-setup-detail-pane > .card-form .packing-rel-row select:disabled,
+.drug-setup-form-wrap .card-form .field select:disabled,
+.drug-setup-form-wrap .card-form .packing-rel-row select:disabled,
+.drug-info-qty-unit select:disabled {
+  opacity: 1;
+  color: var(--muted);
+  background-color: #f8fafc;
+}
+
 .drug-setup-detail-pane > .card-form .field.checkbox-field {
   padding-top: 0.35rem;
 }
@@ -2876,7 +3430,8 @@ body,
 .drug-setup-table-head,
 .drug-setup-table-row {
   display: grid;
-  grid-template-columns: 4.5rem 1fr 3.5rem;
+  /* Code track fits DEMO-GLOVE and TESTPACK1 on one line. Longer codes ellipsis. */
+  grid-template-columns: 7rem minmax(0, 1fr) 3.5rem;
   gap: 0.35rem;
   align-items: center;
   padding: 0.3rem 0.45rem;
@@ -2885,12 +3440,12 @@ body,
 
 .drug-setup-table-head.opd-master-cols,
 .drug-setup-table-row.opd-master-cols {
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 }
 
 .drug-setup-table-head.opd-service-cols,
 .drug-setup-table-row.opd-service-cols {
-  grid-template-columns: 4.5rem 1fr;
+  grid-template-columns: 7rem minmax(0, 1fr);
 }
 
 .drug-setup-table-head {
@@ -2923,6 +3478,11 @@ body,
   background: var(--accent-soft);
 }
 
+.drug-setup-table-row:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--accent), inset 0 0 0 4px rgba(37, 99, 235, 0.18);
+}
+
 .drug-setup-table-row.selected {
   background: var(--accent-soft);
   color: var(--accent);
@@ -2931,6 +3491,16 @@ body,
 
 .drug-setup-table-row.inactive {
   opacity: 0.55;
+}
+
+.drug-setup-table-head > span:nth-child(-n + 2),
+.drug-setup-table-row > span:nth-child(-n + 2),
+.drug-setup-table-head.ot-cupboard-cols > span:nth-child(3),
+.drug-setup-table-row.ot-cupboard-cols > span:nth-child(3) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .drug-setup-active-cell {
@@ -2948,9 +3518,56 @@ body,
 
 .drug-info-field {
   display: grid;
-  grid-template-columns: 7.5rem 1fr;
+  grid-template-columns: max-content minmax(0, 1fr);
   gap: 0.35rem;
   align-items: center;
+}
+
+/* One shared label track per group, sized to the longest label in the active locale. */
+.drug-info-fields,
+.drug-setup-panel-form {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  column-gap: 0.35rem;
+  align-items: center;
+}
+
+.drug-info-fields {
+  row-gap: 0.45rem;
+}
+
+.drug-setup-panel-form {
+  row-gap: 0.4rem;
+}
+
+.drug-info-fields > .drug-info-field,
+.drug-setup-panel-form > .drug-info-field,
+.drug-info-fields > .pharmacy-item-lots > .drug-info-field {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  gap: 0;
+  align-items: center;
+}
+
+.drug-setup-panel-form > :not(.drug-info-field):not(.btn),
+.drug-info-fields > :not(.drug-info-field) {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.drug-info-fields > .pharmacy-item-lots {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  margin-top: 0;
+  row-gap: 0.35rem;
+  min-width: 0;
+}
+
+.drug-info-fields > .pharmacy-item-lots > :not(.drug-info-field) {
+  grid-column: 1 / -1;
+  min-width: 0;
 }
 
 .drug-info-label {
@@ -2959,6 +3576,7 @@ body,
   color: var(--muted);
   background: transparent;
   padding: 0.28rem 0.4rem;
+  white-space: nowrap;
 }
 
 .drug-info-input {
@@ -2971,9 +3589,9 @@ body,
 }
 
 .drug-info-input:focus {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
+  outline: none;
   border-color: var(--accent);
+  box-shadow: var(--focus-ring);
 }
 
 .drug-info-qty-unit {
@@ -3018,7 +3636,7 @@ body,
   border: 1px solid var(--border);
   border-radius: var(--radius-control);
   font: inherit;
-  padding: 0.25rem 0.35rem;
+  padding: 0.25rem 0.45rem;
 }
 
 .drug-info-price-grid .price-sell {
@@ -3027,7 +3645,38 @@ body,
   border: 1px solid var(--border);
   border-radius: var(--radius-control);
   font: inherit;
-  padding: 0.25rem 0.35rem;
+  padding: 0.25rem 0.45rem;
+}
+
+/* Formula edit: unit | pur | × % = | sale — must beat .drug-info-price-grid above */
+.drug-info-price-grid.packing-price-grid-edit {
+  grid-template-columns: 5.5rem minmax(6.5rem, 1fr) auto minmax(6.5rem, 1fr);
+  max-width: 36rem;
+  width: 100%;
+  min-width: min(100%, 22rem);
+  align-items: stretch;
+}
+
+.drug-setup-restock-form > .drug-info-price-grid.packing-price-grid-edit,
+.drug-setup-panel-form > .drug-info-price-grid.packing-price-grid-edit,
+.card-form .drug-info-price-grid.packing-price-grid-edit,
+.nested-form > .drug-info-price-grid.packing-price-grid-edit {
+  min-width: min(100%, 22rem);
+}
+
+.drug-setup-restock-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.drug-setup-restock-form > .drug-setup-panel-form {
+  width: 100%;
+}
+
+.drug-setup-restock-form > .btn {
+  align-self: flex-start;
 }
 
 .drug-setup-actions {
@@ -3055,10 +3704,10 @@ body,
   font-size: 1.05rem;
 }
 
-.drug-setup-panel-form {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
+.drug-setup-panel-form > .btn {
+  grid-column: 1 / -1;
+  align-self: flex-start;
+  justify-self: start;
 }
 
 .drug-setup-panel-form + .drug-setup-panel-form {
@@ -3188,6 +3837,35 @@ body,
   filter: none;
 }
 
+/* Field rows and a primary sitting with an action share one height and --radius-control.
+   Standalone .btn.action groups keep the 12px radius above. Danger outline is unchanged. */
+.list-toolbar .field input,
+.list-toolbar .field select,
+.settings-panel .list-toolbar .field input,
+.settings-panel .list-toolbar .field select,
+.drug-setup-filter .drug-info-input {
+  font-size: 0.88rem;
+  line-height: 1.2;
+  padding-block: 0.4rem;
+  border-radius: var(--radius-control);
+}
+
+.list-toolbar .btn,
+.drug-setup-filter .btn.action {
+  border-radius: var(--radius-control);
+  font-size: 0.88rem;
+  line-height: 1.2;
+  padding-block: 0.4rem;
+}
+
+.btn-row:has(> .btn.primary):has(> .btn.action) > .btn.primary,
+.btn-row:has(> .btn.primary):has(> .btn.action) > .btn.action {
+  border-radius: var(--radius-control);
+  font-size: 0.88rem;
+  line-height: 1.2;
+  padding-block: 0.4rem;
+}
+
 .drug-setup-detail-pane .date-picker {
   width: 100%;
   max-width: none;
@@ -3209,7 +3887,7 @@ body,
 
 .drug-setup-detail-pane .date-picker-input-wrap:focus-within {
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-soft);
+  box-shadow: var(--focus-ring);
 }
 
 .drug-setup-detail-pane .desk-text-link:disabled {
@@ -3312,6 +3990,201 @@ body,
   align-items: center;
 }
 
+.drug-setup-filter .drug-info-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.drug-setup-filter .drug-setup-active-filter,
+.drug-setup-filter .drug-setup-category-filter {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 7.5rem;
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: var(--bg-input);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23667085' d='M1.41 0L6 4.58L10.59 0L12 1.41l-6 6-6-6z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.45rem center;
+  background-size: 0.75rem;
+  padding-right: 1.6rem;
+  white-space: nowrap;
+}
+
+.drug-setup-filter .drug-setup-category-filter {
+  max-width: 14rem;
+}
+
+.drug-setup-filter .drug-setup-active-filter:focus,
+.drug-setup-filter .drug-setup-category-filter:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+
+.catalog-filter-chevron {
+  display: inline-flex;
+  transition: transform 160ms ease;
+}
+
+.btn.action.on .catalog-filter-chevron {
+  transform: rotate(180deg);
+}
+
+.catalog-filter-wrap {
+  min-width: 0;
+  margin-top: -0.45rem;
+  margin-bottom: -0.45rem;
+  transition: margin-top 160ms ease, margin-bottom 160ms ease;
+}
+
+.catalog-filter-wrap.open {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.catalog-filter-clip {
+  max-height: 0;
+  overflow: hidden;
+  min-width: 0;
+  transition: max-height 180ms ease;
+}
+
+.catalog-filter-wrap.open .catalog-filter-clip {
+  max-height: 22rem;
+}
+
+.catalog-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  min-width: 0;
+  padding: 0.5rem 0.65rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+}
+
+.catalog-filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.catalog-filter .drug-info-label {
+  padding: 0;
+  white-space: normal;
+}
+
+.catalog-filter .drug-info-input {
+  width: 100%;
+  min-width: 0;
+  font-size: 0.88rem;
+  line-height: 1.2;
+  padding: 0.4rem 0.45rem;
+  border-radius: var(--radius-control);
+}
+
+.catalog-filter select.drug-info-input {
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: var(--bg-input);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23667085' d='M1.41 0L6 4.58L10.59 0L12 1.41l-6 6-6-6z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.45rem center;
+  background-size: 0.75rem;
+  padding-right: 1.6rem;
+}
+
+.catalog-filter-segment {
+  display: flex;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--bg-panel);
+  overflow: hidden;
+}
+
+.catalog-filter-segment label {
+  position: relative;
+  flex: 1 1 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  margin: 0;
+  padding: 0.4rem 0.35rem;
+  border-right: 1px solid var(--border);
+  background: var(--bg-panel);
+  color: var(--ink);
+  font-size: 0.88rem;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  cursor: pointer;
+}
+
+.catalog-filter-segment label:last-child {
+  border-right: none;
+}
+
+.catalog-filter-segment label:has(input:checked) {
+  background: var(--accent-soft);
+  color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent-border);
+}
+
+.catalog-filter-segment label:focus-within {
+  z-index: 1;
+  box-shadow: var(--focus-ring);
+}
+
+.catalog-filter-segment input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.catalog-filter-segment span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.catalog-filter-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.catalog-filter-actions .btn.action {
+  border-radius: var(--radius-control);
+  font-size: 0.88rem;
+  line-height: 1.2;
+  padding-block: 0.4rem;
+}
+
+.catalog-filter-actions .btn.action.primary {
+  margin-left: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .catalog-filter-chevron,
+  .catalog-filter-wrap,
+  .catalog-filter-clip {
+    transition: none;
+  }
+}
+
 .classic-list-panel {
   background: var(--bg-panel);
   border: 1px solid var(--border);
@@ -3371,7 +4244,7 @@ body,
 
 .drug-setup-table-head.ot-cupboard-cols,
 .drug-setup-table-row.ot-cupboard-cols {
-  grid-template-columns: 4.5rem 1fr 5.5rem;
+  grid-template-columns: 7rem minmax(0, 1fr) 5.5rem;
 }
 
 .ot-cupboard-batches {
@@ -3401,11 +4274,18 @@ body,
 
 .ot-cupboard-batch-row .ot-stock-return > input[type="number"] {
   width: 4.25rem;
-  font: inherit;
-  padding: 0.28rem 0.35rem;
+  font-size: 0.88rem;
+  line-height: 1.2;
+  padding: 0.4rem 0.35rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-control);
   background: var(--bg-input);
+}
+
+.ot-cupboard-batch-row .ot-stock-return > .btn.action {
+  border-radius: var(--radius-control);
+  line-height: 1.2;
+  padding-block: 0.4rem;
 }
 
 .ot-cupboard-label {

@@ -190,6 +190,8 @@ func TestReceptionUsersBecomeOPD(t *testing.T) {
 		);
 		CREATE TABLE ot_bills (id INTEGER PRIMARY KEY AUTOINCREMENT);
 		CREATE TABLE ot_bill_lines (id INTEGER PRIMARY KEY AUTOINCREMENT, bill_id INTEGER);
+		CREATE TABLE opd_bills (id INTEGER PRIMARY KEY AUTOINCREMENT);
+		CREATE TABLE pharmacy_bills (id INTEGER PRIMARY KEY AUTOINCREMENT);
 	`); err != nil {
 		t.Fatalf("old schema: %v", err)
 	}
@@ -303,6 +305,8 @@ func TestOtFloorCopiedIntoOtBatches(t *testing.T) {
 		);
 		CREATE TABLE ot_bills (id INTEGER PRIMARY KEY AUTOINCREMENT);
 		CREATE TABLE ot_bill_lines (id INTEGER PRIMARY KEY AUTOINCREMENT, bill_id INTEGER);
+		CREATE TABLE opd_bills (id INTEGER PRIMARY KEY AUTOINCREMENT);
+		CREATE TABLE pharmacy_bills (id INTEGER PRIMARY KEY AUTOINCREMENT);
 		INSERT INTO ot_cases (case_no, patient_name, status, issued_at)
 		VALUES ('OT-1', 'Issued', 'issued', '2026-01-01');
 		INSERT INTO ot_case_items (case_id, item_id, qty_issued, qty_used)
@@ -746,6 +750,11 @@ func TestOtBillPayAndVoid(t *testing.T) {
 		t.Fatal(err)
 	}
 	serviceID, _ := res.LastInsertId()
+	res, err = sqlDB.Exec(`INSERT INTO ot_services (code, name, price_mmk) VALUES ('OTDRS', 'OT Dressing', 3000)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	otServiceID, _ := res.LastInsertId()
 	w = doJSON(ot, http.MethodPost, "/api/ot/cases", otTok, `{"patient_name":"Daw Fee","items":[]}`)
 	mustCode(t, w, http.StatusCreated)
 	var feeCase otCase
@@ -753,8 +762,8 @@ func TestOtBillPayAndVoid(t *testing.T) {
 		t.Fatal(err)
 	}
 	w = doJSON(ot, http.MethodPost, fmt.Sprintf("/api/ot/cases/%d/bill", feeCase.ID), otTok, fmt.Sprintf(`{
-		"services":[{"line_type":"service","ref_id":%d,"qty":1}]
-	}`, serviceID))
+		"services":[{"line_type":"service","ref_id":%d,"qty":1,"unit_price_mmk":3000}]
+	}`, otServiceID))
 	mustCode(t, w, http.StatusCreated)
 	var feeBill otBill
 	if err := json.Unmarshal(w.Body.Bytes(), &feeBill); err != nil {

@@ -1,14 +1,21 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useId, useMemo, useState } from "react";
 import {
   createService,
   deactivateService,
+  deleteService,
+  listServiceCategories,
   listServices,
   updateService,
   type Service,
+  type ServiceCategory,
 } from "@/features/settings/masterData";
+import { matchesActive, type ActiveFilterValue } from "@/shared/ActiveFilter";
 import { ActionIcon } from "@/shared/ActionIcon";
+import { CatalogFilterButton, CatalogFilterPanel } from "@/shared/CatalogListFilter";
 import { formatMMK } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
+import { ServiceCategoryField } from "@/shared/ServiceCategoryField";
+import { CatalogDeleteDialog } from "./CatalogDeleteDialog";
 import { OpdCatalogHistory } from "./OpdCatalogHistory";
 
 export function OpdServicesPage() {
@@ -17,16 +24,25 @@ export function OpdServicesPage() {
   const [creating, setCreating] = useState(false);
   const [createKey, setCreateKey] = useState(0);
   const [filterOpen, setFilterOpen] = useState(false);
+  const filterPanelId = useId();
   const [filterQ, setFilterQ] = useState("");
+  const [activeFilter, setActiveFilter] = useState<ActiveFilterValue>("all");
   const [list, setList] = useState<Service[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [editing, setEditing] = useState<Service | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Service | null>(null);
+  const [deleteStep, setDeleteStep] = useState<1 | 2>(1);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
   const [price, setPrice] = useState("0");
+  const [categoryId, setCategoryId] = useState("");
+  const [categories, setCategories] = useState<ServiceCategory[]>([]);
+  const [categoryFilter, setCategoryFilter] = useState("all");
 
   async function reload(search = filterQ) {
     const data = await listServices(search.trim());
@@ -34,13 +50,32 @@ export function OpdServicesPage() {
     return data;
   }
 
+  function runSearch(query: string, status = activeFilter, category = categoryFilter) {
+    void reload(query)
+      .then((data) => {
+        const first = data.find(
+          (s) => matchesActive(s.active, status) && matchesCategory(s, category),
+        );
+        if (first) selectItem(first.id);
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : "Search failed"));
+  }
+
+  function resetFilters() {
+    setFilterQ("");
+    setActiveFilter("all");
+    setCategoryFilter("all");
+    runSearch("", "all", "all");
+  }
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const data = await listServices("");
+        const [data, cats] = await Promise.all([listServices(""), listServiceCategories("")]);
         if (cancelled) return;
         setList(data);
+        setCategories(cats);
         if (data.length > 0 && selectedId == null) setSelectedId(data[0].id);
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Load failed");
@@ -52,6 +87,10 @@ export function OpdServicesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- initial load
   }, []);
 
+  const filtered = useMemo(
+    () => list.filter((s) => matchesActive(s.active, activeFilter) && matchesCategory(s, categoryFilter)),
+    [list, activeFilter, categoryFilter],
+  );
   const selected = list.find((s) => s.id === selectedId) ?? null;
   const showForm = creating || editing != null;
 
@@ -60,11 +99,13 @@ export function OpdServicesPage() {
       setCode("");
       setName("");
       setPrice("0");
+      setCategoryId("");
       return;
     }
     setCode(s.code);
     setName(s.name);
     setPrice(String(s.price_mmk));
+    setCategoryId(s.category_id != null ? String(s.category_id) : "");
   }
 
   function openCreate() {
@@ -103,6 +144,7 @@ export function OpdServicesPage() {
         name: name.trim(),
         price_mmk: Number(price) || 0,
         active: true,
+        category_id: categoryId ? Number(categoryId) : null,
       };
       const saved = editing
         ? await updateService(editing.id, body)
@@ -110,6 +152,7 @@ export function OpdServicesPage() {
             code: body.code,
             name: body.name,
             price_mmk: body.price_mmk,
+            category_id: body.category_id,
           });
       setFilterQ("");
       setCreating(false);
@@ -143,6 +186,45 @@ export function OpdServicesPage() {
     }
   }
 
+  function openDeleteConfirm(s: Service) {
+    setDeleteError(null);
+    setDeleteStep(1);
+    setDeleteTarget(s);
+  }
+
+  function closeDeleteConfirm() {
+    if (deleteBusy) return;
+    setDeleteTarget(null);
+    setDeleteStep(1);
+    setDeleteError(null);
+  }
+
+  async function confirmDeleteService() {
+    if (!deleteTarget) return;
+    if (deleteStep === 1) {
+      setDeleteStep(2);
+      setDeleteError(null);
+      return;
+    }
+    const s = deleteTarget;
+    setDeleteBusy(true);
+    setDeleteError(null);
+    try {
+      await deleteService(s.id);
+      setDeleteTarget(null);
+      setDeleteStep(1);
+      if (editing?.id === s.id) closeForm();
+      const data = await reload();
+      if (selectedId === s.id) {
+        setSelectedId(data[0]?.id ?? null);
+      }
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "Delete failed");
+    } finally {
+      setDeleteBusy(false);
+    }
+  }
+
   if (mode === "history") {
     return (
       <OpdCatalogHistory
@@ -164,14 +246,11 @@ export function OpdServicesPage() {
               <ActionIcon name="plus" />
               {t("newBadge")}
             </button>
-            <button
-              type="button"
-              className={`btn action${filterOpen ? " on" : ""}`}
-              onClick={() => setFilterOpen((v) => !v)}
-            >
-              <ActionIcon name="filter" />
-              {t("filter")}
-            </button>
+            <CatalogFilterButton
+              open={filterOpen}
+              controlsId={filterPanelId}
+              onToggle={() => setFilterOpen((v) => !v)}
+            />
             <button type="button" className="btn action" onClick={() => setMode("history")}>
               <ActionIcon name="history" />
               {t("catalogHistoryLink")}
@@ -179,48 +258,42 @@ export function OpdServicesPage() {
           </div>
         </div>
         <p className="drug-setup-selected" aria-hidden="true" />
-        {filterOpen ? (
-          <div className="drug-setup-filter">
-            <input
-              className="drug-info-input"
-              value={filterQ}
-              onChange={(e) => setFilterQ(e.target.value)}
-              placeholder={t("codeOrName")}
-              aria-label={t("filter")}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  void reload(filterQ)
-                    .then((data) => {
-                      if (data[0]) selectItem(data[0].id);
-                    })
-                    .catch((err) => setError(err instanceof Error ? err.message : "Search failed"));
-                }
-              }}
-            />
-            <button
-              type="button"
-              className="btn action"
-              onClick={() =>
-                void reload(filterQ)
-                  .then((data) => {
-                    if (data[0]) selectItem(data[0].id);
-                  })
-                  .catch((err) => setError(err instanceof Error ? err.message : "Search failed"))
-              }
-            >
-              <ActionIcon name="search" />
-              {t("search")}
-            </button>
-          </div>
-        ) : null}
+        <CatalogFilterPanel
+          id={filterPanelId}
+          open={filterOpen}
+          query={filterQ}
+          onQueryChange={setFilterQ}
+          queryPlaceholder={t("codeOrName")}
+          searchLabel={t("searchServices")}
+          onSearch={() => runSearch(filterQ)}
+          active={activeFilter}
+          onActiveChange={setActiveFilter}
+          onReset={resetFilters}
+          category={{
+            label: t("category"),
+            value: categoryFilter,
+            onChange: setCategoryFilter,
+            children: (
+              <>
+                <option value="all">{t("allCategories")}</option>
+                <option value="none">{t("uncategorized")}</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={String(c.id)}>
+                    {c.name}
+                  </option>
+                ))}
+              </>
+            ),
+          }}
+        />
         {error && !showForm ? <p className="form-error">{error}</p> : null}
         <div className="drug-setup-table" role="listbox" aria-label={t("maintenanceServices")}>
           <div className="drug-setup-table-head opd-service-cols">
-            <span>{t("code")}</span>
-            <span>{t("name")}</span>
+            <span title={t("code")}>{t("code")}</span>
+            <span title={t("name")}>{t("name")}</span>
           </div>
-          {list.length === 0 ? <p className="empty-row">{t("noServicesYet")}</p> : null}
-          {list.map((s) => (
+          {filtered.length === 0 ? <p className="empty-row">{t("noServicesYet")}</p> : null}
+          {filtered.map((s) => (
             <div
               key={s.id}
               role="option"
@@ -237,8 +310,8 @@ export function OpdServicesPage() {
                 }
               }}
             >
-              <span>{s.code}</span>
-              <span>{s.name}</span>
+              <span title={s.code}>{s.code}</span>
+              <span title={s.name}>{s.name}</span>
             </div>
           ))}
         </div>
@@ -286,6 +359,12 @@ export function OpdServicesPage() {
                   placeholder={t("serviceNamePlaceholder")}
                 />
               </label>
+              <ServiceCategoryField
+                value={categoryId}
+                categories={categories}
+                onChange={setCategoryId}
+                disabled={busy}
+              />
               {error ? <p className="form-error">{error}</p> : null}
               <div className="btn-row">
                 <button type="submit" className="btn primary" disabled={busy}>
@@ -301,25 +380,31 @@ export function OpdServicesPage() {
             </h3>
             {selected ? (
               <>
-                <div className="drug-info-field">
-                  <span className="drug-info-label">{t("code")}</span>
-                  <span>{selected.code}</span>
+                <div className="drug-info-fields">
+                  <div className="drug-info-field">
+                    <span className="drug-info-label">{t("code")}</span>
+                    <span>{selected.code}</span>
+                  </div>
+                  <div className="drug-info-field">
+                    <span className="drug-info-label">{t("name")}</span>
+                    <span>{selected.name}</span>
+                  </div>
+                  <div className="drug-info-field">
+                    <span className="drug-info-label">{t("category")}</span>
+                    <span>{selected.category_name || t("uncategorized")}</span>
+                  </div>
+                  <div className="drug-info-field">
+                    <span className="drug-info-label">{t("priceMmk")}</span>
+                    <span>
+                      {formatMMK(selected.price_mmk)} {t("mmk")}
+                    </span>
+                  </div>
+                  <div className="drug-info-field">
+                    <span className="drug-info-label">{t("active")}</span>
+                    <span>{selected.active ? t("active") : t("inactive")}</span>
+                  </div>
                 </div>
-                <div className="drug-info-field">
-                  <span className="drug-info-label">{t("name")}</span>
-                  <span>{selected.name}</span>
-                </div>
-                <div className="drug-info-field">
-                  <span className="drug-info-label">{t("priceMmk")}</span>
-                  <span>
-                    {formatMMK(selected.price_mmk)} {t("mmk")}
-                  </span>
-                </div>
-                <div className="drug-info-field">
-                  <span className="drug-info-label">{t("active")}</span>
-                  <span>{selected.active ? t("active") : t("inactive")}</span>
-                </div>
-                <div className="btn-row drug-setup-actions">
+                <div className="btn-row">
                   <button
                     type="button"
                     className="btn action"
@@ -339,6 +424,15 @@ export function OpdServicesPage() {
                       {t("deactivate")}
                     </button>
                   ) : null}
+                  <button
+                    type="button"
+                    className="btn action danger"
+                    disabled={busy || deleteBusy}
+                    onClick={() => openDeleteConfirm(selected)}
+                  >
+                    <ActionIcon name="trash" />
+                    {t("delete")}
+                  </button>
                 </div>
               </>
             ) : (
@@ -347,6 +441,33 @@ export function OpdServicesPage() {
           </>
         )}
       </div>
+
+      {deleteTarget ? (
+        <CatalogDeleteDialog
+          identity={`${deleteTarget.code} · ${deleteTarget.name}`}
+          message={
+            deleteStep === 1
+              ? t("confirmDeleteService").replace(
+                  "{name}",
+                  `${deleteTarget.code} — ${deleteTarget.name}`,
+                )
+              : t("confirmDeleteServiceFinal").replace(
+                  "{name}",
+                  `${deleteTarget.code} — ${deleteTarget.name}`,
+                )
+          }
+          busy={deleteBusy}
+          error={deleteError}
+          onCancel={closeDeleteConfirm}
+          onConfirm={() => void confirmDeleteService()}
+        />
+      ) : null}
     </section>
   );
+}
+
+function matchesCategory(service: Service, filter: string): boolean {
+  if (filter === "all") return true;
+  if (filter === "none") return service.category_id == null;
+  return String(service.category_id) === filter;
 }

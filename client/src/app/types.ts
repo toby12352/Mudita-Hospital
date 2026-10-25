@@ -21,7 +21,14 @@ export type NavSectionId =
   | "pharmacy_transfer"
   | "stock"
   | "settings";
-export type SettingsTab = "hospital" | "doctors" | "services" | "users" | "backup" | "training";
+export type SettingsTab =
+  | "hospital"
+  | "doctors"
+  | "services"
+  | "categories"
+  | "users"
+  | "backup"
+  | "training";
 export type PharmacyTab = "items" | "movements";
 export type OpdScreen = "doctors" | "services" | "bill";
 

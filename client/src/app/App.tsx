@@ -23,6 +23,7 @@ import { applyUiScale, resetUiScale, zoomIn, zoomOut } from "@/shared/uiScale";
 import "@/shared/styles/App.css";
 import { PortalPicker } from "@/pages/portal/PortalPicker";
 import { AppNavBar } from "./AppNavBar";
+import { AuthFrame } from "./AuthFrame";
 import { ChangePasswordForm } from "./ChangePasswordForm";
 import { DeskStatusBar, shortcutsForView } from "./DeskStatusBar";
 import { HelpOverlay } from "./HelpOverlay";
@@ -35,8 +36,8 @@ import type { ConnState, NavIntent, NavSectionId, PortalId, View } from "./types
 import { OpdDoctorsPage } from "@/pages/opd/OpdDoctorsPage";
 import { OpdPage } from "@/pages/opd/OpdPage";
 import { OpdServicesPage } from "@/pages/opd/OpdServicesPage";
+import { OtMaintenancePage } from "@/pages/ot/OtMaintenancePage";
 import { OtPage } from "@/pages/ot/OtPage";
-import { OtStockPage } from "@/pages/ot/OtStockPage";
 import { PharmacyBillingPage } from "@/pages/pharmacy/PharmacyBillingPage";
 import { PharmacyPage } from "@/pages/pharmacy/PharmacyPage";
 import { PharmacyReturnPage } from "@/pages/pharmacy/PharmacyReturnPage";
@@ -223,49 +224,32 @@ export default function App() {
 
   if (needsServerSetup) {
     return (
-      <main className="shell">
-        <header className="brand">
-          <div className="brand-lockup">
-            <img src={brandLogo} alt="" className="brand-logo brand-logo--lg" />
-            <div>
-              <p className="eyebrow">{t("brand")}</p>
-              <h1>{t("serverIp")}</h1>
-              <p className="lede">Enter the hospital server address on this LAN (port 8080).</p>
-            </div>
-          </div>
-        </header>
+      <AuthFrame
+        title={t("serverIp")}
+        lede="Enter the hospital server address on this LAN (port 8080)."
+      >
         <LanguageSwitcher locale={locale} onChange={setLocale} t={t} />
         <ServerSetupForm
           initial={getApiBase()}
           onSave={finishServerSetup}
           onUseLocal={() => finishServerSetup("http://127.0.0.1:8080")}
         />
-      </main>
+      </AuthFrame>
     );
   }
 
   if (booting) {
     return (
-      <main className="shell">
+      <AuthFrame>
         <p className="lede">{t("restoringSession")}</p>
-      </main>
+      </AuthFrame>
     );
   }
 
   if (!user) {
     return (
-      <main className="shell">
-        <header className="brand">
-          <div className="brand-lockup">
-            <img src={brandLogo} alt="" className="brand-logo brand-logo--lg" />
-            <div>
-              <p className="eyebrow">{t("brand")}</p>
-              <h1>{t("signIn")}</h1>
-              <p className="lede">{t("offlineLan")}</p>
-            </div>
-          </div>
-        </header>
-        <div className="user-chip signin-chip">
+      <AuthFrame title={t("signIn")} lede={t("offlineLan")}>
+        <div className="auth-toolbar">
           <LanguageSwitcher locale={locale} onChange={setLocale} t={t} />
           <ServerIpButton
             conn={conn}
@@ -282,46 +266,29 @@ export default function App() {
           disabled={conn === "offline"}
           t={t}
         />
-      </main>
+      </AuthFrame>
     );
   }
 
   if (user.must_change_password) {
     return (
-      <main className="shell">
-        <header className="brand">
-          <div className="brand-lockup">
-            <img src={brandLogo} alt="" className="brand-logo brand-logo--lg" />
-            <div>
-              <p className="eyebrow">{t("brand")}</p>
-              <h1>{t("changePassword")}</h1>
-              <p className="lede">Required on first login for {user.username}</p>
-            </div>
-          </div>
-        </header>
+      <AuthFrame
+        title={t("changePassword")}
+        lede={`Required on first login for ${user.username}`}
+      >
         <ChangePasswordForm onDone={handlePasswordChanged} onCancel={handleLogout} />
-      </main>
+      </AuthFrame>
     );
   }
 
   const rolePortal = portalForRole(user.role);
   if (!rolePortal) {
     return (
-      <main className="shell">
-        <header className="brand">
-          <div className="brand-lockup">
-            <img src={brandLogo} alt="" className="brand-logo brand-logo--lg" />
-            <div>
-              <p className="eyebrow">{t("brand")}</p>
-              <h1>{t("noAccess")}</h1>
-              <p className="lede">{user.role}</p>
-            </div>
-          </div>
-        </header>
+      <AuthFrame title={t("noAccess")} lede={user.role}>
         <button type="button" className="btn ghost" onClick={() => void handleLogout()}>
           {t("logOut")}
         </button>
-      </main>
+      </AuthFrame>
     );
   }
 
@@ -367,112 +334,119 @@ export default function App() {
     </div>
   );
 
-  return (
-    <main className="shell shell-wide shell-app shell-desk shell-classic">
-      <div className="app-chrome app-chrome--classic">
-        <header className="desk-header">
-          <div className="desk-header-brand">
-            <img src={brandLogo} alt="" className="brand-logo brand-logo--desk" />
-            <h1 className="desk-header-title">{t(portalTitleKey)}</h1>
-          </div>
-          {chromeTrailing}
-        </header>
-        {portal ? (
-          <AppNavBar
-            portal={portal}
-            showBack={rolePortal === "admin"}
-            view={shownView}
-            navIntent={shownIntent}
-            activeSection={shownSection}
-            onNavigate={navigate}
-            onBack={() => setAdminPortal(null)}
-            t={t}
-          />
-        ) : null}
-      </div>
-
-      <div className="app-content">
-        {!portal ? <PortalPicker onPick={enterPortal} t={t} /> : null}
-        {portal === "settings" && shownView === "settings" ? (
-          <SettingsPage
-            key={pageKey}
-            canManageUsers={hasPermission(permissions, "manage_users")}
-            initialTab={shownIntent.settingsTab ?? "hospital"}
-            t={t}
-          />
-        ) : null}
-        {portal === "pharmacy" && shownView === "pharmacy" ? (
-          <PharmacyPage
-            key={pageKey}
-            isAdmin={user.role === "Admin"}
-            initialScreen={shownIntent.pharmacyScreen ?? "browse"}
-          />
-        ) : null}
-        {portal === "pharmacy" && shownView === "pharmacy_billing" ? (
-          <PharmacyBillingPage
-            key={pageKey}
-            initialMode={shownIntent.billingMode ?? "list"}
-          />
-        ) : null}
-        {portal === "pharmacy" && shownView === "pharmacy_return" ? (
-          <PharmacyReturnPage
-            key={pageKey}
-            initialMode={shownIntent.billingMode ?? "list"}
-          />
-        ) : null}
-        {portal === "pharmacy" && shownView === "pharmacy_transfer" ? (
-          <PharmacyTransferPage
-            key={pageKey}
-            initialMode={shownIntent.billingMode ?? "list"}
-          />
-        ) : null}
-        {portal === "opd" && shownView === "opd" && (opdScreen === "doctors" || opdScreen === "services") ? (
-          <section key={pageKey} className="desk-maintenance">
-            <div className="tabs" role="tablist" aria-label={t("navMaintenance")}>
-              <button
-                type="button"
-                role="tab"
-                className={`tab${opdScreen === "doctors" ? " active" : ""}`}
-                aria-selected={opdScreen === "doctors"}
-                onClick={() =>
-                  navigate("opd", { opdScreen: "doctors" }, "opd_maintenance")
-                }
-              >
-                {t("maintenanceDoctors")}
-              </button>
-              <button
-                type="button"
-                role="tab"
-                className={`tab${opdScreen === "services" ? " active" : ""}`}
-                aria-selected={opdScreen === "services"}
-                onClick={() =>
-                  navigate("opd", { opdScreen: "services" }, "opd_maintenance")
-                }
-              >
-                {t("maintenanceServices")}
-              </button>
-            </div>
-            {opdScreen === "doctors" ? <OpdDoctorsPage /> : <OpdServicesPage />}
-          </section>
-        ) : null}
-        {portal === "opd" && shownView === "opd" && opdScreen === "bill" ? (
-          <OpdPage key={pageKey} initialMode={shownIntent.billingMode ?? "list"} />
-        ) : null}
-        {portal === "ot" && shownView === "ot" && shownIntent.otMode === "stock" ? (
-          <OtStockPage key={pageKey} />
-        ) : null}
-        {portal === "ot" && shownView === "ot" && shownIntent.otMode !== "stock" ? (
-          <OtPage key={pageKey} />
-        ) : null}
-      </div>
-
-      {portal ? (
-        <DeskStatusBar
-          shortcuts={shortcutsForView(shownView, shownIntent, t)}
-          username={user.display_name || user.username}
+  const pageBody = (
+    <>
+      {!portal ? <PortalPicker onPick={enterPortal} t={t} /> : null}
+      {portal === "settings" && shownView === "settings" ? (
+        <SettingsPage
+          key={pageKey}
+          canManageUsers={hasPermission(permissions, "manage_users")}
+          initialTab={shownIntent.settingsTab ?? "hospital"}
           t={t}
         />
       ) : null}
+      {portal === "pharmacy" && shownView === "pharmacy" ? (
+        <PharmacyPage
+          key={pageKey}
+          isAdmin={user.role === "Admin"}
+          initialScreen={shownIntent.pharmacyScreen ?? "browse"}
+        />
+      ) : null}
+      {portal === "pharmacy" && shownView === "pharmacy_billing" ? (
+        <PharmacyBillingPage
+          key={pageKey}
+          initialMode={shownIntent.billingMode ?? "list"}
+        />
+      ) : null}
+      {portal === "pharmacy" && shownView === "pharmacy_return" ? (
+        <PharmacyReturnPage
+          key={pageKey}
+          initialMode={shownIntent.billingMode ?? "list"}
+        />
+      ) : null}
+      {portal === "pharmacy" && shownView === "pharmacy_transfer" ? (
+        <PharmacyTransferPage
+          key={pageKey}
+          initialMode={shownIntent.billingMode ?? "list"}
+        />
+      ) : null}
+      {portal === "opd" && shownView === "opd" && (opdScreen === "doctors" || opdScreen === "services") ? (
+        <section key={pageKey} className="desk-maintenance">
+          <div className="tabs" role="tablist" aria-label={t("navMaintenance")}>
+            <button
+              type="button"
+              role="tab"
+              className={`tab${opdScreen === "doctors" ? " active" : ""}`}
+              aria-selected={opdScreen === "doctors"}
+              onClick={() =>
+                navigate("opd", { opdScreen: "doctors" }, "opd_maintenance")
+              }
+            >
+              {t("maintenanceDoctors")}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              className={`tab${opdScreen === "services" ? " active" : ""}`}
+              aria-selected={opdScreen === "services"}
+              onClick={() =>
+                navigate("opd", { opdScreen: "services" }, "opd_maintenance")
+              }
+            >
+              {t("maintenanceServices")}
+            </button>
+          </div>
+          {opdScreen === "doctors" ? <OpdDoctorsPage /> : <OpdServicesPage />}
+        </section>
+      ) : null}
+      {portal === "opd" && shownView === "opd" && opdScreen === "bill" ? (
+        <OpdPage key={pageKey} initialMode={shownIntent.billingMode ?? "list"} />
+      ) : null}
+      {portal === "ot" && shownView === "ot" && shownIntent.otMode === "stock" ? (
+        <OtMaintenancePage key={pageKey} />
+      ) : null}
+      {portal === "ot" && shownView === "ot" && shownIntent.otMode !== "stock" ? (
+        <OtPage key={pageKey} />
+      ) : null}
+    </>
+  );
+
+  return (
+    <main className="shell shell-wide shell-app shell-desk shell-classic">
+      {portal ? (
+        <AppNavBar
+          portal={portal}
+          showBack={rolePortal === "admin"}
+          view={shownView}
+          navIntent={shownIntent}
+          activeSection={shownSection}
+          onNavigate={navigate}
+          onBack={() => setAdminPortal(null)}
+          t={t}
+        />
+      ) : null}
+
+      <div className="desk-main">
+        <div className="app-chrome app-chrome--classic">
+          <header className="desk-header">
+            <div className="desk-header-brand">
+              <img src={brandLogo} alt="" className="brand-logo brand-logo--desk" />
+              <h1 className="desk-header-title">{t(portalTitleKey)}</h1>
+            </div>
+            {chromeTrailing}
+          </header>
+        </div>
+
+        <div className="app-content">{pageBody}</div>
+
+        {portal ? (
+          <DeskStatusBar
+            shortcuts={shortcutsForView(shownView, shownIntent, t)}
+            username={user.display_name || user.username}
+            t={t}
+          />
+        ) : null}
+      </div>
 
       {helpOpen ? <HelpOverlay onClose={() => setHelpOpen(false)} t={t} /> : null}
     </main>

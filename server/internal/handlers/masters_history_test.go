@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"testing"
 )
@@ -93,5 +94,101 @@ func TestServiceHistoryOPDCanReadPharmacyDenied(t *testing.T) {
 	w = doJSON(h, http.MethodGet, "/api/services/history", pharmTok, "")
 	if w.Code == http.StatusOK {
 		t.Fatalf("pharmacy must not read service history, got %d", w.Code)
+	}
+}
+
+func TestDoctorPermanentDeleteKeepsHistoryName(t *testing.T) {
+	sqlDB := openTestDB(t)
+	_, tok := insertSession(t, sqlDB, "OPD", 0)
+	h := &Doctors{DB: sqlDB}
+
+	w := doJSON(h, http.MethodPost, "/api/doctors", tok, `{
+		"name":"Dr Delete Me",
+		"specialty":"General",
+		"consultation_mmk":1000,
+		"ot_mmk":2000
+	}`)
+	mustCode(t, w, http.StatusCreated)
+	var created struct {
+		ID int64 `json:"id"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil || created.ID < 1 {
+		t.Fatalf("create decode: %v body=%s", err, w.Body.String())
+	}
+
+	w = doJSON(h, http.MethodPost, fmt.Sprintf("/api/doctors/%d/delete", created.ID), tok, `{}`)
+	mustCode(t, w, http.StatusOK)
+
+	w = doJSON(h, http.MethodGet, fmt.Sprintf("/api/doctors/%d", created.ID), tok, "")
+	mustCode(t, w, http.StatusNotFound)
+
+	w = doJSON(h, http.MethodGet, "/api/doctors/history", tok, "")
+	mustCode(t, w, http.StatusOK)
+	var res struct {
+		History []struct {
+			Action string `json:"action"`
+			Name   string `json:"name"`
+		} `json:"history"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &res); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	found := false
+	for _, row := range res.History {
+		if row.Action == "delete" && row.Name == "Dr Delete Me" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("delete history missing name: %+v", res.History)
+	}
+}
+
+func TestServicePermanentDeleteKeepsHistoryName(t *testing.T) {
+	sqlDB := openTestDB(t)
+	_, tok := insertSession(t, sqlDB, "OPD", 0)
+	h := &Services{DB: sqlDB}
+
+	w := doJSON(h, http.MethodPost, "/api/services", tok, `{
+		"code":"DEL1",
+		"name":"Delete Service",
+		"price_mmk":1500
+	}`)
+	mustCode(t, w, http.StatusCreated)
+	var created struct {
+		ID int64 `json:"id"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil || created.ID < 1 {
+		t.Fatalf("create decode: %v body=%s", err, w.Body.String())
+	}
+
+	w = doJSON(h, http.MethodPost, fmt.Sprintf("/api/services/%d/delete", created.ID), tok, `{}`)
+	mustCode(t, w, http.StatusOK)
+
+	w = doJSON(h, http.MethodGet, fmt.Sprintf("/api/services/%d", created.ID), tok, "")
+	mustCode(t, w, http.StatusNotFound)
+
+	w = doJSON(h, http.MethodGet, "/api/services/history", tok, "")
+	mustCode(t, w, http.StatusOK)
+	var res struct {
+		History []struct {
+			Action string `json:"action"`
+			Code   string `json:"code"`
+			Name   string `json:"name"`
+		} `json:"history"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &res); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	found := false
+	for _, row := range res.History {
+		if row.Action == "delete" && row.Code == "DEL1" && row.Name == "Delete Service" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("delete history missing code/name: %+v", res.History)
 	}
 }

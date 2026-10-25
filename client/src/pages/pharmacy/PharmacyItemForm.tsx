@@ -1,21 +1,30 @@
-import { FormEvent, Fragment, useMemo, useState } from "react";
+import {
+  type FocusEvent as ReactFocusEvent,
+  FormEvent,
+  KeyboardEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   PHARMACY_UNITS,
   createPharmacyItem,
   formatPackLevelsPreview,
   itemPackFromRelations,
   packLevelsFromItemPack,
-  packPriceSlots,
   relationsFromItemPack,
-  sellOuterFromSmallest,
+  saleUnitsFromPack,
   updatePharmacyItem,
   type PackRelation,
   type PharmacyItem,
+  type SaleUnit,
 } from "@/features/pharmacy/api";
 import { DatePicker } from "@/shared/DatePicker";
 import { useI18n } from "@/shared/i18n";
 import { FormSection } from "@/shared/FormSection";
 import { PharmacyItemLots } from "./PharmacyItemLots";
+import { PharmacyPriceGrid } from "./PharmacyPriceGrid";
 
 const UNIT_I18N: Record<string, string> = {
   Box: "packUnitBox",
@@ -56,6 +65,12 @@ function isEmptyTrailingRelation(r: PackRelation | undefined): boolean {
   return !r.child.trim() && (!r.packing || r.packing === 0);
 }
 
+function parseInitialQty(raw: string): number | null {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || !Number.isInteger(n) || n < 0) return null;
+  return n;
+}
+
 export function PharmacyItemForm({
   editing,
   onSaved,
@@ -78,6 +93,7 @@ export function PharmacyItemForm({
     : { smallest: "Tablet", relations: [] as PackRelation[] };
 
   const [error, setError] = useState<string | null>(null);
+  const [attempted, setAttempted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [code, setCode] = useState(editing?.code ?? "");
   const [name, setName] = useState(editing?.name ?? "");
@@ -93,20 +109,20 @@ export function PharmacyItemForm({
   const [batchNo, setBatchNo] = useState("");
   const [expiry, setExpiry] = useState("");
   const [quantity, setQuantity] = useState("");
-  const [buyOuter, setBuyOuter] = useState(editing ? String(editing.buy_price_mmk) : "");
-  const [sellOuter, setSellOuter] = useState(() => {
-    if (!editing) return "";
-    const pack = {
-      pack_l1_qty: editing.pack_l1_qty,
-      pack_l1_unit: editing.pack_l1_unit,
-      pack_l2_qty: editing.pack_l2_qty,
-      pack_l2_unit: editing.pack_l2_unit,
-      pack_l3_qty: editing.pack_l3_qty,
-      pack_l3_unit: editing.pack_l3_unit,
-    };
-    return String(sellOuterFromSmallest(pack, editing.sell_price_mmk));
-  });
+  const [quantityUnitId, setQuantityUnitId] = useState("");
+  const [quantityUnitError, setQuantityUnitError] = useState<string | null>(null);
+  const [buyOuter, setBuyOuter] = useState(editing?.buy_price_mmk ?? 0);
+  const [sellSmallest, setSellSmallest] = useState(editing?.sell_price_mmk ?? 0);
   const [active, setActive] = useState(editing?.active ?? true);
+
+  const qtyUnitRef = useRef<HTMLSelectElement>(null);
+  const qtyUnitRowRef = useRef<HTMLDivElement>(null);
+  const quantityRef = useRef("");
+  const quantityUnitIdRef = useRef("");
+  const initialUnitsRef = useRef<SaleUnit[]>([]);
+
+  quantityRef.current = quantity;
+  quantityUnitIdRef.current = quantityUnitId;
 
   function unitLabel(u: string): string {
     const key = UNIT_I18N[u];
@@ -116,30 +132,113 @@ export function PharmacyItemForm({
   const packResolved = useMemo(() => {
     const done = completedRelations(relations);
     if (done.length === 0) {
-      // One-unit item when the table is blank
-      if (relations.every(isBlankRelation) && smallestUnit.trim()) {
+      // Edit only: keep saving existing one-unit items with a blank relation table.
+      if (editing && relations.every(isBlankRelation) && smallestUnit.trim()) {
         return itemPackFromRelations([], smallestUnit);
       }
       return { error: "incomplete" as const };
     }
     return itemPackFromRelations(done, smallestUnit);
-  }, [relations, smallestUnit]);
+  }, [relations, smallestUnit, editing]);
 
   const packValid = packResolved && !("error" in packResolved);
   const pack = packValid ? packResolved : null;
   const levels = pack ? packLevelsFromItemPack(pack) : null;
   const packPreview = levels ? formatPackLevelsPreview(levels) : "";
   const doneRels = completedRelations(relations);
+  const packingRequired = !editing;
+  const packingFilled = doneRels.length > 0;
   const lastChild =
     doneRels.length > 0 ? doneRels[doneRels.length - 1].child.trim() : "";
-  const childMatches = doneRels.length === 0 || lastChild === smallestUnit.trim();
+  const childMatches =
+    (!packingRequired && doneRels.length === 0) ||
+    (doneRels.length > 0 && lastChild === smallestUnit.trim());
 
-  const priceSlots =
-    levels && packValid && childMatches
-      ? packPriceSlots(levels, Number(buyOuter) || 0, Number(sellOuter) || 0)
-      : [];
+  const showPriceGrid = !!(levels && packValid && childMatches);
 
-  const outerUnit = levels?.units[0] || smallestUnit || "Box";
+  const initialUnits = useMemo(() => {
+    if (!pack || !childMatches) return [] as SaleUnit[];
+    return saleUnitsFromPack(pack, sellSmallest || 0);
+  }, [pack, childMatches, sellSmallest]);
+
+  initialUnitsRef.current = initialUnits;
+
+  const chosenInitialUnit = quantityUnitId.trim()
+    ? initialUnits.find((u) => u.id.toLowerCase() === quantityUnitId.trim().toLowerCase())
+    : undefined;
+  const enteredQty = parseInitialQty(quantity);
+  const smallestLabel = pack?.pack_l3_unit || smallestUnit || "units";
+
+  function openUnitSelect(el: HTMLSelectElement | null) {
+    if (!el) return;
+    el.focus();
+    if (typeof el.showPicker !== "function") return;
+    window.setTimeout(() => {
+      if (!el.isConnected) return;
+      try {
+        el.showPicker();
+      } catch {
+        // Focus is enough when this WebView refuses showPicker outside a direct gesture.
+      }
+    }, 0);
+  }
+
+  function openInitialUnitSelect() {
+    openUnitSelect(qtyUnitRef.current);
+  }
+
+  function initialNeedsUnitPick(): boolean {
+    if (quantityUnitIdRef.current.trim()) return false;
+    const n = parseInitialQty(quantityRef.current);
+    if (n == null || n === 0) return false;
+    return initialUnitsRef.current.length > 0;
+  }
+
+  function finishInitialQty() {
+    if (!initialNeedsUnitPick()) return;
+    openInitialUnitSelect();
+  }
+
+  function onInitialQtyKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    finishInitialQty();
+  }
+
+  function onInitialQtyBlur(e: ReactFocusEvent<HTMLInputElement>) {
+    const next = e.relatedTarget;
+    if (next instanceof Node && qtyUnitRef.current?.contains(next)) return;
+    if (qtyUnitRef.current != null && next === qtyUnitRef.current) return;
+    finishInitialQty();
+  }
+
+  useEffect(() => {
+    function isSubmitButton(target: EventTarget | null): boolean {
+      return target instanceof Element && target.closest("button[type='submit']") != null;
+    }
+    function onPointer(ev: PointerEvent) {
+      if (!initialNeedsUnitPick()) return;
+      const target = ev.target;
+      if (isSubmitButton(target)) return;
+      if (target instanceof Node && qtyUnitRowRef.current?.contains(target)) return;
+      if (document.activeElement === qtyUnitRef.current) return;
+      ev.preventDefault();
+      openInitialUnitSelect();
+    }
+    function onFocusIn(ev: globalThis.FocusEvent) {
+      if (!initialNeedsUnitPick()) return;
+      const target = ev.target;
+      if (isSubmitButton(target)) return;
+      if (target instanceof Node && qtyUnitRowRef.current?.contains(target)) return;
+      openInitialUnitSelect();
+    }
+    document.addEventListener("pointerdown", onPointer);
+    document.addEventListener("focusin", onFocusIn);
+    return () => {
+      document.removeEventListener("pointerdown", onPointer);
+      document.removeEventListener("focusin", onFocusIn);
+    };
+  }, []);
 
   function updateRelation(index: number, patch: Partial<PackRelation>) {
     setRelations((prev) => {
@@ -171,14 +270,51 @@ export function PharmacyItemForm({
 
   async function submit(e: FormEvent) {
     e.preventDefault();
+    setAttempted(true);
     setError(null);
-    if (!pack || !levels || !childMatches) {
-      setError(t("packChildMustMatch"));
-      return;
+    setQuantityUnitError(null);
+
+    let ok = true;
+    if (packingRequired && !packingFilled) {
+      ok = false;
+    } else if (!pack || !levels || !childMatches) {
+      ok = false;
+    } else if (!editing && (buyOuter <= 0 || sellSmallest <= 0)) {
+      ok = false;
     }
-    const slots = packPriceSlots(levels, Number(buyOuter) || 0, Number(sellOuter) || 0);
-    const sellSmallest = slots.length ? slots[slots.length - 1].sell_mmk : 0;
-    const buy = Number(buyOuter) || 0;
+
+    let stockQty = 0;
+    if (!editing && pack && ok) {
+      const entered = parseInitialQty(quantity);
+      if (entered == null) {
+        setError(t("fieldNeedsFilled"));
+        ok = false;
+      } else if (entered > 0) {
+        const units = saleUnitsFromPack(pack, sellSmallest || 0);
+        const unitKey = quantityUnitId.trim();
+        if (units.length > 0) {
+          if (!unitKey) {
+            setQuantityUnitError(t("fieldNeedsFilled"));
+            openInitialUnitSelect();
+            ok = false;
+          } else {
+            const chosen = units.find((u) => u.id.toLowerCase() === unitKey.toLowerCase());
+            if (!chosen) {
+              setQuantityUnitError(t("fieldNeedsFilled"));
+              openInitialUnitSelect();
+              ok = false;
+            } else {
+              stockQty = entered * chosen.factor;
+            }
+          }
+        } else {
+          stockQty = entered;
+        }
+      }
+    }
+
+    if (!ok || !pack || !levels) return;
+
     setBusy(true);
     try {
       const body = {
@@ -192,21 +328,20 @@ export function PharmacyItemForm({
         pack_l2_unit: pack.pack_l2_unit,
         pack_l3_qty: pack.pack_l3_qty,
         pack_l3_unit: pack.pack_l3_unit,
-        buy_price_mmk: buy,
-        sell_price_mmk: sellSmallest,
+        buy_price_mmk: Math.max(0, buyOuter || 0),
+        sell_price_mmk: Math.max(0, sellSmallest || 0),
         active,
       };
       let saved: PharmacyItem;
       if (editing) {
         saved = await updatePharmacyItem(editing.id, body);
       } else {
-        const qty = Number(quantity) || 0;
         saved = await createPharmacyItem({
           ...body,
-          initial_qty: qty > 0 ? qty : undefined,
-          initial_qty_unit: "purchase",
-          batch_no: qty > 0 ? batchNo.trim() : undefined,
-          expiry_date: qty > 0 ? expiry.trim() : undefined,
+          initial_qty: stockQty > 0 ? stockQty : undefined,
+          initial_qty_unit: "stock",
+          batch_no: stockQty > 0 ? batchNo.trim() : undefined,
+          expiry_date: stockQty > 0 ? expiry.trim() : undefined,
         });
       }
       onSaved(saved);
@@ -217,12 +352,21 @@ export function PharmacyItemForm({
     }
   }
 
-  const canSave =
-    !busy &&
-    packValid &&
+  const packError =
+    attempted && packingRequired && !packingFilled
+      ? t("packRequired")
+      : attempted && !childMatches && doneRels.length > 0
+        ? t("packChildMustMatch")
+        : null;
+  const pricesError =
+    attempted &&
+    !editing &&
+    packingFilled &&
     childMatches &&
-    buyOuter.trim() !== "" &&
-    sellOuter.trim() !== "";
+    (buyOuter <= 0 || sellSmallest <= 0)
+      ? t("pricesRequired")
+      : null;
+  const packingRowInvalid = attempted && packingRequired && !packingFilled;
 
   const secondIsEmpty = relations.length < 2 || isEmptyTrailingRelation(relations[1]);
 
@@ -290,6 +434,12 @@ export function PharmacyItemForm({
           {relations.map((row, index) => {
             const parentLocked = index === 1;
             const parentValue = parentLocked ? relations[0]?.child || row.parent : row.parent;
+            const markFirstRow = packingRowInvalid && index === 0;
+            const markChildMismatch =
+              attempted &&
+              index === doneRels.length - 1 &&
+              doneRels.length > 0 &&
+              !childMatches;
             return (
               <div className="packing-rel-row" role="row" key={index}>
                 <select
@@ -300,6 +450,7 @@ export function PharmacyItemForm({
                   }}
                   disabled={busy || parentLocked}
                   aria-label={t("packParent")}
+                  aria-invalid={markFirstRow && !parentValue.trim() ? true : undefined}
                 >
                   <option value="">—</option>
                   {PHARMACY_UNITS.map((u) => (
@@ -319,12 +470,20 @@ export function PharmacyItemForm({
                   placeholder="0"
                   disabled={busy}
                   aria-label={t("packPacking")}
+                  aria-invalid={markFirstRow && !(row.packing >= 1) ? true : undefined}
                 />
                 <select
                   value={row.child}
                   onChange={(e) => updateRelation(index, { child: e.target.value })}
                   disabled={busy}
                   aria-label={t("packChildUnit")}
+                  aria-invalid={
+                    markFirstRow && !row.child.trim()
+                      ? true
+                      : markChildMismatch
+                        ? true
+                        : undefined
+                  }
                 >
                   <option value="">—</option>
                   {PHARMACY_UNITS.map((u) => (
@@ -353,9 +512,7 @@ export function PharmacyItemForm({
         </div>
 
         {packPreview ? <p className="hint packing-preview">{packPreview}</p> : null}
-        {!childMatches && doneRels.length > 0 ? (
-          <p className="form-error">{t("packChildMustMatch")}</p>
-        ) : null}
+        {packError ? <p className="form-error">{packError}</p> : null}
 
         {!editing ? (
           <div className="field-row">
@@ -387,67 +544,75 @@ export function PharmacyItemForm({
         )}
       </FormSection>
 
-      <FormSection title={t("pricing")} titleId="pharmacy-item-pricing">
-        {!editing ? (
-          <label className="field field-compact">
-            <span>
-              {t("quantityOfUnit")} ({unitLabel(outerUnit)})
-            </span>
-            <input
-              type="number"
-              min={0}
-              value={quantity}
-              onChange={(e) => setQuantity(e.target.value)}
-              placeholder={t("quantityBoxesPlaceholder")}
-              disabled={busy}
-            />
+      {!editing ? (
+        <FormSection title={t("initialStock")} titleId="pharmacy-item-initial-stock">
+          <p className="hint">{t("initialStockDesc")}</p>
+          <label className="field">
+            <span>{t("quantityOfUnit")}</span>
+            <div className="drug-info-qty-unit" ref={qtyUnitRowRef}>
+              <input
+                type="number"
+                min={0}
+                value={quantity}
+                onChange={(e) => {
+                  setQuantity(e.target.value);
+                  setQuantityUnitError(null);
+                }}
+                onKeyDown={onInitialQtyKeyDown}
+                onBlur={onInitialQtyBlur}
+                placeholder={t("quantityBoxesPlaceholder")}
+                disabled={busy}
+                aria-label={t("quantityOfUnit")}
+              />
+              <select
+                ref={qtyUnitRef}
+                value={quantityUnitId}
+                onChange={(e) => {
+                  setQuantityUnitId(e.target.value);
+                  setQuantityUnitError(null);
+                }}
+                disabled={busy || initialUnits.length === 0}
+                aria-label={t("restockUnit")}
+                aria-invalid={quantityUnitError ? true : undefined}
+              >
+                <option value="">{t("chooseUnit")}</option>
+                {initialUnits.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {quantityUnitError ? <p className="form-error">{quantityUnitError}</p> : null}
+            {chosenInitialUnit && enteredQty != null && enteredQty > 0 ? (
+              <p className="hint">
+                {t("willAdd")} {enteredQty * chosenInitialUnit.factor} {smallestLabel}{" "}
+                {t("toInStock")}
+              </p>
+            ) : null}
           </label>
-        ) : null}
+        </FormSection>
+      ) : null}
 
-        {priceSlots.length > 0 ? (
-          <div className="drug-info-price-grid packing-price-grid" aria-label={t("pricing")}>
-            <span />
-            <span>{t("purPrice")}</span>
-            <span>{t("salePrice")}</span>
-            {priceSlots.map((slot, i) => (
-              <Fragment key={slot.unit}>
-                <span>{unitLabel(slot.unit)}</span>
-                {i === 0 ? (
-                  <input
-                    className="price-buy"
-                    type="number"
-                    min={0}
-                    value={buyOuter}
-                    onChange={(e) => setBuyOuter(e.target.value)}
-                    placeholder={t("buyPricePlaceholder")}
-                    disabled={busy}
-                    required
-                    aria-label={`${t("purPrice")} ${unitLabel(slot.unit)}`}
-                  />
-                ) : (
-                  <span className="price-buy">{slot.buy_mmk.toLocaleString()}</span>
-                )}
-                {i === 0 ? (
-                  <input
-                    className="price-sell"
-                    type="number"
-                    min={0}
-                    value={sellOuter}
-                    onChange={(e) => setSellOuter(e.target.value)}
-                    placeholder={t("sellPricePlaceholder")}
-                    disabled={busy}
-                    required
-                    aria-label={`${t("salePrice")} ${unitLabel(slot.unit)}`}
-                  />
-                ) : (
-                  <span className="price-sell">{slot.sell_mmk.toLocaleString()}</span>
-                )}
-              </Fragment>
-            ))}
-          </div>
-        ) : doneRels.length > 0 && !childMatches ? (
+      <FormSection title={t("pricing")} titleId="pharmacy-item-pricing">
+        {showPriceGrid && levels ? (
+          <PharmacyPriceGrid
+            levels={levels}
+            buyOuter={buyOuter}
+            sellSmallest={sellSmallest}
+            onPrices={(buy, sell) => {
+              setBuyOuter(buy);
+              setSellSmallest(sell);
+            }}
+            disabled={busy}
+            unitLabel={unitLabel}
+            required={!editing}
+            syncToken={editing?.id ?? "new"}
+          />
+        ) : attempted && doneRels.length > 0 && !childMatches ? (
           <p className="hint">{t("packChildMustMatch")}</p>
         ) : null}
+        {pricesError ? <p className="form-error">{pricesError}</p> : null}
 
         <label className="field checkbox-field">
           <input
@@ -461,7 +626,7 @@ export function PharmacyItemForm({
       </FormSection>
 
       <div className="btn-row">
-        <button type="submit" className="btn primary" disabled={!canSave}>
+        <button type="submit" className="btn primary" disabled={busy}>
           {editing ? t("save") : t("create")}
         </button>
         <button type="button" className="btn ghost" onClick={onCancel} disabled={busy}>

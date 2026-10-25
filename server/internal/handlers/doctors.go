@@ -55,6 +55,8 @@ func (h *Doctors) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.create(w, r)
 		case path == "/history" && r.Method == http.MethodGet:
 			h.history(w, r)
+		case strings.HasPrefix(path, "/") && strings.HasSuffix(path, "/delete") && r.Method == http.MethodPost:
+			h.delete(w, r, path)
 		case strings.HasPrefix(path, "/") && r.Method == http.MethodGet:
 			h.get(w, r, path)
 		case strings.HasPrefix(path, "/") && r.Method == http.MethodPut:
@@ -176,7 +178,8 @@ func (h *Doctors) history(w http.ResponseWriter, r *http.Request) {
 
 	var args []any
 	sqlStr := `
-		SELECT a.id, COALESCE(u.username, ''), a.action, a.entity_id, COALESCE(d.name, ''),
+		SELECT a.id, COALESCE(u.username, ''), a.action, a.entity_id,
+			COALESCE(d.name, json_extract(a.detail, '$.name'), ''),
 			a.detail, a.created_at
 		FROM audit_logs a
 		LEFT JOIN users u ON u.id = a.actor_user_id
@@ -187,7 +190,8 @@ func (h *Doctors) history(w http.ResponseWriter, r *http.Request) {
 		like := "%" + q + "%"
 		sqlStr += ` AND (
 			COALESCE(u.username, '') LIKE ? OR a.action LIKE ?
-			OR COALESCE(d.name, '') LIKE ? OR COALESCE(a.detail, '') LIKE ?
+			OR COALESCE(d.name, json_extract(a.detail, '$.name'), '') LIKE ?
+			OR COALESCE(a.detail, '') LIKE ?
 		)`
 		args = append(args, like, like, like, like)
 	}
@@ -406,6 +410,44 @@ func (h *Doctors) deactivate(w http.ResponseWriter, r *http.Request, path string
 	user := middleware.UserFromContext(r.Context())
 	uid := user.ID
 	audit.WriteAudit(h.DB, &uid, "deactivate", "doctor", &id, nil)
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (h *Doctors) delete(w http.ResponseWriter, r *http.Request, path string) {
+	idPart := strings.TrimSuffix(strings.TrimPrefix(path, "/"), "/delete")
+	id, ok := parseID("/" + idPart)
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid id"})
+		return
+	}
+
+	var name, specialty string
+	err := h.DB.QueryRow(`SELECT name, specialty FROM doctors WHERE id = ?`, id).Scan(&name, &specialty)
+	if err == sql.ErrNoRows {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return
+	}
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "load failed"})
+		return
+	}
+
+	res, err := h.DB.Exec(`DELETE FROM doctors WHERE id = ?`, id)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "delete failed"})
+		return
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return
+	}
+
+	user := middleware.UserFromContext(r.Context())
+	uid := user.ID
+	audit.WriteAudit(h.DB, &uid, "delete", "doctor", &id, map[string]any{
+		"name": name, "specialty": specialty,
+	})
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 

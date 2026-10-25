@@ -131,7 +131,7 @@ Align clinic vocabulary with dashboard: pages for screens, shared for cross-cutt
 
 - No React Router. Clinic uses a `View` string union + `setView`; dashboard uses `PageId` + `setPage`.
 - No Redux / Zustand / React Query by default. Panel-local `useState` / `useEffect` is the norm.
-- Print: server returns HTML; client opens a Tauri-safe iframe overlay (`shared/print.ts`).
+- Print: server returns HTML; client opens a Tauri-safe iframe overlay (`shared/print.ts`). Installed app silent-prints to the per-PC default printer (Admin Settings) via WebView2 — no Windows print dialog.
 
 ## Ports (local)
 

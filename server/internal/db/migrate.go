@@ -776,6 +776,62 @@ ALTER TABLE ot_case_items ADD COLUMN sale_unit TEXT NOT NULL DEFAULT '';
 ALTER TABLE stock_transfers ADD COLUMN pharmacy_bill_id INTEGER REFERENCES pharmacy_bills(id);
 `,
 	},
+	{
+		Name: "015_ot_services",
+		SQL: `
+-- OT Maintenance services. Independent of the OPD services catalog.
+-- code may be NULL (many unnamed codes). price_mmk may be NULL (case-priced).
+CREATE TABLE IF NOT EXISTS ot_services (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  code TEXT UNIQUE COLLATE NOCASE,
+  name TEXT NOT NULL,
+  price_mmk INTEGER CHECK (price_mmk IS NULL OR price_mmk >= 0),
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_ot_services_name ON ot_services(name);
+CREATE INDEX IF NOT EXISTS idx_ot_services_active ON ot_services(active);
+`,
+	},
+	{
+		Name: "016_bill_discount",
+		SQL: `
+-- Optional discount on cash bills. total_mmk stays the amount due after discount.
+-- ot_cases keeps the draft choice before a bill exists. Transfers store zeros.
+ALTER TABLE opd_bills ADD COLUMN discount_value INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE opd_bills ADD COLUMN discount_unit TEXT NOT NULL DEFAULT 'percent';
+ALTER TABLE opd_bills ADD COLUMN discount_mmk INTEGER NOT NULL DEFAULT 0;
+
+ALTER TABLE pharmacy_bills ADD COLUMN discount_value INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE pharmacy_bills ADD COLUMN discount_unit TEXT NOT NULL DEFAULT 'percent';
+ALTER TABLE pharmacy_bills ADD COLUMN discount_mmk INTEGER NOT NULL DEFAULT 0;
+
+ALTER TABLE ot_bills ADD COLUMN discount_value INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE ot_bills ADD COLUMN discount_unit TEXT NOT NULL DEFAULT 'percent';
+ALTER TABLE ot_bills ADD COLUMN discount_mmk INTEGER NOT NULL DEFAULT 0;
+
+ALTER TABLE ot_cases ADD COLUMN discount_value INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE ot_cases ADD COLUMN discount_unit TEXT NOT NULL DEFAULT 'percent';
+`,
+	},
+	{
+		Name: "017_service_categories",
+		SQL: `
+-- Optional label for OPD services. Existing rows stay uncategorized (NULL).
+CREATE TABLE IF NOT EXISTS service_categories (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+ALTER TABLE services ADD COLUMN category_id INTEGER REFERENCES service_categories(id);
+
+CREATE INDEX IF NOT EXISTS idx_services_category ON services(category_id);
+`,
+	},
 }
 
 // Migrate applies pending migrations inside a transaction per migration.

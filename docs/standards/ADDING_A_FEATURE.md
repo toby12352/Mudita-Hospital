@@ -18,7 +18,9 @@ Use this checklist for a **new domain** (e.g. Lab billing) or a substantial exte
 
 - [ ] Add a named migration in `server/internal/db/migrate.go`
 - [ ] Migration is additive and keeps existing hospital rows (see [UPGRADES.md](./UPGRADES.md))
-- [ ] Seed defaults in `seed.go` only if first-run data is required
+- [ ] Answer the seven upgrade-gate questions in [UPGRADES.md](./UPGRADES.md) before changing schema or the installer
+- [ ] Verify on an isolated copy: fresh install, upgrade from older DB, and that historical bills/stock stay intact
+- [ ] Seed defaults in `seed.go` only if first-run data is required (insert-if-missing; never overwrite production catalogs)
 - [ ] Use `snake_case` columns and `*_mmk` for money
 
 ### 2. Permissions

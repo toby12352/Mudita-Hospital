@@ -19,16 +19,17 @@ Engineering standards live in **[docs/standards/README.md](docs/standards/README
 | Rule | When |
 |------|------|
 | `.cursor/rules/mudita-core.mdc` | Always |
+| `.cursor/rules/mudita-production.mdc` | Always — live production / upgrade safety |
 | `.cursor/rules/mudita-frontend.mdc` | `client/**`, `dashboard/**` |
 | `.cursor/rules/mudita-backend.mdc` | `server/**` |
 | `.cursor/rules/mudita-docs.mdc` | `docs/**` |
 
-Rules stay short and point at `docs/standards/` — do not duplicate full guides into rule files.
+Rules stay short and point at `docs/standards/` — do not duplicate full guides into rule files. Full upgrade policy lives in [UPGRADES.md](docs/standards/UPGRADES.md).
 
 ## Non-negotiables
 
 - Clients never open SQLite
 - New clinic UI: `pages/` / `features/` — do not grow `app/App.tsx` with new panels
 - Schema only via `server/internal/db/migrate.go`
-- Schema changes are new migrations that keep existing hospital rows — read [UPGRADES.md](docs/standards/UPGRADES.md)
+- Live production: preserve `data\mudita.db`; schema/upgrade safety — [UPGRADES.md](docs/standards/UPGRADES.md)
 - Match nearest domain (OPD / OT / Pharmacy); no new frameworks by default

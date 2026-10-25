@@ -14,7 +14,7 @@ Start here when joining the codebase or opening a new Agent chat. Read only the 
 | HTTP handlers / SQL | `server/internal/handlers/` |
 | Auth, roles, permissions | `server/internal/auth/`, `server/internal/middleware/` |
 | Schema / migrations | `server/internal/db/migrate.go` — see [UPGRADES.md](./UPGRADES.md) |
-| Upgrade a live hospital install | [UPGRADES.md](./UPGRADES.md) · field steps in [FIELD_INSTALL_FAQ.md](../FIELD_INSTALL_FAQ.md) |
+| Upgrade a live hospital install (mandatory for schema / installer / billing / inventory) | [UPGRADES.md](./UPGRADES.md) · always-on gate `.cursor/rules/mudita-production.mdc` · field steps in [FIELD_INSTALL_FAQ.md](../FIELD_INSTALL_FAQ.md) |
 | Seed users / demo data | `server/internal/db/seed.go` |
 | Route registration | `server/main.go` |
 | Deploy / LAN install | [DEPLOY.md](../DEPLOY.md) |
@@ -30,7 +30,7 @@ Start here when joining the codebase or opening a new Agent chat. Read only the 
 | [BACKEND.md](./BACKEND.md) | Handlers, auth, migrations, API shape |
 | [CONVENTIONS.md](./CONVENTIONS.md) | Naming, money, errors, roles, bill prefixes |
 | [ADDING_A_FEATURE.md](./ADDING_A_FEATURE.md) | Step-by-step playbook for a new domain |
-| [UPGRADES.md](./UPGRADES.md) | Live-hospital upgrades: additive migrations, safe ship checklist |
+| [UPGRADES.md](./UPGRADES.md) | Live production upgrades: data preservation, migrations, `install-server.ps1`, billing/inventory protection, test checklist |
 
 ## Ops vs engineering docs
 
@@ -39,4 +39,4 @@ Start here when joining the codebase or opening a new Agent chat. Read only the 
 
 ## Cursor
 
-Project rules in `.cursor/rules/` point here. Always-on context is a short map; detailed standards load when you work under `client/`, `dashboard/`, or `server/`.
+Project rules in `.cursor/rules/` point here. Always-on context is a short map plus the live-production gate (`mudita-production.mdc` → [UPGRADES.md](./UPGRADES.md)). Detailed frontend/backend standards load when you work under `client/`, `dashboard/`, or `server/`.

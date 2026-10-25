@@ -17,7 +17,7 @@ Full guide: `@docs/standards/BACKEND.md` · Conventions: `@docs/standards/CONVEN
 ## Must follow
 
 - Schema changes **only** via named migrations in `internal/db/migrate.go`
-- Append migrations only; new columns use a default; seeds must not replace user catalogs (see UPGRADES.md)
+- Append migrations only; new columns use a default; seeds must not replace user catalogs — full live-production policy in `@docs/standards/UPGRADES.md` (gate: `mudita-production`)
 - Errors: JSON `{"error":"…"}`; money `*_mmk`; JSON `snake_case`
 - New capability → `Perm*` + role map in `internal/auth/roles.go`
 - Audit money-moving / sensitive mutations; receipts HTML on the server

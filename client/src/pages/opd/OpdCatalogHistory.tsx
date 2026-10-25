@@ -19,6 +19,7 @@ function actionLabel(action: string, t: (k: string) => string): string {
   if (action === "create") return t("auditActionCreate");
   if (action === "update") return t("auditActionUpdate");
   if (action === "deactivate") return t("deactivate");
+  if (action === "delete") return t("auditActionDelete");
   return action;
 }
 

@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useId, useMemo, useState } from "react";
 import {
   deletePharmacyItem,
   formatItemCode,
@@ -12,12 +12,14 @@ import {
   updatePharmacyItem,
   type PharmacyItem,
 } from "@/features/pharmacy/api";
+import { matchesActive, type ActiveFilterValue } from "@/shared/ActiveFilter";
 import { ActionIcon } from "@/shared/ActionIcon";
+import { CatalogFilterButton, CatalogFilterPanel } from "@/shared/CatalogListFilter";
 import { DialogCloseButton } from "@/shared/DialogCloseButton";
 import { useI18n } from "@/shared/i18n";
 import { PharmacyItemForm } from "./PharmacyItemForm";
 import { PharmacyItemLots } from "./PharmacyItemLots";
-import { PharmacyItemsTab } from "./PharmacyItemsTab";
+import { PharmacyItemsTab, type RestockPriceDraft } from "./PharmacyItemsTab";
 import { PharmacyMovementsTab } from "./PharmacyMovementsTab";
 
 const listOpts = { includeInactive: true } as const;
@@ -34,7 +36,9 @@ export function PharmacyPage({
   const [creating, setCreating] = useState(initialScreen === "form");
   const [createKey, setCreateKey] = useState(0);
   const [filterOpen, setFilterOpen] = useState(false);
+  const filterPanelId = useId();
   const [filterQ, setFilterQ] = useState("");
+  const [activeFilter, setActiveFilter] = useState<ActiveFilterValue>("all");
   const [list, setList] = useState<PharmacyItem[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [selectedDetail, setSelectedDetail] = useState<PharmacyItem | null>(null);
@@ -46,11 +50,27 @@ export function PharmacyPage({
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [restockDraftPrices, setRestockDraftPrices] = useState<RestockPriceDraft | null>(null);
 
   async function reload(search = filterQ) {
     const data = await listPharmacyItems(search.trim(), listOpts);
     setList(data);
     return data;
+  }
+
+  function runSearch(query: string, status = activeFilter) {
+    void reload(query)
+      .then((data) => {
+        const first = data.find((i) => matchesActive(i.active, status));
+        if (first) selectItem(first.id);
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : "Search failed"));
+  }
+
+  function resetFilters() {
+    setFilterQ("");
+    setActiveFilter("all");
+    runSearch("", "all");
   }
 
   useEffect(() => {
@@ -99,6 +119,10 @@ export function PharmacyPage({
     };
   }, [selectedId, creating, mode, detailEpoch, listEpoch]);
 
+  const filtered = useMemo(
+    () => list.filter((i) => matchesActive(i.active, activeFilter)),
+    [list, activeFilter],
+  );
   const selected = list.find((i) => i.id === selectedId) ?? null;
   const infoItem =
     selectedDetail && selected && selectedDetail.id === selected.id
@@ -117,7 +141,12 @@ export function PharmacyPage({
   function selectItem(id: number) {
     setSelectedId(id);
     setCreating(false);
+    setRestockDraftPrices(null);
   }
+
+  useEffect(() => {
+    setRestockDraftPrices(null);
+  }, [selectedId]);
 
   async function openEdit(item: PharmacyItem) {
     setCreating(false);
@@ -279,14 +308,11 @@ export function PharmacyPage({
               <ActionIcon name="plus" />
               {t("newBadge")}
             </button>
-            <button
-              type="button"
-              className={`btn action${filterOpen ? " on" : ""}`}
-              onClick={() => setFilterOpen((v) => !v)}
-            >
-              <ActionIcon name="filter" />
-              {t("filter")}
-            </button>
+            <CatalogFilterButton
+              open={filterOpen}
+              controlsId={filterPanelId}
+              onToggle={() => setFilterOpen((v) => !v)}
+            />
             <button type="button" className="btn action" onClick={() => setMode("history")}>
               <ActionIcon name="history" />
               {t("itemHistoryLink")}
@@ -294,49 +320,27 @@ export function PharmacyPage({
           </div>
         </div>
         <p className="drug-setup-selected" aria-hidden="true" />
-        {filterOpen ? (
-          <div className="drug-setup-filter">
-            <input
-              className="drug-info-input"
-              value={filterQ}
-              onChange={(e) => setFilterQ(e.target.value)}
-              placeholder={t("idCodeOrName")}
-              aria-label={t("filter")}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  void reload(filterQ)
-                    .then((data) => {
-                      if (data[0]) selectItem(data[0].id);
-                    })
-                    .catch((err) => setError(err instanceof Error ? err.message : "Search failed"));
-                }
-              }}
-            />
-            <button
-              type="button"
-              className="btn action"
-              onClick={() =>
-                void reload(filterQ)
-                  .then((data) => {
-                    if (data[0]) selectItem(data[0].id);
-                  })
-                  .catch((err) => setError(err instanceof Error ? err.message : "Search failed"))
-              }
-            >
-              <ActionIcon name="search" />
-              {t("search")}
-            </button>
-          </div>
-        ) : null}
+        <CatalogFilterPanel
+          id={filterPanelId}
+          open={filterOpen}
+          query={filterQ}
+          onQueryChange={setFilterQ}
+          queryPlaceholder={t("idCodeOrName")}
+          searchLabel={t("searchItems")}
+          onSearch={() => runSearch(filterQ)}
+          active={activeFilter}
+          onActiveChange={setActiveFilter}
+          onReset={resetFilters}
+        />
         {error ? <p className="form-error">{error}</p> : null}
         <div className="drug-setup-table" role="listbox" aria-label={t("items")}>
           <div className="drug-setup-table-head">
-            <span>{t("code")}</span>
-            <span>{t("drugNameTrade")}</span>
+            <span title={t("code")}>{t("code")}</span>
+            <span title={t("drugNameTrade")}>{t("drugNameTrade")}</span>
             <span>{t("active")}</span>
           </div>
-          {list.length === 0 ? <p className="empty-row">{t("noItemsYet")}</p> : null}
-          {list.map((item) => (
+          {filtered.length === 0 ? <p className="empty-row">{t("noItemsYet")}</p> : null}
+          {filtered.map((item) => (
             <div
               key={item.id}
               role="option"
@@ -354,8 +358,8 @@ export function PharmacyPage({
                 }
               }}
             >
-              <span>{item.code}</span>
-              <span>{item.name}</span>
+              <span title={item.code}>{item.code}</span>
+              <span title={item.name}>{item.name}</span>
               <span
                 className="drug-setup-active-cell"
                 onClick={(e) => e.stopPropagation()}
@@ -399,33 +403,37 @@ export function PharmacyPage({
             </h3>
             {infoItem ? (
               <>
-                <div className="drug-info-field">
-                  <span className="drug-info-label">{t("brandName")}</span>
-                  <span className="drug-info-input">{infoItem.name}</span>
+                <div className="drug-info-fields">
+                  <div className="drug-info-field">
+                    <span className="drug-info-label">{t("brandName")}</span>
+                    <span className="drug-info-input">{infoItem.name}</span>
+                  </div>
+                  <div className="drug-info-field">
+                    <span className="drug-info-label">{t("dosage")}</span>
+                    <span className="drug-info-input">{infoItem.dosage || "—"}</span>
+                  </div>
+                  <div className="drug-info-field">
+                    <span className="drug-info-label">{t("packingSize")}</span>
+                    <span className="drug-info-input">
+                      {formatPackCompact(packFromItem(infoItem))}
+                    </span>
+                  </div>
+                  <PharmacyItemLots
+                    batches={infoItem.batches}
+                    stockUnit={infoItem.stock_unit || infoItem.pack_l3_unit || ""}
+                    showOnHand
+                    onHand={infoItem.stock_main}
+                  />
                 </div>
-                <div className="drug-info-field">
-                  <span className="drug-info-label">{t("dosage")}</span>
-                  <span className="drug-info-input">{infoItem.dosage || "—"}</span>
-                </div>
-                <div className="drug-info-field">
-                  <span className="drug-info-label">{t("packingSize")}</span>
-                  <span className="drug-info-input">
-                    {formatPackCompact(packFromItem(infoItem))}
-                  </span>
-                </div>
-                <PharmacyItemLots
-                  batches={infoItem.batches}
-                  stockUnit={infoItem.stock_unit || infoItem.pack_l3_unit || ""}
-                  showOnHand
-                  onHand={infoItem.stock_main}
-                />
                 {(() => {
                   const pack = packFromItem(infoItem);
                   const levels = packLevelsFromItemPack(pack);
+                  const buyOuter = restockDraftPrices?.buy ?? infoItem.buy_price_mmk;
+                  const sellSmallest = restockDraftPrices?.sell ?? infoItem.sell_price_mmk;
                   const slots = packPriceSlots(
                     levels,
-                    infoItem.buy_price_mmk,
-                    sellOuterFromSmallest(pack, infoItem.sell_price_mmk),
+                    buyOuter,
+                    sellOuterFromSmallest(pack, sellSmallest),
                   );
                   return (
                     <div className="drug-info-price-grid" aria-label={t("pricing")}>
@@ -442,26 +450,14 @@ export function PharmacyPage({
                     </div>
                   );
                 })()}
-                <div className="btn-row" style={{ marginTop: "0.75rem" }}>
-                  <button type="button" className="btn action" onClick={() => void openEdit(infoItem)}>
-                    <ActionIcon name="edit" />
-                    {t("edit")}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn action danger"
-                    onClick={openDeleteConfirm}
-                    disabled={deleteBusy}
-                  >
-                    <ActionIcon name="trash" />
-                    {t("delete")}
-                  </button>
-                </div>
                 <PharmacyItemsTab
                   isAdmin={isAdmin}
-                  onEdit={(item) => void openEdit(item)}
+                  onEdit={() => void openEdit(infoItem)}
+                  onDelete={openDeleteConfirm}
+                  deleteBusy={deleteBusy}
                   selectedId={infoItem.id}
                   embedDetail
+                  onRestockPrices={setRestockDraftPrices}
                   onChanged={() => {
                     setListEpoch((n) => n + 1);
                     setDetailEpoch((n) => n + 1);

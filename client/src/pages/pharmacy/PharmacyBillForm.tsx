@@ -1,3 +1,4 @@
+import type { Ref } from "react";
 import type { PharmacyBillLine, PharmacyItem } from "@/features/pharmacy/api";
 import {
   formatPackCompact,
@@ -10,6 +11,8 @@ import { ActionIcon } from "@/shared/ActionIcon";
 import { AlertDialog } from "@/shared/AlertDialog";
 import { BillLineGrid, createBillLineEntry } from "@/shared/BillLineGrid";
 import { BillCollectNote, BillPayPrintButton, moneyStatusLabel } from "@/shared/BillPayPrint";
+import { BillTotals } from "@/shared/BillTotals";
+import { discountKyats, type DiscountUnit } from "@/shared/discount";
 import { formatMMK } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
 
@@ -30,12 +33,20 @@ type Props = {
   error: string | null;
   okMsg: string | null;
   isDraft: boolean;
+  discountValue: string;
+  discountUnit: DiscountUnit;
+  onDiscountValue: (value: string) => void;
+  onDiscountUnit: (unit: DiscountUnit) => void;
   /** Desk mode: sales, customer return-in, or transfer to the OT cupboard. */
   kind?: "sale" | "return" | "transfer";
   /** Transfer desk: Transfer was pressed and Confirm transfer is showing. */
   awaitingConfirm?: boolean;
+  /** Transfer desk: confirm succeeded; show success overlay. */
+  transferDone?: boolean;
   onDismissError: () => void;
+  onDismissTransferDone?: () => void;
   onPatientName: (v: string) => void;
+  patientNameRef?: Ref<HTMLInputElement>;
   onPatientPhone: (v: string) => void;
   onPatientAge: (v: string) => void;
   onPatientGender: (v: string) => void;
@@ -73,15 +84,21 @@ export function PharmacyBillForm(props: Props) {
     error,
     okMsg,
     isDraft,
+    discountValue,
+    discountUnit,
     kind = "sale",
     awaitingConfirm = false,
+    transferDone = false,
   } = props;
 
   const isReturn = kind === "return";
   const isTransfer = kind === "transfer";
   const total = lines.reduce((s, l) => s + l.line_total_mmk, 0);
-  const paid = billStatus === "paid" ? total : 0;
-  const balance = billStatus === "paid" ? 0 : total;
+  const net = isTransfer
+    ? total
+    : Math.max(0, total - discountKyats(total, discountValue, discountUnit));
+  const paid = billStatus === "paid" ? net : 0;
+  const balance = billStatus === "paid" ? 0 : net;
   return (
     <section className="opd-bill-desk">
       <div className="opd-bill-desk-main">
@@ -107,10 +124,12 @@ export function PharmacyBillForm(props: Props) {
             <label className="opd-bill-field">
               <span className="opd-bill-label">{t("patientName")}</span>
               <input
+                ref={props.patientNameRef}
                 className="opd-bill-input grow"
                 data-focus="bill-patient"
                 value={patientName}
                 disabled={!isDraft}
+                required={isDraft}
                 onChange={(e) => props.onPatientName(e.target.value)}
                 autoFocus
                 aria-label={t("patientName")}
@@ -131,14 +150,16 @@ export function PharmacyBillForm(props: Props) {
             {isTransfer ? null : (
             <label className="opd-bill-field">
               <span className="opd-bill-label">{t("age")}</span>
-              <input
-                className="opd-bill-input opd-bill-input--narrow"
-                value={patientAge}
-                disabled={!isDraft}
-                inputMode="numeric"
-                onChange={(e) => props.onPatientAge(e.target.value)}
-              />
-              <span className="opd-bill-unit">{t("ageYearsShort")}</span>
+              <span className="opd-bill-control">
+                <input
+                  className="opd-bill-input opd-bill-input--narrow"
+                  value={patientAge}
+                  disabled={!isDraft}
+                  inputMode="numeric"
+                  onChange={(e) => props.onPatientAge(e.target.value)}
+                />
+                <span className="opd-bill-unit">{t("ageYearsShort")}</span>
+              </span>
             </label>
             )}
             {isTransfer ? null : (
@@ -252,7 +273,12 @@ export function PharmacyBillForm(props: Props) {
                 onCommit: (item, qty, unit) => props.onCommitItem(item, qty, unit?.id ?? null),
                 onSubmitCode: props.onLookupItem,
               },
-              { showUnitColumn: true, showPackColumn: true },
+              {
+                showUnitColumn: true,
+                showPackColumn: true,
+                sourceLabel: t("pharmacyStock"),
+                sourceIcon: "box",
+              },
             ),
           ]}
         />
@@ -261,33 +287,35 @@ export function PharmacyBillForm(props: Props) {
           <div className="opd-bill-footer-left">
             {!billId ? <span className="opd-bill-new-badge">{t("newBadge")}</span> : null}
           </div>
-          <div className="opd-bill-totals">
-            <div className="opd-bill-total-row">
-              <span>{t("totalLabel")}</span>
-              <span>{formatMMK(total)}</span>
-            </div>
-            {isTransfer ? (
+          {isTransfer ? (
+            <div className="opd-bill-totals">
+              <div className="opd-bill-total-row">
+                <span>{t("totalLabel")}</span>
+                <span>{formatMMK(total)}</span>
+              </div>
               <p className="opd-bill-collect-note">
                 {awaitingConfirm ? t("transferArmedNote") : t("transferConfirmNote")}
               </p>
-            ) : (
-            <>
-            <div className="opd-bill-total-row">
-              <span>{t("paid")}</span>
-              <span>{formatMMK(paid)}</span>
             </div>
-            <div className="opd-bill-total-row opd-bill-total-row--balance">
-              <span>{t("balance")}</span>
-              <span>{formatMMK(balance)}</span>
-            </div>
-            <BillCollectNote
-              status={billStatus || "draft"}
+          ) : (
+            <BillTotals
+              total={total}
+              paid={paid}
               balance={balance}
-              sideEffect={isReturn ? "pharmacy_return" : "pharmacy"}
+              discountValue={discountValue}
+              discountUnit={discountUnit}
+              editable={isDraft}
+              onDiscountValue={props.onDiscountValue}
+              onDiscountUnit={props.onDiscountUnit}
+              note={
+                <BillCollectNote
+                  status={billStatus || "draft"}
+                  balance={balance}
+                  sideEffect={isReturn ? "pharmacy_return" : "pharmacy"}
+                />
+              }
             />
-            </>
-            )}
-          </div>
+          )}
         </div>
 
         {okMsg ? <p className="form-ok">{okMsg}</p> : null}
@@ -388,6 +416,13 @@ export function PharmacyBillForm(props: Props) {
       </aside>
 
       <AlertDialog message={error ?? ""} onClose={props.onDismissError} />
+      {transferDone ? (
+        <AlertDialog
+          tone="success"
+          message={t("itemsTransferredToOt")}
+          onClose={props.onDismissTransferDone ?? (() => undefined)}
+        />
+      ) : null}
     </section>
   );
 }
