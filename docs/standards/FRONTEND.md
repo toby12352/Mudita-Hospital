@@ -82,7 +82,7 @@ export async function createOpdBill(body: OpdBillWrite): Promise<OpdBill> { /* a
 - Functional components only.
 - Permission checks for nav menus/actions: `hasPermission(permissions, "opd")` (etc.). Server still enforces.
 - Shared widgets (`Typeahead`, `FormSection`) live in `shared/`.
-- Print via existing `openPrintPreview` / server HTML receipts — do not invent a second print path. In the installed Tauri app, preview **Print on {printer}** silent-prints through WebView2 to the per-PC default in `mudita_default_printer` (Admin Settings → Hospital). Browser Vite keeps `contentWindow.print()`.
+- Print via existing `openPrintPreview` / server HTML receipts — do not invent a second print path. Preview **Print** always uses `contentWindow.print()` (system print dialog). Receipts are a single slip (OPD / OT / Pharmacy share the server thermal HTML).
 
 ## Styling
 

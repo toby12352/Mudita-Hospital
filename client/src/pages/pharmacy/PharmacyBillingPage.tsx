@@ -7,6 +7,7 @@ import {
   listPharmacyItems,
   packFromItem,
   packQtysForSale,
+  markPharmacyBillPrinted,
   payPharmacyBill,
   pharmacyLineSaleView,
   saleUnitsFromPack,
@@ -55,6 +56,7 @@ export function PharmacyBillingPage({
   const [billId, setBillId] = useState<number | null>(null);
   const [billNo, setBillNo] = useState("");
   const [billStatus, setBillStatus] = useState("draft");
+  const [printedAt, setPrintedAt] = useState<string | null>(null);
   const [patientName, setPatientName] = useState("");
   const patientNameRef = useRef<HTMLInputElement>(null);
   const [patientPhone, setPatientPhone] = useState("");
@@ -82,6 +84,7 @@ export function PharmacyBillingPage({
     setBillId(null);
     setBillNo("");
     setBillStatus("draft");
+    setPrintedAt(null);
     setPatientName("");
     setPatientPhone("");
     setPatientAge("");
@@ -119,6 +122,7 @@ export function PharmacyBillingPage({
     setBillId(b.id);
     setBillNo(b.bill_no);
     setBillStatus(b.status);
+    setPrintedAt(b.printed_at ?? null);
     setCreatedAt(b.created_at);
     const next = b.lines ?? [];
     setLines(next);
@@ -138,6 +142,7 @@ export function PharmacyBillingPage({
       setBillId(b.id);
       setBillNo(b.bill_no);
       setBillStatus(b.status);
+      setPrintedAt(b.printed_at ?? null);
       setPatientName(b.patient_name);
       setPatientPhone(b.patient_phone || "");
       setPatientAge(b.patient_age_years != null ? String(b.patient_age_years) : "");
@@ -278,10 +283,17 @@ export function PharmacyBillingPage({
     }
   }
 
-  function receiptPreviewOpts(billNoPaid: string) {
+  function paidReceiptPreviewOpts(billNoPaid: string) {
     return {
       title: receiptTitle(billNoPaid),
       note: isReturn ? t("returnReceiptAlreadyPaidNote") : t("receiptAlreadyPaidNote"),
+    };
+  }
+
+  function printedReceiptPreviewOpts(billNoPrinted: string) {
+    return {
+      title: t("receiptPrintedTitle").replace("{bill}", billNoPrinted),
+      note: t("receiptPrintedNote"),
     };
   }
 
@@ -292,7 +304,7 @@ export function PharmacyBillingPage({
     try {
       let id = billId;
       if (billStatus === "paid" && id) {
-        await printPharmacyBill(id, receiptPreviewOpts(billNo));
+        await printPharmacyBill(id, paidReceiptPreviewOpts(billNo));
         return;
       }
       if (!isDraft) {
@@ -302,7 +314,30 @@ export function PharmacyBillingPage({
       const saved = await saveDraft();
       if (saved == null) return;
       id = saved.id;
-      const paid = await payPharmacyBill(id);
+      const stamped = await markPharmacyBillPrinted(id);
+      applySavedBill(stamped);
+      setOkMsg(t("printedReceiptReady").replace("{bill}", stamped.bill_no));
+      await printPharmacyBill(id, printedReceiptPreviewOpts(stamped.bill_no));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Print failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function doMarkPaid() {
+    setBusy(true);
+    setError(null);
+    setOkMsg(null);
+    try {
+      if (billStatus === "paid") return;
+      if (!isDraft) {
+        throw new Error(userMessage("Only draft bills can be paid"));
+      }
+      if (lines.length === 0) throw new Error(userMessage("Add at least one medicine"));
+      const saved = await saveDraft();
+      if (saved == null) return;
+      const paid = await payPharmacyBill(saved.id);
       applySavedBill(paid);
       setOkMsg(
         (isReturn ? t("returnedReceiptReady") : t("paidReceiptReady")).replace(
@@ -310,13 +345,8 @@ export function PharmacyBillingPage({
           paid.bill_no,
         ),
       );
-      try {
-        await printPharmacyBill(id, receiptPreviewOpts(paid.bill_no));
-      } catch {
-        setError(t("receiptFailedReprint").replace("{bill}", paid.bill_no));
-      }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Print failed");
+      setError(e instanceof Error ? e.message : "Pay failed");
     } finally {
       setBusy(false);
     }
@@ -547,6 +577,12 @@ export function PharmacyBillingPage({
         if (!busy && isDraft) void doConfirm();
         return;
       }
+      if (key === "F6") {
+        e.preventDefault();
+        if (busy || isTransfer) return;
+        void doPrint();
+        return;
+      }
       if (key === "F7") {
         e.preventDefault();
         if (busy) return;
@@ -556,7 +592,7 @@ export function PharmacyBillingPage({
           else void doArmTransfer();
           return;
         }
-        void doPrint();
+        if (isDraft) void doMarkPaid();
         return;
       }
       if (key === "F9") {
@@ -593,6 +629,7 @@ export function PharmacyBillingPage({
         billId={billId}
         billNo={billNo}
         billStatus={billStatus}
+        printedAt={printedAt}
         patientName={patientName}
         patientPhone={patientPhone}
         patientAge={patientAge}
@@ -632,6 +669,7 @@ export function PharmacyBillingPage({
           setLines((prev) => prev.filter((_, j) => j !== i));
         }}
         onPrint={() => void doPrint()}
+        onMarkPaid={() => void doMarkPaid()}
         onTransfer={() => void doArmTransfer()}
         onConfirmTransfer={() => void doConfirmTransfer()}
         onConfirm={() => void doConfirm()}

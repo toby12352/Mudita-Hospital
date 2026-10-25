@@ -3,7 +3,12 @@ import type { OpdBillLine, OpdDoctor, OpdService } from "@/features/opd/api";
 import { ActionIcon } from "@/shared/ActionIcon";
 import { AlertDialog } from "@/shared/AlertDialog";
 import { BillLineGrid, createBillLineEntry } from "@/shared/BillLineGrid";
-import { BillCollectNote, BillPayPrintButton, moneyStatusLabel } from "@/shared/BillPayPrint";
+import {
+  BillCollectNote,
+  BillMarkPaidButton,
+  BillPrintButton,
+  moneyStatusLabel,
+} from "@/shared/BillPayPrint";
 import { BillTotals } from "@/shared/BillTotals";
 import { discountKyats, type DiscountUnit } from "@/shared/discount";
 import { formatMMK } from "@/shared/format";
@@ -14,6 +19,7 @@ type Props = {
   billId: number | null;
   billNo: string;
   billStatus: string;
+  printedAt: string | null;
   patientId: number | null;
   patientName: string;
   patientPhone: string;
@@ -50,6 +56,7 @@ type Props = {
   onCommitLineQty: (index: number, qty: number) => void;
   onRemoveLine: (index: number) => void;
   onPrint: () => void;
+  onMarkPaid: () => void;
   onConfirm: () => void;
   onHistory: () => void;
   onDelete: () => void;
@@ -63,6 +70,7 @@ export function OpdBillForm(props: Props) {
     billId,
     billNo,
     billStatus,
+    printedAt,
     patientId,
     patientName,
     patientPhone,
@@ -227,7 +235,9 @@ export function OpdBillForm(props: Props) {
             </div>
             <div className="opd-bill-field">
               <span className="opd-bill-label">{t("status")}</span>
-              <span className="opd-bill-readonly">{moneyStatusLabel(billStatus || "draft", t)}</span>
+              <span className="opd-bill-readonly">
+                {moneyStatusLabel(billStatus || "draft", t, printedAt)}
+              </span>
             </div>
           </div>
         </div>
@@ -304,7 +314,12 @@ export function OpdBillForm(props: Props) {
       </div>
 
       <aside className="opd-bill-rail" aria-label={t("billActions")}>
-        <BillPayPrintButton status={billStatus || "draft"} busy={busy} onClick={props.onPrint} />
+        <BillMarkPaidButton
+          status={billStatus || "draft"}
+          busy={busy}
+          onClick={props.onMarkPaid}
+        />
+        <BillPrintButton status={billStatus || "draft"} busy={busy} onClick={props.onPrint} />
         <button
           type="button"
           className="opd-bill-rail-btn"

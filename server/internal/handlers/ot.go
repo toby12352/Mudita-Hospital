@@ -41,42 +41,56 @@ type otCaseItem struct {
 	PackL3Unit string `json:"pack_l3_unit,omitempty"`
 }
 
+// Draft cart service line. unit_price_mmk is the case charge (nullable until typed).
+type otCaseService struct {
+	ID           int64  `json:"id,omitempty"`
+	RefID        int64  `json:"ref_id"`
+	Code         string `json:"code"`
+	Description  string `json:"description"`
+	UnitPriceMMK *int64 `json:"unit_price_mmk"`
+	SortOrder    int    `json:"sort_order"`
+}
+
 type otCase struct {
-	ID              int64        `json:"id"`
-	CaseNo          string       `json:"case_no"`
-	PatientName     string       `json:"patient_name"`
-	PatientPhone    string       `json:"patient_phone"`
-	PatientAgeYears *int64       `json:"patient_age_years,omitempty"`
-	PatientGender   string       `json:"patient_gender"`
-	DoctorID        *int64       `json:"doctor_id,omitempty"`
-	DoctorName      string       `json:"doctor_name"`
-	ProcedureName   string       `json:"procedure_name"`
-	Notes           string       `json:"notes"`
-	DiscountValue   int64        `json:"discount_value"`
-	DiscountUnit    string       `json:"discount_unit"`
-	Status          string       `json:"status"`
-	IssuedAt        *string      `json:"issued_at,omitempty"`
-	ReconciledAt    *string      `json:"reconciled_at,omitempty"`
-	OtBillID        *int64       `json:"ot_bill_id,omitempty"`
-	CreatedByUserID *int64       `json:"created_by_user_id,omitempty"`
-	CreatedAt       string       `json:"created_at"`
-	UpdatedAt       string       `json:"updated_at"`
-	Items           []otCaseItem `json:"items,omitempty"`
-	DoctorOTFeeMMK  int64        `json:"doctor_ot_fee_mmk,omitempty"`
+	ID              int64           `json:"id"`
+	CaseNo          string          `json:"case_no"`
+	PatientName     string          `json:"patient_name"`
+	PatientPhone    string          `json:"patient_phone"`
+	PatientAgeYears *int64          `json:"patient_age_years,omitempty"`
+	PatientGender   string          `json:"patient_gender"`
+	DoctorID        *int64          `json:"doctor_id,omitempty"`
+	DoctorName      string          `json:"doctor_name"`
+	ProcedureName   string          `json:"procedure_name"`
+	Notes           string          `json:"notes"`
+	DiscountValue   int64           `json:"discount_value"`
+	DiscountUnit    string          `json:"discount_unit"`
+	Status          string          `json:"status"`
+	IssuedAt        *string         `json:"issued_at,omitempty"`
+	ReconciledAt    *string         `json:"reconciled_at,omitempty"`
+	OtBillID        *int64          `json:"ot_bill_id,omitempty"`
+	BillStatus      *string         `json:"bill_status,omitempty"`
+	BillPrintedAt   *string         `json:"bill_printed_at,omitempty"`
+	CreatedByUserID *int64          `json:"created_by_user_id,omitempty"`
+	CreatedAt       string          `json:"created_at"`
+	UpdatedAt       string          `json:"updated_at"`
+	Items           []otCaseItem    `json:"items,omitempty"`
+	Services        []otCaseService `json:"services,omitempty"`
+	DoctorOTFeeMMK  int64           `json:"doctor_ot_fee_mmk,omitempty"`
 }
 
 type otCaseWriteRequest struct {
-	PatientName     string       `json:"patient_name"`
-	PatientPhone    string       `json:"patient_phone"`
-	PatientAgeYears *int64       `json:"patient_age_years,omitempty"`
-	PatientGender   string       `json:"patient_gender"`
-	DoctorID        *int64       `json:"doctor_id,omitempty"`
-	DoctorName      string       `json:"doctor_name"`
-	ProcedureName   string       `json:"procedure_name"`
-	Notes           string       `json:"notes"`
-	Items           []otCaseItem `json:"items"`
-	DiscountValue   int64        `json:"discount_value"`
-	DiscountUnit    string       `json:"discount_unit"`
+	PatientName     string          `json:"patient_name"`
+	PatientPhone    string          `json:"patient_phone"`
+	PatientAgeYears *int64          `json:"patient_age_years,omitempty"`
+	PatientGender   string          `json:"patient_gender"`
+	DoctorID        *int64          `json:"doctor_id,omitempty"`
+	DoctorName      string          `json:"doctor_name"`
+	ProcedureName   string          `json:"procedure_name"`
+	Notes           string          `json:"notes"`
+	Items           []otCaseItem    `json:"items"`
+	Services        []otCaseService `json:"services"`
+	DiscountValue   int64           `json:"discount_value"`
+	DiscountUnit    string          `json:"discount_unit"`
 }
 
 type otBillLine struct {
@@ -108,6 +122,7 @@ type otBill struct {
 	DiscountValue   int64        `json:"discount_value"`
 	DiscountUnit    string       `json:"discount_unit"`
 	DiscountMMK     int64        `json:"discount_mmk"`
+	PrintedAt       *string      `json:"printed_at,omitempty"`
 	PaidAt          *string      `json:"paid_at,omitempty"`
 	VoidedAt        *string      `json:"voided_at,omitempty"`
 	VoidReason      string       `json:"void_reason,omitempty"`
@@ -205,6 +220,8 @@ func (h *OT) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.listBills(w, r)
 		case strings.HasPrefix(path, "/bills/") && strings.HasSuffix(path, "/pay") && r.Method == http.MethodPost:
 			h.payBill(w, r, path)
+		case strings.HasPrefix(path, "/bills/") && strings.HasSuffix(path, "/printed") && r.Method == http.MethodPost:
+			h.markBillPrinted(w, r, path)
 		case strings.HasPrefix(path, "/bills/") && strings.HasSuffix(path, "/void") && r.Method == http.MethodPost:
 			h.voidBill(w, r, path)
 		case strings.HasPrefix(path, "/bills/") && strings.HasSuffix(path, "/print") && r.Method == http.MethodGet:
@@ -368,27 +385,28 @@ func (h *OT) listCases(w http.ResponseWriter, r *http.Request) {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	status := strings.TrimSpace(r.URL.Query().Get("status"))
 	query := `
-		SELECT id, case_no, patient_name, patient_phone, patient_age_years, patient_gender,
-			doctor_id, doctor_name, procedure_name, notes, status, issued_at, reconciled_at,
-			ot_bill_id, created_by_user_id, created_at, updated_at,
-			discount_value, discount_unit
-		FROM ot_cases
+		SELECT c.id, c.case_no, c.patient_name, c.patient_phone, c.patient_age_years, c.patient_gender,
+			c.doctor_id, c.doctor_name, c.procedure_name, c.notes, c.status, c.issued_at, c.reconciled_at,
+			c.ot_bill_id, c.created_by_user_id, c.created_at, c.updated_at,
+			c.discount_value, c.discount_unit, b.status, b.printed_at
+		FROM ot_cases c
+		LEFT JOIN ot_bills b ON b.id = c.ot_bill_id
 	`
 	args := make([]any, 0)
 	where := make([]string, 0)
 	if status != "" {
-		where = append(where, "status = ?")
+		where = append(where, "c.status = ?")
 		args = append(args, status)
 	}
 	if q != "" {
 		like := "%" + q + "%"
-		where = append(where, "(case_no LIKE ? OR patient_name LIKE ? OR patient_phone LIKE ? OR procedure_name LIKE ?)")
+		where = append(where, "(c.case_no LIKE ? OR c.patient_name LIKE ? OR c.patient_phone LIKE ? OR c.procedure_name LIKE ?)")
 		args = append(args, like, like, like, like)
 	}
 	if len(where) > 0 {
 		query += " WHERE " + strings.Join(where, " AND ")
 	}
-	query += " ORDER BY created_at DESC, id DESC LIMIT 100"
+	query += " ORDER BY c.created_at DESC, c.id DESC LIMIT 100"
 
 	rows, err := h.DB.Query(query, args...)
 	if err != nil {
@@ -398,7 +416,7 @@ func (h *OT) listCases(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	out := make([]otCase, 0)
 	for rows.Next() {
-		c, err := scanOtCase(rows)
+		c, err := scanOtCaseWithBill(rows)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "scan failed"})
 			return
@@ -425,6 +443,11 @@ func (h *OT) createCase(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": errMsg})
 		return
 	}
+	services, errMsg := normalizeOtCaseServices(req.Services)
+	if errMsg != "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": errMsg})
+		return
+	}
 
 	tx, err := h.DB.Begin()
 	if err != nil {
@@ -439,6 +462,10 @@ func (h *OT) createCase(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := enrichOtCaseItems(tx, items); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	if err := enrichOtCaseServices(tx, services); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
@@ -471,6 +498,10 @@ func (h *OT) createCase(w http.ResponseWriter, r *http.Request) {
 	caseID, _ := res.LastInsertId()
 	if err := insertOtCaseItems(tx, caseID, items); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "items failed"})
+		return
+	}
+	if err := insertOtCaseServices(tx, caseID, services); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "services failed"})
 		return
 	}
 	if err := tx.Commit(); err != nil {
@@ -527,6 +558,11 @@ func (h *OT) updateCase(w http.ResponseWriter, r *http.Request, path string) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": errMsg})
 		return
 	}
+	services, errMsg := normalizeOtCaseServices(req.Services)
+	if errMsg != "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": errMsg})
+		return
+	}
 
 	tx, err := h.DB.Begin()
 	if err != nil {
@@ -536,7 +572,8 @@ func (h *OT) updateCase(w http.ResponseWriter, r *http.Request, path string) {
 	defer tx.Rollback()
 
 	var status string
-	err = tx.QueryRow(`SELECT status FROM ot_cases WHERE id = ?`, id).Scan(&status)
+	var otBillID sql.NullInt64
+	err = tx.QueryRow(`SELECT status, ot_bill_id FROM ot_cases WHERE id = ?`, id).Scan(&status, &otBillID)
 	if err == sql.ErrNoRows {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		return
@@ -545,9 +582,27 @@ func (h *OT) updateCase(w http.ResponseWriter, r *http.Request, path string) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "load failed"})
 		return
 	}
+	// Draft cases are always editable. Billed cases stay editable while the linked
+	// bill is still draft (Printed — Not Paid / unpaid), so Print does not lock the desk.
 	if status != "draft" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "only draft cases can be edited"})
-		return
+		if status != "billed" || !otBillID.Valid {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "only draft cases can be edited"})
+			return
+		}
+		var billStatus string
+		err = tx.QueryRow(`SELECT status FROM ot_bills WHERE id = ?`, otBillID.Int64).Scan(&billStatus)
+		if err == sql.ErrNoRows {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "only draft cases can be edited"})
+			return
+		}
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "load failed"})
+			return
+		}
+		if billStatus != "draft" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "only unpaid OT bills can be edited"})
+			return
+		}
 	}
 
 	doctorName, doctorID, err := resolveDoctor(tx, req.DoctorID, req.DoctorName)
@@ -556,6 +611,10 @@ func (h *OT) updateCase(w http.ResponseWriter, r *http.Request, path string) {
 		return
 	}
 	if err := enrichOtCaseItems(tx, items); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	if err := enrichOtCaseServices(tx, services); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
@@ -584,6 +643,14 @@ func (h *OT) updateCase(w http.ResponseWriter, r *http.Request, path string) {
 	}
 	if err := insertOtCaseItems(tx, id, items); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "items failed"})
+		return
+	}
+	if _, err := tx.Exec(`DELETE FROM ot_case_services WHERE case_id = ?`, id); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "services clear failed"})
+		return
+	}
+	if err := insertOtCaseServices(tx, id, services); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "services failed"})
 		return
 	}
 	if err := tx.Commit(); err != nil {
@@ -724,7 +791,7 @@ func (h *OT) listBills(w http.ResponseWriter, r *http.Request) {
 	query := `
 		SELECT id, bill_no, case_id, case_no, patient_name, patient_phone, patient_age_years, patient_gender,
 			doctor_id, doctor_name, procedure_name, status, total_mmk, paid_at, voided_at, void_reason,
-			created_at, updated_at, discount_value, discount_unit, discount_mmk
+			created_at, updated_at, discount_value, discount_unit, discount_mmk, printed_at
 		FROM ot_bills
 	`
 	args := make([]any, 0)
@@ -839,9 +906,14 @@ func (h *OT) updateBill(w http.ResponseWriter, r *http.Request, path string) {
 		return
 	}
 	if _, err := tx.Exec(`
-		UPDATE ot_bills SET total_mmk = ?, discount_value = ?, discount_unit = ?, discount_mmk = ?,
+		UPDATE ot_bills SET
+			patient_name = ?, patient_phone = ?, patient_age_years = ?, patient_gender = ?,
+			doctor_id = ?, doctor_name = ?, procedure_name = ?,
+			total_mmk = ?, discount_value = ?, discount_unit = ?, discount_mmk = ?,
 			updated_at = datetime('now') WHERE id = ?
-	`, net, req.DiscountValue, discountUnit, discountMMK, id); err != nil {
+	`, c.PatientName, c.PatientPhone, c.PatientAgeYears, c.PatientGender,
+		c.DoctorID, c.DoctorName, c.ProcedureName,
+		net, req.DiscountValue, discountUnit, discountMMK, id); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "update failed"})
 		return
 	}
@@ -861,6 +933,57 @@ func (h *OT) updateBill(w http.ResponseWriter, r *http.Request, path string) {
 	audit.WriteAudit(h.DB, &uid, "update", "ot_bill", &id, map[string]any{
 		"total_mmk": net, "discount_mmk": discountMMK,
 	})
+	bill, err := loadOtBill(h.DB, id)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "reload failed"})
+		return
+	}
+	writeJSON(w, http.StatusOK, bill)
+}
+
+func (h *OT) markBillPrinted(w http.ResponseWriter, r *http.Request, path string) {
+	user := middleware.UserFromContext(r.Context())
+	idPath := strings.TrimSuffix(strings.TrimPrefix(path, "/bills/"), "/printed")
+	id, ok := parseID("/" + idPath)
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid id"})
+		return
+	}
+
+	tx, err := h.DB.Begin()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "tx failed"})
+		return
+	}
+	defer tx.Rollback()
+
+	n, err := execMarkPrinted(tx, "ot_bills", id)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "print stamp failed"})
+		return
+	}
+	if n == 0 {
+		var exists int
+		err = tx.QueryRow(`SELECT 1 FROM ot_bills WHERE id = ?`, id).Scan(&exists)
+		if err == sql.ErrNoRows {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+			return
+		}
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "load failed"})
+			return
+		}
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "only draft bills can be marked printed"})
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "commit failed"})
+		return
+	}
+
+	uid := user.ID
+	audit.WriteAudit(h.DB, &uid, "print", "ot_bill", &id, nil)
+
 	bill, err := loadOtBill(h.DB, id)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "reload failed"})
@@ -1139,6 +1262,93 @@ func insertOtCaseItems(tx *sql.Tx, caseID int64, items []otCaseItem) error {
 	return nil
 }
 
+func normalizeOtCaseServices(in []otCaseService) ([]otCaseService, string) {
+	out := make([]otCaseService, 0, len(in))
+	for i, s := range in {
+		if s.RefID <= 0 {
+			return nil, "service ref_id required"
+		}
+		if s.UnitPriceMMK != nil && *s.UnitPriceMMK < 0 {
+			return nil, "service unit_price_mmk must be >= 0"
+		}
+		s.SortOrder = i
+		out = append(out, s)
+	}
+	return out, ""
+}
+
+// enrichOtCaseServices resolves active ot_services rows. Keeps the client case price
+// (including null); does not copy catalog price_mmk onto the line.
+func enrichOtCaseServices(tx *sql.Tx, services []otCaseService) error {
+	for i := range services {
+		var code sql.NullString
+		var name string
+		var active int
+		err := tx.QueryRow(`
+			SELECT code, name, active FROM ot_services WHERE id = ?
+		`, services[i].RefID).Scan(&code, &name, &active)
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("service not found")
+		}
+		if err != nil {
+			return fmt.Errorf("service load failed")
+		}
+		if active != 1 {
+			label := name
+			if code.Valid && code.String != "" {
+				label = code.String
+			}
+			return fmt.Errorf("service %s is inactive", label)
+		}
+		svcCode := ""
+		if code.Valid {
+			svcCode = code.String
+		}
+		services[i].Code = svcCode
+		services[i].Description = name
+	}
+	return nil
+}
+
+func insertOtCaseServices(tx *sql.Tx, caseID int64, services []otCaseService) error {
+	for _, s := range services {
+		if _, err := tx.Exec(`
+			INSERT INTO ot_case_services (
+				case_id, service_id, code, description, unit_price_mmk, sort_order
+			) VALUES (?, ?, ?, ?, ?, ?)
+		`, caseID, s.RefID, s.Code, s.Description, s.UnitPriceMMK, s.SortOrder); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func loadOtCaseServicesTx(tx *sql.Tx, caseID int64) ([]otCaseService, error) {
+	rows, err := tx.Query(`
+		SELECT id, service_id, code, description, unit_price_mmk, sort_order
+		FROM ot_case_services
+		WHERE case_id = ? ORDER BY sort_order, id
+	`, caseID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]otCaseService, 0)
+	for rows.Next() {
+		var s otCaseService
+		var price sql.NullInt64
+		if err := rows.Scan(&s.ID, &s.RefID, &s.Code, &s.Description, &price, &s.SortOrder); err != nil {
+			return nil, err
+		}
+		if price.Valid {
+			v := price.Int64
+			s.UnitPriceMMK = &v
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
 func nextOtCaseNo(tx *sql.Tx) (string, error) {
 	var n int64
 	if err := tx.QueryRow(`SELECT next_num FROM ot_case_number_seq WHERE id = 1`).Scan(&n); err != nil {
@@ -1221,6 +1431,11 @@ func loadOtCaseTx(tx *sql.Tx, id int64) (otCase, error) {
 		return c, err
 	}
 	c.Items = items
+	services, err := loadOtCaseServicesTx(tx, id)
+	if err != nil {
+		return c, err
+	}
+	c.Services = services
 	if c.DoctorID != nil {
 		var fee int64
 		_ = tx.QueryRow(`
@@ -1267,6 +1482,54 @@ func scanOtCase(row scannable) (otCase, error) {
 	if createdBy.Valid {
 		v := createdBy.Int64
 		c.CreatedByUserID = &v
+	}
+	return c, nil
+}
+
+func scanOtCaseWithBill(row scannable) (otCase, error) {
+	var c otCase
+	var age, doctorID, billID, createdBy sql.NullInt64
+	var issuedAt, reconciledAt, billStatus, billPrintedAt sql.NullString
+	err := row.Scan(
+		&c.ID, &c.CaseNo, &c.PatientName, &c.PatientPhone, &age, &c.PatientGender,
+		&doctorID, &c.DoctorName, &c.ProcedureName, &c.Notes, &c.Status, &issuedAt, &reconciledAt,
+		&billID, &createdBy, &c.CreatedAt, &c.UpdatedAt,
+		&c.DiscountValue, &c.DiscountUnit, &billStatus, &billPrintedAt,
+	)
+	if err != nil {
+		return c, err
+	}
+	if age.Valid {
+		v := age.Int64
+		c.PatientAgeYears = &v
+	}
+	if doctorID.Valid {
+		v := doctorID.Int64
+		c.DoctorID = &v
+	}
+	if issuedAt.Valid {
+		v := issuedAt.String
+		c.IssuedAt = &v
+	}
+	if reconciledAt.Valid {
+		v := reconciledAt.String
+		c.ReconciledAt = &v
+	}
+	if billID.Valid {
+		v := billID.Int64
+		c.OtBillID = &v
+	}
+	if createdBy.Valid {
+		v := createdBy.Int64
+		c.CreatedByUserID = &v
+	}
+	if billStatus.Valid && billStatus.String != "" {
+		v := billStatus.String
+		c.BillStatus = &v
+	}
+	if billPrintedAt.Valid && billPrintedAt.String != "" {
+		v := billPrintedAt.String
+		c.BillPrintedAt = &v
 	}
 	return c, nil
 }
@@ -1437,7 +1700,7 @@ func loadOtBill(db *sql.DB, id int64) (otBill, error) {
 	row := db.QueryRow(`
 		SELECT id, bill_no, case_id, case_no, patient_name, patient_phone, patient_age_years, patient_gender,
 			doctor_id, doctor_name, procedure_name, status, total_mmk, paid_at, voided_at, void_reason,
-			created_at, updated_at, discount_value, discount_unit, discount_mmk
+			created_at, updated_at, discount_value, discount_unit, discount_mmk, printed_at
 		FROM ot_bills WHERE id = ?
 	`, id)
 	b, err := scanOtBill(row)
@@ -1471,11 +1734,11 @@ func loadOtBill(db *sql.DB, id int64) (otBill, error) {
 func scanOtBill(row scannable) (otBill, error) {
 	var b otBill
 	var age, doctorID sql.NullInt64
-	var paidAt, voidedAt sql.NullString
+	var paidAt, voidedAt, printedAt sql.NullString
 	err := row.Scan(
 		&b.ID, &b.BillNo, &b.CaseID, &b.CaseNo, &b.PatientName, &b.PatientPhone, &age, &b.PatientGender,
 		&doctorID, &b.DoctorName, &b.ProcedureName, &b.Status, &b.TotalMMK, &paidAt, &voidedAt, &b.VoidReason,
-		&b.CreatedAt, &b.UpdatedAt, &b.DiscountValue, &b.DiscountUnit, &b.DiscountMMK,
+		&b.CreatedAt, &b.UpdatedAt, &b.DiscountValue, &b.DiscountUnit, &b.DiscountMMK, &printedAt,
 	)
 	if err != nil {
 		return b, err
@@ -1495,6 +1758,10 @@ func scanOtBill(row scannable) (otBill, error) {
 	if voidedAt.Valid {
 		v := voidedAt.String
 		b.VoidedAt = &v
+	}
+	if printedAt.Valid && printedAt.String != "" {
+		v := printedAt.String
+		b.PrintedAt = &v
 	}
 	return b, nil
 }
@@ -1602,11 +1869,16 @@ func renderOtBillHTML(hosp *hospitalSettings, bill otBill, caseItems []otCaseIte
 		}
 		lines = append(lines, rl)
 	}
+	printedAt := ""
+	if bill.PrintedAt != nil {
+		printedAt = *bill.PrintedAt
+	}
 	return renderThermalReceiptHTML(hosp, receiptBill{
 		Title:          "OT RECEIPT",
 		BillNo:         bill.BillNo,
 		CaseNo:         bill.CaseNo,
 		Status:         bill.Status,
+		PrintedAt:      printedAt,
 		PatientName:    bill.PatientName,
 		PatientPhone:   bill.PatientPhone,
 		PatientAge:     bill.PatientAgeYears,

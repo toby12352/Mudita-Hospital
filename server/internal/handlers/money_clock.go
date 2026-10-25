@@ -44,3 +44,21 @@ func execPayDraft(tx *sql.Tx, table string, id, userID int64) (int64, error) {
 	}
 	return res.RowsAffected()
 }
+
+// execMarkPrinted stamps printed_at on a draft bill (Printed — Not Paid).
+// n is 0 when the bill is no longer draft. Re-print refreshes the timestamp.
+func execMarkPrinted(tx *sql.Tx, table string, id int64) (int64, error) {
+	switch table {
+	case "opd_bills", "pharmacy_bills", "ot_bills":
+	default:
+		return 0, fmt.Errorf("unknown bill table")
+	}
+	res, err := tx.Exec(
+		`UPDATE `+table+` SET printed_at = ?, updated_at = datetime('now') WHERE id = ? AND status = 'draft'`,
+		localCivilNow(), id,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}

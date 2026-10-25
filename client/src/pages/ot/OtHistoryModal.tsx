@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { listOtCases, type OtCase } from "@/features/ot/api";
 import { ActionIcon } from "@/shared/ActionIcon";
 import { AlertDialog } from "@/shared/AlertDialog";
+import { moneyStatusLabel } from "@/shared/BillPayPrint";
 import { DialogCloseButton } from "@/shared/DialogCloseButton";
 import { useI18n } from "@/shared/i18n";
 
@@ -152,10 +153,13 @@ export function OtHistoryModal({
                       {c.case_no} · {c.patient_name}
                     </span>
                     <span className="row-sub">
-                      {c.status.toUpperCase()}
+                      {moneyStatusLabel(
+                        c.bill_status ?? c.status,
+                        t,
+                        c.bill_printed_at,
+                      )}
                       {c.procedure_name ? ` · ${c.procedure_name}` : ""}
                       {c.doctor_name ? ` · ${c.doctor_name}` : ""}
-                      {c.ot_bill_id ? ` · bill` : ""}
                       {c.updated_at ? ` · ${formatWhen(c.updated_at)}` : ""}
                     </span>
                   </span>

@@ -832,6 +832,34 @@ ALTER TABLE services ADD COLUMN category_id INTEGER REFERENCES service_categorie
 CREATE INDEX IF NOT EXISTS idx_services_category ON services(category_id);
 `,
 	},
+	{
+		Name: "018_ot_case_services",
+		SQL: `
+-- Draft OT cart service lines (case-priced). Saved before a bill exists so History
+-- can restore the cart. unit_price_mmk may be NULL until the cashier types a price.
+CREATE TABLE IF NOT EXISTS ot_case_services (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  case_id INTEGER NOT NULL REFERENCES ot_cases(id) ON DELETE CASCADE,
+  service_id INTEGER NOT NULL REFERENCES ot_services(id),
+  code TEXT NOT NULL DEFAULT '',
+  description TEXT NOT NULL DEFAULT '',
+  unit_price_mmk INTEGER CHECK (unit_price_mmk IS NULL OR unit_price_mmk >= 0),
+  sort_order INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_ot_case_services_case ON ot_case_services(case_id);
+`,
+	},
+	{
+		Name: "019_bill_printed_at",
+		SQL: `
+-- Desk Print (F6) stamps printed_at while status stays draft (Printed — Not Paid).
+-- Mark Paid (F7) still sets status=paid. No backfill: null means never printed in this flow.
+ALTER TABLE opd_bills ADD COLUMN printed_at TEXT;
+ALTER TABLE ot_bills ADD COLUMN printed_at TEXT;
+ALTER TABLE pharmacy_bills ADD COLUMN printed_at TEXT;
+`,
+	},
 }
 
 // Migrate applies pending migrations inside a transaction per migration.

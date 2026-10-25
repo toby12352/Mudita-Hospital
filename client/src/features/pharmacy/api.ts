@@ -795,6 +795,7 @@ export type PharmacyBill = {
   discount_value?: number;
   discount_unit?: "percent" | "mmk" | string;
   discount_mmk?: number;
+  printed_at?: string | null;
   paid_at?: string | null;
   void_reason?: string;
   created_at: string;
@@ -996,6 +997,10 @@ export async function updatePharmacyBill(
 
 export async function payPharmacyBill(id: number): Promise<PharmacyBill> {
   return apiFetch<PharmacyBill>(`/api/pharmacy/bills/${id}/pay`, { method: "POST", body: "{}" });
+}
+
+export async function markPharmacyBillPrinted(id: number): Promise<PharmacyBill> {
+  return apiFetch<PharmacyBill>(`/api/pharmacy/bills/${id}/printed`, { method: "POST", body: "{}" });
 }
 
 export async function transferPharmacyBill(id: number): Promise<PharmacyBill> {

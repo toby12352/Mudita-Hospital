@@ -45,9 +45,6 @@ body{
 .money-row.emph{margin-top:4px;font-size:13px;font-weight:700}
 .status{text-align:center;font-weight:700;margin:8px 0 4px;font-size:12px}
 .footer{text-align:center;font-size:10px;margin-top:8px}
-.copy-tag{text-align:center;font-size:11px;font-weight:700;margin:6px 0 0;letter-spacing:0.04em}
-.receipt-copy{page-break-after:always}
-.receipt-copy:last-child{page-break-after:auto}
 @media print{
   html,body{width:80mm;margin:0;padding:2mm 3mm}
 }
@@ -68,6 +65,7 @@ type receiptBill struct {
 	BillNo        string
 	CaseNo        string // optional OT
 	Status        string
+	PrintedAt     string // set when draft was printed; footer shows PRINTED — NOT PAID
 	PatientName   string
 	PatientPhone  string
 	PatientAge    *int64
@@ -98,16 +96,13 @@ func renderThermalReceiptHTML(hosp *hospitalSettings, bill receiptBill) string {
 	b.WriteString(`</title><style>`)
 	b.WriteString(thermalReceiptCSS())
 	b.WriteString(`</style></head><body>`)
-	writeThermalReceiptCopy(&b, hosp, bill, "CUSTOMER COPY")
-	writeThermalReceiptCopy(&b, hosp, bill, "MERCHANT COPY")
+	writeThermalReceipt(&b, hosp, bill)
 	b.WriteString(`</body></html>`)
 	return b.String()
 }
 
-// writeThermalReceiptCopy appends one thermal slip (logo through footer copy tag).
-func writeThermalReceiptCopy(b *strings.Builder, hosp *hospitalSettings, bill receiptBill, copyTag string) {
-	b.WriteString(`<div class="receipt-copy">`)
-
+// writeThermalReceipt appends one thermal slip (logo through footer).
+func writeThermalReceipt(b *strings.Builder, hosp *hospitalSettings, bill receiptBill) {
 	if src := receiptLogoDataURI(hosp); src != "" {
 		b.WriteString(`<img class="logo" src="`)
 		b.WriteString(src)
@@ -233,21 +228,16 @@ func writeThermalReceiptCopy(b *strings.Builder, hosp *hospitalSettings, bill re
 			b.WriteString(html.EscapeString(bill.VoidReason))
 		}
 	default:
-		b.WriteString(`DRAFT — NOT PAID`)
+		if bill.PrintedAt != "" {
+			b.WriteString(`PRINTED — NOT PAID`)
+		} else {
+			b.WriteString(`DRAFT — NOT PAID`)
+		}
 	}
 	b.WriteString(`</p>`)
 
 	b.WriteString(`<hr class="sep"/>`)
 	b.WriteString(`<p class="footer">Thank you</p>`)
-	if phones := hospitalPhones(hosp); phones != "" {
-		b.WriteString(`<p class="footer">`)
-		b.WriteString(html.EscapeString(phones))
-		b.WriteString(`</p>`)
-	}
-	b.WriteString(`<p class="copy-tag">`)
-	b.WriteString(html.EscapeString(copyTag))
-	b.WriteString(`</p>`)
-	b.WriteString(`</div>`)
 }
 
 func writeReceiptMoney(b *strings.Builder, label string, amount int64, emph bool) {

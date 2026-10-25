@@ -39,10 +39,10 @@ export function cheatSheetHTML(): string {
       <li>Home → <strong>OPD</strong> → Bill.</li>
       <li>Patient name → doctor → add <strong>service</strong> or consultation (no medicines here).</li>
       <li class="my">လူနာအမည် → ဆရာဝန် → ဝန်ဆောင်မှု / consultation။ ဆေးသည် Pharmacy Billing တွင်။</li>
-      <li><strong>Save draft (F5)</strong> = unpaid bill. <strong>Pay &amp; print (F7)</strong> = save + mark paid + receipt preview.</li>
-      <li class="my">မူကြမ်းသိမ်း (F5) = မပေးရသေး။ ပေးပြီး ပရင့် (F7) = သိမ်း + ပေးပြီးမှတ် + ပြေစာ။</li>
+      <li><strong>Save draft (F5)</strong> = unpaid bill. <strong>Print (F6)</strong> = save + receipt (Printed — Not Paid; still editable). <strong>Mark Paid (F7)</strong> = collect cash and lock the bill.</li>
+      <li class="my">မူကြမ်းသိမ်း (F5) = မပေးရသေး။ ပရင့် (F6) = သိမ်း + ပြေစာ (ပြင်နိုင်)။ ပေးပြီးမှတ် (F7) = ငွေကောက် + ဘေလ်ပိတ်။</li>
       <li><strong>History (F9)</strong> · <strong>V.Delete (^F8)</strong> void with reason · <strong>Cancel (F10)</strong> clears form · <strong>New bill (F2)</strong> next patient.</li>
-      <li>Admin sets the default printer once under <strong>Settings → Hospital</strong>. Receipts print on that printer with no Windows dialog. Set the EPSON roll to <strong>80 mm</strong> in Windows printer preferences.</li>
+      <li><strong>Print (F6)</strong> opens the receipt preview; the preview <strong>Print</strong> button opens the Windows print dialog. Set the EPSON roll to <strong>80 mm</strong> in Windows printer preferences.</li>
     </ul>
   </section>
   <section>
@@ -51,8 +51,8 @@ export function cheatSheetHTML(): string {
       <li>Pharmacy: <strong>Transfer to OT</strong> → add medicines → <strong>Transfer</strong>, then <strong>Confirm transfer</strong>. Saleable stock moves. Batch number and expiry are optional.</li>
       <li class="my">ဆေးဆိုင်က OT သို့ လွှဲ တွင် ဆေးထည့်ပြီး အတည်ပြုမှ ဆေးဗီရိုသို့ ရောက်သည်။ အသုတ်နံပါတ် မထည့်လည်း ရသည်။</li>
       <li>OT cupboard: <strong>Return to pharmacy</strong> for unused qty.</li>
-      <li>New OT bill from cupboard on hand → <strong>Pay &amp; print (F7)</strong> marks paid and opens receipt. Pay deducts qty. Void puts it back.</li>
-      <li class="my">ပေးပြီး ပရင့် (F7) က ပေးပြီးမှတ်ပြီး ဆေးဗီရိုလျှော့သည်။ မသုံးသော အရေအတွက်ကို ဆေးဆိုင်သို့ ပြန်ပို့ပါ။</li>
+      <li>New OT bill from cupboard on hand → <strong>Print (F6)</strong> for a receipt you can still edit, or <strong>Mark Paid (F7)</strong> to collect cash and deduct cupboard qty. Void puts paid qty back.</li>
+      <li class="my">ပရင့် (F6) = ပြေစာ (ပြင်နိုင်)။ ပေးပြီးမှတ် (F7) = ငွေကောက် + ဆေးဗီရိုလျှော့။ မသုံးသော အရေအတွက်ကို ဆေးဆိုင်သို့ ပြန်ပို့ပါ။</li>
     </ul>
   </section>
   <section>
@@ -60,16 +60,16 @@ export function cheatSheetHTML(): string {
     <ul>
       <li>Home → <strong>Pharmacy Billing</strong> → New bill → add medicines by code.</li>
       <li>Enter qty in <strong>billing units</strong> (e.g. mL); system converts to stock units.</li>
-      <li><strong>Save draft (F5)</strong> keeps unpaid. <strong>Pay &amp; print (F7)</strong> marks paid, deducts stock (FEFO), opens receipt. Void restores stock.</li>
-      <li class="my">မူကြမ်းသိမ်း (F5)။ ပေးပြီး ပရင့် (F7) = ပေးပြီးမှတ် + စတော့လျှော့ + ပြေစာ။</li>
+      <li><strong>Save draft (F5)</strong> keeps unpaid. <strong>Print (F6)</strong> opens a receipt (still editable). <strong>Mark Paid (F7)</strong> collects cash and deducts stock (FEFO). Void restores stock.</li>
+      <li class="my">မူကြမ်းသိမ်း (F5)။ ပရင့် (F6) = ပြေစာ (ပြင်နိုင်)။ ပေးပြီးမှတ် (F7) = ငွေကောက် + စတော့လျှော့။</li>
     </ul>
   </section>
   <section>
     <h2>4b. Pharmacy Return in / ဆေးပြန်သွင်း</h2>
     <ul>
       <li>Pharmacy portal → <strong>Return in</strong> → add returned medicines by code (same form as sales).</li>
-      <li><strong>Return &amp; print (F7)</strong> puts qty back into MAIN, refunds cash on the day book, opens the slip.</li>
-      <li class="my">ပြန်သွင်းပြီး ပရင့် (F7) = MAIN စတော့ပြန်ထည့် + နေ့စာအုပ်တွင် ငွေပြန်အမ်း + စလစ်။</li>
+      <li><strong>Print (F6)</strong> opens the slip (still editable). <strong>Mark returned (F7)</strong> puts qty back into MAIN and refunds cash on the day book.</li>
+      <li class="my">ပရင့် (F6) = စလစ် (ပြင်နိုင်)။ ပြန်သွင်းမှတ် (F7) = MAIN စတော့ပြန်ထည့် + နေ့စာအုပ်တွင် ငွေပြန်အမ်း။</li>
     </ul>
   </section>
   <section>

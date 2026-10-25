@@ -45,6 +45,7 @@ type opdBill struct {
 	DiscountValue   int64         `json:"discount_value"`
 	DiscountUnit    string        `json:"discount_unit"`
 	DiscountMMK     int64         `json:"discount_mmk"`
+	PrintedAt       *string       `json:"printed_at,omitempty"`
 	PaidAt          *string       `json:"paid_at,omitempty"`
 	PaidByUserID    *int64        `json:"paid_by_user_id,omitempty"`
 	VoidedAt        *string       `json:"voided_at,omitempty"`
@@ -119,6 +120,8 @@ func (h *OPD) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.createBill(w, r)
 		case strings.HasPrefix(path, "/bills/") && strings.HasSuffix(path, "/pay") && r.Method == http.MethodPost:
 			h.payBill(w, r, path)
+		case strings.HasPrefix(path, "/bills/") && strings.HasSuffix(path, "/printed") && r.Method == http.MethodPost:
+			h.markBillPrinted(w, r, path)
 		case strings.HasPrefix(path, "/bills/") && strings.HasSuffix(path, "/void") && r.Method == http.MethodPost:
 			h.voidBill(w, r, path)
 		case strings.HasPrefix(path, "/bills/") && strings.HasSuffix(path, "/print") && r.Method == http.MethodGet:
@@ -280,7 +283,7 @@ func (h *OPD) listBills(w http.ResponseWriter, r *http.Request) {
 		SELECT id, bill_no, patient_id, patient_name, patient_phone, patient_age_years, patient_gender,
 			doctor_id, doctor_name, description, status, total_mmk, paid_at, paid_by_user_id,
 			voided_at, voided_by_user_id, void_reason, created_by_user_id, created_at, updated_at,
-			discount_value, discount_unit, discount_mmk
+			discount_value, discount_unit, discount_mmk, printed_at
 		FROM opd_bills
 	`
 	args := make([]any, 0)
@@ -518,6 +521,57 @@ func (h *OPD) updateBill(w http.ResponseWriter, r *http.Request, path string) {
 	audit.WriteAudit(h.DB, &uid, "update", "opd_bill", &id, map[string]any{
 		"total_mmk": net, "discount_mmk": discountMMK,
 	})
+
+	bill, err := loadOpdBill(h.DB, id)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "reload failed"})
+		return
+	}
+	writeJSON(w, http.StatusOK, bill)
+}
+
+func (h *OPD) markBillPrinted(w http.ResponseWriter, r *http.Request, path string) {
+	user := middleware.UserFromContext(r.Context())
+	idPath := strings.TrimSuffix(strings.TrimPrefix(path, "/bills/"), "/printed")
+	id, ok := parseID("/" + idPath)
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid id"})
+		return
+	}
+
+	tx, err := h.DB.Begin()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "tx failed"})
+		return
+	}
+	defer tx.Rollback()
+
+	n, err := execMarkPrinted(tx, "opd_bills", id)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "print stamp failed"})
+		return
+	}
+	if n == 0 {
+		var exists int
+		err = tx.QueryRow(`SELECT 1 FROM opd_bills WHERE id = ?`, id).Scan(&exists)
+		if err == sql.ErrNoRows {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+			return
+		}
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "load failed"})
+			return
+		}
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "only draft bills can be marked printed"})
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "commit failed"})
+		return
+	}
+
+	uid := user.ID
+	audit.WriteAudit(h.DB, &uid, "print", "opd_bill", &id, nil)
 
 	bill, err := loadOpdBill(h.DB, id)
 	if err != nil {
@@ -995,7 +1049,7 @@ func loadOpdBill(db *sql.DB, id int64) (opdBill, error) {
 		SELECT id, bill_no, patient_id, patient_name, patient_phone, patient_age_years, patient_gender,
 			doctor_id, doctor_name, description, status, total_mmk, paid_at, paid_by_user_id,
 			voided_at, voided_by_user_id, void_reason, created_by_user_id, created_at, updated_at,
-			discount_value, discount_unit, discount_mmk
+			discount_value, discount_unit, discount_mmk, printed_at
 		FROM opd_bills WHERE id = ?
 	`, id)
 	b, err := scanOpdBill(row)
@@ -1034,12 +1088,12 @@ func scanOpdBill(row scannable) (opdBill, error) {
 	var b opdBill
 	var patientID, doctorID, paidBy, voidedBy, createdBy sql.NullInt64
 	var age sql.NullInt64
-	var paidAt, voidedAt sql.NullString
+	var paidAt, voidedAt, printedAt sql.NullString
 	err := row.Scan(
 		&b.ID, &b.BillNo, &patientID, &b.PatientName, &b.PatientPhone, &age, &b.PatientGender,
 		&doctorID, &b.DoctorName, &b.Description, &b.Status, &b.TotalMMK, &paidAt, &paidBy,
 		&voidedAt, &voidedBy, &b.VoidReason, &createdBy, &b.CreatedAt, &b.UpdatedAt,
-		&b.DiscountValue, &b.DiscountUnit, &b.DiscountMMK,
+		&b.DiscountValue, &b.DiscountUnit, &b.DiscountMMK, &printedAt,
 	)
 	if err != nil {
 		return b, err
@@ -1076,6 +1130,10 @@ func scanOpdBill(row scannable) (opdBill, error) {
 		v := createdBy.Int64
 		b.CreatedByUserID = &v
 	}
+	if printedAt.Valid && printedAt.String != "" {
+		v := printedAt.String
+		b.PrintedAt = &v
+	}
 	return b, nil
 }
 
@@ -1094,10 +1152,15 @@ func renderBillHTML(hosp *hospitalSettings, bill opdBill) string {
 			LineTotal:   line.LineTotalMMK,
 		})
 	}
+	printedAt := ""
+	if bill.PrintedAt != nil {
+		printedAt = *bill.PrintedAt
+	}
 	return renderThermalReceiptHTML(hosp, receiptBill{
 		Title:          "OPD RECEIPT",
 		BillNo:         bill.BillNo,
 		Status:         bill.Status,
+		PrintedAt:      printedAt,
 		PatientName:    bill.PatientName,
 		PatientPhone:   bill.PatientPhone,
 		PatientAge:     bill.PatientAgeYears,

@@ -44,7 +44,8 @@ export function shortcutsForView(
   const billKeys: DeskShortcut[] = [
     { key: "F2", label: t("newBill") },
     { key: "F5", label: t("saveDraft") },
-    { key: "F7", label: t("payAndPrint") },
+    { key: "F6", label: t("print") },
+    { key: "F7", label: t("markPaid") },
     { key: "F8", label: t("delete") },
     { key: "F9", label: t("history") },
     { key: "F10", label: t("cancel") },
@@ -67,7 +68,8 @@ export function shortcutsForView(
     return [
       { key: "F2", label: t("newReturn") },
       { key: "F5", label: t("saveDraft") },
-      { key: "F7", label: t("returnAndPrint") },
+      { key: "F6", label: t("print") },
+      { key: "F7", label: t("markReturned") },
       { key: "F8", label: t("delete") },
       { key: "F9", label: t("history") },
       { key: "F10", label: t("cancel") },

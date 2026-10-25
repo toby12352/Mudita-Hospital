@@ -30,6 +30,7 @@ export type OpdBill = {
   discount_value?: number;
   discount_unit?: "percent" | "mmk" | string;
   discount_mmk?: number;
+  printed_at?: string | null;
   paid_at?: string | null;
   voided_at?: string | null;
   void_reason?: string;
@@ -135,6 +136,10 @@ export async function updateOpdBill(id: number, body: OpdBillWrite): Promise<Opd
 
 export async function payOpdBill(id: number): Promise<OpdBill> {
   return apiFetch<OpdBill>(`/api/opd/bills/${id}/pay`, { method: "POST", body: "{}" });
+}
+
+export async function markOpdBillPrinted(id: number): Promise<OpdBill> {
+  return apiFetch<OpdBill>(`/api/opd/bills/${id}/printed`, { method: "POST", body: "{}" });
 }
 
 export async function voidOpdBill(id: number, reason: string): Promise<OpdBill> {

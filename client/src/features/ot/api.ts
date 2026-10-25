@@ -184,6 +184,16 @@ export type OtCaseItem = {
   pack_l3_unit?: string;
 };
 
+/** Draft cart service line. unit_price_mmk is the case charge (null until typed). */
+export type OtCaseService = {
+  id?: number;
+  ref_id: number;
+  code: string;
+  description: string;
+  unit_price_mmk: number | null;
+  sort_order?: number;
+};
+
 export type OtCase = {
   id: number;
   case_no: string;
@@ -201,9 +211,12 @@ export type OtCase = {
   issued_at?: string | null;
   reconciled_at?: string | null;
   ot_bill_id?: number | null;
+  bill_status?: string | null;
+  bill_printed_at?: string | null;
   created_at: string;
   updated_at: string;
   items?: OtCaseItem[];
+  services?: OtCaseService[];
   doctor_ot_fee_mmk?: number;
 };
 
@@ -243,6 +256,7 @@ export type OtBill = {
   discount_value?: number;
   discount_unit?: "percent" | "mmk" | string;
   discount_mmk?: number;
+  printed_at?: string | null;
   paid_at?: string | null;
   voided_at?: string | null;
   void_reason?: string;
@@ -261,6 +275,7 @@ export type OtCaseWrite = {
   procedure_name: string;
   notes: string;
   items: OtCaseItem[];
+  services: OtCaseService[];
   discount_value?: number;
   discount_unit?: "percent" | "mmk";
 };
@@ -334,6 +349,10 @@ export async function getOtBill(id: number): Promise<OtBill> {
 
 export async function payOtBill(id: number): Promise<OtBill> {
   return apiFetch<OtBill>(`/api/ot/bills/${id}/pay`, { method: "POST", body: "{}" });
+}
+
+export async function markOtBillPrinted(id: number): Promise<OtBill> {
+  return apiFetch<OtBill>(`/api/ot/bills/${id}/printed`, { method: "POST", body: "{}" });
 }
 
 export async function voidOtBill(id: number, reason: string): Promise<OtBill> {

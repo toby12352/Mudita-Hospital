@@ -239,3 +239,97 @@ func TestOtCatalogItemsRequireOtOnHand(t *testing.T) {
 		t.Fatalf("OT item %+v", res.Items)
 	}
 }
+
+func TestOtDraftCaseServicesRoundTrip(t *testing.T) {
+	sqlDB := openTestDB(t)
+	_, otTok := insertSession(t, sqlDB, "OT", 0)
+	ot := &OT{DB: sqlDB}
+
+	itemID := insertItem(t, sqlDB, "SUT", "Suture", 50, 100)
+	insertOtBatch(t, sqlDB, itemID, "B1", localToday(), 20)
+
+	w := doJSON(ot, http.MethodPost, "/api/ot/services", otTok, `{"code":"OTMAJ","name":"Major Surgery","price_mmk":500000}`)
+	mustCode(t, w, http.StatusCreated)
+	var priced otService
+	if err := json.Unmarshal(w.Body.Bytes(), &priced); err != nil {
+		t.Fatal(err)
+	}
+	w = doJSON(ot, http.MethodPost, "/api/ot/services", otTok, `{"name":"Case priced only"}`)
+	mustCode(t, w, http.StatusCreated)
+	var blank otService
+	if err := json.Unmarshal(w.Body.Bytes(), &blank); err != nil {
+		t.Fatal(err)
+	}
+
+	body := fmt.Sprintf(`{
+		"patient_name":"Daw Draft",
+		"items":[{"item_id":%d,"qty_issued":2}],
+		"services":[
+			{"ref_id":%d,"unit_price_mmk":850000},
+			{"ref_id":%d,"unit_price_mmk":null}
+		]
+	}`, itemID, priced.ID, blank.ID)
+	w = doJSON(ot, http.MethodPost, "/api/ot/cases", otTok, body)
+	mustCode(t, w, http.StatusCreated)
+	var created otCase
+	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	if len(created.Items) != 1 || created.Items[0].ItemID != itemID || created.Items[0].QtyIssued != 2 {
+		t.Fatalf("items %+v", created.Items)
+	}
+	if len(created.Services) != 2 {
+		t.Fatalf("services %+v", created.Services)
+	}
+	if created.Services[0].RefID != priced.ID || created.Services[0].UnitPriceMMK == nil || *created.Services[0].UnitPriceMMK != 850000 {
+		t.Fatalf("custom priced service %+v", created.Services[0])
+	}
+	if created.Services[1].RefID != blank.ID || created.Services[1].UnitPriceMMK != nil {
+		t.Fatalf("null priced service %+v", created.Services[1])
+	}
+
+	w = doJSON(ot, http.MethodGet, fmt.Sprintf("/api/ot/cases/%d", created.ID), otTok, "")
+	mustCode(t, w, http.StatusOK)
+	var loaded otCase
+	if err := json.Unmarshal(w.Body.Bytes(), &loaded); err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded.Items) != 1 || loaded.Items[0].QtyIssued != 2 {
+		t.Fatalf("GET items %+v", loaded.Items)
+	}
+	if len(loaded.Services) != 2 {
+		t.Fatalf("GET services %+v", loaded.Services)
+	}
+	if loaded.Services[0].UnitPriceMMK == nil || *loaded.Services[0].UnitPriceMMK != 850000 {
+		t.Fatalf("GET custom price %+v", loaded.Services[0])
+	}
+	if loaded.Services[1].UnitPriceMMK != nil {
+		t.Fatalf("GET null price %+v", loaded.Services[1])
+	}
+
+	updateBody := fmt.Sprintf(`{
+		"patient_name":"Daw Draft",
+		"items":[{"item_id":%d,"qty_issued":2}],
+		"services":[
+			{"ref_id":%d,"unit_price_mmk":900000},
+			{"ref_id":%d,"unit_price_mmk":null}
+		]
+	}`, itemID, priced.ID, blank.ID)
+	w = doJSON(ot, http.MethodPut, fmt.Sprintf("/api/ot/cases/%d", created.ID), otTok, updateBody)
+	mustCode(t, w, http.StatusOK)
+	var updated otCase
+	if err := json.Unmarshal(w.Body.Bytes(), &updated); err != nil {
+		t.Fatal(err)
+	}
+	if len(updated.Services) != 2 || updated.Services[0].UnitPriceMMK == nil || *updated.Services[0].UnitPriceMMK != 900000 {
+		t.Fatalf("PUT services %+v", updated.Services)
+	}
+
+	var catalogPrice sql.NullInt64
+	if err := sqlDB.QueryRow(`SELECT price_mmk FROM ot_services WHERE id = ?`, priced.ID).Scan(&catalogPrice); err != nil {
+		t.Fatal(err)
+	}
+	if !catalogPrice.Valid || catalogPrice.Int64 != 500000 {
+		t.Fatalf("catalog price changed to %v", catalogPrice.Int64)
+	}
+}

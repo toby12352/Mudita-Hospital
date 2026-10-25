@@ -10,7 +10,12 @@ import {
 import { ActionIcon } from "@/shared/ActionIcon";
 import { AlertDialog } from "@/shared/AlertDialog";
 import { BillLineGrid, createBillLineEntry } from "@/shared/BillLineGrid";
-import { BillCollectNote, BillPayPrintButton, moneyStatusLabel } from "@/shared/BillPayPrint";
+import {
+  BillCollectNote,
+  BillMarkPaidButton,
+  BillPrintButton,
+  moneyStatusLabel,
+} from "@/shared/BillPayPrint";
 import { BillTotals } from "@/shared/BillTotals";
 import { discountKyats, type DiscountUnit } from "@/shared/discount";
 import { formatMMK } from "@/shared/format";
@@ -22,6 +27,7 @@ type Props = {
   billId: number | null;
   billNo: string;
   billStatus: string;
+  printedAt: string | null;
   patientName: string;
   patientPhone: string;
   patientAge: string;
@@ -58,6 +64,7 @@ type Props = {
   onUnitChange: (index: number, unitId: string) => void;
   onRemoveLine: (index: number) => void;
   onPrint: () => void;
+  onMarkPaid: () => void;
   onTransfer?: () => void;
   onConfirmTransfer?: () => void;
   onConfirm: () => void;
@@ -73,6 +80,7 @@ export function PharmacyBillForm(props: Props) {
     billId,
     billNo,
     billStatus,
+    printedAt,
     patientName,
     patientPhone,
     patientAge,
@@ -202,7 +210,7 @@ export function PharmacyBillForm(props: Props) {
               <span className="opd-bill-readonly">
                 {isTransfer && billStatus === "paid"
                   ? t("transferred")
-                  : moneyStatusLabel(billStatus || "draft", t)}
+                  : moneyStatusLabel(billStatus || "draft", t, printedAt)}
               </span>
             </div>
           </div>
@@ -358,13 +366,16 @@ export function PharmacyBillForm(props: Props) {
             ) : null}
           </>
         ) : (
-        <BillPayPrintButton
-          status={billStatus || "draft"}
-          busy={busy}
-          onClick={props.onPrint}
-          collectLabel={isReturn ? t("returnAndPrint") : undefined}
-          collectSubLabel={isReturn ? t("marksReturned") : undefined}
-        />
+          <>
+            <BillMarkPaidButton
+              status={billStatus || "draft"}
+              busy={busy}
+              onClick={props.onMarkPaid}
+              collectLabel={isReturn ? t("markReturned") : undefined}
+              collectSubLabel={isReturn ? t("marksReturned") : undefined}
+            />
+            <BillPrintButton status={billStatus || "draft"} busy={busy} onClick={props.onPrint} />
+          </>
         )}
         <button
           type="button"

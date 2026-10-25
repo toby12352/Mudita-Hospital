@@ -9,6 +9,7 @@ import {
   listOtCatalogItems,
   listOtDoctors,
   listOtServices,
+  markOtBillPrinted,
   payOtBill,
   printOtBill,
   updateOtBill,
@@ -39,7 +40,12 @@ import {
 } from "@/shared/discount";
 import { AlertDialog } from "@/shared/AlertDialog";
 import { BillLineGrid, createBillLineEntry, type BillLineGridRow } from "@/shared/BillLineGrid";
-import { BillCollectNote, BillPayPrintButton, moneyStatusLabel } from "@/shared/BillPayPrint";
+import {
+  BillCollectNote,
+  BillMarkPaidButton,
+  BillPrintButton,
+  moneyStatusLabel,
+} from "@/shared/BillPayPrint";
 import { userMessage } from "@/shared/errors";
 import { formatMMK } from "@/shared/format";
 import { Typeahead } from "@/shared/Typeahead";
@@ -70,6 +76,16 @@ function servicesFromBill(b: OtBill): OtServiceLineFields[] {
       qty: l.qty,
       unit_price_mmk: l.unit_price_mmk,
     }));
+}
+
+function servicesFromCase(c: OtCase): OtServiceLineFields[] {
+  return (c.services ?? []).map((s) => ({
+    ref_id: s.ref_id,
+    code: s.code,
+    description: s.description,
+    qty: 1,
+    unit_price_mmk: s.unit_price_mmk,
+  }));
 }
 
 export function OtPage() {
@@ -108,7 +124,8 @@ export function OtPage() {
   const [discountValue, setDiscountValue] = useState("");
   const [discountUnit, setDiscountUnit] = useState<DiscountUnit>("percent");
 
-  const isDraft = caseStatus === "draft";
+  /** Editable until the OT bill is paid or void (Print does not lock). */
+  const isDraft = !(bill?.status === "paid" || bill?.status === "void");
 
   function takeSeq() {
     return nextSeqRef.current++;
@@ -239,7 +256,7 @@ export function OtPage() {
         setDiscountValue(discount.value);
         setDiscountUnit(discount.unit);
       } else {
-        applyCase(c, []);
+        applyCase(c, servicesFromCase(c));
         setBill(null);
       }
     } catch (e) {
@@ -279,6 +296,12 @@ export function OtPage() {
         qty_returned: 0,
         qty_wasted: 0,
         qty_kept_on_floor: 0,
+      })),
+      services: services.map((s) => ({
+        ref_id: s.ref_id,
+        code: s.code,
+        description: s.description,
+        unit_price_mmk: s.unit_price_mmk,
       })),
     };
   }
@@ -467,8 +490,29 @@ export function OtPage() {
     try {
       const body = buildWrite();
       const c = caseId ? await updateOtCase(caseId, body) : await createOtCase(body);
-      applyCase(c);
-      setOkMsg(`${t("saved")} ${c.case_no}`);
+      applyCase(c, servicesFromCase(c));
+      if (otBillId && (!bill || bill.status === "draft")) {
+        if (services.some((s) => s.unit_price_mmk == null)) {
+          setError(t("servicePriceRequired"));
+          return;
+        }
+        const serviceLines = services.map((s) => ({
+          line_type: "service" as const,
+          ref_id: s.ref_id,
+          code: s.code,
+          description: s.description,
+          qty: 1,
+          unit_price_mmk: s.unit_price_mmk as number,
+          line_total_mmk: s.unit_price_mmk as number,
+        }));
+        const discount = discountWrite(discountValue, discountUnit);
+        const updated = await updateOtBill(otBillId, serviceLines, discount);
+        setBill(updated);
+        setServices(stampServiceSeqs(servicesFromBill(updated)));
+        setOkMsg(`${t("saved")} ${updated.bill_no}`);
+      } else {
+        setOkMsg(`${t("saved")} ${c.case_no}`);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Save failed");
     } finally {
@@ -481,14 +525,18 @@ export function OtPage() {
     const body = buildWrite();
     let id = caseId;
     let status = caseStatus;
+    const canEditCase =
+      !id ||
+      status === "draft" ||
+      (status === "billed" && (!otBillId || !bill || bill.status === "draft"));
     if (!id) {
       const created = await createOtCase(body);
-      applyCase(created);
+      applyCase(created, servicesFromCase(created));
       id = created.id;
       status = created.status;
-    } else if (status === "draft") {
+    } else if (canEditCase) {
       const updated = await updateOtCase(id, body);
-      applyCase(updated);
+      applyCase(updated, servicesFromCase(updated));
       status = updated.status;
     }
 
@@ -532,14 +580,21 @@ export function OtPage() {
     return b;
   }
 
-  function receiptPreviewOpts(billNoPaid: string) {
+  function paidReceiptPreviewOpts(billNoPaid: string) {
     return {
       title: t("receiptPaidTitle").replace("{bill}", billNoPaid),
       note: t("receiptAlreadyPaidNote"),
     };
   }
 
-  async function doPrintAndPay() {
+  function printedReceiptPreviewOpts(billNoPrinted: string) {
+    return {
+      title: t("receiptPrintedTitle").replace("{bill}", billNoPrinted),
+      note: t("receiptPrintedNote"),
+    };
+  }
+
+  async function doPrint() {
     setBusy(true);
     setError(null);
     setOkMsg(null);
@@ -548,22 +603,39 @@ export function OtPage() {
       if (!b) return;
       const billId = b.id;
       if (b.status === "paid") {
-        await printOtBill(billId, receiptPreviewOpts(b.bill_no));
+        await printOtBill(billId, paidReceiptPreviewOpts(b.bill_no));
         return;
       }
       if (b.status !== "draft") {
         throw new Error(userMessage("Only draft or paid bills can be printed"));
       }
-      const paid = await payOtBill(billId);
-      setBill(paid);
-      setOkMsg(t("paidReceiptReady").replace("{bill}", paid.bill_no));
-      try {
-        await printOtBill(billId, receiptPreviewOpts(paid.bill_no));
-      } catch {
-        setError(t("receiptFailedReprint").replace("{bill}", paid.bill_no));
-      }
+      const stamped = await markOtBillPrinted(billId);
+      setBill(stamped);
+      setOkMsg(t("printedReceiptReady").replace("{bill}", stamped.bill_no));
+      await printOtBill(billId, printedReceiptPreviewOpts(stamped.bill_no));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Print failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function doMarkPaid() {
+    setBusy(true);
+    setError(null);
+    setOkMsg(null);
+    try {
+      const b = await ensureBillReady();
+      if (!b) return;
+      if (b.status === "paid") return;
+      if (b.status !== "draft") {
+        throw new Error(userMessage("Only draft bills can be paid"));
+      }
+      const paid = await payOtBill(b.id);
+      setBill(paid);
+      setOkMsg(t("paidReceiptReady").replace("{bill}", paid.bill_no));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Pay failed");
     } finally {
       setBusy(false);
     }
@@ -581,7 +653,7 @@ export function OtPage() {
   }
 
   function doNewBill() {
-    const finished = caseStatus === "billed";
+    const finished = bill?.status === "paid" || bill?.status === "void";
     if (!finished) {
       const dirty =
         Boolean(patientName.trim()) ||
@@ -619,9 +691,14 @@ export function OtPage() {
         if (!busy && isDraft) void saveDraft();
         return;
       }
+      if (key === "F6") {
+        e.preventDefault();
+        if (!busy) void doPrint();
+        return;
+      }
       if (key === "F7") {
         e.preventDefault();
-        if (!busy) void doPrintAndPay();
+        if (!busy && isDraft) void doMarkPaid();
         return;
       }
       if (key === "F9") {
@@ -878,7 +955,7 @@ export function OtPage() {
               <div className="opd-bill-field">
                 <span className="opd-bill-label">{t("status")}</span>
                 <span className="opd-bill-readonly">
-                  {moneyStatusLabel(bill?.status ?? caseStatus, t)}
+                  {moneyStatusLabel(bill?.status ?? caseStatus, t, bill?.printed_at)}
                 </span>
               </div>
               {bill?.bill_no ? (
@@ -1036,10 +1113,15 @@ export function OtPage() {
         </div>
 
         <aside className="opd-bill-rail" aria-label={t("billActions")}>
-          <BillPayPrintButton
+          <BillMarkPaidButton
             status={bill?.status ?? "draft"}
             busy={busy}
-            onClick={() => void doPrintAndPay()}
+            onClick={() => void doMarkPaid()}
+          />
+          <BillPrintButton
+            status={bill?.status ?? "draft"}
+            busy={busy}
+            onClick={() => void doPrint()}
           />
           <button
             type="button"

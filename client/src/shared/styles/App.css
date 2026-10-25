@@ -1373,6 +1373,15 @@ body,
   padding-top: 0;
 }
 
+.drug-setup-table > .empty-row,
+.drug-setup-batch-table > .empty-row,
+.drug-setup-history-table > .empty-row,
+.opd-bill-dialog-list > .empty-row,
+.data-list > li.empty-row {
+  margin: 0;
+  padding: 0.65rem 0.75rem;
+}
+
 .data-list li.inactive {
   opacity: 0.55;
 }

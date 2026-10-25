@@ -7,6 +7,7 @@ import {
 import { ActionIcon } from "@/shared/ActionIcon";
 import { AlertDialog } from "@/shared/AlertDialog";
 import { DialogCloseButton } from "@/shared/DialogCloseButton";
+import { moneyStatusLabel } from "@/shared/BillPayPrint";
 import { formatMMK } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
 
@@ -141,7 +142,8 @@ export function PharmacyBillListDialog({
                       {b.bill_no} · {b.patient_name}
                     </span>
                     <span className="row-sub">
-                      {b.status.toUpperCase()} · {formatMMK(b.total_mmk)} {t("mmk")}
+                      {moneyStatusLabel(b.status, t, b.printed_at)} · {formatMMK(b.total_mmk)}{" "}
+                      {t("mmk")}
                       {b.created_at ? ` · ${formatBillWhen(b.created_at)}` : ""}
                     </span>
                   </span>

@@ -159,6 +159,8 @@ func (h *Pharmacy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.createPharmacyBill(w, r)
 		case strings.HasPrefix(path, "/bills/") && strings.HasSuffix(path, "/pay") && r.Method == http.MethodPost:
 			h.payPharmacyBill(w, r, path)
+		case strings.HasPrefix(path, "/bills/") && strings.HasSuffix(path, "/printed") && r.Method == http.MethodPost:
+			h.markPharmacyBillPrinted(w, r, path)
 		case strings.HasPrefix(path, "/bills/") && strings.HasSuffix(path, "/transfer") && r.Method == http.MethodPost:
 			h.transferPharmacyBill(w, r, path)
 		case strings.HasPrefix(path, "/bills/") && strings.HasSuffix(path, "/void") && r.Method == http.MethodPost:

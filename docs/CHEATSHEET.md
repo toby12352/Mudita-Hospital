@@ -20,7 +20,7 @@ Print this page (or use **Help → Print cheat sheet** in the app) and laminate 
 2. Patient name → doctor → add a **service** or consultation. Medicines are billed in Pharmacy.
 3. **Confirm (F5)** saves a draft. **Print (F7)** saves, marks paid, then opens the print preview.
 4. **History (F9)** opens past bills (newest first). **V.Delete (^F8)** voids a selected bill (reason required). **Cancel (F10)** clears the form. **New bill (F2)** clears for the next patient (no prompt after a paid bill).
-5. Admin sets the **default printer** once under **Settings → Hospital**. Receipts print on that printer with no Windows dialog. Set the EPSON roll to **80 mm** in Windows printer preferences.
+5. **Pay & print (F7)** opens the receipt preview; **Print** opens the Windows print dialog for a single receipt. Set the EPSON roll to **80 mm** in Windows printer preferences.
 
 ## 3. OT Maintenance and bill (nurse handover)
 

@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestRenderThermalReceiptHTMLDualCopies(t *testing.T) {
+func TestRenderThermalReceiptHTMLSingleSlip(t *testing.T) {
 	hosp := &hospitalSettings{HospitalName: "Mudita Hospital"}
 	html := renderThermalReceiptHTML(hosp, receiptBill{
 		Title:     "OPD RECEIPT",
@@ -18,25 +18,17 @@ func TestRenderThermalReceiptHTMLDualCopies(t *testing.T) {
 		},
 	})
 
-	customer := strings.Count(html, `class="copy-tag">CUSTOMER COPY</p>`)
-	merchant := strings.Count(html, `class="copy-tag">MERCHANT COPY</p>`)
-	if customer != 1 {
-		t.Fatalf("want exactly one CUSTOMER COPY tag, got %d", customer)
+	if strings.Contains(html, "CUSTOMER COPY") || strings.Contains(html, "MERCHANT COPY") {
+		t.Fatalf("receipt must not include customer/merchant copy tags")
 	}
-	if merchant != 1 {
-		t.Fatalf("want exactly one MERCHANT COPY tag, got %d", merchant)
+	if strings.Contains(html, "copy-tag") || strings.Contains(html, "receipt-copy") {
+		t.Fatalf("receipt must not use dual-copy CSS or wrappers")
 	}
-	if strings.Count(html, `class="receipt-copy"`) != 2 {
-		t.Fatalf("want two receipt-copy blocks")
+	if strings.Count(html, "OPD RECEIPT") != 1 {
+		t.Fatalf("want exactly one slip title, got %d", strings.Count(html, "OPD RECEIPT"))
 	}
-	if !strings.Contains(html, `.receipt-copy{page-break-after:always}`) {
-		t.Fatalf("expected page-break between copies")
-	}
-	// Customer slip must come before merchant.
-	ci := strings.Index(html, "CUSTOMER COPY")
-	mi := strings.Index(html, "MERCHANT COPY")
-	if ci < 0 || mi < 0 || ci > mi {
-		t.Fatalf("CUSTOMER COPY must appear before MERCHANT COPY")
+	if !strings.Contains(html, `>Bill:</span><span class="val">OPD-00099</span>`) {
+		t.Fatalf("expected bill number on the single slip")
 	}
 }
 

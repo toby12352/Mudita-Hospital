@@ -1221,3 +1221,158 @@ func TestRestockPackUnit(t *testing.T) {
 		t.Fatalf("stock restock qty %d, want 31", mainQty(t, sqlDB, itemID))
 	}
 }
+
+func TestPharmacyPrintThenPay(t *testing.T) {
+	sqlDB := openTestDB(t)
+	_, token := insertSession(t, sqlDB, "Pharmacy", 0)
+	itemID := insertItem(t, sqlDB, "PRINTMED", "Print med", 1000, 200)
+	batchID := insertBatch(t, sqlDB, itemID, "P1", localToday(), 10)
+	h := &Pharmacy{DB: sqlDB}
+
+	w := doJSON(h, http.MethodPost, "/api/pharmacy/bills", token, fmt.Sprintf(`{
+		"patient_name": "Print Patient",
+		"lines": [{"item_id": %d, "tablet_qty": 2}]
+	}`, itemID))
+	mustCode(t, w, http.StatusCreated)
+	var bill pharmacyBill
+	if err := json.Unmarshal(w.Body.Bytes(), &bill); err != nil {
+		t.Fatal(err)
+	}
+
+	w = doJSON(h, http.MethodPost, fmt.Sprintf("/api/pharmacy/bills/%d/printed", bill.ID), token, "{}")
+	mustCode(t, w, http.StatusOK)
+	if err := json.Unmarshal(w.Body.Bytes(), &bill); err != nil {
+		t.Fatal(err)
+	}
+	if bill.Status != "draft" {
+		t.Fatalf("status after print %s, want draft", bill.Status)
+	}
+	if bill.PrintedAt == nil || !strings.HasPrefix(*bill.PrintedAt, localToday()+" ") {
+		t.Fatalf("printed_at %v", bill.PrintedAt)
+	}
+	if batchQty(t, sqlDB, batchID) != 10 {
+		t.Fatalf("print must not change stock, got %d", batchQty(t, sqlDB, batchID))
+	}
+
+	w = doJSON(h, http.MethodPut, fmt.Sprintf("/api/pharmacy/bills/%d", bill.ID), token, fmt.Sprintf(`{
+		"patient_name": "Print Patient",
+		"lines": [{"item_id": %d, "tablet_qty": 3}]
+	}`, itemID))
+	mustCode(t, w, http.StatusOK)
+
+	w = doJSON(h, http.MethodPost, fmt.Sprintf("/api/pharmacy/bills/%d/printed", bill.ID), token, "{}")
+	mustCode(t, w, http.StatusOK)
+
+	w = doJSON(h, http.MethodPost, fmt.Sprintf("/api/pharmacy/bills/%d/pay", bill.ID), token, "{}")
+	mustCode(t, w, http.StatusOK)
+	if err := json.Unmarshal(w.Body.Bytes(), &bill); err != nil {
+		t.Fatal(err)
+	}
+	if bill.Status != "paid" {
+		t.Fatalf("status after pay %s, want paid", bill.Status)
+	}
+	if batchQty(t, sqlDB, batchID) != 7 {
+		t.Fatalf("stock after pay %d, want 7", batchQty(t, sqlDB, batchID))
+	}
+
+	w = doJSON(h, http.MethodPost, fmt.Sprintf("/api/pharmacy/bills/%d/printed", bill.ID), token, "{}")
+	mustCode(t, w, http.StatusBadRequest)
+}
+
+func TestOPDPrintThenPay(t *testing.T) {
+	sqlDB := openTestDB(t)
+	_, token := insertSession(t, sqlDB, "Admin", 0)
+	res, err := sqlDB.Exec(`INSERT INTO services (code, name, price_mmk) VALUES ('PCHK', 'Print check', 1500)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serviceID, _ := res.LastInsertId()
+	h := &OPD{DB: sqlDB}
+
+	w := doJSON(h, http.MethodPost, "/api/opd/bills", token, fmt.Sprintf(`{
+		"patient_name": "OPD Print",
+		"lines": [{"line_type":"service","ref_id":%d,"code":"PCHK","description":"Print check","qty":1,"unit_price_mmk":1500}]
+	}`, serviceID))
+	mustCode(t, w, http.StatusCreated)
+	var bill opdBill
+	if err := json.Unmarshal(w.Body.Bytes(), &bill); err != nil {
+		t.Fatal(err)
+	}
+
+	w = doJSON(h, http.MethodPost, fmt.Sprintf("/api/opd/bills/%d/printed", bill.ID), token, "{}")
+	mustCode(t, w, http.StatusOK)
+	if err := json.Unmarshal(w.Body.Bytes(), &bill); err != nil {
+		t.Fatal(err)
+	}
+	if bill.Status != "draft" || bill.PrintedAt == nil {
+		t.Fatalf("after print status=%s printed_at=%v", bill.Status, bill.PrintedAt)
+	}
+
+	w = doJSON(h, http.MethodGet, fmt.Sprintf("/api/opd/bills/%d/print", bill.ID), token, "")
+	mustCode(t, w, http.StatusOK)
+	if !strings.Contains(w.Body.String(), "PRINTED — NOT PAID") {
+		t.Fatalf("receipt footer missing PRINTED — NOT PAID: %s", w.Body.String())
+	}
+
+	w = doJSON(h, http.MethodPost, fmt.Sprintf("/api/opd/bills/%d/pay", bill.ID), token, "{}")
+	mustCode(t, w, http.StatusOK)
+	if err := json.Unmarshal(w.Body.Bytes(), &bill); err != nil {
+		t.Fatal(err)
+	}
+	if bill.Status != "paid" {
+		t.Fatalf("status %s", bill.Status)
+	}
+
+	w = doJSON(h, http.MethodGet, fmt.Sprintf("/api/opd/bills/%d/print", bill.ID), token, "")
+	mustCode(t, w, http.StatusOK)
+	if !strings.Contains(w.Body.String(), "PAID — CASH") {
+		t.Fatalf("paid receipt missing PAID — CASH")
+	}
+}
+
+func TestPharmacyReturnPrintDoesNotCreditUntilPay(t *testing.T) {
+	sqlDB := openTestDB(t)
+	_, token := insertSession(t, sqlDB, "Pharmacy", 0)
+	h := &Pharmacy{DB: sqlDB}
+	itemID := insertItem(t, sqlDB, "RTPRINT", "Return print", 1000, 100)
+	_ = insertBatch(t, sqlDB, itemID, "L1", "2030-01-01", 5)
+
+	w := doJSON(h, http.MethodPost, "/api/pharmacy/bills", token, fmt.Sprintf(`{
+		"patient_name": "Return Print",
+		"kind": "return",
+		"lines": [{"item_id": %d, "tablet_qty": 2}]
+	}`, itemID))
+	mustCode(t, w, http.StatusCreated)
+	var bill pharmacyBill
+	if err := json.Unmarshal(w.Body.Bytes(), &bill); err != nil {
+		t.Fatal(err)
+	}
+
+	w = doJSON(h, http.MethodPost, fmt.Sprintf("/api/pharmacy/bills/%d/printed", bill.ID), token, "{}")
+	mustCode(t, w, http.StatusOK)
+
+	var blankCount int
+	if err := sqlDB.QueryRow(`
+		SELECT COUNT(1) FROM item_batches
+		WHERE item_id = ? AND location_code = 'MAIN'
+		  AND batch_no = '' AND (expiry_date IS NULL OR expiry_date = '')
+	`, itemID).Scan(&blankCount); err != nil {
+		t.Fatal(err)
+	}
+	if blankCount != 0 {
+		t.Fatalf("print must not credit return stock, blank batches=%d", blankCount)
+	}
+
+	w = doJSON(h, http.MethodPost, fmt.Sprintf("/api/pharmacy/bills/%d/pay", bill.ID), token, "{}")
+	mustCode(t, w, http.StatusOK)
+	if err := sqlDB.QueryRow(`
+		SELECT COUNT(1) FROM item_batches
+		WHERE item_id = ? AND location_code = 'MAIN'
+		  AND batch_no = '' AND (expiry_date IS NULL OR expiry_date = '') AND qty = 2
+	`, itemID).Scan(&blankCount); err != nil {
+		t.Fatal(err)
+	}
+	if blankCount != 1 {
+		t.Fatalf("after mark returned blank batch count %d, want 1", blankCount)
+	}
+}
