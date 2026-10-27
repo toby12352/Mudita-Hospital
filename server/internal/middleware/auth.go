@@ -52,11 +52,22 @@ func RequireAuth(db *sql.DB, next http.Handler) http.Handler {
 	})
 }
 
-// RequirePermission requires auth plus a role permission.
+// RequirePermission requires auth plus the desk gate.
+// Portal accounts use the role map. Unified accounts need a grant on that
+// module; users.role is not the decision. settings and manage_users stay Admin-only.
 func RequirePermission(db *sql.DB, perm string, next http.Handler) http.Handler {
 	return RequireAuth(db, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		user := UserFromContext(r.Context())
-		if user == nil || !auth.HasPermission(user.Role, perm) {
+		if user == nil {
+			writeJSONError(w, http.StatusForbidden, "forbidden")
+			return
+		}
+		ok, err := auth.DeskAllowed(db, user.ID, perm)
+		if err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "permission check failed")
+			return
+		}
+		if !ok {
 			writeJSONError(w, http.StatusForbidden, "forbidden")
 			return
 		}
@@ -64,7 +75,8 @@ func RequirePermission(db *sql.DB, perm string, next http.Handler) http.Handler 
 	}))
 }
 
-// RequireAnyPermission requires auth plus any one of the listed role permissions.
+// RequireAnyPermission requires auth plus any one of the listed desk gates.
+// Unified accounts need a grant on one of those modules, not a matching role.
 func RequireAnyPermission(db *sql.DB, perms []string, next http.Handler) http.Handler {
 	return RequireAuth(db, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		user := UserFromContext(r.Context())
@@ -72,13 +84,16 @@ func RequireAnyPermission(db *sql.DB, perms []string, next http.Handler) http.Ha
 			writeJSONError(w, http.StatusForbidden, "forbidden")
 			return
 		}
-		for _, perm := range perms {
-			if auth.HasPermission(user.Role, perm) {
-				next.ServeHTTP(w, r)
-				return
-			}
+		ok, err := auth.AnyDeskAllowed(db, user.ID, perms)
+		if err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "permission check failed")
+			return
 		}
-		writeJSONError(w, http.StatusForbidden, "forbidden")
+		if !ok {
+			writeJSONError(w, http.StatusForbidden, "forbidden")
+			return
+		}
+		next.ServeHTTP(w, r)
 	}))
 }
 

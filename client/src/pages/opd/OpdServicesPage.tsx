@@ -9,17 +9,24 @@ import {
   type Service,
   type ServiceCategory,
 } from "@/features/settings/masterData";
+import { useClinicActions } from "@/app/clinicActions";
 import { matchesActive, type ActiveFilterValue } from "@/shared/ActiveFilter";
 import { ActionIcon } from "@/shared/ActionIcon";
 import { CatalogFilterButton, CatalogFilterPanel } from "@/shared/CatalogListFilter";
+import { sortByDateAscDesc, type DateSortValue } from "@/shared/DateSort";
 import { formatMMK } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
 import { ServiceCategoryField } from "@/shared/ServiceCategoryField";
 import { CatalogDeleteDialog } from "./CatalogDeleteDialog";
 import { OpdCatalogHistory } from "./OpdCatalogHistory";
 
+function serviceLabel(s: { code: string; name: string }): string {
+  return s.code ? `${s.code} — ${s.name}` : s.name;
+}
+
 export function OpdServicesPage() {
   const { t } = useI18n();
+  const { opdUpdate, opdDelete } = useClinicActions();
   const [mode, setMode] = useState<"items" | "history">("items");
   const [creating, setCreating] = useState(false);
   const [createKey, setCreateKey] = useState(0);
@@ -27,6 +34,7 @@ export function OpdServicesPage() {
   const filterPanelId = useId();
   const [filterQ, setFilterQ] = useState("");
   const [activeFilter, setActiveFilter] = useState<ActiveFilterValue>("all");
+  const [dateSort, setDateSort] = useState<DateSortValue>("desc");
   const [list, setList] = useState<Service[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [editing, setEditing] = useState<Service | null>(null);
@@ -65,6 +73,7 @@ export function OpdServicesPage() {
     setFilterQ("");
     setActiveFilter("all");
     setCategoryFilter("all");
+    setDateSort("desc");
     runSearch("", "all", "all");
   }
 
@@ -88,11 +97,17 @@ export function OpdServicesPage() {
   }, []);
 
   const filtered = useMemo(
-    () => list.filter((s) => matchesActive(s.active, activeFilter) && matchesCategory(s, categoryFilter)),
-    [list, activeFilter, categoryFilter],
+    () =>
+      sortByDateAscDesc(
+        list.filter((s) => matchesActive(s.active, activeFilter) && matchesCategory(s, categoryFilter)),
+        dateSort,
+        (s) => s.created_at,
+        (s) => s.id,
+      ),
+    [list, activeFilter, categoryFilter, dateSort],
   );
   const selected = list.find((s) => s.id === selectedId) ?? null;
-  const showForm = creating || editing != null;
+  const showForm = opdUpdate && (creating || editing != null);
 
   function fillForm(s: Service | null) {
     if (!s) {
@@ -109,6 +124,8 @@ export function OpdServicesPage() {
   }
 
   function openCreate() {
+    if (!opdUpdate) return;
+    setMode("items");
     setEditing(null);
     fillForm(null);
     setCreating(true);
@@ -122,6 +139,7 @@ export function OpdServicesPage() {
   }
 
   function selectItem(id: number) {
+    setMode("items");
     setSelectedId(id);
     setCreating(false);
     setEditing(null);
@@ -129,9 +147,20 @@ export function OpdServicesPage() {
   }
 
   function openEdit(s: Service) {
+    if (!opdUpdate) return;
+    setMode("items");
     setCreating(false);
     setEditing(s);
     fillForm(s);
+  }
+
+  function toggleHistory() {
+    if (mode === "history") {
+      setMode("items");
+      return;
+    }
+    closeForm();
+    setMode("history");
   }
 
   async function submit(e: FormEvent) {
@@ -225,33 +254,28 @@ export function OpdServicesPage() {
     }
   }
 
-  if (mode === "history") {
-    return (
-      <OpdCatalogHistory
-        entity="service"
-        title={t("serviceHistory")}
-        backLabel={t("serviceSetup")}
-        onBack={() => setMode("items")}
-      />
-    );
-  }
-
   return (
     <section className="drug-setup" aria-label={t("serviceSetup")}>
       <div className="drug-setup-list-pane">
-        <div className="drug-setup-title-row">
+        <div className="drug-setup-heading">
           <h2 className="drug-setup-title">{t("serviceSetup")}</h2>
           <div className="tabs">
-            <button type="button" className="btn action primary" onClick={openCreate}>
-              <ActionIcon name="plus" />
-              {t("newBadge")}
-            </button>
+            {opdUpdate ? (
+              <button type="button" className="btn action primary" onClick={openCreate}>
+                <ActionIcon name="plus" />
+                {t("newBadge")}
+              </button>
+            ) : null}
             <CatalogFilterButton
               open={filterOpen}
               controlsId={filterPanelId}
               onToggle={() => setFilterOpen((v) => !v)}
             />
-            <button type="button" className="btn action" onClick={() => setMode("history")}>
+            <button
+              type="button"
+              className={`btn action${mode === "history" ? " on" : ""}`}
+              onClick={toggleHistory}
+            >
               <ActionIcon name="history" />
               {t("catalogHistoryLink")}
             </button>
@@ -268,6 +292,8 @@ export function OpdServicesPage() {
           onSearch={() => runSearch(filterQ)}
           active={activeFilter}
           onActiveChange={setActiveFilter}
+          dateSort={dateSort}
+          onDateSortChange={setDateSort}
           onReset={resetFilters}
           category={{
             label: t("category"),
@@ -298,9 +324,13 @@ export function OpdServicesPage() {
               key={s.id}
               role="option"
               tabIndex={0}
-              aria-selected={s.id === selectedId && !creating && editing == null}
+              aria-selected={
+                s.id === selectedId && mode === "items" && !creating && editing == null
+              }
               className={`drug-setup-table-row opd-service-cols${
-                s.id === selectedId && !creating && editing == null ? " selected" : ""
+                s.id === selectedId && mode === "items" && !creating && editing == null
+                  ? " selected"
+                  : ""
               }${!s.active ? " inactive" : ""}`}
               onClick={() => selectItem(s.id)}
               onKeyDown={(e) => {
@@ -310,7 +340,7 @@ export function OpdServicesPage() {
                 }
               }}
             >
-              <span title={s.code}>{s.code}</span>
+              <span title={s.code}>{s.code || "—"}</span>
               <span title={s.name}>{s.name}</span>
             </div>
           ))}
@@ -318,16 +348,13 @@ export function OpdServicesPage() {
       </div>
 
       <div className="drug-setup-detail-pane">
-        {showForm ? (
+        {mode === "history" ? (
+          <OpdCatalogHistory entity="service" title={t("serviceHistory")} />
+        ) : showForm ? (
           <>
-            <div className="drug-setup-title-row">
-              <h3 className="drug-setup-title" style={{ fontSize: "1.1rem" }}>
-                {editing ? `${t("editService")} #${editing.id}` : t("createNewServiceTitle")}
-              </h3>
-              <button type="button" className="desk-text-link" onClick={closeForm}>
-                {t("cancel")}
-              </button>
-            </div>
+            <h3 className="drug-setup-title" style={{ fontSize: "1.1rem" }}>
+              {editing ? `${t("editService")} #${editing.id}` : t("createNewServiceTitle")}
+            </h3>
             <form
               key={editing ? `edit-${editing.id}` : `create-${createKey}`}
               className="card-form"
@@ -336,7 +363,7 @@ export function OpdServicesPage() {
               <div className="field-row">
                 <label className="field">
                   <span>{t("code")}</span>
-                  <input value={code} onChange={(e) => setCode(e.target.value)} required disabled={busy} />
+                  <input value={code} onChange={(e) => setCode(e.target.value)} disabled={busy} />
                 </label>
                 <label className="field">
                   <span>{t("priceMmk")}</span>
@@ -370,6 +397,9 @@ export function OpdServicesPage() {
                 <button type="submit" className="btn primary" disabled={busy}>
                   {busy ? t("saving") : editing ? t("updateService") : t("addService")}
                 </button>
+                <button type="button" className="btn ghost" onClick={closeForm} disabled={busy}>
+                  {t("cancel")}
+                </button>
               </div>
             </form>
           </>
@@ -383,7 +413,7 @@ export function OpdServicesPage() {
                 <div className="drug-info-fields">
                   <div className="drug-info-field">
                     <span className="drug-info-label">{t("code")}</span>
-                    <span>{selected.code}</span>
+                    <span>{selected.code || "—"}</span>
                   </div>
                   <div className="drug-info-field">
                     <span className="drug-info-label">{t("name")}</span>
@@ -405,16 +435,18 @@ export function OpdServicesPage() {
                   </div>
                 </div>
                 <div className="btn-row">
-                  <button
-                    type="button"
-                    className="btn action"
-                    disabled={busy}
-                    onClick={() => openEdit(selected)}
-                  >
-                    <ActionIcon name="edit" />
-                    {t("edit")}
-                  </button>
-                  {selected.active ? (
+                  {opdUpdate ? (
+                    <button
+                      type="button"
+                      className="btn action"
+                      disabled={busy}
+                      onClick={() => openEdit(selected)}
+                    >
+                      <ActionIcon name="edit" />
+                      {t("edit")}
+                    </button>
+                  ) : null}
+                  {opdDelete && selected.active ? (
                     <button
                       type="button"
                       className="btn action danger"
@@ -424,15 +456,17 @@ export function OpdServicesPage() {
                       {t("deactivate")}
                     </button>
                   ) : null}
-                  <button
-                    type="button"
-                    className="btn action danger"
-                    disabled={busy || deleteBusy}
-                    onClick={() => openDeleteConfirm(selected)}
-                  >
-                    <ActionIcon name="trash" />
-                    {t("delete")}
-                  </button>
+                  {opdDelete ? (
+                    <button
+                      type="button"
+                      className="btn action danger"
+                      disabled={busy || deleteBusy}
+                      onClick={() => openDeleteConfirm(selected)}
+                    >
+                      <ActionIcon name="trash" />
+                      {t("delete")}
+                    </button>
+                  ) : null}
                 </div>
               </>
             ) : (
@@ -444,17 +478,11 @@ export function OpdServicesPage() {
 
       {deleteTarget ? (
         <CatalogDeleteDialog
-          identity={`${deleteTarget.code} · ${deleteTarget.name}`}
+          identity={serviceLabel(deleteTarget)}
           message={
             deleteStep === 1
-              ? t("confirmDeleteService").replace(
-                  "{name}",
-                  `${deleteTarget.code} — ${deleteTarget.name}`,
-                )
-              : t("confirmDeleteServiceFinal").replace(
-                  "{name}",
-                  `${deleteTarget.code} — ${deleteTarget.name}`,
-                )
+              ? t("confirmDeleteService").replace("{name}", serviceLabel(deleteTarget))
+              : t("confirmDeleteServiceFinal").replace("{name}", serviceLabel(deleteTarget))
           }
           busy={deleteBusy}
           error={deleteError}

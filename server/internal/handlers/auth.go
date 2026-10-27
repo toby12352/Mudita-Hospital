@@ -137,11 +137,39 @@ func (a *Auth) logout(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
+type meUser struct {
+	ID                 int64  `json:"id"`
+	Username           string `json:"username"`
+	DisplayName        string `json:"display_name"`
+	Role               string `json:"role"`
+	MustChangePassword bool   `json:"must_change_password"`
+	Active             bool   `json:"active"`
+	AccessMode         string `json:"access_mode"`
+}
+
 func (a *Auth) me(w http.ResponseWriter, r *http.Request) {
 	user := middleware.UserFromContext(r.Context())
+	role, mode, err := auth.LoadAccess(a.DB, user.ID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "load failed"})
+		return
+	}
+	grants, err := loadGrants(a.DB, user.ID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "load failed"})
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"user":        user,
-		"permissions": permissionsFor(user.Role),
+		"user": meUser{
+			ID:                 user.ID,
+			Username:           user.Username,
+			DisplayName:        user.DisplayName,
+			Role:               role,
+			MustChangePassword: user.MustChangePassword,
+			Active:             user.Active,
+			AccessMode:         mode,
+		},
+		"permissions": permissionsForAccess(role, mode, grants),
 	})
 }
 
@@ -212,13 +240,44 @@ func (a *Auth) changePassword(w http.ResponseWriter, r *http.Request) {
 
 func permissionsFor(role string) []string {
 	candidates := []string{
-		auth.PermSettings, auth.PermManageUsers, auth.PermOPD, auth.PermOT, auth.PermPharmacy,
+		auth.PermSettings, auth.PermManageUsers, auth.PermOPD, auth.PermOT, auth.PermPharmacy, auth.PermPatients, auth.PermIPD,
 	}
 	out := make([]string, 0, len(candidates))
 	for _, p := range candidates {
 		if auth.HasPermission(role, p) {
 			out = append(out, p)
 		}
+	}
+	return out
+}
+
+// permissionsForAccess is the key list returned by /api/auth/me.
+// Portal accounts keep the desk keys, plus any stored grant keys.
+// Unified accounts return grant keys only. dashboard is included only when saved.
+// settings and manage_users are never added from a grant.
+func permissionsForAccess(role, mode string, grants []string) []string {
+	ordered := auth.OrderedGrants(grants)
+	if role == auth.RoleAdmin || mode != auth.AccessUnified {
+		out := permissionsFor(role)
+		seen := make(map[string]bool, len(out)+len(ordered))
+		for _, p := range out {
+			seen[p] = true
+		}
+		for _, g := range ordered {
+			if seen[g] || g == auth.PermSettings || g == auth.PermManageUsers {
+				continue
+			}
+			out = append(out, g)
+			seen[g] = true
+		}
+		return out
+	}
+	out := make([]string, 0, len(ordered))
+	for _, g := range ordered {
+		if g == auth.PermSettings || g == auth.PermManageUsers {
+			continue
+		}
+		out = append(out, g)
 	}
 	return out
 }

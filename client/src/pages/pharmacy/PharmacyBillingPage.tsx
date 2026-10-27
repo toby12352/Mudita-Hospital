@@ -4,6 +4,7 @@ import {
   findItemByCode,
   getPharmacyBill,
   lineChargeFromPack,
+  listPharmacyBills,
   listPharmacyItems,
   packFromItem,
   packQtysForSale,
@@ -14,17 +15,22 @@ import {
   printPharmacyBill,
   transferPharmacyBill,
   updatePharmacyBill,
+  purgePharmacyBill,
   voidPharmacyBill,
   type PharmacyBill,
   type PharmacyBillKind,
   type PharmacyItem,
 } from "@/features/pharmacy/api";
+import type { PatientChart } from "@/features/patients/api";
+import { useOpenAdmission } from "@/features/patients/useOpenAdmission";
 import {
   discountFieldsFromBill,
   discountWrite,
   type DiscountUnit,
 } from "@/shared/discount";
+import { AlertDialog } from "@/shared/AlertDialog";
 import { userMessage } from "@/shared/errors";
+import { useClinicActions } from "@/app/clinicActions";
 import { useI18n } from "@/shared/i18n";
 import {
   PharmacyBillForm,
@@ -35,6 +41,8 @@ import {
   type PharmacyBillListDialogMode,
 } from "@/pages/pharmacy/PharmacyBillListDialog";
 
+type DeskConfirm = "cancel" | "newBill";
+
 /** Pharmacy Billing always opens the desk form; history replaces the old list. */
 export function PharmacyBillingPage({
   initialMode = "edit",
@@ -44,6 +52,7 @@ export function PharmacyBillingPage({
   kind?: PharmacyBillKind;
 }) {
   const { t } = useI18n();
+  const { pharmacyCreate, pharmacyDelete, billPurge } = useClinicActions();
   const isReturn = kind === "return";
   const isTransfer = kind === "transfer";
   const [error, setError] = useState<string | null>(null);
@@ -52,12 +61,18 @@ export function PharmacyBillingPage({
   const [dialog, setDialog] = useState<PharmacyBillListDialogMode | null>(
     initialMode === "list" ? "history" : null,
   );
+  const [confirm, setConfirm] = useState<DeskConfirm | null>(null);
+  const [printAfterPay, setPrintAfterPay] = useState<string | null>(null);
 
   const [billId, setBillId] = useState<number | null>(null);
   const [billNo, setBillNo] = useState("");
   const [billStatus, setBillStatus] = useState("draft");
   const [printedAt, setPrintedAt] = useState<string | null>(null);
+  const [collectedCash, setCollectedCash] = useState<number | null>(null);
+  const [chargedSales, setChargedSales] = useState<{ id: number; bill_no: string }[]>([]);
+  const [returnSaleId, setReturnSaleId] = useState<number | null>(null);
   const [patientName, setPatientName] = useState("");
+  const [linkedChartId, setLinkedChartId] = useState<number | null>(null);
   const patientNameRef = useRef<HTMLInputElement>(null);
   const [patientPhone, setPatientPhone] = useState("");
   const [patientAge, setPatientAge] = useState("");
@@ -73,6 +88,7 @@ export function PharmacyBillingPage({
   const [transferDone, setTransferDone] = useState(false);
 
   const isDraft = billStatus === "draft";
+  const openAdmissionId = useOpenAdmission(isTransfer ? null : linkedChartId);
 
   useEffect(() => {
     if (createdAt) return;
@@ -80,12 +96,54 @@ export function PharmacyBillingPage({
     return () => window.clearInterval(id);
   }, [createdAt]);
 
+  useEffect(() => {
+    if (!isReturn || openAdmissionId == null || linkedChartId == null) {
+      setChargedSales([]);
+      return;
+    }
+    let cancelled = false;
+    listPharmacyBills("", "paid", "sale", linkedChartId)
+      .then((bills) => {
+        if (cancelled) return;
+        setChargedSales(
+          bills
+            .filter(
+              (bill) =>
+                bill.collected_cash === 0 &&
+                bill.admission_id === openAdmissionId &&
+                bill.bill_no.startsWith("PH-"),
+            )
+            .map((bill) => ({ id: bill.id, bill_no: bill.bill_no })),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setChargedSales([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isReturn, openAdmissionId, linkedChartId]);
+
+  useEffect(() => {
+    if (chargedSales.length === 0) {
+      setReturnSaleId(null);
+      return;
+    }
+    setReturnSaleId((current) =>
+      current != null && chargedSales.some((sale) => sale.id === current)
+        ? current
+        : chargedSales[0].id,
+    );
+  }, [chargedSales]);
+
   function resetEditor() {
     setBillId(null);
     setBillNo("");
     setBillStatus("draft");
     setPrintedAt(null);
+    setCollectedCash(null);
     setPatientName("");
+    setLinkedChartId(null);
     setPatientPhone("");
     setPatientAge("");
     setPatientGender("");
@@ -123,6 +181,7 @@ export function PharmacyBillingPage({
     setBillNo(b.bill_no);
     setBillStatus(b.status);
     setPrintedAt(b.printed_at ?? null);
+    setCollectedCash(b.collected_cash ?? null);
     setCreatedAt(b.created_at);
     const next = b.lines ?? [];
     setLines(next);
@@ -143,7 +202,9 @@ export function PharmacyBillingPage({
       setBillNo(b.bill_no);
       setBillStatus(b.status);
       setPrintedAt(b.printed_at ?? null);
+      setCollectedCash(b.collected_cash ?? null);
       setPatientName(b.patient_name);
+      setLinkedChartId(isTransfer ? null : (b.patient_id ?? null));
       setPatientPhone(b.patient_phone || "");
       setPatientAge(b.patient_age_years != null ? String(b.patient_age_years) : "");
       setPatientGender(b.patient_gender || "");
@@ -188,11 +249,25 @@ export function PharmacyBillingPage({
         sort_order: line.sort_order,
       })),
       save_patient: false,
+      ...(!isTransfer && linkedChartId != null ? { patient_id: linkedChartId } : {}),
       kind,
       ...(isTransfer
         ? { discount_value: 0, discount_unit: "percent" as const }
         : discountWrite(discountValue, discountUnit)),
     };
+  }
+
+  function onPatientName(v: string) {
+    setPatientName(v);
+    setLinkedChartId(null);
+  }
+
+  function pickPatient(p: PatientChart) {
+    setLinkedChartId(p.id);
+    setPatientName(p.name);
+    setPatientPhone(p.phone || "");
+    setPatientAge(p.age_years != null ? String(p.age_years) : "");
+    setPatientGender(p.gender || "");
   }
 
   function addLineFromItem(item: PharmacyItem, boxQty: number, stripQty: number, tabletQty: number) {
@@ -345,6 +420,52 @@ export function PharmacyBillingPage({
           paid.bill_no,
         ),
       );
+      setPrintAfterPay(paid.bill_no);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Pay failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function doChargeToIpd() {
+    if (openAdmissionId == null || isReturn || isTransfer) return;
+    setBusy(true);
+    setError(null);
+    setOkMsg(null);
+    try {
+      if (billStatus === "paid") return;
+      if (!isDraft) throw new Error(userMessage("Only draft bills can be paid"));
+      if (lines.length === 0) throw new Error(userMessage("Add at least one medicine"));
+      const saved = await saveDraft();
+      if (saved == null) return;
+      const paid = await payPharmacyBill(saved.id, { admission_id: openAdmissionId });
+      applySavedBill(paid);
+      setOkMsg(t("chargedToIpdReady").replace("{bill}", paid.bill_no));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Pay failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function doCreditToIpd() {
+    if (openAdmissionId == null || !isReturn || returnSaleId == null) return;
+    setBusy(true);
+    setError(null);
+    setOkMsg(null);
+    try {
+      if (billStatus === "paid") return;
+      if (!isDraft) throw new Error(userMessage("Only draft bills can be paid"));
+      if (lines.length === 0) throw new Error(userMessage("Add at least one medicine"));
+      const saved = await saveDraft();
+      if (saved == null) return;
+      const paid = await payPharmacyBill(saved.id, {
+        admission_id: openAdmissionId,
+        source_bill_id: returnSaleId,
+      });
+      applySavedBill(paid);
+      setOkMsg(t("creditedToIpdReady").replace("{bill}", paid.bill_no));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Pay failed");
     } finally {
@@ -397,9 +518,16 @@ export function PharmacyBillingPage({
     setOkMsg(`${t("voided")} ${b.bill_no}`);
   }
 
+  async function doPurgeSelected(id: number) {
+    await purgePharmacyBill(id);
+    if (billId === id) {
+      resetEditor();
+    }
+    setOkMsg(t("billPurged"));
+  }
+
   function doCancel() {
-    if (!window.confirm(t("confirmCancelBill"))) return;
-    resetEditor();
+    setConfirm("cancel");
   }
 
   function focusBillPatient() {
@@ -413,10 +541,31 @@ export function PharmacyBillingPage({
     if (!finished) {
       const dirty =
         Boolean(patientName.trim()) || lines.length > 0 || billId != null || Boolean(billNo);
-      if (dirty && !window.confirm(t("confirmNewBill"))) return;
+      if (dirty) {
+        setConfirm("newBill");
+        return;
+      }
     }
     resetEditor();
     focusBillPatient();
+  }
+
+  function runConfirm() {
+    if (confirm === "cancel") {
+      setConfirm(null);
+      resetEditor();
+      return;
+    }
+    if (confirm === "newBill") {
+      setConfirm(null);
+      resetEditor();
+      focusBillPatient();
+    }
+  }
+
+  function printAfterMarkPaid() {
+    setPrintAfterPay(null);
+    void doPrint();
   }
 
   function otherStockQty(itemId: number, skipIndex: number) {
@@ -574,7 +723,7 @@ export function PharmacyBillingPage({
       const key = e.key;
       if (key === "F5") {
         e.preventDefault();
-        if (!busy && isDraft) void doConfirm();
+        if (!busy && isDraft && pharmacyCreate) void doConfirm();
         return;
       }
       if (key === "F6") {
@@ -586,6 +735,7 @@ export function PharmacyBillingPage({
       if (key === "F7") {
         e.preventDefault();
         if (busy) return;
+        if (!pharmacyCreate) return;
         if (isTransfer) {
           if (!isDraft) return;
           if (awaitingConfirm) void doConfirmTransfer();
@@ -602,7 +752,7 @@ export function PharmacyBillingPage({
       }
       if (key === "F8" && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
-        if (!busy) setDialog("delete");
+        if (!busy && pharmacyDelete) setDialog("delete");
         return;
       }
       if (key === "F10") {
@@ -612,14 +762,14 @@ export function PharmacyBillingPage({
       }
       if (key === "F2") {
         e.preventDefault();
-        if (!busy) doNewBill();
+        if (!busy && pharmacyCreate) doNewBill();
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // Intentional: handlers close over latest state each render.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- shortcut wiring
-  }, [dialog, busy, isDraft, billId, billStatus, billNo, lines, patientName, awaitingConfirm, isTransfer, discountValue, discountUnit]);
+  }, [dialog, busy, isDraft, billId, billStatus, billNo, lines, patientName, linkedChartId, awaitingConfirm, isTransfer, discountValue, discountUnit, pharmacyCreate, pharmacyDelete]);
 
   const displayWhen = formatDisplayWhen(createdAt, nowTick);
 
@@ -630,6 +780,9 @@ export function PharmacyBillingPage({
         billNo={billNo}
         billStatus={billStatus}
         printedAt={printedAt}
+        collectedCash={collectedCash}
+        chargedSales={chargedSales}
+        returnSaleId={returnSaleId}
         patientName={patientName}
         patientPhone={patientPhone}
         patientAge={patientAge}
@@ -651,7 +804,8 @@ export function PharmacyBillingPage({
         onDismissError={() => setError(null)}
         onDismissTransferDone={() => setTransferDone(false)}
         patientNameRef={patientNameRef}
-        onPatientName={setPatientName}
+        onPatientName={onPatientName}
+        onPickPatient={pickPatient}
         onPatientPhone={setPatientPhone}
         onPatientAge={setPatientAge}
         onPatientGender={setPatientGender}
@@ -670,11 +824,23 @@ export function PharmacyBillingPage({
         }}
         onPrint={() => void doPrint()}
         onMarkPaid={() => void doMarkPaid()}
+        onChargeToIpd={
+          isDraft && !isReturn && !isTransfer && openAdmissionId != null
+            ? () => void doChargeToIpd()
+            : undefined
+        }
+        onCreditToIpd={
+          isDraft && isReturn && openAdmissionId != null && chargedSales.length > 0
+            ? () => void doCreditToIpd()
+            : undefined
+        }
+        onReturnSaleId={setReturnSaleId}
         onTransfer={() => void doArmTransfer()}
         onConfirmTransfer={() => void doConfirmTransfer()}
         onConfirm={() => void doConfirm()}
         onHistory={() => setDialog("history")}
         onDelete={() => setDialog("delete")}
+        onPurge={billPurge ? () => setDialog("purge") : undefined}
         onCancel={doCancel}
         onNewBill={doNewBill}
       />
@@ -685,6 +851,30 @@ export function PharmacyBillingPage({
           onClose={() => setDialog(null)}
           onOpen={(id) => void openBill(id)}
           onVoid={doVoidSelected}
+          onPurge={doPurgeSelected}
+        />
+      ) : null}
+      {confirm ? (
+        <AlertDialog
+          tone="warning"
+          title={t("clear")}
+          message={confirm === "cancel" ? t("confirmCancelBill") : t("confirmNewBill")}
+          confirmLabel={t("clear")}
+          onClose={() => setConfirm(null)}
+          onConfirm={runConfirm}
+        />
+      ) : null}
+      {printAfterPay ? (
+        <AlertDialog
+          tone="print"
+          title={isReturn ? t("markReturned") : t("paid")}
+          message={(isReturn ? t("returnedPrintPrompt") : t("paidPrintPrompt")).replace(
+            "{bill}",
+            printAfterPay,
+          )}
+          confirmLabel={t("print")}
+          onClose={() => setPrintAfterPay(null)}
+          onConfirm={printAfterMarkPaid}
         />
       ) : null}
     </>

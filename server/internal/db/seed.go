@@ -8,10 +8,11 @@ import (
 	"mudita-hospital/server/internal/auth"
 )
 
-// SeedDefaultUsers creates the four desk logins: admin, opd, ot, and pharmacy.
-// New accounts must change the seeded password. On every startup, an account
-// that still matches that password is flagged must_change_password.
-// Existing reception usernames are left in place; migration 010 sets their role to OPD.
+// SeedDefaultUsers creates the desk logins: admin, opd, ot, pharmacy, patients, and ipd.
+// Each username is inserted only when missing. New accounts must change the seeded password.
+// On every startup, an account that still matches that password is flagged must_change_password.
+// An existing password hash is never replaced. Existing reception usernames are left in place;
+// migration 010 sets their role to OPD.
 func SeedDefaultUsers(sqlDB *sql.DB) error {
 	seeds := []struct {
 		username    string
@@ -23,6 +24,8 @@ func SeedDefaultUsers(sqlDB *sql.DB) error {
 		{"opd", "OPD Desk", auth.RoleOPD, "opd123"},
 		{"ot", "OT Desk", auth.RoleOT, "ot123"},
 		{"pharmacy", "Pharmacy Desk", auth.RolePharmacy, "pharmacy123"},
+		{"patients", "Patients Desk", auth.RolePatients, "patients123"},
+		{"ipd", "IPD Desk", auth.RoleIPD, "ipd123"},
 	}
 
 	for _, s := range seeds {

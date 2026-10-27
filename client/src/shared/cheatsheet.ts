@@ -28,7 +28,7 @@ export function cheatSheetHTML(): string {
     <ul>
       <li>Open Mudita → enter <strong>Server IP</strong> once (port 8080).</li>
       <li class="my">မုဒိတာ ဖွင့် → ဆာဗာ IP တစ်ကြိမ်ထည့် (ပို့တ် 8080)။</li>
-      <li>OPD: <span class="kbd">opd</span> · OT: <span class="kbd">ot</span> · Pharmacy: <span class="kbd">pharmacy</span> · Admin: <span class="kbd">admin</span> (picks one portal).</li>
+      <li>OPD: <span class="kbd">opd</span> · OT: <span class="kbd">ot</span> · Pharmacy: <span class="kbd">pharmacy</span> · Patients: <span class="kbd">patients</span> · IPD: <span class="kbd">ipd</span> · Admin: <span class="kbd">admin</span> (picks one portal).</li>
       <li>Idle 15 min → auto lock. Language: EN / မြန်မာ (top bar).</li>
       <li>History shows this desk's bills only.</li>
     </ul>
@@ -41,7 +41,7 @@ export function cheatSheetHTML(): string {
       <li class="my">လူနာအမည် → ဆရာဝန် → ဝန်ဆောင်မှု / consultation။ ဆေးသည် Pharmacy Billing တွင်။</li>
       <li><strong>Save draft (F5)</strong> = unpaid bill. <strong>Print (F6)</strong> = save + receipt (Printed — Not Paid; still editable). <strong>Mark Paid (F7)</strong> = collect cash and lock the bill.</li>
       <li class="my">မူကြမ်းသိမ်း (F5) = မပေးရသေး။ ပရင့် (F6) = သိမ်း + ပြေစာ (ပြင်နိုင်)။ ပေးပြီးမှတ် (F7) = ငွေကောက် + ဘေလ်ပိတ်။</li>
-      <li><strong>History (F9)</strong> · <strong>V.Delete (^F8)</strong> void with reason · <strong>Cancel (F10)</strong> clears form · <strong>New bill (F2)</strong> next patient.</li>
+      <li><strong>History (F9)</strong> · <strong>Void Bills (^F8)</strong> void with reason · <strong>Cancel (F10)</strong> clears form · <strong>New bill (F2)</strong> next patient.</li>
       <li><strong>Print (F6)</strong> opens the receipt preview; the preview <strong>Print</strong> button opens the Windows print dialog. Set the EPSON roll to <strong>80 mm</strong> in Windows printer preferences.</li>
     </ul>
   </section>
@@ -85,7 +85,10 @@ export function cheatSheetHTML(): string {
     <h2>6. Reports / အစီရင်ခံစာ</h2>
     <ul>
       <li><strong>This desk</strong> — history and cash are this portal's paid bills only.</li>
-      <li><strong>Admin dashboard</strong> — combined OPD + OT + pharmacy cash for the day.</li>
+      <li><strong>Admin dashboard</strong> — combined OPD + OT + pharmacy cash, plus one IPD cash total (deposits, collections, refunds).</li>
+      <li><strong>Charge to IPD</strong> sits beside Mark Paid only when that chart has an open stay. Pay stays cash. A charged bill is not desk cash.</li>
+      <li><strong>IPD discharge</strong> refunds a positive balance, collects a negative balance, or settles zero with no cash line. Then the stay is settled.</li>
+      <li><strong>Patients</strong> — attach one bill number that has no chart. The total does not change. <span class="kbd">TO-</span> slips cannot be attached.</li>
       <li><strong>Low stock / near expiry</strong> — MAIN pharmacy batches (Pharmacy/Admin).</li>
     </ul>
   </section>

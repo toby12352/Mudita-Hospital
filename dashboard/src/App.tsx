@@ -135,37 +135,30 @@ function App() {
     const result = await login(username, password);
     storeSession(result.token, result.user);
 
-    // Non-Admin: reject immediately (password-change path also blocked).
-    if (result.user.role !== "Admin") {
-      try {
-        await logout();
-      } finally {
-        clearSession();
-        setUser(null);
-        setPermissions([]);
-      }
-      throw new Error(t("adminOnly"));
-    }
-
-    if (result.user.must_change_password) {
-      setUser(result.user);
-      setPermissions([]);
-      return;
-    }
-
     try {
       const me = await fetchMe();
       if (!isDashboardAdmin(me.user, me.permissions)) {
-        await logout();
-        clearSession();
-        setUser(null);
-        setPermissions([]);
+        try {
+          await logout();
+        } finally {
+          clearSession();
+          setUser(null);
+          setPermissions([]);
+        }
         throw new Error(t("adminOnly"));
+      }
+      if (result.user.must_change_password) {
+        setUser(result.user);
+        setPermissions(me.permissions);
+        return;
       }
       storeSession(result.token, me.user);
       setUser(me.user);
       setPermissions(me.permissions);
     } catch (err) {
+      if (err instanceof Error && err.message === t("adminOnly")) {
+        throw err;
+      }
       clearSession();
       setUser(null);
       setPermissions([]);

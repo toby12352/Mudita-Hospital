@@ -8,18 +8,23 @@ import {
   markOpdBillPrinted,
   payOpdBill,
   printOpdBill,
+  purgeOpdBill,
   updateOpdBill,
   voidOpdBill,
   type OpdBillLine,
   type OpdDoctor,
   type OpdService,
 } from "@/features/opd/api";
+import type { PatientChart } from "@/features/patients/api";
+import { useOpenAdmission } from "@/features/patients/useOpenAdmission";
 import {
   discountFieldsFromBill,
   discountWrite,
   type DiscountUnit,
 } from "@/shared/discount";
+import { AlertDialog } from "@/shared/AlertDialog";
 import { userMessage } from "@/shared/errors";
+import { useClinicActions } from "@/app/clinicActions";
 import { useI18n } from "@/shared/i18n";
 import { OpdBillForm } from "@/pages/opd/OpdBillForm";
 import {
@@ -27,20 +32,27 @@ import {
   type OpdBillListDialogMode,
 } from "@/pages/opd/OpdBillListDialog";
 
+type DeskConfirm = "cancel" | "newBill";
+
 /** OPD Bill always opens the desk form; history replaces the old list. */
 export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
   const { t } = useI18n();
+  const { opdCreate, opdDelete, billPurge } = useClinicActions();
   const [doctors, setDoctors] = useState<OpdDoctor[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [dialog, setDialog] = useState<OpdBillListDialogMode | null>(null);
+  const [confirm, setConfirm] = useState<DeskConfirm | null>(null);
+  const [printAfterPay, setPrintAfterPay] = useState<string | null>(null);
 
   const [billId, setBillId] = useState<number | null>(null);
   const [billNo, setBillNo] = useState("");
   const [billStatus, setBillStatus] = useState("draft");
   const [printedAt, setPrintedAt] = useState<string | null>(null);
+  const [collectedCash, setCollectedCash] = useState<number | null>(null);
   const [patientId, setPatientId] = useState<number | null>(null);
+  const [linkedChartId, setLinkedChartId] = useState<number | null>(null);
   const [patientName, setPatientName] = useState("");
   const patientNameRef = useRef<HTMLInputElement>(null);
   const [patientPhone, setPatientPhone] = useState("");
@@ -56,6 +68,7 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
   const [nowTick, setNowTick] = useState(() => Date.now());
 
   const isDraft = billStatus === "draft";
+  const openAdmissionId = useOpenAdmission(linkedChartId);
 
   useEffect(() => {
     let cancelled = false;
@@ -81,9 +94,11 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
   function resetEditor() {
     setBillId(null);
     setPrintedAt(null);
+    setCollectedCash(null);
     setBillNo("");
     setBillStatus("draft");
     setPatientId(null);
+    setLinkedChartId(null);
     setPatientName("");
     setPatientPhone("");
     setPatientAge("");
@@ -109,7 +124,9 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
       setBillNo(b.bill_no);
       setBillStatus(b.status);
       setPrintedAt(b.printed_at ?? null);
+      setCollectedCash(b.collected_cash ?? null);
       setPatientId(b.patient_id ?? null);
+      setLinkedChartId(b.patient_id ?? null);
       setPatientName(b.patient_name);
       setPatientPhone(b.patient_phone);
       setPatientAge(b.patient_age_years != null ? String(b.patient_age_years) : "");
@@ -145,6 +162,7 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
       doctor_name: doctorName.trim(),
       description: description.trim(),
       save_patient: true,
+      ...(linkedChartId != null ? { patient_id: linkedChartId } : {}),
       ...discountWrite(discountValue, discountUnit),
       lines: lines.map((l, i) => {
         const qty = Math.max(1, Math.floor(Number(l.qty)) || 1);
@@ -167,6 +185,7 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
     bill_no: string;
     status: string;
     printed_at?: string | null;
+    collected_cash?: number | null;
     patient_id?: number | null;
     created_at: string;
     lines?: OpdBillLine[];
@@ -177,6 +196,7 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
     setBillNo(b.bill_no);
     setBillStatus(b.status);
     setPrintedAt(b.printed_at ?? null);
+    setCollectedCash(b.collected_cash ?? null);
     setPatientId(b.patient_id ?? null);
     setCreatedAt(b.created_at);
     setLines(
@@ -188,6 +208,20 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
     const discount = discountFieldsFromBill(b.discount_value, b.discount_unit);
     setDiscountValue(discount.value);
     setDiscountUnit(discount.unit);
+  }
+
+  function onPatientName(v: string) {
+    setPatientName(v);
+    setLinkedChartId(null);
+  }
+
+  function pickPatient(p: PatientChart) {
+    setLinkedChartId(p.id);
+    setPatientId(p.id);
+    setPatientName(p.name);
+    setPatientPhone(p.phone || "");
+    setPatientAge(p.age_years != null ? String(p.age_years) : "");
+    setPatientGender(p.gender || "");
   }
 
   function pickDoctor(d: OpdDoctor) {
@@ -299,6 +333,30 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
       const paid = await payOpdBill(id);
       applySavedBill(paid);
       setOkMsg(t("paidReceiptReady").replace("{bill}", paid.bill_no));
+      setPrintAfterPay(paid.bill_no);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Pay failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function doChargeToIpd() {
+    if (openAdmissionId == null) return;
+    setBusy(true);
+    setError(null);
+    setOkMsg(null);
+    try {
+      if (billStatus === "paid") return;
+      if (!isDraft) {
+        throw new Error(userMessage("Only draft bills can be paid"));
+      }
+      if (lines.length === 0) throw new Error(userMessage("Add at least one line"));
+      const id = await saveDraft();
+      if (id == null) return;
+      const paid = await payOpdBill(id, openAdmissionId);
+      applySavedBill(paid);
+      setOkMsg(t("chargedToIpdReady").replace("{bill}", paid.bill_no));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Pay failed");
     } finally {
@@ -314,9 +372,16 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
     setOkMsg(`${t("voided")} ${b.bill_no}`);
   }
 
+  async function doPurgeSelected(id: number) {
+    await purgeOpdBill(id);
+    if (billId === id) {
+      resetEditor();
+    }
+    setOkMsg(t("billPurged"));
+  }
+
   function doCancel() {
-    if (!window.confirm(t("confirmCancelBill"))) return;
-    resetEditor();
+    setConfirm("cancel");
   }
 
   function focusBillPatient() {
@@ -330,10 +395,31 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
     if (!finished) {
       const dirty =
         Boolean(patientName.trim()) || lines.length > 0 || billId != null || Boolean(billNo);
-      if (dirty && !window.confirm(t("confirmNewBill"))) return;
+      if (dirty) {
+        setConfirm("newBill");
+        return;
+      }
     }
     resetEditor();
     focusBillPatient();
+  }
+
+  function runConfirm() {
+    if (confirm === "cancel") {
+      setConfirm(null);
+      resetEditor();
+      return;
+    }
+    if (confirm === "newBill") {
+      setConfirm(null);
+      resetEditor();
+      focusBillPatient();
+    }
+  }
+
+  function printAfterMarkPaid() {
+    setPrintAfterPay(null);
+    void doPrint();
   }
 
   async function addByCode(code: string): Promise<OpdService | null> {
@@ -412,7 +498,7 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
       const key = e.key;
       if (key === "F5") {
         e.preventDefault();
-        if (!busy && isDraft) void doConfirm();
+        if (!busy && isDraft && opdCreate) void doConfirm();
         return;
       }
       if (key === "F6") {
@@ -422,7 +508,7 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
       }
       if (key === "F7") {
         e.preventDefault();
-        if (!busy && isDraft) void doMarkPaid();
+        if (!busy && isDraft && opdCreate) void doMarkPaid();
         return;
       }
       if (key === "F9") {
@@ -432,7 +518,7 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
       }
       if (key === "F8" && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
-        if (!busy) setDialog("delete");
+        if (!busy && opdDelete) setDialog("delete");
         return;
       }
       if (key === "F10") {
@@ -442,14 +528,14 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
       }
       if (key === "F2") {
         e.preventDefault();
-        if (!busy) doNewBill();
+        if (!busy && opdCreate) doNewBill();
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // Intentional: handlers close over latest state each render.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- shortcut wiring
-  }, [dialog, busy, isDraft, billId, billStatus, billNo, lines, patientName, discountValue, discountUnit]);
+  }, [dialog, busy, isDraft, billId, billStatus, billNo, lines, patientName, linkedChartId, discountValue, discountUnit, opdCreate, opdDelete]);
 
   const displayWhen = formatDisplayWhen(createdAt, nowTick);
 
@@ -460,6 +546,7 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
         billNo={billNo}
         billStatus={billStatus}
         printedAt={printedAt}
+        collectedCash={collectedCash}
         patientId={patientId}
         patientName={patientName}
         patientPhone={patientPhone}
@@ -481,7 +568,8 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
         onDiscountUnit={setDiscountUnit}
         onDismissError={() => setError(null)}
         patientNameRef={patientNameRef}
-        onPatientName={setPatientName}
+        onPatientName={onPatientName}
+        onPickPatient={pickPatient}
         onPatientPhone={setPatientPhone}
         onPatientAge={setPatientAge}
         onPatientGender={setPatientGender}
@@ -500,9 +588,11 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
         onRemoveLine={removeLine}
         onPrint={() => void doPrint()}
         onMarkPaid={() => void doMarkPaid()}
+        onChargeToIpd={isDraft && openAdmissionId != null ? () => void doChargeToIpd() : undefined}
         onConfirm={() => void doConfirm()}
         onHistory={() => setDialog("history")}
         onDelete={() => setDialog("delete")}
+        onPurge={billPurge ? () => setDialog("purge") : undefined}
         onCancel={doCancel}
         onNewBill={doNewBill}
       />
@@ -512,6 +602,27 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
           onClose={() => setDialog(null)}
           onOpen={(id) => void openBill(id)}
           onVoid={doVoidSelected}
+          onPurge={doPurgeSelected}
+        />
+      ) : null}
+      {confirm ? (
+        <AlertDialog
+          tone="warning"
+          title={t("clear")}
+          message={confirm === "cancel" ? t("confirmCancelBill") : t("confirmNewBill")}
+          confirmLabel={t("clear")}
+          onClose={() => setConfirm(null)}
+          onConfirm={runConfirm}
+        />
+      ) : null}
+      {printAfterPay ? (
+        <AlertDialog
+          tone="print"
+          title={t("paid")}
+          message={t("paidPrintPrompt").replace("{bill}", printAfterPay)}
+          confirmLabel={t("print")}
+          onClose={() => setPrintAfterPay(null)}
+          onConfirm={printAfterMarkPaid}
         />
       ) : null}
     </>

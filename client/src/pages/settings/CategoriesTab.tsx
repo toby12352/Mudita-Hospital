@@ -7,6 +7,7 @@ import {
   type ServiceCategory,
 } from "@/features/settings/masterData";
 import { ActionIcon } from "@/shared/ActionIcon";
+import { AlertDialog } from "@/shared/AlertDialog";
 import { Typeahead } from "@/shared/Typeahead";
 import { useI18n } from "@/shared/i18n";
 
@@ -18,6 +19,7 @@ export function CategoriesTab() {
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState<ServiceCategory | null>(null);
   const [name, setName] = useState("");
+  const [pendingDelete, setPendingDelete] = useState<ServiceCategory | null>(null);
 
   async function reload(search = q) {
     setList(await listServiceCategories(search.trim()));
@@ -68,16 +70,19 @@ export function CategoriesTab() {
     }
   }
 
-  async function onDelete(c: ServiceCategory) {
-    if (!window.confirm(t("confirmDeleteCategory").replace("{name}", c.name))) return;
+  async function confirmDelete() {
+    const c = pendingDelete;
+    if (!c) return;
     setBusy(true);
     setError(null);
     try {
       await deleteServiceCategory(c.id);
+      setPendingDelete(null);
       if (editing?.id === c.id) startCreate();
       await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Delete failed");
+      setPendingDelete(null);
     } finally {
       setBusy(false);
     }
@@ -162,7 +167,7 @@ export function CategoriesTab() {
                 <button
                   type="button"
                   className="btn action danger"
-                  onClick={() => void onDelete(c)}
+                  onClick={() => setPendingDelete(c)}
                   disabled={busy}
                 >
                   <ActionIcon name="trash" />
@@ -173,6 +178,20 @@ export function CategoriesTab() {
           ))}
         </ul>
       </div>
+      {pendingDelete ? (
+        <AlertDialog
+          tone="warning"
+          title={t("delete")}
+          message={t("confirmDeleteCategory").replace("{name}", pendingDelete.name)}
+          busy={busy}
+          danger
+          confirmLabel={t("delete")}
+          onClose={() => {
+            if (!busy) setPendingDelete(null);
+          }}
+          onConfirm={() => void confirmDelete()}
+        />
+      ) : null}
     </div>
   );
 }

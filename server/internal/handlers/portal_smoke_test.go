@@ -192,6 +192,7 @@ func TestReceptionUsersBecomeOPD(t *testing.T) {
 		CREATE TABLE ot_bill_lines (id INTEGER PRIMARY KEY AUTOINCREMENT, bill_id INTEGER);
 		CREATE TABLE opd_bills (id INTEGER PRIMARY KEY AUTOINCREMENT);
 		CREATE TABLE pharmacy_bills (id INTEGER PRIMARY KEY AUTOINCREMENT);
+		CREATE TABLE services (id INTEGER PRIMARY KEY AUTOINCREMENT);
 	`); err != nil {
 		t.Fatalf("old schema: %v", err)
 	}
@@ -242,7 +243,11 @@ func TestOtFloorCopiedIntoOtBatches(t *testing.T) {
 		  username TEXT NOT NULL UNIQUE,
 		  display_name TEXT NOT NULL,
 		  role TEXT NOT NULL,
-		  password_hash TEXT NOT NULL
+		  password_hash TEXT NOT NULL,
+		  must_change_password INTEGER NOT NULL DEFAULT 0,
+		  active INTEGER NOT NULL DEFAULT 1,
+		  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+		  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 		);
 		CREATE TABLE stock_locations (
 		  code TEXT PRIMARY KEY,
@@ -307,6 +312,7 @@ func TestOtFloorCopiedIntoOtBatches(t *testing.T) {
 		CREATE TABLE ot_bill_lines (id INTEGER PRIMARY KEY AUTOINCREMENT, bill_id INTEGER);
 		CREATE TABLE opd_bills (id INTEGER PRIMARY KEY AUTOINCREMENT);
 		CREATE TABLE pharmacy_bills (id INTEGER PRIMARY KEY AUTOINCREMENT);
+		CREATE TABLE services (id INTEGER PRIMARY KEY AUTOINCREMENT);
 		INSERT INTO ot_cases (case_no, patient_name, status, issued_at)
 		VALUES ('OT-1', 'Issued', 'issued', '2026-01-01');
 		INSERT INTO ot_case_items (case_id, item_id, qty_issued, qty_used)

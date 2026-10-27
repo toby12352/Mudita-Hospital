@@ -3,7 +3,7 @@ import { getApiBase } from "../api";
 import { getStoredToken } from "../auth";
 import { KpiCard } from "../components/kpi/KpiCard";
 import { fetchDailyReport, type DailyReportResponse } from "../dashboardApi";
-import { formatMMK } from "../lib/format";
+import { formatDelta, formatMMK } from "../lib/format";
 import { fetchAndPreviewPrint } from "../print";
 import { todayISO } from "../reports";
 
@@ -21,16 +21,36 @@ function shiftDate(iso: string, deltaDays: number): string {
   return `${yy}-${mm}-${dd}`;
 }
 
-function formatDelta(n: number): string {
-  if (n === 0) return "0";
-  const sign = n > 0 ? "+" : "";
-  return `${sign}${formatMMK(n)}`;
-}
-
-function deltaTone(n: number): "accent" | "warn" | undefined {
+function deltaTone(n: number): "accent" | "warn" | "default" {
   if (n > 0) return "accent";
   if (n < 0) return "warn";
-  return undefined;
+  return "default";
+}
+
+function deltaClass(n: number): string {
+  if (n > 0) return "delta-val pos";
+  if (n < 0) return "delta-val neg";
+  return "delta-val";
+}
+
+function kindLabel(kind: string, t: (k: string) => string): string {
+  if (kind === "deposit" || kind === "collection" || kind === "refund") return t(kind);
+  return kind;
+}
+
+function portalLabel(portal: string, t: (k: string) => string): string {
+  switch (portal) {
+    case "opd":
+      return "OPD";
+    case "ot":
+      return "OT";
+    case "ipd":
+      return "IPD";
+    case "pharmacy":
+      return t("pharmacyPortal");
+    default:
+      return portal;
+  }
 }
 
 export function DailyReportPage({ t }: Props) {
@@ -69,7 +89,7 @@ export function DailyReportPage({ t }: Props) {
     setPrinting(true);
     try {
       await fetchAndPreviewPrint(
-        `/api/reports/daily-cash/print?date=${encodeURIComponent(date)}`,
+        `/api/dashboard/daily-report/print?date=${encodeURIComponent(date)}`,
         getApiBase,
         getStoredToken,
         { title: t("dailyReport"), receipt: false },
@@ -132,6 +152,19 @@ export function DailyReportPage({ t }: Props) {
 
       {data ? (
         <>
+          <section className="panel">
+            <div className="kpi-strip">
+              <KpiCard label={t("totalIncome")} value={formatDelta(data.income_mmk ?? 0)} />
+              <KpiCard label={t("totalExpenses")} value={formatDelta(data.expense_mmk ?? 0)} />
+              <KpiCard
+                label={t("netCash")}
+                value={formatDelta(data.net_cash_mmk ?? 0)}
+                sub={t("netCashHint")}
+                tone={deltaTone(data.net_cash_mmk ?? 0)}
+              />
+            </div>
+          </section>
+
           <div className="kpi-strip">
             <KpiCard
               label={t("cashToday")}
@@ -173,15 +206,13 @@ export function DailyReportPage({ t }: Props) {
             <div className="delta-grid">
               <div>
                 <p className="kpi-label">{t("cashToday")}</p>
-                <p className={`delta-val ${data.delta_grand_mmk < 0 ? "neg" : data.delta_grand_mmk > 0 ? "pos" : ""}`}>
+                <p className={deltaClass(data.delta_grand_mmk)}>
                   {formatDelta(data.delta_grand_mmk)} {t("mmk")}
                 </p>
               </div>
               <div>
                 <p className="kpi-label">{t("billCount")}</p>
-                <p className={`delta-val ${data.delta_bills < 0 ? "neg" : data.delta_bills > 0 ? "pos" : ""}`}>
-                  {formatDelta(data.delta_bills)}
-                </p>
+                <p className={deltaClass(data.delta_bills)}>{formatDelta(data.delta_bills)}</p>
               </div>
               <div>
                 <p className="kpi-label">{t("opdCash")}</p>
@@ -194,6 +225,24 @@ export function DailyReportPage({ t }: Props) {
               <div>
                 <p className="kpi-label">{t("pharmacyCash")}</p>
                 <p className="delta-val">{formatDelta(data.delta_pharmacy_mmk ?? 0)}</p>
+              </div>
+              <div>
+                <p className="kpi-label">{t("totalIncome")}</p>
+                <p className={deltaClass(data.delta_income_mmk ?? 0)}>
+                  {formatDelta(data.delta_income_mmk ?? 0)}
+                </p>
+              </div>
+              <div>
+                <p className="kpi-label">{t("totalExpenses")}</p>
+                <p className={deltaClass(data.delta_expense_mmk ?? 0)}>
+                  {formatDelta(data.delta_expense_mmk ?? 0)}
+                </p>
+              </div>
+              <div>
+                <p className="kpi-label">{t("netCash")}</p>
+                <p className={deltaClass(data.delta_net_cash_mmk ?? 0)}>
+                  {formatDelta(data.delta_net_cash_mmk ?? 0)}
+                </p>
               </div>
             </div>
           </section>
@@ -216,9 +265,12 @@ export function DailyReportPage({ t }: Props) {
                     </tr>
                   </thead>
                   <tbody>
-                    {data.lines.map((line) => (
-                      <tr key={`${line.source}-${line.bill_no}-${line.paid_at}`}>
-                        <td>{line.source}</td>
+                    {data.lines.map((line, i) => (
+                      <tr key={`${line.source}-${line.bill_no}-${line.paid_at}-${i}`}>
+                        <td>
+                          {line.source}
+                          {line.reversal ? ` ${t("reversal")}` : ""}
+                        </td>
                         <td>{line.bill_no}</td>
                         <td>{line.patient}</td>
                         <td>{line.doctor || "—"}</td>
@@ -231,6 +283,72 @@ export function DailyReportPage({ t }: Props) {
               </div>
             ) : (
               <p className="empty-state">{t("noPaidBills")}</p>
+            )}
+          </section>
+
+          <section className="panel">
+            <h3>
+              {t("ipdLines")} — {data.date}
+            </h3>
+            {(data.ipd_lines ?? []).length ? (
+              <div className="table-scroll">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>{t("kind")}</th>
+                      <th>{t("admission")}</th>
+                      <th>{t("patient")}</th>
+                      <th className="num">{t("mmk")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(data.ipd_lines ?? []).map((line, i) => (
+                      <tr key={`${line.kind}-${line.admission_no}-${line.created_at}-${i}`}>
+                        <td>{kindLabel(line.kind, t)}</td>
+                        <td>{line.admission_no}</td>
+                        <td>{line.patient}</td>
+                        <td className="num">{formatDelta(line.amount_mmk ?? 0)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="empty-state">{t("noIpdLines")}</p>
+            )}
+          </section>
+
+          <section className="panel">
+            <h3>
+              {t("expenseLines")} — {data.date}
+            </h3>
+            {(data.expense_lines ?? []).length ? (
+              <div className="table-scroll">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>{t("bill")}</th>
+                      <th>{t("portal")}</th>
+                      <th>{t("payee")}</th>
+                      <th>{t("paid")}</th>
+                      <th className="num">{t("mmk")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(data.expense_lines ?? []).map((line, i) => (
+                      <tr key={`${line.bill_no}-${line.paid_at}-${i}`}>
+                        <td>{line.bill_no}</td>
+                        <td>{portalLabel(line.portal, t)}</td>
+                        <td>{line.name}</td>
+                        <td>{line.paid_at}</td>
+                        <td className="num">{formatDelta(line.amount_mmk ?? 0)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="empty-state">{t("noExpenseLines")}</p>
             )}
           </section>
         </>

@@ -14,6 +14,7 @@ import {
   printOtBill,
   updateOtBill,
   updateOtCase,
+  purgeOtBill,
   voidOtBill,
   type OtBill,
   type OtCase,
@@ -22,6 +23,9 @@ import {
   type OtDoctor,
   type OtService,
 } from "@/features/ot/api";
+import type { PatientChart } from "@/features/patients/api";
+import { useOpenAdmission } from "@/features/patients/useOpenAdmission";
+import { PatientChartTypeahead } from "@/features/patients/PatientChartTypeahead";
 import {
   formatPackCompact,
   formatPackPreview,
@@ -41,6 +45,7 @@ import {
 import { AlertDialog } from "@/shared/AlertDialog";
 import { BillLineGrid, createBillLineEntry, type BillLineGridRow } from "@/shared/BillLineGrid";
 import {
+  BillChargeToIpdButton,
   BillCollectNote,
   BillMarkPaidButton,
   BillPrintButton,
@@ -49,6 +54,7 @@ import {
 import { userMessage } from "@/shared/errors";
 import { formatMMK } from "@/shared/format";
 import { Typeahead } from "@/shared/Typeahead";
+import { useClinicActions } from "@/app/clinicActions";
 import { useI18n } from "@/shared/i18n";
 import { OtHistoryModal, type OtHistoryModalMode } from "./OtHistoryModal";
 
@@ -88,18 +94,25 @@ function servicesFromCase(c: OtCase): OtServiceLineFields[] {
   }));
 }
 
+type DeskConfirm = "cancel" | "newBill";
+
 export function OtPage() {
   const { t } = useI18n();
+  const { otCreate, otUpdate, otDelete, billPurge } = useClinicActions();
+  const canSaveCase = otCreate || otUpdate;
   const [doctors, setDoctors] = useState<OtDoctor[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [dialog, setDialog] = useState<OtHistoryModalMode | null>(null);
+  const [confirm, setConfirm] = useState<DeskConfirm | null>(null);
+  const [printAfterPay, setPrintAfterPay] = useState<string | null>(null);
 
   const [caseId, setCaseId] = useState<number | null>(null);
   const [caseNo, setCaseNo] = useState("");
   const [caseStatus, setCaseStatus] = useState("draft");
   const [patientName, setPatientName] = useState("");
+  const [linkedChartId, setLinkedChartId] = useState<number | null>(null);
   const patientNameRef = useRef<HTMLInputElement>(null);
   const [patientPhone, setPatientPhone] = useState("");
   const [patientAge, setPatientAge] = useState("");
@@ -126,6 +139,7 @@ export function OtPage() {
 
   /** Editable until the OT bill is paid or void (Print does not lock). */
   const isDraft = !(bill?.status === "paid" || bill?.status === "void");
+  const openAdmissionId = useOpenAdmission(linkedChartId);
 
   function takeSeq() {
     return nextSeqRef.current++;
@@ -162,6 +176,7 @@ export function OtPage() {
     setCaseNo("");
     setCaseStatus("draft");
     setPatientName("");
+    setLinkedChartId(null);
     setPatientPhone("");
     setPatientAge("");
     setPatientGender("");
@@ -210,6 +225,7 @@ export function OtPage() {
     setCaseNo(c.case_no);
     setCaseStatus(c.status);
     setPatientName(c.patient_name);
+    setLinkedChartId(c.patient_id ?? null);
     setPatientPhone(c.patient_phone);
     setPatientAge(c.patient_age_years != null ? String(c.patient_age_years) : "");
     setPatientGender(c.patient_gender);
@@ -276,6 +292,7 @@ export function OtPage() {
     const age = patientAge.trim() ? Number(patientAge) : null;
     return {
       patient_name: patientName.trim(),
+      ...(linkedChartId != null ? { patient_id: linkedChartId } : {}),
       patient_phone: patientPhone.trim(),
       patient_age_years: age != null && !Number.isNaN(age) ? age : null,
       patient_gender: patientGender,
@@ -634,6 +651,29 @@ export function OtPage() {
       const paid = await payOtBill(b.id);
       setBill(paid);
       setOkMsg(t("paidReceiptReady").replace("{bill}", paid.bill_no));
+      setPrintAfterPay(paid.bill_no);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Pay failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function doChargeToIpd() {
+    if (openAdmissionId == null) return;
+    setBusy(true);
+    setError(null);
+    setOkMsg(null);
+    try {
+      const b = await ensureBillReady();
+      if (!b) return;
+      if (b.status === "paid") return;
+      if (b.status !== "draft") {
+        throw new Error(userMessage("Only draft bills can be paid"));
+      }
+      const paid = await payOtBill(b.id, openAdmissionId);
+      setBill(paid);
+      setOkMsg(t("chargedToIpdReady").replace("{bill}", paid.bill_no));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Pay failed");
     } finally {
@@ -642,8 +682,7 @@ export function OtPage() {
   }
 
   function doCancelForm() {
-    if (!window.confirm(t("otDeskCancelConfirm"))) return;
-    resetCaseForm();
+    setConfirm("cancel");
   }
 
   function focusBillPatient() {
@@ -661,10 +700,31 @@ export function OtPage() {
         services.length > 0 ||
         caseId != null ||
         Boolean(caseNo);
-      if (dirty && !window.confirm(t("confirmNewBill"))) return;
+      if (dirty) {
+        setConfirm("newBill");
+        return;
+      }
     }
     resetCaseForm();
     focusBillPatient();
+  }
+
+  function runConfirm() {
+    if (confirm === "cancel") {
+      setConfirm(null);
+      resetCaseForm();
+      return;
+    }
+    if (confirm === "newBill") {
+      setConfirm(null);
+      resetCaseForm();
+      focusBillPatient();
+    }
+  }
+
+  function printAfterMarkPaid() {
+    setPrintAfterPay(null);
+    void doPrint();
   }
 
   async function voidFromHistory(c: OtCase, reason: string) {
@@ -680,6 +740,16 @@ export function OtPage() {
     }
   }
 
+  async function purgeFromHistory(billId: number) {
+    await purgeOtBill(billId);
+    if (otBillId === billId) {
+      setBill(null);
+      setOtBillId(null);
+      setCaseStatus("draft");
+    }
+    setOkMsg(t("billPurged"));
+  }
+
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (dialog) return;
@@ -688,7 +758,7 @@ export function OtPage() {
       const key = e.key;
       if (key === "F5") {
         e.preventDefault();
-        if (!busy && isDraft) void saveDraft();
+        if (!busy && isDraft && canSaveCase) void saveDraft();
         return;
       }
       if (key === "F6") {
@@ -698,7 +768,7 @@ export function OtPage() {
       }
       if (key === "F7") {
         e.preventDefault();
-        if (!busy && isDraft) void doMarkPaid();
+        if (!busy && isDraft && otCreate) void doMarkPaid();
         return;
       }
       if (key === "F9") {
@@ -708,7 +778,7 @@ export function OtPage() {
       }
       if (key === "F8" && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
-        if (!busy) setDialog("delete");
+        if (!busy && otDelete) setDialog("delete");
         return;
       }
       if (key === "F10") {
@@ -718,13 +788,13 @@ export function OtPage() {
       }
       if (key === "F2") {
         e.preventDefault();
-        if (!busy) doNewBill();
+        if (!busy && otCreate) doNewBill();
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- desk shortcuts
-  }, [dialog, busy, isDraft, caseId, caseNo, caseStatus, patientName, items, services, otBillId, bill, discountValue, discountUnit]);
+  }, [dialog, busy, isDraft, caseId, caseNo, caseStatus, patientName, linkedChartId, items, services, otBillId, bill, discountValue, discountUnit, canSaveCase, otCreate, otDelete]);
 
   const itemsTotal = items.reduce((sum, it) => {
     const units = saleUnitsFromPack(packFromItem(it), it.sell_price_mmk);
@@ -749,7 +819,8 @@ export function OtPage() {
   const netTotal = Math.max(0, grossTotal - discountOff);
   const paidAmount = bill?.status === "paid" ? netTotal : 0;
   const balanceAmount = Math.max(0, netTotal - paidAmount);
-  const discountEditable = bill ? bill.status === "draft" : isDraft;
+  const discountEditable = (bill ? bill.status === "draft" : isDraft) && canSaveCase;
+  const writable = isDraft && canSaveCase;
   const displayWhen = formatDisplayWhen(createdAt, nowTick);
 
   const otKinds: Array<
@@ -833,26 +904,31 @@ export function OtPage() {
 
           <div className="opd-bill-header">
             <div className="opd-bill-header-col">
-              <label className="opd-bill-field">
+              <div className="opd-bill-field opd-bill-field--typeahead">
                 <span className="opd-bill-label">{t("idName")}</span>
-                <input
-                  ref={patientNameRef}
-                  className="opd-bill-input grow"
-                  data-focus="bill-patient"
+                <PatientChartTypeahead
                   value={patientName}
-                  disabled={!isDraft}
-                  required={isDraft}
-                  onChange={(e) => setPatientName(e.target.value)}
-                  autoFocus
-                  aria-label={t("patientName")}
+                  disabled={!writable}
+                  inputRef={patientNameRef}
+                  onChange={(v) => {
+                    setPatientName(v);
+                    setLinkedChartId(null);
+                  }}
+                  onPick={(p: PatientChart) => {
+                    setLinkedChartId(p.id);
+                    setPatientName(p.name);
+                    setPatientPhone(p.phone || "");
+                    setPatientAge(p.age_years != null ? String(p.age_years) : "");
+                    setPatientGender(p.gender || "");
+                  }}
                 />
-              </label>
+              </div>
               <label className="opd-bill-field">
                 <span className="opd-bill-label">{t("phone")}</span>
                 <input
                   className="opd-bill-input"
                   value={patientPhone}
-                  disabled={!isDraft}
+                  disabled={!writable}
                   onChange={(e) => setPatientPhone(e.target.value)}
                 />
               </label>
@@ -862,7 +938,7 @@ export function OtPage() {
                   <input
                     className="opd-bill-input opd-bill-input--narrow"
                     value={patientAge}
-                    disabled={!isDraft}
+                    disabled={!writable}
                     inputMode="numeric"
                     onChange={(e) => setPatientAge(e.target.value)}
                   />
@@ -874,7 +950,7 @@ export function OtPage() {
                 <select
                   className="opd-bill-input"
                   value={patientGender}
-                  disabled={!isDraft}
+                  disabled={!writable}
                   onChange={(e) => setPatientGender(e.target.value)}
                 >
                   <option value="">—</option>
@@ -888,7 +964,7 @@ export function OtPage() {
                 <Typeahead
                   label=""
                   value={doctorName}
-                  disabled={!isDraft}
+                  disabled={!writable}
                   placeholder={t("doctorPlaceholder")}
                   onChange={(v) => {
                     setDoctorName(v);
@@ -923,7 +999,7 @@ export function OtPage() {
                 <input
                   className="opd-bill-input grow"
                   value={notes}
-                  disabled={!isDraft}
+                  disabled={!writable}
                   onChange={(e) => setNotes(e.target.value)}
                 />
               </label>
@@ -947,7 +1023,7 @@ export function OtPage() {
                 <input
                   className="opd-bill-input grow"
                   value={procedureName}
-                  disabled={!isDraft}
+                  disabled={!writable}
                   onChange={(e) => setProcedureName(e.target.value)}
                   placeholder={t("procedurePlaceholder")}
                 />
@@ -955,7 +1031,7 @@ export function OtPage() {
               <div className="opd-bill-field">
                 <span className="opd-bill-label">{t("status")}</span>
                 <span className="opd-bill-readonly">
-                  {moneyStatusLabel(bill?.status ?? caseStatus, t, bill?.printed_at)}
+                  {moneyStatusLabel(bill?.status ?? caseStatus, t, bill?.printed_at, bill?.collected_cash)}
                 </span>
               </div>
               {bill?.bill_no ? (
@@ -968,7 +1044,7 @@ export function OtPage() {
           </div>
 
           <BillLineGrid
-            draft={isDraft}
+            draft={writable}
             showUnitColumn
             showPackColumn
             itemHeader={t("particular")}
@@ -1113,28 +1189,35 @@ export function OtPage() {
         </div>
 
         <aside className="opd-bill-rail" aria-label={t("billActions")}>
-          <BillMarkPaidButton
-            status={bill?.status ?? "draft"}
-            busy={busy}
-            onClick={() => void doMarkPaid()}
-          />
+          {otCreate ? (
+            <BillMarkPaidButton
+              status={bill?.status ?? "draft"}
+              busy={busy}
+              onClick={() => void doMarkPaid()}
+            />
+          ) : null}
+          {otCreate && isDraft && openAdmissionId != null ? (
+            <BillChargeToIpdButton busy={busy} onClick={() => void doChargeToIpd()} />
+          ) : null}
           <BillPrintButton
             status={bill?.status ?? "draft"}
             busy={busy}
             onClick={() => void doPrint()}
           />
-          <button
-            type="button"
-            className="opd-bill-rail-btn"
-            disabled={busy || !isDraft}
-            onClick={() => void saveDraft()}
-          >
-            <span className="opd-bill-rail-btn-main">
-              <ActionIcon name="check" />
-              <span>{t("saveDraft")}</span>
-            </span>
-            <kbd>F5</kbd>
-          </button>
+          {canSaveCase ? (
+            <button
+              type="button"
+              className="opd-bill-rail-btn"
+              disabled={busy || !isDraft}
+              onClick={() => void saveDraft()}
+            >
+              <span className="opd-bill-rail-btn-main">
+                <ActionIcon name="check" />
+                <span>{t("saveDraft")}</span>
+              </span>
+              <kbd>F5</kbd>
+            </button>
+          ) : null}
           <button
             type="button"
             className="opd-bill-rail-btn"
@@ -1147,22 +1230,38 @@ export function OtPage() {
             </span>
             <kbd>F9</kbd>
           </button>
-          <button
-            type="button"
-            className="opd-bill-rail-btn opd-bill-rail-btn--danger"
-            disabled={busy}
-            onClick={() => setDialog("delete")}
-          >
-            <span className="opd-bill-rail-btn-main">
-              <ActionIcon name="trash" />
-              <span>{t("vDelete")}</span>
-            </span>
-            <kbd>^F8</kbd>
-          </button>
+          {otDelete ? (
+            <button
+              type="button"
+              className="opd-bill-rail-btn opd-bill-rail-btn--danger"
+              disabled={busy}
+              onClick={() => setDialog("delete")}
+            >
+              <span className="opd-bill-rail-btn-main">
+                <ActionIcon name="trash" />
+                <span>{t("vDelete")}</span>
+              </span>
+              <kbd>^F8</kbd>
+            </button>
+          ) : null}
+          {billPurge ? (
+            <button
+              type="button"
+              className="opd-bill-rail-btn opd-bill-rail-btn--danger"
+              disabled={busy}
+              onClick={() => setDialog("purge")}
+            >
+              <span className="opd-bill-rail-btn-main">
+                <ActionIcon name="trash" />
+                <span>{t("delete")}</span>
+              </span>
+            </button>
+          ) : null}
           <button type="button" className="opd-bill-rail-btn" disabled={busy} onClick={doCancelForm}>
             <span>{t("cancel")}</span>
             <kbd>F10</kbd>
           </button>
+          {otCreate ? (
           <button
             type="button"
             className={`opd-bill-rail-btn${!isDraft ? " opd-bill-rail-btn--accent" : ""}`}
@@ -1175,6 +1274,7 @@ export function OtPage() {
             </span>
             <kbd>F2</kbd>
           </button>
+          ) : null}
         </aside>
 
         <AlertDialog message={error ?? ""} onClose={() => setError(null)} />
@@ -1186,6 +1286,27 @@ export function OtPage() {
           onClose={() => setDialog(null)}
           onOpen={(id) => void openCase(id)}
           onVoid={voidFromHistory}
+          onPurge={purgeFromHistory}
+        />
+      ) : null}
+      {confirm ? (
+        <AlertDialog
+          tone="warning"
+          title={t("clear")}
+          message={confirm === "cancel" ? t("otDeskCancelConfirm") : t("confirmNewBill")}
+          confirmLabel={t("clear")}
+          onClose={() => setConfirm(null)}
+          onConfirm={runConfirm}
+        />
+      ) : null}
+      {printAfterPay ? (
+        <AlertDialog
+          tone="print"
+          title={t("paid")}
+          message={t("paidPrintPrompt").replace("{bill}", printAfterPay)}
+          confirmLabel={t("print")}
+          onClose={() => setPrintAfterPay(null)}
+          onConfirm={printAfterMarkPaid}
         />
       ) : null}
     </>

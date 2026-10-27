@@ -47,6 +47,9 @@ func (h *Doctors) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if path == "" {
 			path = "/"
 		}
+		if !allowCell(h.DB, w, r, masterGrant(r.Method, path)) {
+			return
+		}
 
 		switch {
 		case path == "/" && r.Method == http.MethodGet:

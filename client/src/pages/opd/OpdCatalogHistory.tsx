@@ -47,13 +47,9 @@ function formatDetail(row: Row, t: (k: string) => string): string {
 export function OpdCatalogHistory({
   entity,
   title,
-  backLabel,
-  onBack,
 }: {
   entity: "doctor" | "service";
   title: string;
-  backLabel: string;
-  onBack: () => void;
 }) {
   const { t } = useI18n();
   const [q, setQ] = useState("");
@@ -85,75 +81,66 @@ export function OpdCatalogHistory({
   }, [entity]);
 
   return (
-    <section className="classic-list-panel">
-      <div className="drug-setup-title-row">
-        <h2 className="drug-setup-title">{title}</h2>
-        <div className="desk-text-links">
-          <button type="button" className="desk-text-link" onClick={onBack}>
-            {backLabel}
-          </button>
-        </div>
-      </div>
-      <div className="settings-stack">
-        <div className="card-form">
-          <p className="hint">{t("catalogHistoryHint")}</p>
-          <div className="list-toolbar">
-            <label className="field">
-              <span>{t("filter")}</span>
-              <input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder={t("catalogHistoryFilterPlaceholder")}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    void reload(q).catch((err) =>
-                      setError(err instanceof Error ? err.message : "Search failed"),
-                    );
-                  }
-                }}
-              />
-            </label>
-            <button
-              type="button"
-              className="btn action"
-              onClick={() =>
+    <>
+      <h3 className="drug-setup-title" style={{ fontSize: "1.1rem" }}>
+        {title}
+      </h3>
+      <p className="hint">{t("catalogHistoryHint")}</p>
+      <div className="list-toolbar">
+        <label className="field">
+          <span>{t("filter")}</span>
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder={t("catalogHistoryFilterPlaceholder")}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
                 void reload(q).catch((err) =>
                   setError(err instanceof Error ? err.message : "Search failed"),
-                )
+                );
               }
-            >
-              <ActionIcon name="search" />
-              {t("search")}
-            </button>
-          </div>
-          {error ? <p className="form-error">{error}</p> : null}
-          <ul className="data-list">
-            {list.length === 0 ? <li className="empty-row">{t("noHistoryYet")}</li> : null}
-            {list.map((row) => {
-              const detailLine = formatDetail(row, t);
-              const titleLine = isServiceRow(row)
-                ? row.code
-                  ? `${row.code} — ${row.name}`
-                  : row.name || `#${row.entity_id ?? row.id}`
-                : row.name || `#${row.entity_id ?? row.id}`;
-              return (
-                <li key={row.id}>
-                  <div>
-                    <p className="row-title">
-                      {actionLabel(row.action, t)} · {titleLine}
-                    </p>
-                    <p className="row-sub">
-                      {row.created_at}
-                      {row.actor_username ? ` · ${row.actor_username}` : ""}
-                    </p>
-                    {detailLine ? <p className="row-sub">{detailLine}</p> : null}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
+            }}
+          />
+        </label>
+        <button
+          type="button"
+          className="btn action"
+          onClick={() =>
+            void reload(q).catch((err) =>
+              setError(err instanceof Error ? err.message : "Search failed"),
+            )
+          }
+        >
+          <ActionIcon name="search" />
+          {t("search")}
+        </button>
       </div>
-    </section>
+      {error ? <p className="form-error">{error}</p> : null}
+      <ul className="data-list">
+        {list.length === 0 ? <li className="empty-row">{t("noHistoryYet")}</li> : null}
+        {list.map((row) => {
+          const detailLine = formatDetail(row, t);
+          const titleLine = isServiceRow(row)
+            ? row.code
+              ? `${row.code} — ${row.name}`
+              : row.name || `#${row.entity_id ?? row.id}`
+            : row.name || `#${row.entity_id ?? row.id}`;
+          return (
+            <li key={row.id}>
+              <div>
+                <p className="row-title">
+                  {actionLabel(row.action, t)} · {titleLine}
+                </p>
+                <p className="row-sub">
+                  {row.created_at}
+                  {row.actor_username ? ` · ${row.actor_username}` : ""}
+                </p>
+                {detailLine ? <p className="row-sub">{detailLine}</p> : null}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </>
   );
 }

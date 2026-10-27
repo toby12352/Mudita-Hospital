@@ -1,53 +1,54 @@
-export function HomePage({ t }: { t: (k: string) => string }) {
+import { clinicModules, type ClinicModule } from "@/app/portal";
+import { getLocale, type Locale } from "@/shared/i18n";
+
+function joinNames(names: string[], locale: Locale): string {
+  if (names.length <= 1) return names[0] ?? "";
+  const last = names[names.length - 1];
+  const head = names.slice(0, -1);
+  if (locale === "my") {
+    if (head.length === 1) return `${head[0]} သို့မဟုတ် ${last}`;
+    return `${head.join("၊ ")} သို့မဟုတ် ${last}`;
+  }
+  if (head.length === 1) return `${head[0]} or ${last}`;
+  return `${head.join(", ")}, or ${last}`;
+}
+
+function welcomeLede(
+  t: (k: string) => string,
+  modules: readonly ClinicModule[],
+  showSettings: boolean,
+): string {
+  const fullCatalog =
+    showSettings &&
+    modules.length === clinicModules.length &&
+    clinicModules.every((module, index) => modules[index] === module);
+  if (fullCatalog) return t("homeWelcomeLede");
+  const names = [
+    ...modules.map((module) => t(module)),
+    ...(showSettings ? [t("settings")] : []),
+    t("navAbout"),
+  ];
+  return t("homeWelcomeOpen").replace("{modules}", joinNames(names, getLocale()));
+}
+
+export function HomePage({
+  displayName,
+  modules,
+  showSettings,
+  t,
+}: {
+  displayName: string;
+  modules: readonly ClinicModule[];
+  showSettings: boolean;
+  t: (k: string) => string;
+}) {
   return (
-    <section className="home-howto" aria-label={t("homeHowtoTitle")}>
-      <div className="home-howto-section">
-        <h2>{t("homeHowtoTitle")}</h2>
-        <p className="lede">{t("homeHowtoLede")}</p>
-      </div>
-
-      <div className="home-howto-section">
-        <h3>{t("homeHowtoBasics")}</h3>
-        <ol>
-          <li>{t("homeHowtoStep1")}</li>
-          <li>{t("homeHowtoStep2")}</li>
-          <li>{t("homeHowtoStep3")}</li>
-          <li>{t("homeHowtoStep4")}</li>
-        </ol>
-      </div>
-
-      <div className="home-howto-section">
-        <h3>OPD</h3>
-        <ol>
-          <li>{t("homeHowtoOpd1")}</li>
-          <li>{t("homeHowtoOpd2")}</li>
-          <li>{t("homeHowtoOpd3")}</li>
-        </ol>
-      </div>
-
-      <div className="home-howto-section">
-        <h3>OT</h3>
-        <ol>
-          <li>{t("homeHowtoOt1")}</li>
-          <li>{t("homeHowtoOt2")}</li>
-          <li>{t("homeHowtoOt3")}</li>
-        </ol>
-      </div>
-
-      <div className="home-howto-section">
-        <h3>{t("pharmacy")}</h3>
-        <ol>
-          <li>{t("homeHowtoPharm1")}</li>
-          <li>{t("homeHowtoPharm2")}</li>
-        </ol>
-      </div>
-
-      <div className="home-howto-section">
-        <h3>{t("homeHowtoVideos")}</h3>
-        <div className="video-placeholder" role="img" aria-label={t("homeHowtoVideosSoon")}>
-          {t("homeHowtoVideosSoon")}
-        </div>
-      </div>
+    <section className="desk-welcome" aria-label={t("navHome")}>
+      <h2 className="desk-welcome-title">{t("homeWelcomeTitle")}</h2>
+      <p className="lede">
+        {t("homeWelcomeHello").replace("{name}", displayName)}
+      </p>
+      <p className="lede">{welcomeLede(t, modules, showSettings)}</p>
     </section>
   );
 }

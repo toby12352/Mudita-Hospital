@@ -197,6 +197,7 @@ export type OtCaseService = {
 export type OtCase = {
   id: number;
   case_no: string;
+  patient_id?: number | null;
   patient_name: string;
   patient_phone: string;
   patient_age_years?: number | null;
@@ -213,6 +214,7 @@ export type OtCase = {
   ot_bill_id?: number | null;
   bill_status?: string | null;
   bill_printed_at?: string | null;
+  bill_collected_cash?: number | null;
   created_at: string;
   updated_at: string;
   items?: OtCaseItem[];
@@ -257,6 +259,8 @@ export type OtBill = {
   discount_unit?: "percent" | "mmk" | string;
   discount_mmk?: number;
   printed_at?: string | null;
+  admission_id?: number | null;
+  collected_cash?: number;
   paid_at?: string | null;
   voided_at?: string | null;
   void_reason?: string;
@@ -266,6 +270,7 @@ export type OtBill = {
 };
 
 export type OtCaseWrite = {
+  patient_id?: number | null;
   patient_name: string;
   patient_phone: string;
   patient_age_years?: number | null;
@@ -286,10 +291,18 @@ export async function listOtDoctors(q = ""): Promise<OtDoctor[]> {
   return res.doctors;
 }
 
-export async function listOtCases(q = "", status = ""): Promise<OtCase[]> {
+export async function listOtCases(
+  q = "",
+  status = "",
+  opts?: { money?: string; from?: string; to?: string; sort?: string },
+): Promise<OtCase[]> {
   const params = new URLSearchParams();
   if (q.trim()) params.set("q", q.trim());
   if (status.trim()) params.set("status", status.trim());
+  if (opts?.money?.trim()) params.set("money", opts.money.trim());
+  if (opts?.from?.trim()) params.set("from", opts.from.trim());
+  if (opts?.to?.trim()) params.set("to", opts.to.trim());
+  if (opts?.sort?.trim()) params.set("sort", opts.sort.trim());
   const qs = params.toString() ? `?${params}` : "";
   const res = await apiFetch<{ cases: OtCase[] }>(`/api/ot/cases${qs}`);
   return res.cases;
@@ -343,12 +356,22 @@ export async function updateOtBill(
   });
 }
 
+export async function listOtBills(q = "", status = ""): Promise<OtBill[]> {
+  const params = new URLSearchParams();
+  if (q.trim()) params.set("q", q.trim());
+  if (status.trim()) params.set("status", status.trim());
+  const qs = params.toString() ? `?${params}` : "";
+  const res = await apiFetch<{ bills: OtBill[] }>(`/api/ot/bills${qs}`);
+  return res.bills;
+}
+
 export async function getOtBill(id: number): Promise<OtBill> {
   return apiFetch<OtBill>(`/api/ot/bills/${id}`);
 }
 
-export async function payOtBill(id: number): Promise<OtBill> {
-  return apiFetch<OtBill>(`/api/ot/bills/${id}/pay`, { method: "POST", body: "{}" });
+export async function payOtBill(id: number, admissionId?: number | null): Promise<OtBill> {
+  const body = admissionId != null ? JSON.stringify({ admission_id: admissionId }) : "{}";
+  return apiFetch<OtBill>(`/api/ot/bills/${id}/pay`, { method: "POST", body });
 }
 
 export async function markOtBillPrinted(id: number): Promise<OtBill> {
@@ -360,6 +383,11 @@ export async function voidOtBill(id: number, reason: string): Promise<OtBill> {
     method: "POST",
     body: JSON.stringify({ reason }),
   });
+}
+
+/** Admin-only. Permanently removes a draft or void bill. Keeps the OT case. */
+export async function purgeOtBill(id: number): Promise<void> {
+  await apiFetch(`/api/ot/bills/${id}`, { method: "DELETE" });
 }
 
 async function printHtml(

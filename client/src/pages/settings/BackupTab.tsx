@@ -7,13 +7,17 @@ import {
   type BackupInfo,
 } from "@/features/settings/backup";
 import { ActionIcon } from "@/shared/ActionIcon";
+import { AlertDialog } from "@/shared/AlertDialog";
+import { useI18n } from "@/shared/i18n";
 
 export function BackupTab() {
+  const { t } = useI18n();
   const [dir, setDir] = useState("");
   const [list, setList] = useState<BackupInfo[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [pendingRestore, setPendingRestore] = useState<string | null>(null);
 
   async function reload() {
     const data = await listBackups();
@@ -54,22 +58,19 @@ export function BackupTab() {
     }
   }
 
-  async function doRestore(name: string) {
-    if (
-      !window.confirm(
-        `Restore ${name}?\n\nThis replaces the live database. The API will restart. All clients briefly disconnect.`,
-      )
-    ) {
-      return;
-    }
+  async function doRestore() {
+    const name = pendingRestore;
+    if (!name) return;
     setBusy(true);
     setError(null);
     setMessage(null);
     try {
       const res = await restoreBackup(name);
+      setPendingRestore(null);
       setMessage(res.message || "Restore queued — wait a few seconds, then Retry connection.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Restore failed");
+      setPendingRestore(null);
     } finally {
       setBusy(false);
     }
@@ -110,15 +111,29 @@ export function BackupTab() {
                 type="button"
                 className="btn action danger"
                 disabled={busy}
-                onClick={() => void doRestore(b.name)}
+                onClick={() => setPendingRestore(b.name)}
               >
                 <ActionIcon name="undo" />
-                Restore
+                {t("restore")}
               </button>
             </li>
           ))}
         </ul>
       </div>
+      {pendingRestore ? (
+        <AlertDialog
+          tone="warning"
+          title={t("restore")}
+          message={t("confirmRestoreBackup").replace("{name}", pendingRestore)}
+          busy={busy}
+          danger
+          confirmLabel={t("restore")}
+          onClose={() => {
+            if (!busy) setPendingRestore(null);
+          }}
+          onConfirm={() => void doRestore()}
+        />
+      ) : null}
     </div>
   );
 }

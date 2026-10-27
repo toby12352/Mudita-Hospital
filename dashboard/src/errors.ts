@@ -256,7 +256,7 @@ const EXACT: Record<string, string> = {
   "username already exists": "errUsernameExists",
   "username, display_name, and password required": "errUserFieldsRequired",
   "display_name required": "errDisplayNameRequired",
-  "role must be opd, ot, or pharmacy": "errChooseRole",
+  "role must be opd, ot, pharmacy, or patients": "errChooseRole",
   "cannot change admin role": "errCannotChangeAdmin",
   "cannot deactivate yourself": "errCannotDeactivateSelf",
   "cannot deactivate the last admin": "errCannotDeactivateLastAdmin",

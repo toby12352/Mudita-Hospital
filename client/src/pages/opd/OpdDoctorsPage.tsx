@@ -7,9 +7,11 @@ import {
   updateDoctor,
   type Doctor,
 } from "@/features/settings/masterData";
+import { useClinicActions } from "@/app/clinicActions";
 import { matchesActive, type ActiveFilterValue } from "@/shared/ActiveFilter";
 import { ActionIcon } from "@/shared/ActionIcon";
 import { CatalogFilterButton, CatalogFilterPanel } from "@/shared/CatalogListFilter";
+import { sortByDateAscDesc, type DateSortValue } from "@/shared/DateSort";
 import { formatMMK } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
 import { CatalogDeleteDialog } from "./CatalogDeleteDialog";
@@ -17,6 +19,7 @@ import { OpdCatalogHistory } from "./OpdCatalogHistory";
 
 export function OpdDoctorsPage() {
   const { t } = useI18n();
+  const { opdUpdate, opdDelete } = useClinicActions();
   const [mode, setMode] = useState<"items" | "history">("items");
   const [creating, setCreating] = useState(false);
   const [createKey, setCreateKey] = useState(0);
@@ -24,6 +27,7 @@ export function OpdDoctorsPage() {
   const filterPanelId = useId();
   const [filterQ, setFilterQ] = useState("");
   const [activeFilter, setActiveFilter] = useState<ActiveFilterValue>("all");
+  const [dateSort, setDateSort] = useState<DateSortValue>("desc");
   const [list, setList] = useState<Doctor[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [editing, setEditing] = useState<Doctor | null>(null);
@@ -57,6 +61,7 @@ export function OpdDoctorsPage() {
   function resetFilters() {
     setFilterQ("");
     setActiveFilter("all");
+    setDateSort("desc");
     runSearch("", "all");
   }
 
@@ -79,11 +84,17 @@ export function OpdDoctorsPage() {
   }, []);
 
   const filtered = useMemo(
-    () => list.filter((d) => matchesActive(d.active, activeFilter)),
-    [list, activeFilter],
+    () =>
+      sortByDateAscDesc(
+        list.filter((d) => matchesActive(d.active, activeFilter)),
+        dateSort,
+        (d) => d.created_at,
+        (d) => d.id,
+      ),
+    [list, activeFilter, dateSort],
   );
   const selected = list.find((d) => d.id === selectedId) ?? null;
-  const showForm = creating || editing != null;
+  const showForm = opdUpdate && (creating || editing != null);
 
   function fillForm(d: Doctor | null) {
     if (!d) {
@@ -100,6 +111,8 @@ export function OpdDoctorsPage() {
   }
 
   function openCreate() {
+    if (!opdUpdate) return;
+    setMode("items");
     setEditing(null);
     fillForm(null);
     setCreating(true);
@@ -113,6 +126,7 @@ export function OpdDoctorsPage() {
   }
 
   function selectItem(id: number) {
+    setMode("items");
     setSelectedId(id);
     setCreating(false);
     setEditing(null);
@@ -120,9 +134,20 @@ export function OpdDoctorsPage() {
   }
 
   function openEdit(d: Doctor) {
+    if (!opdUpdate) return;
+    setMode("items");
     setCreating(false);
     setEditing(d);
     fillForm(d);
+  }
+
+  function toggleHistory() {
+    if (mode === "history") {
+      setMode("items");
+      return;
+    }
+    closeForm();
+    setMode("history");
   }
 
   async function submit(e: FormEvent) {
@@ -211,33 +236,28 @@ export function OpdDoctorsPage() {
     }
   }
 
-  if (mode === "history") {
-    return (
-      <OpdCatalogHistory
-        entity="doctor"
-        title={t("doctorHistory")}
-        backLabel={t("doctorSetup")}
-        onBack={() => setMode("items")}
-      />
-    );
-  }
-
   return (
     <section className="drug-setup" aria-label={t("doctorSetup")}>
       <div className="drug-setup-list-pane">
-        <div className="drug-setup-title-row">
+        <div className="drug-setup-heading">
           <h2 className="drug-setup-title">{t("doctorSetup")}</h2>
           <div className="tabs">
-            <button type="button" className="btn action primary" onClick={openCreate}>
-              <ActionIcon name="plus" />
-              {t("newBadge")}
-            </button>
+            {opdUpdate ? (
+              <button type="button" className="btn action primary" onClick={openCreate}>
+                <ActionIcon name="plus" />
+                {t("newBadge")}
+              </button>
+            ) : null}
             <CatalogFilterButton
               open={filterOpen}
               controlsId={filterPanelId}
               onToggle={() => setFilterOpen((v) => !v)}
             />
-            <button type="button" className="btn action" onClick={() => setMode("history")}>
+            <button
+              type="button"
+              className={`btn action${mode === "history" ? " on" : ""}`}
+              onClick={toggleHistory}
+            >
               <ActionIcon name="history" />
               {t("catalogHistoryLink")}
             </button>
@@ -254,6 +274,8 @@ export function OpdDoctorsPage() {
           onSearch={() => runSearch(filterQ)}
           active={activeFilter}
           onActiveChange={setActiveFilter}
+          dateSort={dateSort}
+          onDateSortChange={setDateSort}
           onReset={resetFilters}
         />
         {error && !showForm ? <p className="form-error">{error}</p> : null}
@@ -268,9 +290,13 @@ export function OpdDoctorsPage() {
               key={d.id}
               role="option"
               tabIndex={0}
-              aria-selected={d.id === selectedId && !creating && editing == null}
+              aria-selected={
+                d.id === selectedId && mode === "items" && !creating && editing == null
+              }
               className={`drug-setup-table-row opd-master-cols${
-                d.id === selectedId && !creating && editing == null ? " selected" : ""
+                d.id === selectedId && mode === "items" && !creating && editing == null
+                  ? " selected"
+                  : ""
               }${!d.active ? " inactive" : ""}`}
               onClick={() => selectItem(d.id)}
               onKeyDown={(e) => {
@@ -288,16 +314,13 @@ export function OpdDoctorsPage() {
       </div>
 
       <div className="drug-setup-detail-pane">
-        {showForm ? (
+        {mode === "history" ? (
+          <OpdCatalogHistory entity="doctor" title={t("doctorHistory")} />
+        ) : showForm ? (
           <>
-            <div className="drug-setup-title-row">
-              <h3 className="drug-setup-title" style={{ fontSize: "1.1rem" }}>
-                {editing ? `${t("editDoctor")} #${editing.id}` : t("createNewDoctorTitle")}
-              </h3>
-              <button type="button" className="desk-text-link" onClick={closeForm}>
-                {t("cancel")}
-              </button>
-            </div>
+            <h3 className="drug-setup-title" style={{ fontSize: "1.1rem" }}>
+              {editing ? `${t("editDoctor")} #${editing.id}` : t("createNewDoctorTitle")}
+            </h3>
             <form
               key={editing ? `edit-${editing.id}` : `create-${createKey}`}
               className="card-form"
@@ -342,6 +365,9 @@ export function OpdDoctorsPage() {
                 <button type="submit" className="btn primary" disabled={busy}>
                   {busy ? t("saving") : editing ? t("updateDoctor") : t("addDoctor")}
                 </button>
+                <button type="button" className="btn ghost" onClick={closeForm} disabled={busy}>
+                  {t("cancel")}
+                </button>
               </div>
             </form>
           </>
@@ -379,16 +405,18 @@ export function OpdDoctorsPage() {
                   </div>
                 </div>
                 <div className="btn-row">
-                  <button
-                    type="button"
-                    className="btn action"
-                    disabled={busy}
-                    onClick={() => openEdit(selected)}
-                  >
-                    <ActionIcon name="edit" />
-                    {t("edit")}
-                  </button>
-                  {selected.active ? (
+                  {opdUpdate ? (
+                    <button
+                      type="button"
+                      className="btn action"
+                      disabled={busy}
+                      onClick={() => openEdit(selected)}
+                    >
+                      <ActionIcon name="edit" />
+                      {t("edit")}
+                    </button>
+                  ) : null}
+                  {opdDelete && selected.active ? (
                     <button
                       type="button"
                       className="btn action danger"
@@ -398,15 +426,17 @@ export function OpdDoctorsPage() {
                       {t("deactivate")}
                     </button>
                   ) : null}
-                  <button
-                    type="button"
-                    className="btn action danger"
-                    disabled={busy || deleteBusy}
-                    onClick={() => openDeleteConfirm(selected)}
-                  >
-                    <ActionIcon name="trash" />
-                    {t("delete")}
-                  </button>
+                  {opdDelete ? (
+                    <button
+                      type="button"
+                      className="btn action danger"
+                      disabled={busy || deleteBusy}
+                      onClick={() => openDeleteConfirm(selected)}
+                    >
+                      <ActionIcon name="trash" />
+                      {t("delete")}
+                    </button>
+                  ) : null}
                 </div>
               </>
             ) : (

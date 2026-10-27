@@ -161,6 +161,20 @@ func TestResolveItemPackTubeOnly(t *testing.T) {
 	}
 }
 
+func TestResolveItemPackSachetAndPack(t *testing.T) {
+	l1, l2, l3 := int64(1), int64(10), int64(1)
+	p, err := resolveItemPack(&l1, &l2, &l3, "Pack", "Sachet", "Sachet")
+	if err != "" {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if p.L1Unit != "Pack" || p.L2Unit != "Sachet" || p.L3Unit != "Sachet" {
+		t.Fatalf("units = %+v", p)
+	}
+	if tabletsPerBox(p) != 10 {
+		t.Fatalf("tabletsPerBox = %d, want 10", tabletsPerBox(p))
+	}
+}
+
 func TestResolveItemPackUnknownUnit(t *testing.T) {
 	l1, l2, l3 := int64(1), int64(10), int64(10)
 	_, err := resolveItemPack(&l1, &l2, &l3, "Pallet", "Strip", "Tablet")

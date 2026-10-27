@@ -860,6 +860,274 @@ ALTER TABLE ot_bills ADD COLUMN printed_at TEXT;
 ALTER TABLE pharmacy_bills ADD COLUMN printed_at TEXT;
 `,
 	},
+	{
+		Name:      "019_patients_role",
+		DisableFK: true,
+		SQL: `
+-- Allow the Patients role. Copy every user row unchanged: same ids and password hashes.
+-- The role check grows by Patients only. IPD is not a role yet.
+CREATE TABLE users_new (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  display_name TEXT NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('Admin', 'OPD', 'OT', 'Pharmacy', 'Patients')),
+  password_hash TEXT NOT NULL,
+  must_change_password INTEGER NOT NULL DEFAULT 0,
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+INSERT INTO users_new (
+  id, username, display_name, role, password_hash, must_change_password, active, created_at, updated_at
+)
+SELECT
+  id, username, display_name, role, password_hash, must_change_password, active, created_at, updated_at
+FROM users;
+
+DROP TABLE users;
+ALTER TABLE users_new RENAME TO users;
+`,
+	},
+	{
+		Name: "020_ot_case_patient",
+		SQL: `
+-- Optional chart link on an OT case. Existing cases stay null. No backfill.
+ALTER TABLE ot_cases ADD COLUMN patient_id INTEGER REFERENCES patients(id) ON DELETE SET NULL;
+`,
+	},
+	{
+		Name:      "021_ipd_role_admissions",
+		DisableFK: true,
+		SQL: `
+-- Allow the IPD role. Copy every user row unchanged: same ids and password hashes.
+-- No ledger and no bill columns. One open stay per patient.
+CREATE TABLE users_new (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  display_name TEXT NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('Admin', 'OPD', 'OT', 'Pharmacy', 'Patients', 'IPD')),
+  password_hash TEXT NOT NULL,
+  must_change_password INTEGER NOT NULL DEFAULT 0,
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+INSERT INTO users_new (
+  id, username, display_name, role, password_hash, must_change_password, active, created_at, updated_at
+)
+SELECT
+  id, username, display_name, role, password_hash, must_change_password, active, created_at, updated_at
+FROM users;
+
+DROP TABLE users;
+ALTER TABLE users_new RENAME TO users;
+
+CREATE TABLE IF NOT EXISTS ipd_admission_number_seq (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  next_num INTEGER NOT NULL DEFAULT 1
+);
+
+INSERT OR IGNORE INTO ipd_admission_number_seq (id, next_num) VALUES (1, 1);
+
+CREATE TABLE IF NOT EXISTS ipd_admissions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  admission_no TEXT NOT NULL UNIQUE,
+  patient_id INTEGER NOT NULL REFERENCES patients(id),
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'settled')),
+  notes TEXT NOT NULL DEFAULT '',
+  admitted_at TEXT NOT NULL DEFAULT (datetime('now')),
+  discharged_at TEXT,
+  created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ipd_admissions_one_open
+  ON ipd_admissions(patient_id) WHERE status = 'open';
+
+CREATE INDEX IF NOT EXISTS idx_ipd_admissions_patient ON ipd_admissions(patient_id);
+`,
+	},
+	{
+		Name: "022_ipd_ledger",
+		SQL: `
+-- Signed stay ledger. This script does not alter bills, stock, or daily cash.
+-- Deposit and ward are written by the API. charge, refund, collection, and reversal are reserved.
+CREATE TABLE IF NOT EXISTS ipd_ledger (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  admission_id INTEGER NOT NULL REFERENCES ipd_admissions(id),
+  kind TEXT NOT NULL CHECK (kind IN ('deposit', 'ward', 'charge', 'refund', 'collection', 'reversal')),
+  amount_mmk INTEGER NOT NULL,
+  source TEXT NOT NULL DEFAULT '',
+  source_id INTEGER,
+  note TEXT NOT NULL DEFAULT '',
+  actor_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_ipd_ledger_admission ON ipd_ledger(admission_id);
+`,
+	},
+	{
+		Name: "023_bill_admission",
+		SQL: `
+-- Link a paid desk bill to a stay. Existing rows stay cash because of the default.
+-- Tables are not rebuilt and totals are not rewritten.
+ALTER TABLE opd_bills ADD COLUMN admission_id INTEGER REFERENCES ipd_admissions(id);
+ALTER TABLE opd_bills ADD COLUMN collected_cash INTEGER NOT NULL DEFAULT 1;
+
+ALTER TABLE ot_bills ADD COLUMN admission_id INTEGER REFERENCES ipd_admissions(id);
+ALTER TABLE ot_bills ADD COLUMN collected_cash INTEGER NOT NULL DEFAULT 1;
+
+ALTER TABLE pharmacy_bills ADD COLUMN admission_id INTEGER REFERENCES ipd_admissions(id);
+ALTER TABLE pharmacy_bills ADD COLUMN collected_cash INTEGER NOT NULL DEFAULT 1;
+`,
+	},
+	{
+		Name:      "024_service_code_optional",
+		DisableFK: true,
+		SQL: `
+-- OPD service code may be NULL (many unnamed codes). UNIQUE still applies when set.
+-- Copy every row unchanged: same ids, prices, categories, and timestamps.
+CREATE TABLE services_new (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  code TEXT UNIQUE COLLATE NOCASE,
+  name TEXT NOT NULL,
+  price_mmk INTEGER NOT NULL DEFAULT 0 CHECK (price_mmk >= 0),
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  category_id INTEGER REFERENCES service_categories(id)
+);
+
+INSERT INTO services_new (
+  id, code, name, price_mmk, active, created_at, updated_at, category_id
+)
+SELECT
+  id, code, name, price_mmk, active, created_at, updated_at, category_id
+FROM services;
+
+DROP TABLE services;
+ALTER TABLE services_new RENAME TO services;
+
+CREATE INDEX IF NOT EXISTS idx_services_name ON services(name);
+CREATE INDEX IF NOT EXISTS idx_services_active ON services(active);
+CREATE INDEX IF NOT EXISTS idx_services_category ON services(category_id);
+`,
+	},
+	{
+		Name: "025_expense_services",
+		SQL: `
+-- Hospital expense catalog. New table only. No seed and no change to ot_services or bill tables.
+CREATE TABLE IF NOT EXISTS expense_services (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  code TEXT UNIQUE COLLATE NOCASE,
+  name TEXT NOT NULL,
+  price_mmk INTEGER CHECK (price_mmk IS NULL OR price_mmk >= 0),
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_expense_services_name ON expense_services(name);
+CREATE INDEX IF NOT EXISTS idx_expense_services_active ON expense_services(active);
+`,
+	},
+	{
+		Name: "026_expense_bills",
+		SQL: `
+-- Hospital expense bills. New tables only. The sequence row is a counter, not catalog data.
+-- Line ref_id has no foreign key, matching ot_bill_lines, so a later catalog edit cannot rewrite history.
+CREATE TABLE IF NOT EXISTS expense_bill_number_seq (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  next_num INTEGER NOT NULL
+);
+INSERT OR IGNORE INTO expense_bill_number_seq (id, next_num) VALUES (1, 1);
+
+CREATE TABLE IF NOT EXISTS expense_bills (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  bill_no TEXT NOT NULL UNIQUE,
+  portal TEXT NOT NULL CHECK (portal IN ('opd', 'ot', 'ipd', 'pharmacy')),
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'paid', 'void')),
+  total_mmk INTEGER NOT NULL DEFAULT 0 CHECK (total_mmk >= 0),
+  discount_value INTEGER NOT NULL DEFAULT 0,
+  discount_unit TEXT NOT NULL DEFAULT 'percent',
+  discount_mmk INTEGER NOT NULL DEFAULT 0,
+  paid_at TEXT,
+  paid_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  printed_at TEXT,
+  voided_at TEXT,
+  voided_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  void_reason TEXT NOT NULL DEFAULT '',
+  created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_expense_bills_portal_status ON expense_bills(portal, status);
+CREATE INDEX IF NOT EXISTS idx_expense_bills_paid_at ON expense_bills(paid_at);
+
+CREATE TABLE IF NOT EXISTS expense_bill_lines (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  bill_id INTEGER NOT NULL REFERENCES expense_bills(id) ON DELETE CASCADE,
+  ref_id INTEGER,
+  code TEXT NOT NULL DEFAULT '',
+  description TEXT NOT NULL,
+  qty INTEGER NOT NULL DEFAULT 1 CHECK (qty > 0),
+  unit_price_mmk INTEGER NOT NULL DEFAULT 0 CHECK (unit_price_mmk >= 0),
+  line_total_mmk INTEGER NOT NULL DEFAULT 0 CHECK (line_total_mmk >= 0),
+  sort_order INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_expense_bill_lines_bill ON expense_bill_lines(bill_id);
+`,
+	},
+	{
+		Name:      "027_ot_service_delete",
+		DisableFK: true,
+		SQL: `
+-- Drop the ot_services foreign key so a catalog service can be hard-deleted while
+-- draft case lines keep their stored code and description. Copy every row and id.
+CREATE TABLE ot_case_services_new (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  case_id INTEGER NOT NULL REFERENCES ot_cases(id) ON DELETE CASCADE,
+  service_id INTEGER NOT NULL,
+  code TEXT NOT NULL DEFAULT '',
+  description TEXT NOT NULL DEFAULT '',
+  unit_price_mmk INTEGER CHECK (unit_price_mmk IS NULL OR unit_price_mmk >= 0),
+  sort_order INTEGER NOT NULL DEFAULT 0
+);
+
+INSERT INTO ot_case_services_new (
+  id, case_id, service_id, code, description, unit_price_mmk, sort_order
+)
+SELECT
+  id, case_id, service_id, code, description, unit_price_mmk, sort_order
+FROM ot_case_services;
+
+DROP TABLE ot_case_services;
+ALTER TABLE ot_case_services_new RENAME TO ot_case_services;
+
+CREATE INDEX IF NOT EXISTS idx_ot_case_services_case ON ot_case_services(case_id);
+`,
+	},
+	{
+		Name: "028_user_grants",
+		SQL: `
+-- Opt-in unified access. Existing rows stay portal via the column default.
+-- portal and unified are checked in Go. No check constraint and no user rewrite.
+ALTER TABLE users ADD COLUMN access_mode TEXT NOT NULL DEFAULT 'portal';
+
+CREATE TABLE IF NOT EXISTS user_grants (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  perm TEXT NOT NULL,
+  PRIMARY KEY (user_id, perm)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_grants_user_id ON user_grants(user_id);
+`,
+	},
 }
 
 // Migrate applies pending migrations inside a transaction per migration.

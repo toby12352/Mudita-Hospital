@@ -21,15 +21,22 @@ import {
 import { useI18n } from "@/shared/i18n";
 import { applyUiScale, resetUiScale, zoomIn, zoomOut } from "@/shared/uiScale";
 import "@/shared/styles/App.css";
-import { PortalPicker } from "@/pages/portal/PortalPicker";
+import { AboutPage } from "@/pages/about/AboutPage";
+import { HomePage } from "@/pages/home/HomePage";
 import { AppNavBar } from "./AppNavBar";
+import { ClinicActionsProvider, clinicActionFlags, shortcutVisible } from "./clinicActions";
 import { AuthFrame } from "./AuthFrame";
 import { ChangePasswordForm } from "./ChangePasswordForm";
 import { DeskStatusBar, shortcutsForView } from "./DeskStatusBar";
 import { HelpOverlay } from "./HelpOverlay";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { LoginForm } from "./LoginForm";
-import { landingFor, portalForRole, viewInPortal } from "./portal";
+import {
+  portalForRole,
+  readableClinicModules,
+  resolveShownView,
+  titleKeyForAdmin,
+} from "./portal";
 import { ServerIpButton } from "./ServerIpButton";
 import { ServerSetupForm } from "./ServerSetupForm";
 import type { ConnState, NavIntent, NavSectionId, PortalId, View } from "./types";
@@ -42,6 +49,9 @@ import { PharmacyBillingPage } from "@/pages/pharmacy/PharmacyBillingPage";
 import { PharmacyPage } from "@/pages/pharmacy/PharmacyPage";
 import { PharmacyReturnPage } from "@/pages/pharmacy/PharmacyReturnPage";
 import { PharmacyTransferPage } from "@/pages/pharmacy/PharmacyTransferPage";
+import { ExpenseBillPage } from "@/pages/expenses/ExpenseBillPage";
+import { IpdPage } from "@/pages/ipd/IpdPage";
+import { PatientsPage } from "@/pages/patients/PatientsPage";
 import { SettingsPage } from "@/pages/settings/SettingsPage";
 
 export default function App() {
@@ -53,8 +63,7 @@ export default function App() {
   const [booting, setBooting] = useState(!!getStoredToken());
   const [view, setView] = useState<View>("home");
   const [navIntent, setNavIntent] = useState<NavIntent>({});
-  const [activeSection, setActiveSection] = useState<NavSectionId>("opd");
-  const [adminPortal, setAdminPortal] = useState<PortalId | null>(null);
+  const [activeSection, setActiveSection] = useState<NavSectionId>("home");
   const [navEpoch, setNavEpoch] = useState(0);
   const [authError, setAuthError] = useState<string | null>(null);
   const [needsServerSetup, setNeedsServerSetup] = useState(!isApiConfigured());
@@ -137,8 +146,7 @@ export default function App() {
         setPermissions([]);
         setView("home");
         setNavIntent({});
-        setActiveSection("opd");
-        setAdminPortal(null);
+        setActiveSection("home");
         setAuthError("Locked after 15 minutes idle — please sign in again.");
       })();
     });
@@ -176,13 +184,13 @@ export default function App() {
     setAuthError(null);
     const result = await login(username, password);
     storeSession(result.token, result.user);
-    setUser(result.user);
     try {
       const me = await fetchMe();
-      setPermissions(me.permissions);
       storeSession(result.token, me.user);
       setUser(me.user);
+      setPermissions(me.permissions);
     } catch {
+      setUser(result.user);
       setPermissions([]);
     }
   }
@@ -194,18 +202,21 @@ export default function App() {
     setPermissions([]);
     setView("home");
     setNavIntent({});
-    setActiveSection("opd");
-    setAdminPortal(null);
+    setActiveSection("home");
     setAuthError(null);
   }
 
   async function handlePasswordChanged(result: { token: string; user: User }) {
     storeSession(result.token, result.user);
-    setUser(result.user);
-    const me = await fetchMe();
-    setPermissions(me.permissions);
-    setUser(me.user);
-    storeSession(result.token, me.user);
+    try {
+      const me = await fetchMe();
+      setPermissions(me.permissions);
+      setUser(me.user);
+      storeSession(result.token, me.user);
+    } catch {
+      setUser(result.user);
+      setPermissions([]);
+    }
   }
 
   function finishServerSetup(base: string) {
@@ -215,7 +226,7 @@ export default function App() {
     setAuthError(null);
   }
 
-  function navigate(next: View, intent: NavIntent = {}, section: NavSectionId = "opd") {
+  function navigate(next: View, intent: NavIntent = {}, section: NavSectionId = "home") {
     setView(next);
     setNavIntent(intent);
     setActiveSection(section);
@@ -281,8 +292,12 @@ export default function App() {
     );
   }
 
+  const fullAdmin = user.role === "Admin";
+  const sharedLayout = fullAdmin || user.access_mode === "unified";
   const rolePortal = portalForRole(user.role);
-  if (!rolePortal) {
+  const deskPortal: PortalId | null =
+    !sharedLayout && rolePortal && rolePortal !== "admin" ? rolePortal : null;
+  if (!sharedLayout && !deskPortal) {
     return (
       <AuthFrame title={t("noAccess")} lede={user.role}>
         <button type="button" className="btn ghost" onClick={() => void handleLogout()}>
@@ -292,26 +307,33 @@ export default function App() {
     );
   }
 
-  const portal: PortalId | null = rolePortal === "admin" ? adminPortal : rolePortal;
-  const landing = portal ? landingFor(portal) : null;
-  const aligned = portal ? viewInPortal(view, portal) : false;
-  const shownView = aligned ? view : landing?.view ?? view;
-  const shownIntent = aligned ? navIntent : landing?.intent ?? {};
-  const shownSection = aligned ? activeSection : landing?.section ?? activeSection;
-
-  function enterPortal(next: PortalId) {
-    const dest = landingFor(next);
-    setAdminPortal(next);
-    setView(dest.view);
-    setNavIntent(dest.intent);
-    setActiveSection(dest.section);
-    setNavEpoch((n) => n + 1);
-  }
+  const readable = readableClinicModules(permissions, fullAdmin);
+  const actionFlags = clinicActionFlags({
+    fullAdmin,
+    accessMode: user.access_mode,
+    permissions,
+  });
+  const shown = resolveShownView({
+    sharedLayout,
+    fullAdmin,
+    desk: deskPortal,
+    view,
+    intent: navIntent,
+    section: activeSection,
+    readable,
+  });
+  const shownView = shown.view;
+  const shownIntent = shown.intent;
+  const shownSection = shown.section;
+  const portal = shown.portal;
 
   const opdScreen = shownIntent.opdScreen ?? "bill";
-  const portalTitleKey = portal ?? "portalPickerTitle";
+  const portalTitleKey = sharedLayout
+    ? titleKeyForAdmin(shownView, portal)
+    : deskPortal ?? "navHome";
 
   const pageKey = `${shownView}-${navEpoch}`;
+  const displayName = user.display_name || user.username;
 
   const chromeTrailing = (
     <div className="desk-header-actions">
@@ -336,8 +358,17 @@ export default function App() {
 
   const pageBody = (
     <>
-      {!portal ? <PortalPicker onPick={enterPortal} t={t} /> : null}
-      {portal === "settings" && shownView === "settings" ? (
+      {sharedLayout && shownView === "home" ? (
+        <HomePage
+          key={pageKey}
+          displayName={displayName}
+          modules={readable}
+          showSettings={fullAdmin}
+          t={t}
+        />
+      ) : null}
+      {sharedLayout && shownView === "about" ? <AboutPage key={pageKey} t={t} /> : null}
+      {fullAdmin && portal === "settings" && shownView === "settings" ? (
         <SettingsPage
           key={pageKey}
           canManageUsers={hasPermission(permissions, "manage_users")}
@@ -348,7 +379,6 @@ export default function App() {
       {portal === "pharmacy" && shownView === "pharmacy" ? (
         <PharmacyPage
           key={pageKey}
-          isAdmin={user.role === "Admin"}
           initialScreen={shownIntent.pharmacyScreen ?? "browse"}
         />
       ) : null}
@@ -369,6 +399,9 @@ export default function App() {
           key={pageKey}
           initialMode={shownIntent.billingMode ?? "list"}
         />
+      ) : null}
+      {portal === "pharmacy" && shownView === "pharmacy_expense" ? (
+        <ExpenseBillPage key={pageKey} portal="pharmacy" />
       ) : null}
       {portal === "opd" && shownView === "opd" && (opdScreen === "doctors" || opdScreen === "services") ? (
         <section key={pageKey} className="desk-maintenance">
@@ -402,29 +435,42 @@ export default function App() {
       {portal === "opd" && shownView === "opd" && opdScreen === "bill" ? (
         <OpdPage key={pageKey} initialMode={shownIntent.billingMode ?? "list"} />
       ) : null}
+      {portal === "opd" && shownView === "opd" && opdScreen === "expense" ? (
+        <ExpenseBillPage key={pageKey} portal="opd" />
+      ) : null}
       {portal === "ot" && shownView === "ot" && shownIntent.otMode === "stock" ? (
         <OtMaintenancePage key={pageKey} />
       ) : null}
-      {portal === "ot" && shownView === "ot" && shownIntent.otMode !== "stock" ? (
+      {portal === "ot" && shownView === "ot" && shownIntent.otMode === "expense" ? (
+        <ExpenseBillPage key={pageKey} portal="ot" />
+      ) : null}
+      {portal === "ot" && shownView === "ot" && (shownIntent.otMode ?? "case") === "case" ? (
         <OtPage key={pageKey} />
+      ) : null}
+      {portal === "patients" && shownView === "patients" ? (
+        <PatientsPage key={pageKey} />
+      ) : null}
+      {portal === "ipd" && shownView === "ipd" ? <IpdPage key={pageKey} /> : null}
+      {portal === "ipd" && shownView === "ipd_expense" ? (
+        <ExpenseBillPage key={pageKey} portal="ipd" />
       ) : null}
     </>
   );
 
   return (
+    <ClinicActionsProvider value={actionFlags}>
     <main className="shell shell-wide shell-app shell-desk shell-classic">
-      {portal ? (
-        <AppNavBar
-          portal={portal}
-          showBack={rolePortal === "admin"}
-          view={shownView}
-          navIntent={shownIntent}
-          activeSection={shownSection}
-          onNavigate={navigate}
-          onBack={() => setAdminPortal(null)}
-          t={t}
-        />
-      ) : null}
+      <AppNavBar
+        mode={sharedLayout ? "admin" : "desk"}
+        portal={sharedLayout ? null : deskPortal}
+        readModules={readable}
+        showSettings={fullAdmin}
+        view={shownView}
+        navIntent={shownIntent}
+        activeSection={shownSection}
+        onNavigate={navigate}
+        t={t}
+      />
 
       <div className="desk-main">
         <div className="app-chrome app-chrome--classic">
@@ -439,16 +485,17 @@ export default function App() {
 
         <div className="app-content">{pageBody}</div>
 
-        {portal ? (
-          <DeskStatusBar
-            shortcuts={shortcutsForView(shownView, shownIntent, t)}
-            username={user.display_name || user.username}
-            t={t}
-          />
-        ) : null}
+        <DeskStatusBar
+          shortcuts={shortcutsForView(shownView, shownIntent, t).filter((s) =>
+            shortcutVisible(shownView, s.key, actionFlags),
+          )}
+          username={displayName}
+          t={t}
+        />
       </div>
 
       {helpOpen ? <HelpOverlay onClose={() => setHelpOpen(false)} t={t} /> : null}
     </main>
+    </ClinicActionsProvider>
   );
 }

@@ -44,6 +44,8 @@ const UNIT_I18N: Record<string, string> = {
   oz: "packUnitOz",
   Strip: "packUnitStrip",
   Card: "packUnitCard",
+  Sachet: "packUnitSachet",
+  Pack: "packUnitPack",
 };
 
 function emptyRelation(parent = ""): PackRelation {
@@ -120,9 +122,14 @@ export function PharmacyItemForm({
   const quantityRef = useRef("");
   const quantityUnitIdRef = useRef("");
   const initialUnitsRef = useRef<SaleUnit[]>([]);
+  const relationsRef = useRef(relations);
+  const packingRowRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const packingParentRefs = useRef<(HTMLSelectElement | null)[]>([]);
+  const packingChildRefs = useRef<(HTMLSelectElement | null)[]>([]);
 
   quantityRef.current = quantity;
   quantityUnitIdRef.current = quantityUnitId;
+  relationsRef.current = relations;
 
   function unitLabel(u: string): string {
     const key = UNIT_I18N[u];
@@ -187,6 +194,46 @@ export function PharmacyItemForm({
     openUnitSelect(qtyUnitRef.current);
   }
 
+  /** First blank enabled unit on a packing row when packing count is set. */
+  function packingUnitTarget(index: number): HTMLSelectElement | null {
+    const rows = relationsRef.current;
+    const row = rows[index];
+    if (!row || (row.packing ?? 0) < 1) return null;
+    const parentLocked = index === 1;
+    const parentValue = parentLocked ? rows[0]?.child || row.parent : row.parent;
+    const parentEl = packingParentRefs.current[index] ?? null;
+    const childEl = packingChildRefs.current[index] ?? null;
+    if (!parentValue.trim() && parentEl && !parentEl.disabled) return parentEl;
+    if (!row.child.trim() && childEl && !childEl.disabled) return childEl;
+    return null;
+  }
+
+  function firstPackingUnitNeed(): { index: number; el: HTMLSelectElement } | null {
+    const rows = relationsRef.current;
+    for (let i = 0; i < rows.length; i++) {
+      const el = packingUnitTarget(i);
+      if (el) return { index: i, el };
+    }
+    return null;
+  }
+
+  function finishPacking(index: number) {
+    openUnitSelect(packingUnitTarget(index));
+  }
+
+  function onPackingKeyDown(index: number, e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    finishPacking(index);
+  }
+
+  function onPackingBlur(index: number, e: ReactFocusEvent<HTMLInputElement>) {
+    const next = e.relatedTarget;
+    const rowEl = packingRowRefs.current[index];
+    if (next instanceof Node && rowEl?.contains(next)) return;
+    finishPacking(index);
+  }
+
   function initialNeedsUnitPick(): boolean {
     if (quantityUnitIdRef.current.trim()) return false;
     const n = parseInitialQty(quantityRef.current);
@@ -217,6 +264,17 @@ export function PharmacyItemForm({
       return target instanceof Element && target.closest("button[type='submit']") != null;
     }
     function onPointer(ev: PointerEvent) {
+      const packingNeed = firstPackingUnitNeed();
+      if (packingNeed) {
+        const target = ev.target;
+        if (isSubmitButton(target)) return;
+        const rowEl = packingRowRefs.current[packingNeed.index];
+        if (target instanceof Node && rowEl?.contains(target)) return;
+        if (document.activeElement === packingNeed.el) return;
+        ev.preventDefault();
+        openUnitSelect(packingNeed.el);
+        return;
+      }
       if (!initialNeedsUnitPick()) return;
       const target = ev.target;
       if (isSubmitButton(target)) return;
@@ -226,6 +284,15 @@ export function PharmacyItemForm({
       openInitialUnitSelect();
     }
     function onFocusIn(ev: globalThis.FocusEvent) {
+      const packingNeed = firstPackingUnitNeed();
+      if (packingNeed) {
+        const target = ev.target;
+        if (isSubmitButton(target)) return;
+        const rowEl = packingRowRefs.current[packingNeed.index];
+        if (target instanceof Node && rowEl?.contains(target)) return;
+        openUnitSelect(packingNeed.el);
+        return;
+      }
       if (!initialNeedsUnitPick()) return;
       const target = ev.target;
       if (isSubmitButton(target)) return;
@@ -441,8 +508,18 @@ export function PharmacyItemForm({
               doneRels.length > 0 &&
               !childMatches;
             return (
-              <div className="packing-rel-row" role="row" key={index}>
+              <div
+                className="packing-rel-row"
+                role="row"
+                key={index}
+                ref={(el) => {
+                  packingRowRefs.current[index] = el;
+                }}
+              >
                 <select
+                  ref={(el) => {
+                    packingParentRefs.current[index] = el;
+                  }}
                   value={parentValue}
                   onChange={(e) => {
                     if (parentLocked) return;
@@ -467,12 +544,17 @@ export function PharmacyItemForm({
                     const n = Number(e.target.value);
                     updateRelation(index, { packing: Number.isFinite(n) ? n : 0 });
                   }}
+                  onKeyDown={(e) => onPackingKeyDown(index, e)}
+                  onBlur={(e) => onPackingBlur(index, e)}
                   placeholder="0"
                   disabled={busy}
                   aria-label={t("packPacking")}
                   aria-invalid={markFirstRow && !(row.packing >= 1) ? true : undefined}
                 />
                 <select
+                  ref={(el) => {
+                    packingChildRefs.current[index] = el;
+                  }}
                   value={row.child}
                   onChange={(e) => updateRelation(index, { child: e.target.value })}
                   disabled={busy}

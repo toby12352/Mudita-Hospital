@@ -1,6 +1,8 @@
-/** Classic desk footer: shortcut hints, date, Day (user). */
+/** Classic desk footer: shortcut hints, date, Day (user), copyright. */
 
 export type DeskShortcut = { key: string; label: string };
+
+const AUTHOR = "Tun Aung Thaung";
 
 export function DeskStatusBar({
   shortcuts,
@@ -17,6 +19,10 @@ export function DeskStatusBar({
     month: "long",
     day: "numeric",
   });
+  const year = new Date().getFullYear();
+  const copyright = t("deskCopyright")
+    .replace("{year}", String(year))
+    .replace("{name}", AUTHOR);
 
   return (
     <footer className="desk-status-bar" role="contentinfo">
@@ -32,6 +38,7 @@ export function DeskStatusBar({
       <span className="desk-status-user">
         {t("deskShiftDay")} ({username})
       </span>
+      <span className="desk-status-copyright">{copyright}</span>
     </footer>
   );
 }
@@ -75,6 +82,15 @@ export function shortcutsForView(
       { key: "F10", label: t("cancel") },
       { key: "^F8", label: t("vDelete") },
     ];
+  }
+
+  if (
+    view === "ipd_expense" ||
+    view === "pharmacy_expense" ||
+    (view === "opd" && intent.opdScreen === "expense") ||
+    (view === "ot" && intent.otMode === "expense")
+  ) {
+    return billKeys;
   }
 
   if (view === "pharmacy_billing" || (view === "opd" && (intent.opdScreen ?? "bill") === "bill")) {

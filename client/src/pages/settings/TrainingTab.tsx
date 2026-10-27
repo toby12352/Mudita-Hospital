@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
 import { fetchDemoStatus, resetDemo, seedDemo, type DemoStatus } from "@/features/settings/demo";
+import { AlertDialog } from "@/shared/AlertDialog";
+
 export function TrainingTab({ t }: { t: (k: string) => string }) {
   const [status, setStatus] = useState<DemoStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [confirmResetOpen, setConfirmResetOpen] = useState(false);
 
   async function reload() {
     setStatus(await fetchDemoStatus());
@@ -41,16 +44,17 @@ export function TrainingTab({ t }: { t: (k: string) => string }) {
   }
 
   async function doReset() {
-    if (!window.confirm(t("confirmReset"))) return;
     setBusy(true);
     setError(null);
     setMessage(null);
     try {
       const res = await resetDemo();
+      setConfirmResetOpen(false);
       setMessage(res.message || t("done"));
       await reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : t("error"));
+      setConfirmResetOpen(false);
     } finally {
       setBusy(false);
     }
@@ -75,10 +79,29 @@ export function TrainingTab({ t }: { t: (k: string) => string }) {
           <button type="button" className="btn primary" disabled={busy} onClick={() => void doSeed()}>
             {busy ? t("busy") : t("seedTraining")}
           </button>
-          <button type="button" className="btn action danger" disabled={busy} onClick={() => void doReset()}>
+          <button
+            type="button"
+            className="btn action danger"
+            disabled={busy}
+            onClick={() => setConfirmResetOpen(true)}
+          >
             {t("resetTraining")}
           </button>
         </div>
+      ) : null}
+      {confirmResetOpen ? (
+        <AlertDialog
+          tone="warning"
+          title={t("reset")}
+          message={t("confirmReset")}
+          busy={busy}
+          danger
+          confirmLabel={t("reset")}
+          onClose={() => {
+            if (!busy) setConfirmResetOpen(false);
+          }}
+          onConfirm={() => void doReset()}
+        />
       ) : null}
     </div>
   );

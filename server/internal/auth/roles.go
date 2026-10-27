@@ -6,6 +6,8 @@ const (
 	RoleOPD      = "OPD"
 	RoleOT       = "OT"
 	RolePharmacy = "Pharmacy"
+	RolePatients = "Patients"
+	RoleIPD      = "IPD"
 )
 
 // Permission keys used by RequirePermission / UI gates.
@@ -15,6 +17,8 @@ const (
 	PermOPD         = "opd"
 	PermOT          = "ot"
 	PermPharmacy    = "pharmacy"
+	PermPatients    = "patients"
+	PermIPD         = "ipd"
 )
 
 // rolePermissions is the desk map. Admin has every permission; each desk has one.
@@ -25,6 +29,8 @@ var rolePermissions = map[string]map[string]bool{
 		PermOPD:         true,
 		PermOT:          true,
 		PermPharmacy:    true,
+		PermPatients:    true,
+		PermIPD:         true,
 	},
 	RoleOPD: {
 		PermOPD: true,
@@ -34,6 +40,12 @@ var rolePermissions = map[string]map[string]bool{
 	},
 	RolePharmacy: {
 		PermPharmacy: true,
+	},
+	RolePatients: {
+		PermPatients: true,
+	},
+	RoleIPD: {
+		PermIPD: true,
 	},
 }
 

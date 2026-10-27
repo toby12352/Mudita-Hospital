@@ -7,6 +7,7 @@ import {
   packPriceSlots,
   sellOuterFromSmallest,
 } from "@/features/pharmacy/api";
+import { useClinicActions } from "@/app/clinicActions";
 import { ActionIcon } from "@/shared/ActionIcon";
 import { DatePicker } from "@/shared/DatePicker";
 import { useI18n } from "@/shared/i18n";
@@ -61,6 +62,7 @@ function groupBatches(batches: OtStockBatch[]): CupboardItem[] {
 
 export function OtStockPage() {
   const { t } = useI18n();
+  const { otCreate, otUpdate } = useClinicActions();
   const [batches, setBatches] = useState<OtStockBatch[]>([]);
   const [filterQ, setFilterQ] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -282,6 +284,7 @@ export function OtStockPage() {
                     <span>{batch.batch_no.trim() || t("none")}</span>
                     <span>{batch.qty.toLocaleString()}</span>
                     <span>{batch.expiry_date || t("none")}</span>
+                    {otCreate ? (
                     <form
                       className="ot-stock-return"
                       onSubmit={(e) => void onReturn(e, batch)}
@@ -304,8 +307,11 @@ export function OtStockPage() {
                         {t("returnToPharmacy")}
                       </button>
                     </form>
+                    ) : (
+                      <span />
+                    )}
                   </div>
-                  {!batch.batch_no.trim() || !batch.expiry_date ? (
+                  {otUpdate && (!batch.batch_no.trim() || !batch.expiry_date) ? (
                     <OtLabelFields
                       batchNo={batch.batch_no}
                       expiry={batch.expiry_date ?? ""}

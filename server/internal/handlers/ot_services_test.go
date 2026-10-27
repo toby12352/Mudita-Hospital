@@ -333,3 +333,73 @@ func TestOtDraftCaseServicesRoundTrip(t *testing.T) {
 		t.Fatalf("catalog price changed to %v", catalogPrice.Int64)
 	}
 }
+
+func TestOtServiceDeleteWhileDraftCaseListsIt(t *testing.T) {
+	sqlDB := openTestDB(t)
+	var applied int
+	if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM schema_migrations WHERE name = '027_ot_service_delete'`).Scan(&applied); err != nil {
+		t.Fatal(err)
+	}
+	if applied != 1 {
+		t.Fatal("027_ot_service_delete was not recorded")
+	}
+
+	_, otTok := insertSession(t, sqlDB, "OT", 0)
+	ot := &OT{DB: sqlDB}
+
+	w := doJSON(ot, http.MethodPost, "/api/ot/services", otTok, `{"code":"OTFEE","name":"Theatre fee","price_mmk":100000}`)
+	mustCode(t, w, http.StatusCreated)
+	var svc otService
+	if err := json.Unmarshal(w.Body.Bytes(), &svc); err != nil {
+		t.Fatal(err)
+	}
+
+	body := fmt.Sprintf(`{
+		"patient_name":"Daw Keep",
+		"items":[],
+		"services":[{"ref_id":%d,"unit_price_mmk":120000}]
+	}`, svc.ID)
+	w = doJSON(ot, http.MethodPost, "/api/ot/cases", otTok, body)
+	mustCode(t, w, http.StatusCreated)
+	var created otCase
+	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	if len(created.Services) != 1 || created.Services[0].Description != "Theatre fee" || created.Services[0].Code != "OTFEE" {
+		t.Fatalf("case services %+v", created.Services)
+	}
+
+	w = doJSON(ot, http.MethodPost, fmt.Sprintf("/api/ot/services/%d/delete", svc.ID), otTok, `{}`)
+	mustCode(t, w, http.StatusOK)
+
+	w = doJSON(ot, http.MethodGet, fmt.Sprintf("/api/ot/services/%d", svc.ID), otTok, "")
+	mustCode(t, w, http.StatusNotFound)
+
+	w = doJSON(ot, http.MethodGet, fmt.Sprintf("/api/ot/cases/%d", created.ID), otTok, "")
+	mustCode(t, w, http.StatusOK)
+	var loaded otCase
+	if err := json.Unmarshal(w.Body.Bytes(), &loaded); err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded.Services) != 1 || loaded.Services[0].Description != "Theatre fee" || loaded.Services[0].Code != "OTFEE" {
+		t.Fatalf("case line after catalog delete %+v", loaded.Services)
+	}
+
+	updateBody := fmt.Sprintf(`{
+		"patient_name":"Daw Keep",
+		"items":[],
+		"services":[{"ref_id":%d,"code":"OTFEE","description":"Theatre fee","unit_price_mmk":125000}]
+	}`, svc.ID)
+	w = doJSON(ot, http.MethodPut, fmt.Sprintf("/api/ot/cases/%d", created.ID), otTok, updateBody)
+	mustCode(t, w, http.StatusOK)
+	var updated otCase
+	if err := json.Unmarshal(w.Body.Bytes(), &updated); err != nil {
+		t.Fatal(err)
+	}
+	if len(updated.Services) != 1 || updated.Services[0].Description != "Theatre fee" || updated.Services[0].Code != "OTFEE" {
+		t.Fatalf("save after catalog delete %+v", updated.Services)
+	}
+	if updated.Services[0].UnitPriceMMK == nil || *updated.Services[0].UnitPriceMMK != 125000 {
+		t.Fatalf("price after catalog delete %+v", updated.Services[0])
+	}
+}

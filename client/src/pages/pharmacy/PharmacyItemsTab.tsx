@@ -28,6 +28,7 @@ import {
   type SaleUnit,
   type StockMovement,
 } from "@/features/pharmacy/api";
+import { useClinicActions } from "@/app/clinicActions";
 import { ActionIcon } from "@/shared/ActionIcon";
 import { DatePicker } from "@/shared/DatePicker";
 import { userMessage } from "@/shared/errors";
@@ -55,10 +56,11 @@ const UNIT_I18N: Record<string, string> = {
   oz: "packUnitOz",
   Strip: "packUnitStrip",
   Card: "packUnitCard",
+  Sachet: "packUnitSachet",
+  Pack: "packUnitPack",
 };
 
 export function PharmacyItemsTab({
-  isAdmin,
   onEdit,
   onDelete,
   deleteBusy = false,
@@ -67,7 +69,6 @@ export function PharmacyItemsTab({
   onChanged,
   onRestockPrices,
 }: {
-  isAdmin: boolean;
   onEdit: (item: PharmacyItem) => void;
   onDelete?: () => void;
   deleteBusy?: boolean;
@@ -79,6 +80,7 @@ export function PharmacyItemsTab({
   onRestockPrices?: (draft: RestockPriceDraft | null) => void;
 }) {
   const { t } = useI18n();
+  const { pharmacyCreate, pharmacyUpdate, pharmacyAdjust, pharmacyDelete } = useClinicActions();
   const [q, setQ] = useState("");
   const [list, setList] = useState<PharmacyItem[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -414,15 +416,17 @@ export function PharmacyItemsTab({
         qty_unit?: string;
         batch_no: string;
         expiry_date: string;
-        buy_price_mmk: number;
-        sell_price_mmk: number;
+        buy_price_mmk?: number;
+        sell_price_mmk?: number;
       } = {
         qty,
         batch_no: restockBatchNo.trim(),
         expiry_date: restockExpiry.trim(),
-        buy_price_mmk: Math.max(0, restockBuy || 0),
-        sell_price_mmk: Math.max(0, restockSell || 0),
       };
+      if (pharmacyUpdate) {
+        body.buy_price_mmk = Math.max(0, restockBuy || 0);
+        body.sell_price_mmk = Math.max(0, restockSell || 0);
+      }
       if (chosen) body.qty_unit = chosen.id;
       const item = await restockItem(panelItem.id, body);
       resetRestockFields(item);
@@ -602,14 +606,16 @@ export function PharmacyItemsTab({
                 </p>
               </div>
               <div className="btn-row">
-                <button
-                  type="button"
-                  className="btn ghost"
-                  onClick={() => void openRestock(item.id)}
-                  disabled={busy}
-                >
-                  {t("restock")}
-                </button>
+                {pharmacyCreate || pharmacyAdjust ? (
+                  <button
+                    type="button"
+                    className="btn ghost"
+                    onClick={() => void openRestock(item.id)}
+                    disabled={busy}
+                  >
+                    {t("restock")}
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className="btn ghost"
@@ -618,15 +624,17 @@ export function PharmacyItemsTab({
                 >
                   {t("view")}
                 </button>
-                <button
-                  type="button"
-                  className="btn ghost"
-                  onClick={() => onEdit(item)}
-                  disabled={busy}
-                >
-                  {t("edit")}
-                </button>
-                {item.active ? (
+                {pharmacyUpdate ? (
+                  <button
+                    type="button"
+                    className="btn ghost"
+                    onClick={() => onEdit(item)}
+                    disabled={busy}
+                  >
+                    {t("edit")}
+                  </button>
+                ) : null}
+                {item.active && pharmacyDelete ? (
                   <button
                     type="button"
                     className="btn ghost danger"
@@ -643,27 +651,31 @@ export function PharmacyItemsTab({
       </div>
       ) : (
         <div className="btn-row drug-setup-action-row">
-          <button
-            type="button"
-            className="btn action"
-            disabled={busy || selectedId == null}
-            onClick={() => {
-              if (selectedId == null) return;
-              onEdit(panelItem ?? ({ id: selectedId } as PharmacyItem));
-            }}
-          >
-            <ActionIcon name="edit" />
-            {t("edit")}
-          </button>
-          <button
-            type="button"
-            className={`btn action${panelMode === "restock" ? " on" : ""}`}
-            disabled={busy || selectedId == null}
-            onClick={() => selectedId != null && void openRestock(selectedId)}
-          >
-            <ActionIcon name="box" />
-            {t("restock")}
-          </button>
+          {pharmacyUpdate ? (
+            <button
+              type="button"
+              className="btn action"
+              disabled={busy || selectedId == null}
+              onClick={() => {
+                if (selectedId == null) return;
+                onEdit(panelItem ?? ({ id: selectedId } as PharmacyItem));
+              }}
+            >
+              <ActionIcon name="edit" />
+              {t("edit")}
+            </button>
+          ) : null}
+          {pharmacyCreate || pharmacyAdjust ? (
+            <button
+              type="button"
+              className={`btn action${panelMode === "restock" ? " on" : ""}`}
+              disabled={busy || selectedId == null}
+              onClick={() => selectedId != null && void openRestock(selectedId)}
+            >
+              <ActionIcon name="box" />
+              {t("restock")}
+            </button>
+          ) : null}
           <button
             type="button"
             className={`btn action${panelMode === "view" ? " on" : ""}`}
@@ -673,7 +685,7 @@ export function PharmacyItemsTab({
             <ActionIcon name="clipboard" />
             {t("view")}
           </button>
-          {onDelete ? (
+          {onDelete && pharmacyDelete ? (
             <button
               type="button"
               className="btn action danger"
@@ -684,7 +696,7 @@ export function PharmacyItemsTab({
               {t("delete")}
             </button>
           ) : null}
-          {panelItem?.active ? (
+          {panelItem?.active && pharmacyDelete ? (
             <button
               type="button"
               className="btn action danger"
@@ -697,7 +709,7 @@ export function PharmacyItemsTab({
         </div>
       )}
 
-      {panelItem && panelMode === "restock" ? (
+      {panelItem && panelMode === "restock" && (pharmacyCreate || pharmacyAdjust) ? (
         embedDetail ? (
           <div className="drug-setup-panel">
             <div className="drug-setup-title-row">
@@ -720,6 +732,7 @@ export function PharmacyItemsTab({
               {formatPackPreview(packFromItem(panelItem))}
             </p>
 
+            {pharmacyCreate ? (
             <form className="drug-setup-restock-form" onSubmit={(e) => void onRestock(e)}>
               <div className="drug-setup-panel-form">
                 {(() => {
@@ -791,7 +804,7 @@ export function PharmacyItemsTab({
                   );
                 })()}
               </div>
-              {restockLevels ? (
+              {restockLevels && pharmacyUpdate ? (
                 <PharmacyPriceGrid
                   levels={restockLevels}
                   buyOuter={restockBuy}
@@ -814,8 +827,9 @@ export function PharmacyItemsTab({
                 {t("restock")}
               </button>
             </form>
+            ) : null}
 
-            {isAdmin ? (
+            {pharmacyAdjust ? (
               <form className="drug-setup-panel-form" onSubmit={(e) => void onAdjust(e)}>
                 <h3 className="drug-setup-title drug-setup-panel-title">{t("adminAdjust")}</h3>
                 {(() => {
@@ -926,6 +940,7 @@ export function PharmacyItemsTab({
               {formatPackPreview(packFromItem(panelItem))}
             </p>
 
+            {pharmacyCreate ? (
             <form className="nested-form" onSubmit={(e) => void onRestock(e)}>
               <h3 className="section-title">{t("restock")}</h3>
               {(() => {
@@ -995,7 +1010,7 @@ export function PharmacyItemsTab({
                   </>
                 );
               })()}
-              {restockLevels ? (
+              {restockLevels && pharmacyUpdate ? (
                 <PharmacyPriceGrid
                   levels={restockLevels}
                   buyOuter={restockBuy}
@@ -1018,8 +1033,9 @@ export function PharmacyItemsTab({
                 {t("restock")}
               </button>
             </form>
+            ) : null}
 
-            {isAdmin ? (
+            {pharmacyAdjust ? (
               <form className="nested-form" onSubmit={(e) => void onAdjust(e)}>
                 <h3 className="section-title">{t("adminAdjust")}</h3>
                 {(() => {
@@ -1158,7 +1174,7 @@ export function PharmacyItemsTab({
                   <span>{b.qty.toLocaleString()}</span>
                   <span>{b.expiry_date || t("none")}</span>
                   <span>
-                    {b.location_code === "MAIN" && batchNeedsLabel(b.batch_no, b.expiry_date) ? (
+                    {pharmacyUpdate && b.location_code === "MAIN" && batchNeedsLabel(b.batch_no, b.expiry_date) ? (
                       <LabelBatchFields
                         batchNo={b.batch_no}
                         expiry={b.expiry_date ?? ""}
@@ -1228,7 +1244,7 @@ export function PharmacyItemsTab({
                       {t("batch")} {b.batch_no || "—"} · {t("expiry")} {b.expiry_date || t("none")}
                     </p>
                   </div>
-                  {b.location_code === "MAIN" && batchNeedsLabel(b.batch_no, b.expiry_date) ? (
+                  {pharmacyUpdate && b.location_code === "MAIN" && batchNeedsLabel(b.batch_no, b.expiry_date) ? (
                     <LabelBatchFields
                       batchNo={b.batch_no}
                       expiry={b.expiry_date ?? ""}

@@ -10,7 +10,9 @@ Print this page (or use **Help → Print cheat sheet** in the app) and laminate 
    - OPD: `opd`
    - OT: `ot`
    - Pharmacy: `pharmacy`
-   - Admin: `admin` — pick OPD, OT, Pharmacy, or Settings, and step back without a second login
+   - Patients: `patients` — charts and visit history
+   - IPD: `ipd` — stays, deposits, and discharge
+   - Admin: `admin` — pick a portal or Settings, and step back without a second login
 4. Idle ~15 minutes → auto lock. Switch language **English / မြန်မာ** in the top bar.
 5. History on a desk lists that desk's bills only. Another desk's cash is not on this screen.
 
@@ -38,18 +40,30 @@ Print this page (or use **Help → Print cheat sheet** in the app) and laminate 
 4. **Restock** an existing code (unknown codes must be created first).
 5. Low stock and near expiry are **MAIN** pharmacy stock. Send saleable stock from **Transfer to OT**, between Return in and Maintenance.
 
-## 5. Reports
+## Expense bills
+
+Each desk (OPD, OT, IPD, and Pharmacy) has **Expense bill** directly under its main bill, and under **Stays** on IPD. Lines come from **Settings → Expenses**. The price typed on the line is the price that is charged. Discount, draft, pay, print, void, and history match the OPD desk. Each desk lists only its own expense bills.
+
+## 5. Patients, IPD, and Charge to IPD
+
+1. **Patients** — search or create a chart. History lists OPD, pharmacy, OT, and IPD for that chart only. To link an old bill that has no chart, type that bill number and **Attach bill**. One bill. The total does not change. A transfer slip (`TO-`) cannot be attached.
+2. **IPD** — admit one open stay. **Take deposit** and **Post ward charge**. **Charge to IPD** is on the OPD, OT, or pharmacy sale desk, beside **Mark Paid**, and only when that chart has an open stay. **Mark Paid** stays cash. A charged bill is not desk cash.
+3. **Discharge** — a positive balance refunds the remainder, a negative balance collects what is owed, and zero writes no cash line. The stay is then settled and the balance is 0. Print the statement. Later deposits and charges are refused.
+4. **IPD daily cash** on the IPD portal counts deposits, collections, and refunds. The admin dashboard shows that net as one IPD total. Desk daily cash is still paid cash bills only.
+
+## 6. Reports
 
 | Report | Who | What |
 |--------|-----|------|
-| Daily cash | That desk | Paid bills for that portal only |
-| Combined daily cash | Admin dashboard | Paid OPD + OT + pharmacy for a date |
+| Daily cash | That desk | Paid cash bills for that portal only. Charged-to-IPD bills are excluded |
+| IPD daily cash | IPD | Deposits, collections, and refunds |
+| Combined daily cash | Admin dashboard | Paid OPD + OT + pharmacy cash, plus one IPD cash total |
 | Low stock | Pharmacy / Admin | MAIN qty ≤ reorder level |
 | Near expiry | Pharmacy / Admin | MAIN batches expiring within N days |
 
 The admin dashboard is the day book for the whole hospital. A clinic desk does not open another portal's bills.
 
-## 6. Daily ops
+## 7. Daily ops
 
 - Morning: confirm green **Server connected**.
 - Admin → Settings → **Backup** (also copy backup folder to USB weekly — see [DEPLOY.md](./DEPLOY.md)).
@@ -63,4 +77,6 @@ The admin dashboard is the day book for the whole hospital. A clinic desk does n
 2. **OPD** — လူနာ + ဆရာဝန် → ဝန်ဆောင်မှု → Confirm (မူကြမ်း) / Print (ပေးချေ + ပရင့်) (TM-T82 / 80 mm)။ ဆေးသည် ဆေးဆိုင်တွင်။
 3. **OT** — ဆေးဆိုင်က Transfer to OT ဖြင့် ဆေးဗီရိုသို့ ပို့ → ဘေလ်ဆွဲ → ငွေသားပေး (လက်ကျန်ကျ) → မသုံးတာ ပြန်ပို့။
 4. **ဆေးဆိုင်** — ကုဒ်ရှာ → restock / item အသစ် → OT သို့ လွှဲ။
-5. **အစီရင်ခံစာ** — မိမိဘေလ်သာ။ ဆေးရုံတစ်ခုလုံး ငွေစုသည် Admin ဒက်ရှ်ဘုတ်။
+4b. **အသုံးစရိတ် ဘေလ်** — OPD, OT, IPD, ဆေးဆိုင် ဘေလ်အောက်တွင်။ စာကြောင်းများသည် Settings → Expenses မှ။ ရိုက်ထည့်သော ဈေးကို ကောက်ခံသည်။
+5. **လူနာ / IPD** — ဇယားနှင့် ရာဇဝင်။ ဘေလ်ကို IPD သို့ တင်လျှင် ကောင်တာငွေ မဟုတ်။ ဆင်းခွင့်တွင် ပြန်အမ်း သို့မဟုတ် ကောက်ခံ။ ဘေလ်နံပါတ်ဖြင့် ဇယားတွဲလျှင် စုစုပေါင်း မပြောင်း။
+6. **အစီရင်ခံစာ** — ကောင်တာငွေသည် မိမိပေးပြီးဘေလ်။ IPD ငွေသည် အပ်ငွေ၊ ကောက်ခံ၊ ပြန်အမ်း။ Admin ဒက်ရှ်ဘုတ်တွင် IPD စုတစ်ခု။

@@ -23,6 +23,10 @@ export type TypeaheadProps<T> = {
   inputRef?: Ref<HTMLInputElement>;
   /** Accessible name when `label` is omitted (inside a grid cell). */
   ariaLabel?: string;
+  autoFocus?: boolean;
+  /** Desk shortcut target, for example `bill-patient`. */
+  dataFocus?: string;
+  required?: boolean;
 };
 
 export function Typeahead<T>({
@@ -44,6 +48,9 @@ export function Typeahead<T>({
   autoComplete = "off",
   inputRef,
   ariaLabel,
+  autoFocus = false,
+  dataFocus,
+  required = false,
 }: TypeaheadProps<T>) {
   const listId = useId();
   const effectiveMinChars = Math.max(1, minChars);
@@ -111,6 +118,9 @@ export function Typeahead<T>({
         disabled={disabled}
         placeholder={placeholder}
         autoComplete={autoComplete}
+        autoFocus={autoFocus}
+        required={required}
+        data-focus={dataFocus}
         aria-label={label ? undefined : ariaLabel}
         role="combobox"
         aria-expanded={open}

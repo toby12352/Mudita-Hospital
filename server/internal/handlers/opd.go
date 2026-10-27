@@ -46,6 +46,8 @@ type opdBill struct {
 	DiscountUnit    string        `json:"discount_unit"`
 	DiscountMMK     int64         `json:"discount_mmk"`
 	PrintedAt       *string       `json:"printed_at,omitempty"`
+	AdmissionID     *int64        `json:"admission_id,omitempty"`
+	CollectedCash   int           `json:"collected_cash"`
 	PaidAt          *string       `json:"paid_at,omitempty"`
 	PaidByUserID    *int64        `json:"paid_by_user_id,omitempty"`
 	VoidedAt        *string       `json:"voided_at,omitempty"`
@@ -69,6 +71,7 @@ type opdBillWriteRequest struct {
 	SavePatient     bool          `json:"save_patient"`
 	DiscountValue   int64         `json:"discount_value"`
 	DiscountUnit    string        `json:"discount_unit"`
+	PatientID       *int64        `json:"patient_id,omitempty"`
 }
 
 type voidRequest struct {
@@ -104,6 +107,9 @@ func (h *OPD) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if path == "" {
 			path = "/"
 		}
+		if !allowCell(h.DB, w, r, opdGrant(r.Method, path)) {
+			return
+		}
 
 		switch {
 		case path == "/catalog/doctors" && r.Method == http.MethodGet:
@@ -130,6 +136,8 @@ func (h *OPD) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.getBill(w, r, path)
 		case strings.HasPrefix(path, "/bills/") && r.Method == http.MethodPut:
 			h.updateBill(w, r, path)
+		case strings.HasPrefix(path, "/bills/") && r.Method == http.MethodDelete:
+			h.purgeBill(w, r, path)
 		default:
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		}
@@ -183,19 +191,19 @@ func (h *OPD) catalogServices(w http.ResponseWriter, r *http.Request) {
 	var err error
 	if code != "" {
 		rows, err = h.DB.Query(`
-			SELECT id, code, name, price_mmk FROM services
+			SELECT id, COALESCE(code, ''), name, price_mmk FROM services
 			WHERE active = 1 AND code = ? COLLATE NOCASE
 		`, code)
 	} else if q != "" {
 		like := "%" + q + "%"
 		rows, err = h.DB.Query(`
-			SELECT id, code, name, price_mmk FROM services
+			SELECT id, COALESCE(code, ''), name, price_mmk FROM services
 			WHERE active = 1 AND (code LIKE ? OR name LIKE ?)
 			ORDER BY name COLLATE NOCASE LIMIT 50
 		`, like, like)
 	} else {
 		rows, err = h.DB.Query(`
-			SELECT id, code, name, price_mmk FROM services
+			SELECT id, COALESCE(code, ''), name, price_mmk FROM services
 			WHERE active = 1
 			ORDER BY name COLLATE NOCASE LIMIT 100
 		`)
@@ -283,7 +291,7 @@ func (h *OPD) listBills(w http.ResponseWriter, r *http.Request) {
 		SELECT id, bill_no, patient_id, patient_name, patient_phone, patient_age_years, patient_gender,
 			doctor_id, doctor_name, description, status, total_mmk, paid_at, paid_by_user_id,
 			voided_at, voided_by_user_id, void_reason, created_by_user_id, created_at, updated_at,
-			discount_value, discount_unit, discount_mmk, printed_at
+			discount_value, discount_unit, discount_mmk, printed_at, admission_id, collected_cash
 		FROM opd_bills
 	`
 	args := make([]any, 0)
@@ -297,10 +305,21 @@ func (h *OPD) listBills(w http.ResponseWriter, r *http.Request) {
 		where = append(where, "(bill_no LIKE ? OR patient_name LIKE ? OR patient_phone LIKE ?)")
 		args = append(args, like, like, like)
 	}
+	var errMsg string
+	where, args, errMsg = appendBillHistoryFilters(where, args, r, "status", "printed_at", "created_at", "")
+	if errMsg != "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": errMsg})
+		return
+	}
 	if len(where) > 0 {
 		query += " WHERE " + strings.Join(where, " AND ")
 	}
-	query += " ORDER BY created_at DESC, id DESC LIMIT 100"
+	orderSQL, orderErr := billHistoryOrderBy(r, "created_at", "id")
+	if orderErr != "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": orderErr})
+		return
+	}
+	query += orderSQL
 
 	rows, err := h.DB.Query(query, args...)
 	if err != nil {
@@ -356,14 +375,16 @@ func (h *OPD) createBill(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var patientID *int64
-	if req.SavePatient {
-		pid, err := upsertPatient(tx, req)
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "patient save failed"})
-			return
-		}
-		patientID = &pid
+	patientID, err := resolveDeskPatient(tx, req.PatientID, req.SavePatient, req.PatientName, req.PatientPhone, req.PatientGender, req.PatientAgeYears, func() (int64, error) {
+		return upsertPatient(tx, req)
+	})
+	if err == sql.ErrNoRows {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "patient not found"})
+		return
+	}
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "patient save failed"})
+		return
 	}
 
 	billNo, err := nextBillNo(tx)
@@ -482,14 +503,16 @@ func (h *OPD) updateBill(w http.ResponseWriter, r *http.Request, path string) {
 		return
 	}
 
-	var patientID *int64
-	if req.SavePatient {
-		pid, err := upsertPatient(tx, req)
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "patient save failed"})
-			return
-		}
-		patientID = &pid
+	patientID, err := resolveDeskPatient(tx, req.PatientID, req.SavePatient, req.PatientName, req.PatientPhone, req.PatientGender, req.PatientAgeYears, func() (int64, error) {
+		return upsertPatient(tx, req)
+	})
+	if err == sql.ErrNoRows {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "patient not found"})
+		return
+	}
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "patient save failed"})
+		return
 	}
 
 	if _, err := tx.Exec(`
@@ -589,6 +612,10 @@ func (h *OPD) payBill(w http.ResponseWriter, r *http.Request, path string) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid id"})
 		return
 	}
+	body, err := decodePayBody(r)
+	if rejectPayBody(w, err) {
+		return
+	}
 
 	tx, err := h.DB.Begin()
 	if err != nil {
@@ -597,8 +624,10 @@ func (h *OPD) payBill(w http.ResponseWriter, r *http.Request, path string) {
 	}
 	defer tx.Rollback()
 
-	var status string
-	err = tx.QueryRow(`SELECT status FROM opd_bills WHERE id = ?`, id).Scan(&status)
+	var status, billNo string
+	var patientID sql.NullInt64
+	var total int64
+	err = tx.QueryRow(`SELECT status, bill_no, patient_id, total_mmk FROM opd_bills WHERE id = ?`, id).Scan(&status, &billNo, &patientID, &total)
 	if err == sql.ErrNoRows {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		return
@@ -609,6 +638,10 @@ func (h *OPD) payBill(w http.ResponseWriter, r *http.Request, path string) {
 	}
 	if status != "draft" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "only draft bills can be paid"})
+		return
+	}
+	charge := bindSaleCharge(tx, patientID, body.AdmissionID)
+	if charge.reject(w) {
 		return
 	}
 
@@ -635,7 +668,7 @@ func (h *OPD) payBill(w http.ResponseWriter, r *http.Request, path string) {
 		_ = allocs
 	}
 
-	n, err := execPayDraft(tx, "opd_bills", id, uid)
+	n, err := execPayDraft(tx, "opd_bills", id, uid, charge.AdmissionID)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "pay failed"})
 		return
@@ -644,12 +677,23 @@ func (h *OPD) payBill(w http.ResponseWriter, r *http.Request, path string) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "only draft bills can be paid"})
 		return
 	}
+	if charge.AdmissionID != nil {
+		if err := postLedgerTx(tx, *charge.AdmissionID, "charge", -total, "opd", id, billNo, uid); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "pay failed"})
+			return
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "commit failed"})
 		return
 	}
 
-	audit.WriteAudit(h.DB, &uid, "pay", "opd_bill", &id, map[string]any{"method": "cash"})
+	detail := map[string]any{"method": "cash"}
+	if charge.AdmissionID != nil {
+		detail["method"] = "ipd"
+		detail["admission_id"] = *charge.AdmissionID
+	}
+	audit.WriteAudit(h.DB, &uid, "pay", "opd_bill", &id, detail)
 
 	bill, err := loadOpdBill(h.DB, id)
 	if err != nil {
@@ -657,6 +701,67 @@ func (h *OPD) payBill(w http.ResponseWriter, r *http.Request, path string) {
 		return
 	}
 	writeJSON(w, http.StatusOK, bill)
+}
+
+func (h *OPD) purgeBill(w http.ResponseWriter, r *http.Request, path string) {
+	user, ok := requireAdminUser(w, r)
+	if !ok {
+		return
+	}
+	id, ok := parseID(strings.TrimPrefix(path, "/bills"))
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid id"})
+		return
+	}
+
+	tx, err := h.DB.Begin()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "tx failed"})
+		return
+	}
+	defer tx.Rollback()
+
+	var status, billNo string
+	var totalMMK int64
+	err = tx.QueryRow(`SELECT status, bill_no, total_mmk FROM opd_bills WHERE id = ?`, id).Scan(&status, &billNo, &totalMMK)
+	if err == sql.ErrNoRows {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return
+	}
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "load failed"})
+		return
+	}
+	if rejectPurgeStatus(w, status) {
+		return
+	}
+	if err := purgeBillLedgerTx(tx, "opd", id); err != nil {
+		if err == errLedgerNotBalanced {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "ledger not balanced"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "ledger purge failed"})
+		return
+	}
+	res, err := tx.Exec(`DELETE FROM opd_bills WHERE id = ?`, id)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "delete failed"})
+		return
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "commit failed"})
+		return
+	}
+	uid := user.ID
+	audit.WriteAudit(h.DB, &uid, "delete", "opd_bill", &id, map[string]any{
+		"bill_no": billNo, "was_status": status, "total_mmk": totalMMK,
+	})
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 func (h *OPD) voidBill(w http.ResponseWriter, r *http.Request, path string) {
@@ -687,7 +792,8 @@ func (h *OPD) voidBill(w http.ResponseWriter, r *http.Request, path string) {
 	defer tx.Rollback()
 
 	var status, billNo string
-	err = tx.QueryRow(`SELECT status, bill_no FROM opd_bills WHERE id = ?`, id).Scan(&status, &billNo)
+	var admissionID sql.NullInt64
+	err = tx.QueryRow(`SELECT status, bill_no, admission_id FROM opd_bills WHERE id = ?`, id).Scan(&status, &billNo, &admissionID)
 	if err == sql.ErrNoRows {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		return
@@ -702,6 +808,12 @@ func (h *OPD) voidBill(w http.ResponseWriter, r *http.Request, path string) {
 	}
 
 	uid := user.ID
+
+	if status == "paid" && admissionID.Valid {
+		if ensureOpenStay(tx, admissionID.Int64).reject(w) {
+			return
+		}
+	}
 
 	if status == "paid" {
 		rows, err := tx.Query(`
@@ -739,6 +851,16 @@ func (h *OPD) voidBill(w http.ResponseWriter, r *http.Request, path string) {
 				VALUES (?, ?, 'MAIN', 'RETURN', ?, ?, ?)
 			`, a.itemID, a.batchID, a.qty, reason, uid); err != nil {
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "movement failed"})
+				return
+			}
+		}
+		if admissionID.Valid {
+			if err := reverseLedgerTx(tx, admissionID.Int64, "opd", id, uid, billNo); err != nil {
+				msg := "void failed"
+				if err == sql.ErrNoRows {
+					msg = "ledger line missing"
+				}
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": msg})
 				return
 			}
 		}
@@ -920,7 +1042,7 @@ func normalizeBillLines(q queryRower, doctorID *int64, doctorName string, in []o
 			var price int64
 			var active int
 			err := q.QueryRow(`
-				SELECT code, name, price_mmk, active FROM services WHERE id = ?
+				SELECT COALESCE(code, ''), name, price_mmk, active FROM services WHERE id = ?
 			`, *l.RefID).Scan(&code, &name, &price, &active)
 			if err == sql.ErrNoRows {
 				return nil, 0, "service not found"
@@ -1049,7 +1171,7 @@ func loadOpdBill(db *sql.DB, id int64) (opdBill, error) {
 		SELECT id, bill_no, patient_id, patient_name, patient_phone, patient_age_years, patient_gender,
 			doctor_id, doctor_name, description, status, total_mmk, paid_at, paid_by_user_id,
 			voided_at, voided_by_user_id, void_reason, created_by_user_id, created_at, updated_at,
-			discount_value, discount_unit, discount_mmk, printed_at
+			discount_value, discount_unit, discount_mmk, printed_at, admission_id, collected_cash
 		FROM opd_bills WHERE id = ?
 	`, id)
 	b, err := scanOpdBill(row)
@@ -1086,14 +1208,14 @@ type scannable interface {
 
 func scanOpdBill(row scannable) (opdBill, error) {
 	var b opdBill
-	var patientID, doctorID, paidBy, voidedBy, createdBy sql.NullInt64
+	var patientID, doctorID, paidBy, voidedBy, createdBy, admissionID sql.NullInt64
 	var age sql.NullInt64
 	var paidAt, voidedAt, printedAt sql.NullString
 	err := row.Scan(
 		&b.ID, &b.BillNo, &patientID, &b.PatientName, &b.PatientPhone, &age, &b.PatientGender,
 		&doctorID, &b.DoctorName, &b.Description, &b.Status, &b.TotalMMK, &paidAt, &paidBy,
 		&voidedAt, &voidedBy, &b.VoidReason, &createdBy, &b.CreatedAt, &b.UpdatedAt,
-		&b.DiscountValue, &b.DiscountUnit, &b.DiscountMMK, &printedAt,
+		&b.DiscountValue, &b.DiscountUnit, &b.DiscountMMK, &printedAt, &admissionID, &b.CollectedCash,
 	)
 	if err != nil {
 		return b, err
@@ -1133,6 +1255,10 @@ func scanOpdBill(row scannable) (opdBill, error) {
 	if printedAt.Valid && printedAt.String != "" {
 		v := printedAt.String
 		b.PrintedAt = &v
+	}
+	if admissionID.Valid {
+		v := admissionID.Int64
+		b.AdmissionID = &v
 	}
 	return b, nil
 }

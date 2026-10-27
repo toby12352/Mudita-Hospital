@@ -12,13 +12,30 @@ import (
 	"mudita-hospital/server/internal/middleware"
 )
 
-// Dashboard serves Admin-only analytics aggregations under /api/dashboard/.
+// Dashboard serves analytics under /api/dashboard/.
+// Admin, or a unified account with the dashboard grant, may call it.
+// The grant does not open clinic settings or user management.
 type Dashboard struct {
 	DB *sql.DB
 }
 
 func (h *Dashboard) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	middleware.RequirePermission(h.DB, auth.PermSettings, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	middleware.RequireAuth(h.DB, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user := middleware.UserFromContext(r.Context())
+		if user == nil {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+			return
+		}
+		// dashboard is its own grant. It does not satisfy settings.
+		ok, err := auth.Allow(h.DB, user.ID, auth.GrantDashboard)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "permission check failed"})
+			return
+		}
+		if !ok {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+			return
+		}
 		path := strings.TrimPrefix(r.URL.Path, "/api/dashboard")
 		path = strings.TrimSuffix(path, "/")
 		if path == "" {
@@ -40,6 +57,8 @@ func (h *Dashboard) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.stock(w, r)
 		case path == "/daily-report" && r.Method == http.MethodGet:
 			h.dailyReport(w, r)
+		case path == "/daily-report/print" && r.Method == http.MethodGet:
+			h.dailyReportPrint(w, r)
 		case path == "/audit" && r.Method == http.MethodGet:
 			h.listAudit(w, r)
 		case path == "/bulk/items" && r.Method == http.MethodPost:
@@ -81,6 +100,10 @@ type dashOverview struct {
 	LowStockCount    int    `json:"low_stock_count"`
 	NearExpiryCount  int    `json:"near_expiry_count"`
 	NearExpiryDays   int    `json:"near_expiry_days"`
+	IpdCashMMK       int64  `json:"ipd_cash_mmk"`
+	IncomeMMK        int64  `json:"income_mmk"`
+	ExpenseMMK       int64  `json:"expense_mmk"`
+	NetCashMMK       int64  `json:"net_cash_mmk"`
 }
 
 type trendPoint struct {
@@ -90,6 +113,10 @@ type trendPoint struct {
 	PharmacyTotalMMK int64  `json:"pharmacy_total_mmk"`
 	GrandTotalMMK    int64  `json:"grand_total_mmk"`
 	BillCount        int    `json:"bill_count"`
+	IpdCashMMK       int64  `json:"ipd_cash_mmk"`
+	IncomeMMK        int64  `json:"income_mmk"`
+	ExpenseMMK       int64  `json:"expense_mmk"`
+	NetCashMMK       int64  `json:"net_cash_mmk"`
 }
 
 type doctorRevenueRow struct {
@@ -132,7 +159,7 @@ type pharmacyMarginReport struct {
 
 func (h *Dashboard) overview(w http.ResponseWriter, r *http.Request) {
 	date := reportDate(r)
-	cash, err := buildDailyCash(h.DB, date)
+	move, err := buildCashMovement(h.DB, date)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "overview failed"})
 		return
@@ -153,6 +180,7 @@ func (h *Dashboard) overview(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "overview failed"})
 		return
 	}
+	cash := move.Desk
 	billCount := cash.OPDCount + cash.OTCount + cash.PharmacyCount
 	var avg int64
 	if billCount > 0 {
@@ -173,6 +201,10 @@ func (h *Dashboard) overview(w http.ResponseWriter, r *http.Request) {
 		LowStockCount:    len(low),
 		NearExpiryCount:  len(near),
 		NearExpiryDays:   nearDays,
+		IpdCashMMK:       move.IPD.NetMMK,
+		IncomeMMK:        move.IncomeMMK,
+		ExpenseMMK:       move.ExpenseMMK,
+		NetCashMMK:       move.NetCashMMK,
 	})
 }
 
@@ -295,28 +327,40 @@ type stockHealthReport struct {
 }
 
 type dailyReportResponse struct {
-	Date              string     `json:"date"`
-	Yesterday         string     `json:"yesterday"`
-	OPDCount          int        `json:"opd_count"`
-	OPDTotalMMK       int64      `json:"opd_total_mmk"`
-	OTCount           int        `json:"ot_count"`
-	OTTotalMMK        int64      `json:"ot_total_mmk"`
-	PharmacyCount     int        `json:"pharmacy_count"`
-	PharmacyTotalMMK  int64      `json:"pharmacy_total_mmk"`
-	GrandTotalMMK     int64      `json:"grand_total_mmk"`
-	BillCount         int        `json:"bill_count"`
-	Voids             int        `json:"voids"`
-	Lines             []cashLine `json:"lines"`
-	PrevOPDTotal      int64      `json:"prev_opd_total_mmk"`
-	PrevOTTotal       int64      `json:"prev_ot_total_mmk"`
-	PrevPharmacyTotal int64      `json:"prev_pharmacy_total_mmk"`
-	PrevGrandTotal    int64      `json:"prev_grand_total_mmk"`
-	PrevBillCount     int        `json:"prev_bill_count"`
-	DeltaOPDMMK       int64      `json:"delta_opd_mmk"`
-	DeltaOTMMK        int64      `json:"delta_ot_mmk"`
-	DeltaPharmacyMMK  int64      `json:"delta_pharmacy_mmk"`
-	DeltaGrandMMK     int64      `json:"delta_grand_mmk"`
-	DeltaBills        int        `json:"delta_bills"`
+	Date              string            `json:"date"`
+	Yesterday         string            `json:"yesterday"`
+	OPDCount          int               `json:"opd_count"`
+	OPDTotalMMK       int64             `json:"opd_total_mmk"`
+	OTCount           int               `json:"ot_count"`
+	OTTotalMMK        int64             `json:"ot_total_mmk"`
+	PharmacyCount     int               `json:"pharmacy_count"`
+	PharmacyTotalMMK  int64             `json:"pharmacy_total_mmk"`
+	GrandTotalMMK     int64             `json:"grand_total_mmk"`
+	BillCount         int               `json:"bill_count"`
+	Voids             int               `json:"voids"`
+	Lines             []cashLine        `json:"lines"`
+	PrevOPDTotal      int64             `json:"prev_opd_total_mmk"`
+	PrevOTTotal       int64             `json:"prev_ot_total_mmk"`
+	PrevPharmacyTotal int64             `json:"prev_pharmacy_total_mmk"`
+	PrevGrandTotal    int64             `json:"prev_grand_total_mmk"`
+	PrevBillCount     int               `json:"prev_bill_count"`
+	DeltaOPDMMK       int64             `json:"delta_opd_mmk"`
+	DeltaOTMMK        int64             `json:"delta_ot_mmk"`
+	DeltaPharmacyMMK  int64             `json:"delta_pharmacy_mmk"`
+	DeltaGrandMMK     int64             `json:"delta_grand_mmk"`
+	DeltaBills        int               `json:"delta_bills"`
+	IncomeMMK         int64             `json:"income_mmk"`
+	ExpenseMMK        int64             `json:"expense_mmk"`
+	NetCashMMK        int64             `json:"net_cash_mmk"`
+	PrevIncomeMMK     int64             `json:"prev_income_mmk"`
+	PrevExpenseMMK    int64             `json:"prev_expense_mmk"`
+	PrevNetCashMMK    int64             `json:"prev_net_cash_mmk"`
+	DeltaIncomeMMK    int64             `json:"delta_income_mmk"`
+	DeltaExpenseMMK   int64             `json:"delta_expense_mmk"`
+	DeltaNetCashMMK   int64             `json:"delta_net_cash_mmk"`
+	IpdCashMMK        int64             `json:"ipd_cash_mmk"`
+	IpdLines          []ipdCashLine     `json:"ipd_lines"`
+	ExpenseLines      []expenseCashLine `json:"expense_lines"`
 }
 
 func (h *Dashboard) stock(w http.ResponseWriter, r *http.Request) {
@@ -356,12 +400,12 @@ func (h *Dashboard) dailyReport(w http.ResponseWriter, r *http.Request) {
 	}
 	yesterday := dateT.AddDate(0, 0, -1).Format("2006-01-02")
 
-	today, err := buildDailyCash(h.DB, date)
+	today, err := buildCashMovement(h.DB, date)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "daily-report failed"})
 		return
 	}
-	prev, err := buildDailyCash(h.DB, yesterday)
+	prev, err := buildCashMovement(h.DB, yesterday)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "daily-report failed"})
 		return
@@ -371,32 +415,64 @@ func (h *Dashboard) dailyReport(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "daily-report failed"})
 		return
 	}
-	billCount := today.OPDCount + today.OTCount + today.PharmacyCount
-	prevBills := prev.OPDCount + prev.OTCount + prev.PharmacyCount
+	cash := today.Desk
+	prevCash := prev.Desk
+	billCount := cash.OPDCount + cash.OTCount + cash.PharmacyCount
+	prevBills := prevCash.OPDCount + prevCash.OTCount + prevCash.PharmacyCount
 	writeJSON(w, http.StatusOK, dailyReportResponse{
 		Date:              date,
 		Yesterday:         yesterday,
-		OPDCount:          today.OPDCount,
-		OPDTotalMMK:       today.OPDTotal,
-		OTCount:           today.OTCount,
-		OTTotalMMK:        today.OTTotal,
-		PharmacyCount:     today.PharmacyCount,
-		PharmacyTotalMMK:  today.PharmacyTotal,
-		GrandTotalMMK:     today.GrandTotal,
+		OPDCount:          cash.OPDCount,
+		OPDTotalMMK:       cash.OPDTotal,
+		OTCount:           cash.OTCount,
+		OTTotalMMK:        cash.OTTotal,
+		PharmacyCount:     cash.PharmacyCount,
+		PharmacyTotalMMK:  cash.PharmacyTotal,
+		GrandTotalMMK:     cash.GrandTotal,
 		BillCount:         billCount,
 		Voids:             voids,
-		Lines:             today.Lines,
-		PrevOPDTotal:      prev.OPDTotal,
-		PrevOTTotal:       prev.OTTotal,
-		PrevPharmacyTotal: prev.PharmacyTotal,
-		PrevGrandTotal:    prev.GrandTotal,
+		Lines:             cash.Lines,
+		PrevOPDTotal:      prevCash.OPDTotal,
+		PrevOTTotal:       prevCash.OTTotal,
+		PrevPharmacyTotal: prevCash.PharmacyTotal,
+		PrevGrandTotal:    prevCash.GrandTotal,
 		PrevBillCount:     prevBills,
-		DeltaOPDMMK:       today.OPDTotal - prev.OPDTotal,
-		DeltaOTMMK:        today.OTTotal - prev.OTTotal,
-		DeltaPharmacyMMK:  today.PharmacyTotal - prev.PharmacyTotal,
-		DeltaGrandMMK:     today.GrandTotal - prev.GrandTotal,
+		DeltaOPDMMK:       cash.OPDTotal - prevCash.OPDTotal,
+		DeltaOTMMK:        cash.OTTotal - prevCash.OTTotal,
+		DeltaPharmacyMMK:  cash.PharmacyTotal - prevCash.PharmacyTotal,
+		DeltaGrandMMK:     cash.GrandTotal - prevCash.GrandTotal,
 		DeltaBills:        billCount - prevBills,
+		IncomeMMK:         today.IncomeMMK,
+		ExpenseMMK:        today.ExpenseMMK,
+		NetCashMMK:        today.NetCashMMK,
+		PrevIncomeMMK:     prev.IncomeMMK,
+		PrevExpenseMMK:    prev.ExpenseMMK,
+		PrevNetCashMMK:    prev.NetCashMMK,
+		DeltaIncomeMMK:    today.IncomeMMK - prev.IncomeMMK,
+		DeltaExpenseMMK:   today.ExpenseMMK - prev.ExpenseMMK,
+		DeltaNetCashMMK:   today.NetCashMMK - prev.NetCashMMK,
+		IpdCashMMK:        today.IPD.NetMMK,
+		IpdLines:          today.IPD.Lines,
+		ExpenseLines:      today.ExpenseLines,
 	})
+}
+
+// dailyReportPrint is the admin HTML for one civil day.
+// Clinic desks stay on GET /api/reports/daily-cash/print, which is role-scoped
+// and does not include IPD or hospital expenses.
+func (h *Dashboard) dailyReportPrint(w http.ResponseWriter, r *http.Request) {
+	date := reportDate(r)
+	move, err := buildCashMovement(h.DB, date)
+	if err != nil {
+		http.Error(w, "report failed", http.StatusInternalServerError)
+		return
+	}
+	hosp, _ := loadHospitalSettings(h.DB)
+	if hosp == nil {
+		hosp = &hospitalSettings{HospitalName: "Mudita Hospital"}
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write([]byte(renderDashboardDailyHTML(hosp, move)))
 }
 
 func buildStockHealth(db *sql.DB, slowDays, cogsDays int) (*stockHealthReport, error) {
@@ -669,9 +745,8 @@ func parseDashRange(r *http.Request) (from, to string, days int, err error) {
 		}
 		days = n
 	}
-	today := time.Now()
 	if to == "" {
-		to = today.Format("2006-01-02")
+		to = localToday()
 	} else if _, e := time.Parse("2006-01-02", to); e != nil {
 		return "", "", 0, errBadDate
 	}
@@ -732,116 +807,34 @@ func countVoidsOnDate(db *sql.DB, date string) (int, error) {
 }
 
 func buildCashTrends(db *sql.DB, from, to string) ([]trendPoint, error) {
-	type agg struct {
-		opd, ot, pharmacy    int64
-		opdN, otN, pharmacyN int
-	}
-	byDay := map[string]*agg{}
-
-	opdRows, err := db.Query(`
-		SELECT date(paid_at), COUNT(*), COALESCE(SUM(total_mmk), 0)
-		FROM opd_bills
-		WHERE status = 'paid' AND date(paid_at) BETWEEN date(?) AND date(?)
-		GROUP BY date(paid_at)
-	`, from, to)
+	fromT, err := time.Parse("2006-01-02", from)
 	if err != nil {
 		return nil, err
 	}
-	defer opdRows.Close()
-	for opdRows.Next() {
-		var d string
-		var n int
-		var total int64
-		if err := opdRows.Scan(&d, &n, &total); err != nil {
-			return nil, err
-		}
-		a := byDay[d]
-		if a == nil {
-			a = &agg{}
-			byDay[d] = a
-		}
-		a.opd = total
-		a.opdN = n
-	}
-	if err := opdRows.Err(); err != nil {
-		return nil, err
-	}
-
-	otRows, err := db.Query(`
-		SELECT date(paid_at), COUNT(*), COALESCE(SUM(total_mmk), 0)
-		FROM ot_bills
-		WHERE status = 'paid' AND date(paid_at) BETWEEN date(?) AND date(?)
-		GROUP BY date(paid_at)
-	`, from, to)
+	toT, err := time.Parse("2006-01-02", to)
 	if err != nil {
 		return nil, err
 	}
-	defer otRows.Close()
-	for otRows.Next() {
-		var d string
-		var n int
-		var total int64
-		if err := otRows.Scan(&d, &n, &total); err != nil {
-			return nil, err
-		}
-		a := byDay[d]
-		if a == nil {
-			a = &agg{}
-			byDay[d] = a
-		}
-		a.ot = total
-		a.otN = n
-	}
-	if err := otRows.Err(); err != nil {
-		return nil, err
-	}
-
-	phRows, err := db.Query(`
-		SELECT date(paid_at), COUNT(*), COALESCE(SUM(
-			CASE WHEN bill_no LIKE 'RT-%' THEN -total_mmk ELSE total_mmk END
-		), 0)
-		FROM pharmacy_bills
-		WHERE status = 'paid' AND bill_no NOT LIKE 'TO-%' AND date(paid_at) BETWEEN date(?) AND date(?)
-		GROUP BY date(paid_at)
-	`, from, to)
-	if err != nil {
-		return nil, err
-	}
-	defer phRows.Close()
-	for phRows.Next() {
-		var d string
-		var n int
-		var total int64
-		if err := phRows.Scan(&d, &n, &total); err != nil {
-			return nil, err
-		}
-		a := byDay[d]
-		if a == nil {
-			a = &agg{}
-			byDay[d] = a
-		}
-		a.pharmacy = total
-		a.pharmacyN = n
-	}
-	if err := phRows.Err(); err != nil {
-		return nil, err
-	}
-
-	fromT, _ := time.Parse("2006-01-02", from)
-	toT, _ := time.Parse("2006-01-02", to)
 	out := make([]trendPoint, 0)
 	for d := fromT; !d.After(toT); d = d.AddDate(0, 0, 1) {
 		key := d.Format("2006-01-02")
-		a := byDay[key]
-		p := trendPoint{Date: key}
-		if a != nil {
-			p.OPDTotalMMK = a.opd
-			p.OTTotalMMK = a.ot
-			p.PharmacyTotalMMK = a.pharmacy
-			p.GrandTotalMMK = a.opd + a.ot + a.pharmacy
-			p.BillCount = a.opdN + a.otN + a.pharmacyN
+		move, err := buildCashMovement(db, key)
+		if err != nil {
+			return nil, err
 		}
-		out = append(out, p)
+		cash := move.Desk
+		out = append(out, trendPoint{
+			Date:             key,
+			OPDTotalMMK:      cash.OPDTotal,
+			OTTotalMMK:       cash.OTTotal,
+			PharmacyTotalMMK: cash.PharmacyTotal,
+			GrandTotalMMK:    cash.GrandTotal,
+			BillCount:        cash.OPDCount + cash.OTCount + cash.PharmacyCount,
+			IpdCashMMK:       move.IPD.NetMMK,
+			IncomeMMK:        move.IncomeMMK,
+			ExpenseMMK:       move.ExpenseMMK,
+			NetCashMMK:       move.NetCashMMK,
+		})
 	}
 	return out, nil
 }
@@ -855,7 +848,7 @@ func buildRevenueByDoctor(db *sql.DB, from, to string) ([]doctorRevenueRow, erro
 			       COUNT(*) AS bill_count,
 			       COALESCE(SUM(total_mmk), 0) AS total_mmk
 			FROM opd_bills
-			WHERE status = 'paid' AND date(paid_at) BETWEEN date(?) AND date(?)
+			WHERE status = 'paid' AND collected_cash = 1 AND date(paid_at) BETWEEN date(?) AND date(?)
 			GROUP BY COALESCE(doctor_id, 0), COALESCE(NULLIF(TRIM(doctor_name), ''), '(unassigned)')
 			UNION ALL
 			SELECT COALESCE(doctor_id, 0),
@@ -863,7 +856,7 @@ func buildRevenueByDoctor(db *sql.DB, from, to string) ([]doctorRevenueRow, erro
 			       COUNT(*),
 			       COALESCE(SUM(total_mmk), 0)
 			FROM ot_bills
-			WHERE status = 'paid' AND date(paid_at) BETWEEN date(?) AND date(?)
+			WHERE status = 'paid' AND collected_cash = 1 AND date(paid_at) BETWEEN date(?) AND date(?)
 			GROUP BY COALESCE(doctor_id, 0), COALESCE(NULLIF(TRIM(doctor_name), ''), '(unassigned)')
 		)
 		GROUP BY doctor_id, doctor_name
@@ -895,7 +888,7 @@ func buildRevenueByService(db *sql.DB, from, to string) ([]serviceRevenueRow, er
 			       COALESCE(bl.line_total_mmk, 0) AS total_mmk
 			FROM bill_lines bl
 			JOIN opd_bills b ON b.id = bl.bill_id
-			WHERE b.status = 'paid'
+			WHERE b.status = 'paid' AND b.collected_cash = 1
 			  AND bl.line_type IN ('service', 'consultation')
 			  AND date(b.paid_at) BETWEEN date(?) AND date(?)
 			UNION ALL
@@ -906,7 +899,7 @@ func buildRevenueByService(db *sql.DB, from, to string) ([]serviceRevenueRow, er
 			       COALESCE(bl.line_total_mmk, 0)
 			FROM ot_bill_lines bl
 			JOIN ot_bills b ON b.id = bl.bill_id
-			WHERE b.status = 'paid'
+			WHERE b.status = 'paid' AND b.collected_cash = 1
 			  AND bl.line_type IN ('service', 'ot_fee')
 			  AND date(b.paid_at) BETWEEN date(?) AND date(?)
 		)
@@ -944,7 +937,7 @@ func buildPharmacyMargin(db *sql.DB, from, to string) (*pharmacyMarginReport, er
 			FROM bill_lines bl
 			JOIN opd_bills b ON b.id = bl.bill_id
 			LEFT JOIN items i ON i.id = bl.ref_id
-			WHERE b.status = 'paid'
+			WHERE b.status = 'paid' AND b.collected_cash = 1
 			  AND bl.line_type = 'item'
 			  AND date(b.paid_at) BETWEEN date(?) AND date(?)
 			UNION ALL
@@ -960,7 +953,7 @@ func buildPharmacyMargin(db *sql.DB, from, to string) (*pharmacyMarginReport, er
 			FROM ot_bill_lines bl
 			JOIN ot_bills b ON b.id = bl.bill_id
 			LEFT JOIN items i ON i.id = bl.ref_id
-			WHERE b.status = 'paid'
+			WHERE b.status = 'paid' AND b.collected_cash = 1
 			  AND bl.line_type = 'item'
 			  AND date(b.paid_at) BETWEEN date(?) AND date(?)
 			UNION ALL
@@ -977,7 +970,7 @@ func buildPharmacyMargin(db *sql.DB, from, to string) (*pharmacyMarginReport, er
 			FROM pharmacy_bill_lines bl
 			JOIN pharmacy_bills b ON b.id = bl.bill_id
 			LEFT JOIN items i ON i.id = bl.item_id
-			WHERE b.status = 'paid'
+			WHERE b.status = 'paid' AND b.collected_cash = 1
 			  AND b.bill_no NOT LIKE 'TO-%'
 			  AND date(b.paid_at) BETWEEN date(?) AND date(?)
 		)

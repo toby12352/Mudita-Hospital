@@ -32,6 +32,8 @@ export const PHARMACY_UNITS = [
   "oz",
   "Strip",
   "Card",
+  "Sachet",
+  "Pack",
 ] as const;
 
 export type PharmacyUnit = (typeof PHARMACY_UNITS)[number];
@@ -145,6 +147,8 @@ function shortUnit(unit: string): string {
   if (u === "each") return "Ea";
   if (u === "g") return "g";
   if (u === "oz") return "oz";
+  if (u === "sachet") return "Sa";
+  if (u === "pack") return "Pk";
   return unit.slice(0, 3) || "u";
 }
 
@@ -796,6 +800,8 @@ export type PharmacyBill = {
   discount_unit?: "percent" | "mmk" | string;
   discount_mmk?: number;
   printed_at?: string | null;
+  admission_id?: number | null;
+  collected_cash?: number;
   paid_at?: string | null;
   void_reason?: string;
   created_at: string;
@@ -947,11 +953,18 @@ export async function listPharmacyBills(
   q = "",
   status = "",
   kind?: PharmacyBillKind,
+  patientId?: number | null,
+  opts?: { money?: string; from?: string; to?: string; sort?: string },
 ): Promise<PharmacyBill[]> {
   const params = new URLSearchParams();
   if (q) params.set("q", q);
   if (status) params.set("status", status);
   if (kind) params.set("kind", kind);
+  if (patientId != null) params.set("patient_id", String(patientId));
+  if (opts?.money?.trim()) params.set("money", opts.money.trim());
+  if (opts?.from?.trim()) params.set("from", opts.from.trim());
+  if (opts?.to?.trim()) params.set("to", opts.to.trim());
+  if (opts?.sort?.trim()) params.set("sort", opts.sort.trim());
   const qs = params.toString() ? `?${params}` : "";
   const res = await apiFetch<{ bills: PharmacyBill[] }>(`/api/pharmacy/bills${qs}`);
   return res.bills;
@@ -969,6 +982,7 @@ export async function createPharmacyBill(body: {
   description?: string;
   lines: PharmacyBillLine[];
   save_patient?: boolean;
+  patient_id?: number | null;
   kind?: PharmacyBillKind;
 }): Promise<PharmacyBill> {
   return apiFetch<PharmacyBill>("/api/pharmacy/bills", {
@@ -987,6 +1001,8 @@ export async function updatePharmacyBill(
     description?: string;
     lines: PharmacyBillLine[];
     save_patient?: boolean;
+    patient_id?: number | null;
+    kind?: PharmacyBillKind;
   },
 ): Promise<PharmacyBill> {
   return apiFetch<PharmacyBill>(`/api/pharmacy/bills/${id}`, {
@@ -995,8 +1011,15 @@ export async function updatePharmacyBill(
   });
 }
 
-export async function payPharmacyBill(id: number): Promise<PharmacyBill> {
-  return apiFetch<PharmacyBill>(`/api/pharmacy/bills/${id}/pay`, { method: "POST", body: "{}" });
+export async function payPharmacyBill(
+  id: number,
+  charge?: { admission_id?: number; source_bill_id?: number },
+): Promise<PharmacyBill> {
+  const body =
+    charge != null && (charge.admission_id != null || charge.source_bill_id != null)
+      ? JSON.stringify(charge)
+      : "{}";
+  return apiFetch<PharmacyBill>(`/api/pharmacy/bills/${id}/pay`, { method: "POST", body });
 }
 
 export async function markPharmacyBillPrinted(id: number): Promise<PharmacyBill> {
@@ -1012,6 +1035,11 @@ export async function voidPharmacyBill(id: number, reason: string): Promise<Phar
     method: "POST",
     body: JSON.stringify({ reason }),
   });
+}
+
+/** Admin-only. Permanently removes a draft or void bill. */
+export async function purgePharmacyBill(id: number): Promise<void> {
+  await apiFetch(`/api/pharmacy/bills/${id}`, { method: "DELETE" });
 }
 
 export async function printPharmacyBill(

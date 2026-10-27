@@ -23,12 +23,16 @@ client/src/
     home/HomePage.tsx   # How-to + video placeholder (not module tiles)
     opd/OpdPage.tsx
     ot/OtPage.tsx
+    patients/PatientsPage.tsx
+    ipd/IpdPage.tsx
     pharmacy/           # PharmacyPage, PharmacyBillingPage, tabs, forms
-    settings/           # SettingsPage + hospital/doctors/services/users/backup/training
+    settings/           # SettingsPage + hospital/doctors/categories/users/backup/training
     reports/ReportsPage.tsx
   features/
     opd/api.ts
     ot/api.ts
+    patients/api.ts
+    ipd/api.ts
     pharmacy/api.ts
     reports/api.ts
     settings/           # masterData.ts, backup.ts, demo.ts
@@ -178,9 +182,9 @@ Do not bypass health or auth for convenience in production paths.
 
 ## Clinic chrome / navigation
 
-- Authenticated clinic desk: light Fluent-style chrome — collapsible left sidebar (`.desk-sidebar`) for portal sections on a white/neutral surface with accent soft fill for the active section, `#F8F9FB` work area, and a bottom status strip (`.desk-status-bar`) with F-key hints, date, and `Day (user)`. Collapsed mode shows icons with hover labels; expanded mode shows icon + page name. Expansion preference is `mudita_sidebar_expanded` in `localStorage`. Language, help, logout, and Server IP sit on the right of the desk header inside `.desk-main`.
+- Authenticated clinic desk: light Fluent-style chrome — collapsible left sidebar (`.desk-sidebar`) for portal sections on a white/neutral surface with accent soft fill for the active section, `#F8F9FB` work area, and a bottom status strip (`.desk-status-bar`) with F-key hints, date, `Day (user)`, and copyright (`© {year} Tun Aung Thaung`). Collapsed mode shows icons with hover labels; expanded mode shows icon + page name. Expansion preference is `mudita_sidebar_expanded` in `localStorage`. Pharmacy Maintenance is a single rail item (History opens in the page right panel, same as OPD/OT catalog history); admin portal groups animate under the rail when expanded (flyout when collapsed). Language, help, logout, and Server IP sit on the right of the desk header inside `.desk-main`.
 - Bill screens use the light action column (`.opd-bill-rail`) with Print F7 / Save draft F5 / History F9 / V.Delete ^F8 / Cancel F10 / New bill F2. Accent is class-driven (`.opd-bill-rail-btn--accent` on Pay & print while collecting, New when finished, Transfer when that is the primary step). V.Delete uses `.opd-bill-rail-btn--danger` (outline). List and Drug Setup screens omit the rail. See **Clinic design system** under Styling.
-- Admin chooses a portal from `PortalPicker`; desk roles land in one portal. Still **no React Router** — `View` + optional `NavIntent` in `app/types.ts`, remount pages with a changing `key` when the same view opens with a different intent.
+- Admin uses the same collapsible desk sidebar with Home, portal groups (Patient, IPD, OPD, OT, Pharmacy) that expand to each desk’s pages, Settings, and About. Desk roles land in one portal with that portal’s rail only. Still **no React Router** — `View` + optional `NavIntent` in `app/types.ts`, remount pages with a changing `key` when the same view opens with a different intent.
 - Dashboard signed-in chrome is a left sidebar (logo and the six pages) and a workspace header (page title plus an account menu for name, role, language, server connection, and log out). No clinic status strip. Server setup, login, and change-password use the same canvas and a white card.
 - UI zoom: `mudita_ui_scale` in `localStorage` via `shared/uiScale.ts`; Ctrl/Cmd `+` / `-` / `0` anywhere.
 

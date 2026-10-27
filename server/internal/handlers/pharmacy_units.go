@@ -9,7 +9,7 @@ var allowedUnits = map[string]bool{
 	"Box": true, "Carton": true, "Bottle": true, "Vial": true, "Ampoule": true,
 	"Piece": true, "Tablet": true, "Capsule": true, "Tube": true, "Cylinder": true,
 	"Bag": true, "Each": true, "mL": true, "g": true, "oz": true,
-	"Strip": true, "Card": true,
+	"Strip": true, "Card": true, "Sachet": true, "Pack": true,
 }
 
 // Any allowed pharmacy unit may appear at L1, L2, or L3 (packing chain is free-form).

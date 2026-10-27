@@ -20,9 +20,11 @@ export function moneyStatusLabel(
   status: string | null | undefined,
   t: (k: string) => string,
   printedAt?: string | null,
+  collectedCash?: number | null,
 ): string {
   switch ((status || "draft").toLowerCase()) {
     case "paid":
+      if (collectedCash === 0) return t("chargedToIpdStatus");
       return t("paid");
     case "void":
       return t("voidStatus");
@@ -69,6 +71,28 @@ export function BillMarkPaidButton(props: {
         </span>
       </span>
       <kbd>F7</kbd>
+    </button>
+  );
+}
+
+/** Account charge beside Mark Paid. Pay stays the cash action. */
+export function BillChargeToIpdButton(props: {
+  busy: boolean;
+  onClick: () => void;
+  label?: string;
+  subLabel?: string;
+}) {
+  const { t } = useI18n();
+  const { busy, onClick, label, subLabel } = props;
+  return (
+    <button type="button" className="opd-bill-rail-btn" disabled={busy} onClick={onClick}>
+      <span className="opd-bill-rail-btn-main">
+        <ActionIcon name="clipboard" />
+        <span className="opd-bill-rail-btn-text">
+          <span className="opd-bill-rail-btn-label">{label ?? t("chargeToIpd")}</span>
+          <span className="opd-bill-rail-btn-sub">{subLabel ?? t("chargeToIpdSub")}</span>
+        </span>
+      </span>
     </button>
   );
 }

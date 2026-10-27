@@ -7,9 +7,11 @@ import {
   updateOtMasterService,
   type OtMasterService,
 } from "@/features/ot/api";
+import { useClinicActions } from "@/app/clinicActions";
 import { matchesActive, type ActiveFilterValue } from "@/shared/ActiveFilter";
 import { ActionIcon } from "@/shared/ActionIcon";
 import { CatalogFilterButton, CatalogFilterPanel } from "@/shared/CatalogListFilter";
+import { sortByDateAscDesc, type DateSortValue } from "@/shared/DateSort";
 import { formatMMK } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
 import { CatalogDeleteDialog } from "@/pages/opd/CatalogDeleteDialog";
@@ -30,6 +32,7 @@ function serviceLabel(s: OtMasterService): string {
 
 export function OtServicesPage() {
   const { t } = useI18n();
+  const { otUpdate, otDelete } = useClinicActions();
   const [mode, setMode] = useState<"items" | "history">("items");
   const [creating, setCreating] = useState(false);
   const [createKey, setCreateKey] = useState(0);
@@ -37,6 +40,7 @@ export function OtServicesPage() {
   const filterPanelId = useId();
   const [filterQ, setFilterQ] = useState("");
   const [activeFilter, setActiveFilter] = useState<ActiveFilterValue>("all");
+  const [dateSort, setDateSort] = useState<DateSortValue>("desc");
   const [list, setList] = useState<OtMasterService[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [editing, setEditing] = useState<OtMasterService | null>(null);
@@ -69,6 +73,7 @@ export function OtServicesPage() {
   function resetFilters() {
     setFilterQ("");
     setActiveFilter("all");
+    setDateSort("desc");
     runSearch("", "all");
   }
 
@@ -91,11 +96,17 @@ export function OtServicesPage() {
   }, []);
 
   const filtered = useMemo(
-    () => list.filter((s) => matchesActive(s.active, activeFilter)),
-    [list, activeFilter],
+    () =>
+      sortByDateAscDesc(
+        list.filter((s) => matchesActive(s.active, activeFilter)),
+        dateSort,
+        (s) => s.created_at,
+        (s) => s.id,
+      ),
+    [list, activeFilter, dateSort],
   );
   const selected = list.find((s) => s.id === selectedId) ?? null;
-  const showForm = creating || editing != null;
+  const showForm = otUpdate && (creating || editing != null);
 
   function fillForm(s: OtMasterService | null) {
     if (!s) {
@@ -110,6 +121,8 @@ export function OtServicesPage() {
   }
 
   function openCreate() {
+    if (!otUpdate) return;
+    setMode("items");
     setEditing(null);
     fillForm(null);
     setCreating(true);
@@ -123,6 +136,7 @@ export function OtServicesPage() {
   }
 
   function selectItem(id: number) {
+    setMode("items");
     setSelectedId(id);
     setCreating(false);
     setEditing(null);
@@ -130,9 +144,20 @@ export function OtServicesPage() {
   }
 
   function openEdit(s: OtMasterService) {
+    if (!otUpdate) return;
+    setMode("items");
     setCreating(false);
     setEditing(s);
     fillForm(s);
+  }
+
+  function toggleHistory() {
+    if (mode === "history") {
+      setMode("items");
+      return;
+    }
+    closeForm();
+    setMode("history");
   }
 
   async function submit(e: FormEvent) {
@@ -229,32 +254,28 @@ export function OtServicesPage() {
     }
   }
 
-  if (mode === "history") {
-    return (
-      <OtCatalogHistory
-        title={t("serviceHistory")}
-        backLabel={t("serviceSetup")}
-        onBack={() => setMode("items")}
-      />
-    );
-  }
-
   return (
     <section className="drug-setup" aria-label={t("serviceSetup")}>
       <div className="drug-setup-list-pane">
-        <div className="drug-setup-title-row">
+        <div className="drug-setup-heading">
           <h2 className="drug-setup-title">{t("serviceSetup")}</h2>
           <div className="tabs">
-            <button type="button" className="btn action primary" onClick={openCreate}>
-              <ActionIcon name="plus" />
-              {t("newBadge")}
-            </button>
+            {otUpdate ? (
+              <button type="button" className="btn action primary" onClick={openCreate}>
+                <ActionIcon name="plus" />
+                {t("newBadge")}
+              </button>
+            ) : null}
             <CatalogFilterButton
               open={filterOpen}
               controlsId={filterPanelId}
               onToggle={() => setFilterOpen((v) => !v)}
             />
-            <button type="button" className="btn action" onClick={() => setMode("history")}>
+            <button
+              type="button"
+              className={`btn action${mode === "history" ? " on" : ""}`}
+              onClick={toggleHistory}
+            >
               <ActionIcon name="history" />
               {t("catalogHistoryLink")}
             </button>
@@ -271,6 +292,8 @@ export function OtServicesPage() {
           onSearch={() => runSearch(filterQ)}
           active={activeFilter}
           onActiveChange={setActiveFilter}
+          dateSort={dateSort}
+          onDateSortChange={setDateSort}
           onReset={resetFilters}
         />
         {error && !showForm ? <p className="form-error">{error}</p> : null}
@@ -285,9 +308,13 @@ export function OtServicesPage() {
               key={s.id}
               role="option"
               tabIndex={0}
-              aria-selected={s.id === selectedId && !creating && editing == null}
+              aria-selected={
+                s.id === selectedId && mode === "items" && !creating && editing == null
+              }
               className={`drug-setup-table-row opd-service-cols${
-                s.id === selectedId && !creating && editing == null ? " selected" : ""
+                s.id === selectedId && mode === "items" && !creating && editing == null
+                  ? " selected"
+                  : ""
               }${!s.active ? " inactive" : ""}`}
               onClick={() => selectItem(s.id)}
               onKeyDown={(e) => {
@@ -305,16 +332,13 @@ export function OtServicesPage() {
       </div>
 
       <div className="drug-setup-detail-pane">
-        {showForm ? (
+        {mode === "history" ? (
+          <OtCatalogHistory title={t("serviceHistory")} />
+        ) : showForm ? (
           <>
-            <div className="drug-setup-title-row">
-              <h3 className="drug-setup-title" style={{ fontSize: "1.1rem" }}>
-                {editing ? `${t("editService")} #${editing.id}` : t("createNewServiceTitle")}
-              </h3>
-              <button type="button" className="desk-text-link" onClick={closeForm}>
-                {t("cancel")}
-              </button>
-            </div>
+            <h3 className="drug-setup-title" style={{ fontSize: "1.1rem" }}>
+              {editing ? `${t("editService")} #${editing.id}` : t("createNewServiceTitle")}
+            </h3>
             <form
               key={editing ? `edit-${editing.id}` : `create-${createKey}`}
               className="card-form"
@@ -352,6 +376,9 @@ export function OtServicesPage() {
                 <button type="submit" className="btn primary" disabled={busy}>
                   {busy ? t("saving") : editing ? t("updateService") : t("addService")}
                 </button>
+                <button type="button" className="btn ghost" onClick={closeForm} disabled={busy}>
+                  {t("cancel")}
+                </button>
               </div>
             </form>
           </>
@@ -385,16 +412,18 @@ export function OtServicesPage() {
                   </div>
                 </div>
                 <div className="btn-row">
-                  <button
-                    type="button"
-                    className="btn action"
-                    disabled={busy}
-                    onClick={() => openEdit(selected)}
-                  >
-                    <ActionIcon name="edit" />
-                    {t("edit")}
-                  </button>
-                  {selected.active ? (
+                  {otUpdate ? (
+                    <button
+                      type="button"
+                      className="btn action"
+                      disabled={busy}
+                      onClick={() => openEdit(selected)}
+                    >
+                      <ActionIcon name="edit" />
+                      {t("edit")}
+                    </button>
+                  ) : null}
+                  {otDelete && selected.active ? (
                     <button
                       type="button"
                       className="btn action danger"
@@ -404,15 +433,17 @@ export function OtServicesPage() {
                       {t("deactivate")}
                     </button>
                   ) : null}
-                  <button
-                    type="button"
-                    className="btn action danger"
-                    disabled={busy || deleteBusy}
-                    onClick={() => openDeleteConfirm(selected)}
-                  >
-                    <ActionIcon name="trash" />
-                    {t("delete")}
-                  </button>
+                  {otDelete ? (
+                    <button
+                      type="button"
+                      className="btn action danger"
+                      disabled={busy || deleteBusy}
+                      onClick={() => openDeleteConfirm(selected)}
+                    >
+                      <ActionIcon name="trash" />
+                      {t("delete")}
+                    </button>
+                  ) : null}
                 </div>
               </>
             ) : (

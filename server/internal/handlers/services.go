@@ -38,7 +38,7 @@ type serviceWriteRequest struct {
 }
 
 const serviceSelect = `
-	SELECT s.id, s.code, s.name, s.price_mmk, s.active,
+	SELECT s.id, COALESCE(s.code, ''), s.name, s.price_mmk, s.active,
 		s.category_id, COALESCE(c.name, ''),
 		s.created_at, s.updated_at
 	FROM services s
@@ -51,6 +51,9 @@ func (h *Services) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		path = strings.TrimSuffix(path, "/")
 		if path == "" {
 			path = "/"
+		}
+		if !allowCell(h.DB, w, r, masterGrant(r.Method, path)) {
+			return
 		}
 
 		switch {
@@ -219,12 +222,12 @@ func (h *Services) create(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
-	req.Code = strings.ToUpper(strings.TrimSpace(req.Code))
 	req.Name = strings.TrimSpace(req.Name)
-	if req.Code == "" || req.Name == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "code and name required"})
+	if req.Name == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name required"})
 		return
 	}
+	code := normalizeServiceCode(req.Code)
 	price := int64(0)
 	if req.PriceMMK != nil {
 		if *req.PriceMMK < 0 {
@@ -245,7 +248,7 @@ func (h *Services) create(w http.ResponseWriter, r *http.Request) {
 
 	res, err := h.DB.Exec(`
 		INSERT INTO services (code, name, price_mmk, active, category_id) VALUES (?, ?, ?, 1, ?)
-	`, req.Code, req.Name, price, categoryID)
+	`, code, req.Name, price, categoryID)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "unique") {
 			writeJSON(w, http.StatusConflict, map[string]string{"error": "code already exists"})
@@ -259,7 +262,7 @@ func (h *Services) create(w http.ResponseWriter, r *http.Request) {
 	user := middleware.UserFromContext(r.Context())
 	uid := user.ID
 	audit.WriteAudit(h.DB, &uid, "create", "service", &id, map[string]any{
-		"code": req.Code, "name": req.Name, "price_mmk": price, "category_id": categoryID,
+		"code": code, "name": req.Name, "price_mmk": price, "category_id": categoryID,
 	})
 
 	svc, err := loadService(h.DB, id)
@@ -281,12 +284,12 @@ func (h *Services) update(w http.ResponseWriter, r *http.Request, path string) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
-	req.Code = strings.ToUpper(strings.TrimSpace(req.Code))
 	req.Name = strings.TrimSpace(req.Name)
-	if req.Code == "" || req.Name == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "code and name required"})
+	if req.Name == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name required"})
 		return
 	}
+	code := normalizeServiceCode(req.Code)
 
 	existing, err := loadService(h.DB, id)
 	if err == sql.ErrNoRows {
@@ -329,7 +332,7 @@ func (h *Services) update(w http.ResponseWriter, r *http.Request, path string) {
 	_, err = h.DB.Exec(`
 		UPDATE services SET code = ?, name = ?, price_mmk = ?, active = ?, category_id = ?, updated_at = datetime('now')
 		WHERE id = ?
-	`, req.Code, req.Name, price, activeInt, categoryID, id)
+	`, code, req.Name, price, activeInt, categoryID, id)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "unique") {
 			writeJSON(w, http.StatusConflict, map[string]string{"error": "code already exists"})
@@ -342,7 +345,7 @@ func (h *Services) update(w http.ResponseWriter, r *http.Request, path string) {
 	user := middleware.UserFromContext(r.Context())
 	uid := user.ID
 	audit.WriteAudit(h.DB, &uid, "update", "service", &id, map[string]any{
-		"code": req.Code, "name": req.Name, "price_mmk": price, "active": active, "category_id": categoryID,
+		"code": code, "name": req.Name, "price_mmk": price, "active": active, "category_id": categoryID,
 	})
 
 	svc, err := loadService(h.DB, id)
@@ -387,7 +390,7 @@ func (h *Services) delete(w http.ResponseWriter, r *http.Request, path string) {
 
 	var code, name string
 	var priceMMK int64
-	err := h.DB.QueryRow(`SELECT code, name, price_mmk FROM services WHERE id = ?`, id).Scan(&code, &name, &priceMMK)
+	err := h.DB.QueryRow(`SELECT COALESCE(code, ''), name, price_mmk FROM services WHERE id = ?`, id).Scan(&code, &name, &priceMMK)
 	if err == sql.ErrNoRows {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		return
@@ -468,4 +471,12 @@ func (h *Services) requireServiceCategory(id *int64) (string, int) {
 		return "unknown category", http.StatusBadRequest
 	}
 	return "", 0
+}
+
+func normalizeServiceCode(raw string) any {
+	code := strings.ToUpper(strings.TrimSpace(raw))
+	if code == "" {
+		return nil
+	}
+	return code
 }

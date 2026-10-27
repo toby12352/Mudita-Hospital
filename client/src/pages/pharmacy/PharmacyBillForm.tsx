@@ -1,4 +1,6 @@
 import type { Ref } from "react";
+import type { PatientChart } from "@/features/patients/api";
+import { PatientChartTypeahead } from "@/features/patients/PatientChartTypeahead";
 import type { PharmacyBillLine, PharmacyItem } from "@/features/pharmacy/api";
 import {
   formatPackCompact,
@@ -7,10 +9,12 @@ import {
   pharmacyLineSaleView,
   saleUnitsFromPack,
 } from "@/features/pharmacy/api";
+import { useClinicActions } from "@/app/clinicActions";
 import { ActionIcon } from "@/shared/ActionIcon";
 import { AlertDialog } from "@/shared/AlertDialog";
 import { BillLineGrid, createBillLineEntry } from "@/shared/BillLineGrid";
 import {
+  BillChargeToIpdButton,
   BillCollectNote,
   BillMarkPaidButton,
   BillPrintButton,
@@ -28,6 +32,9 @@ type Props = {
   billNo: string;
   billStatus: string;
   printedAt: string | null;
+  collectedCash?: number | null;
+  chargedSales?: { id: number; bill_no: string }[];
+  returnSaleId?: number | null;
   patientName: string;
   patientPhone: string;
   patientAge: string;
@@ -52,6 +59,7 @@ type Props = {
   onDismissError: () => void;
   onDismissTransferDone?: () => void;
   onPatientName: (v: string) => void;
+  onPickPatient: (patient: PatientChart) => void;
   patientNameRef?: Ref<HTMLInputElement>;
   onPatientPhone: (v: string) => void;
   onPatientAge: (v: string) => void;
@@ -65,11 +73,15 @@ type Props = {
   onRemoveLine: (index: number) => void;
   onPrint: () => void;
   onMarkPaid: () => void;
+  onChargeToIpd?: () => void;
+  onCreditToIpd?: () => void;
+  onReturnSaleId?: (id: number) => void;
   onTransfer?: () => void;
   onConfirmTransfer?: () => void;
   onConfirm: () => void;
   onHistory: () => void;
   onDelete: () => void;
+  onPurge?: () => void;
   onCancel: () => void;
   onNewBill: () => void;
 };
@@ -98,6 +110,8 @@ export function PharmacyBillForm(props: Props) {
     awaitingConfirm = false,
     transferDone = false,
   } = props;
+  const { pharmacyCreate, pharmacyDelete, billPurge } = useClinicActions();
+  const writable = isDraft && pharmacyCreate;
 
   const isReturn = kind === "return";
   const isTransfer = kind === "transfer";
@@ -129,20 +143,16 @@ export function PharmacyBillForm(props: Props) {
               </span>
             </div>
             {isTransfer ? null : (
-            <label className="opd-bill-field">
+            <div className="opd-bill-field opd-bill-field--typeahead">
               <span className="opd-bill-label">{t("patientName")}</span>
-              <input
-                ref={props.patientNameRef}
-                className="opd-bill-input grow"
-                data-focus="bill-patient"
+              <PatientChartTypeahead
                 value={patientName}
-                disabled={!isDraft}
-                required={isDraft}
-                onChange={(e) => props.onPatientName(e.target.value)}
-                autoFocus
-                aria-label={t("patientName")}
+                disabled={!writable}
+                inputRef={props.patientNameRef}
+                onChange={props.onPatientName}
+                onPick={props.onPickPatient}
               />
-            </label>
+            </div>
             )}
             {isTransfer ? null : (
             <label className="opd-bill-field">
@@ -150,7 +160,7 @@ export function PharmacyBillForm(props: Props) {
               <input
                 className="opd-bill-input"
                 value={patientPhone}
-                disabled={!isDraft}
+                disabled={!writable}
                 onChange={(e) => props.onPatientPhone(e.target.value)}
               />
             </label>
@@ -162,7 +172,7 @@ export function PharmacyBillForm(props: Props) {
                 <input
                   className="opd-bill-input opd-bill-input--narrow"
                   value={patientAge}
-                  disabled={!isDraft}
+                  disabled={!writable}
                   inputMode="numeric"
                   onChange={(e) => props.onPatientAge(e.target.value)}
                 />
@@ -176,7 +186,7 @@ export function PharmacyBillForm(props: Props) {
               <select
                 className="opd-bill-input"
                 value={patientGender}
-                disabled={!isDraft}
+                disabled={!writable}
                 onChange={(e) => props.onPatientGender(e.target.value)}
               >
                 <option value="">—</option>
@@ -192,7 +202,7 @@ export function PharmacyBillForm(props: Props) {
                 className="opd-bill-input grow"
                 data-focus={isTransfer ? "bill-patient" : undefined}
                 value={description}
-                disabled={!isDraft}
+                disabled={!writable}
                 onChange={(e) => props.onDescription(e.target.value)}
                 autoFocus={isTransfer}
                 aria-label={t("remark")}
@@ -210,14 +220,14 @@ export function PharmacyBillForm(props: Props) {
               <span className="opd-bill-readonly">
                 {isTransfer && billStatus === "paid"
                   ? t("transferred")
-                  : moneyStatusLabel(billStatus || "draft", t, printedAt)}
+                  : moneyStatusLabel(billStatus || "draft", t, printedAt, props.collectedCash)}
               </span>
             </div>
           </div>
         </div>
 
         <BillLineGrid
-          draft={isDraft}
+          draft={writable}
           showUnitColumn
           showPackColumn
           itemHeader={`${t("code")} — ${t("description")}`}
@@ -312,7 +322,7 @@ export function PharmacyBillForm(props: Props) {
               balance={balance}
               discountValue={discountValue}
               discountUnit={discountUnit}
-              editable={isDraft}
+              editable={writable}
               onDiscountValue={props.onDiscountValue}
               onDiscountUnit={props.onDiscountUnit}
               note={
@@ -330,7 +340,7 @@ export function PharmacyBillForm(props: Props) {
       </div>
 
       <aside className="opd-bill-rail" aria-label={t("billActions")}>
-        {isTransfer ? (
+        {pharmacyCreate && isTransfer ? (
           <>
             <button
               type="button"
@@ -367,28 +377,62 @@ export function PharmacyBillForm(props: Props) {
           </>
         ) : (
           <>
-            <BillMarkPaidButton
-              status={billStatus || "draft"}
-              busy={busy}
-              onClick={props.onMarkPaid}
-              collectLabel={isReturn ? t("markReturned") : undefined}
-              collectSubLabel={isReturn ? t("marksReturned") : undefined}
-            />
+            {pharmacyCreate ? (
+              <BillMarkPaidButton
+                status={billStatus || "draft"}
+                busy={busy}
+                onClick={props.onMarkPaid}
+                collectLabel={isReturn ? t("markReturned") : undefined}
+                collectSubLabel={isReturn ? t("marksReturned") : undefined}
+              />
+            ) : null}
+            {pharmacyCreate && props.onChargeToIpd ? (
+              <BillChargeToIpdButton busy={busy} onClick={props.onChargeToIpd} />
+            ) : null}
+            {pharmacyCreate && props.onCreditToIpd ? (
+              <>
+                {props.chargedSales && props.chargedSales.length > 1 ? (
+                  <label className="field">
+                    <span>{t("returnAgainstSale")}</span>
+                    <select
+                      className="opd-bill-input"
+                      value={props.returnSaleId ?? ""}
+                      disabled={busy}
+                      onChange={(e) => props.onReturnSaleId?.(Number(e.target.value))}
+                    >
+                      {props.chargedSales.map((sale) => (
+                        <option key={sale.id} value={sale.id}>
+                          {sale.bill_no}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
+                <BillChargeToIpdButton
+                  busy={busy}
+                  onClick={props.onCreditToIpd}
+                  label={t("creditToIpd")}
+                  subLabel={t("creditToIpdSub")}
+                />
+              </>
+            ) : null}
             <BillPrintButton status={billStatus || "draft"} busy={busy} onClick={props.onPrint} />
           </>
         )}
-        <button
-          type="button"
-          className="opd-bill-rail-btn"
-          disabled={busy || !isDraft}
-          onClick={props.onConfirm}
-        >
-          <span className="opd-bill-rail-btn-main">
-            <ActionIcon name="check" />
-            <span>{t("saveDraft")}</span>
-          </span>
-          <kbd>F5</kbd>
-        </button>
+        {pharmacyCreate ? (
+          <button
+            type="button"
+            className="opd-bill-rail-btn"
+            disabled={busy || !isDraft}
+            onClick={props.onConfirm}
+          >
+            <span className="opd-bill-rail-btn-main">
+              <ActionIcon name="check" />
+              <span>{t("saveDraft")}</span>
+            </span>
+            <kbd>F5</kbd>
+          </button>
+        ) : null}
         <button type="button" className="opd-bill-rail-btn" disabled={busy} onClick={props.onHistory}>
           <span className="opd-bill-rail-btn-main">
             <ActionIcon name="history" />
@@ -396,22 +440,38 @@ export function PharmacyBillForm(props: Props) {
           </span>
           <kbd>F9</kbd>
         </button>
-        <button
-          type="button"
-          className="opd-bill-rail-btn opd-bill-rail-btn--danger"
-          disabled={busy}
-          onClick={props.onDelete}
-        >
-          <span className="opd-bill-rail-btn-main">
-            <ActionIcon name="trash" />
-            <span>{t("vDelete")}</span>
-          </span>
-          <kbd>^F8</kbd>
-        </button>
+        {pharmacyDelete ? (
+          <button
+            type="button"
+            className="opd-bill-rail-btn opd-bill-rail-btn--danger"
+            disabled={busy}
+            onClick={props.onDelete}
+          >
+            <span className="opd-bill-rail-btn-main">
+              <ActionIcon name="trash" />
+              <span>{t("vDelete")}</span>
+            </span>
+            <kbd>^F8</kbd>
+          </button>
+        ) : null}
+        {billPurge && props.onPurge ? (
+          <button
+            type="button"
+            className="opd-bill-rail-btn opd-bill-rail-btn--danger"
+            disabled={busy}
+            onClick={props.onPurge}
+          >
+            <span className="opd-bill-rail-btn-main">
+              <ActionIcon name="trash" />
+              <span>{t("delete")}</span>
+            </span>
+          </button>
+        ) : null}
         <button type="button" className="opd-bill-rail-btn" disabled={busy} onClick={props.onCancel}>
           <span>{t("cancel")}</span>
           <kbd>F10</kbd>
         </button>
+        {pharmacyCreate ? (
         <button
           type="button"
           className={`opd-bill-rail-btn${!isDraft ? " opd-bill-rail-btn--accent" : ""}`}
@@ -424,6 +484,7 @@ export function PharmacyBillForm(props: Props) {
           </span>
           <kbd>F2</kbd>
         </button>
+        ) : null}
       </aside>
 
       <AlertDialog message={error ?? ""} onClose={props.onDismissError} />

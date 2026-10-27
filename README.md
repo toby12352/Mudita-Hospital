@@ -108,10 +108,12 @@ Open `http://localhost:1420` in a browser.
 
 | Username | Password | Role | Notes |
 |----------|----------|------|--------|
-| `admin` | `admin123` | Admin | Must change password on first login. Opens the portal picker |
+| `admin` | `admin123` | Admin | Must change password on first login. Opens the admin sidebar (Home) |
 | `opd` | `opd123` | OPD | Demo. OPD billing only |
 | `ot` | `ot123` | OT | Demo. OT billing and cupboard only |
 | `pharmacy` | `pharmacy123` | Pharmacy | Demo. Pharmacy billing and stock only |
+| `patients` | `patients123` | Patients | Demo. Patient charts and visit history only. Must change password on first login |
+| `ipd` | `ipd123` | IPD | Demo. Admit a chart and edit stay notes. Must change password on first login |
 
 ## Auth, master data, pharmacy, OPD & OT API
 
@@ -136,6 +138,24 @@ Open `http://localhost:1420` in a browser.
 | GET / PUT / DELETE | `/api/service-categories/{id}` | GET: Admin or OPD. PUT/DELETE: Admin. DELETE is refused while a service still uses the category |
 | GET / POST | `/api/users` | Bearer + Admin (`manage_users`) |
 | PUT | `/api/users/{id}` | Bearer + Admin (`manage_users`) |
+| GET | `/api/patients` | Bearer + Admin, Patients, OPD, OT, Pharmacy, or IPD — `?q=` matches chart id (exact when numeric), name, or phone; limit 50. Desk tokens may search only |
+| POST | `/api/patients` | Bearer + Admin or Patients (`patients`) — creates a chart and does not merge duplicates |
+| GET | `/api/patients/{id}` | Bearer + Admin, Patients, OPD, OT, Pharmacy, or IPD — one chart. Desk tokens may not edit it |
+| PUT | `/api/patients/{id}` | Bearer + Admin or Patients (`patients`) — demographics only; no delete |
+| GET | `/api/patients/{id}/history` | Bearer + Admin or Patients (`patients`) — read-only. OPD bills (`id`, …), pharmacy bills except `TO-` (`id`, …), OT cases linked by `patient_id` (`case_no`, `status`, `bill_id` when billed, `bill_no`, `bill_status`, `created_at`), and IPD stays (`admission_no`, `status`, `admitted_at`, `balance_mmk`, `settled`). No name matching |
+| GET | `/api/patients/{id}/bills/{kind}/{billId}/print` | Bearer + Admin or Patients (`patients`) — receipt HTML; `kind` is `opd`, `pharmacy`, or `ot`. Bill must already be on this chart. Does not mark printed, paid, or void. 404 if missing or pharmacy `TO-` |
+| POST | `/api/patients/{id}/attach` | Bearer + Admin or Patients — body `bill_no`. Sets `patient_id` only when it is still null. OT sets `ot_cases.patient_id`. Rejects a bill that already has a chart, and rejects `TO-`. Does not change totals or stock |
+| GET | `/api/ipd/admissions` | Bearer + Admin or IPD (`ipd`) — `?status=open` or `settled`. Each row includes patient name, phone, age, and gender |
+| POST | `/api/ipd/admissions` | Bearer + Admin or IPD — admit an existing chart. Rejects a second open stay. Number `IPD-000001` |
+| GET | `/api/ipd/admissions/{id}` | Bearer + Admin or IPD — one stay, patient demographics, ledger lines, and `balance_mmk` (signed sum) |
+| PUT | `/api/ipd/admissions/{id}` | Bearer + Admin or IPD — notes while the stay is `open` |
+| POST | `/api/ipd/admissions/{id}/deposits` | Bearer + Admin or IPD — open stay only. `amount_mmk` > 0, optional note. One positive ledger row. Audited |
+| POST | `/api/ipd/admissions/{id}/ward-charges` | Bearer + Admin or IPD — open stay only. Description required. `amount_mmk` > 0 is stored negative. No stock and no service catalog |
+| GET | `/api/ipd/admissions/{id}/ledger/{lineId}/print` | Bearer + Admin or IPD — HTML deposit receipt, or OPD/OT/Pharmacy bill receipt when the line is a charged (or reversed) desk bill. Does not mark printed. Ward and settlement lines cannot be printed |
+| POST | `/api/ipd/admissions/{id}/discharge` | Bearer + Admin or IPD — open stay only. A positive balance writes `refund` of the opposite amount. A negative balance writes `collection` of the opposite amount. Zero writes no line. Then `status` is `settled`, `discharged_at` is set, and the balance is 0. Later deposits and charges return 409 |
+| GET | `/api/ipd/admissions/{id}/statement` | Bearer + Admin or IPD — HTML statement: deposits, ward lines, desk charges with bill number and desk, refund or collection, and the balance |
+| GET | `/api/ipd/daily-cash` | Bearer + Admin or IPD — deposits, collections, and refunds for `?date=YYYY-MM-DD`. Ward lines and desk charges are excluded. Net is `net_mmk` |
+| GET | `/api/ipd/daily-cash/print` | Bearer + Admin or IPD — HTML print of that IPD cash day |
 | GET / POST | `/api/pharmacy/items` | Bearer + `pharmacy` |
 | GET / PUT / DELETE | `/api/pharmacy/items/{id}` | Bearer + `pharmacy` |
 | POST | `/api/pharmacy/items/{id}/restock` | Bearer + `pharmacy` |
@@ -146,9 +166,10 @@ Open `http://localhost:1420` in a browser.
 | GET | `/api/pharmacy/locations` | Bearer + `pharmacy` |
 | GET / POST | `/api/pharmacy/bills` | Bearer + `pharmacy` — POST body may set `kind: "return"` (`RT-######`) or `kind: "transfer"` (`TO-######`); default sale is `PH-######`. GET `?kind=sale\|return\|transfer` filters history |
 | GET / PUT | `/api/pharmacy/bills/{id}` | Bearer + `pharmacy` |
-| POST | `/api/pharmacy/bills/{id}/pay` | Bearer + `pharmacy` — sale deducts FEFO; return credits unlabeled MAIN. `TO-` slips are rejected |
+| POST | `/api/pharmacy/bills/{id}/pay` | Bearer + `pharmacy` — omit `admission_id` for cash (`collected_cash` 1). Set it to charge an open stay for the same patient (`collected_cash` 0, ledger `-total_mmk`). A return of a charged sale (`source_bill_id`) credits the stay while it is open. Sale deducts FEFO; return credits unlabeled MAIN. `TO-` slips are rejected |
 | POST | `/api/pharmacy/bills/{id}/transfer` | Bearer + `pharmacy` — confirm a draft `TO-` slip. Saleable MAIN qty moves into the OT cupboard. Batch number and expiry are copied as stored, including blanks |
-| POST | `/api/pharmacy/bills/{id}/void` | Bearer + `pharmacy` — sale restores; return reverses credit when stock remains; a confirmed transfer moves qty back from the OT cupboard when that qty is still there |
+| POST | `/api/pharmacy/bills/{id}/void` | Bearer + `pharmacy` — sale restores; return reverses credit when stock remains; a confirmed transfer moves qty back from the OT cupboard when that qty is still there. A charged bill voids only while the stay is open, and writes a ledger reversal |
+| DELETE | `/api/pharmacy/bills/{id}` | Bearer + Admin only — permanently removes a `draft` or `void` bill (lines and allocs cascade). Stock qty unchanged. Clears `stock_transfers.pharmacy_bill_id`. Paid bills are refused |
 | GET | `/api/pharmacy/bills/{id}/print` | Bearer + `pharmacy` — HTML receipt / return slip |
 | GET | `/api/opd/catalog/doctors` | Bearer + `opd` |
 | GET | `/api/opd/catalog/services` | Bearer + `opd` |
@@ -156,8 +177,9 @@ Open `http://localhost:1420` in a browser.
 | GET | `/api/opd/settings` | Bearer + `opd` (read-only bill header) |
 | GET / POST | `/api/opd/bills` | Bearer + `opd` |
 | GET / PUT | `/api/opd/bills/{id}` | Bearer + `opd` |
-| POST | `/api/opd/bills/{id}/pay` | Bearer + `opd` (cash; FEFO `SALE` at MAIN, skips expired) |
-| POST | `/api/opd/bills/{id}/void` | Bearer + `opd` (reason; restores stock if paid) |
+| POST | `/api/opd/bills/{id}/pay` | Bearer + `opd` — cash when `admission_id` is omitted. Set it to charge an open stay for the same patient. Stock path is unchanged |
+| POST | `/api/opd/bills/{id}/void` | Bearer + `opd` (reason; restores stock if paid). A charged bill voids only while the stay is open, and writes a ledger reversal |
+| DELETE | `/api/opd/bills/{id}` | Bearer + Admin only — permanently removes a `draft` or `void` bill (lines and allocs cascade). Stock qty unchanged. Balanced stay charge+reversal ledger rows are removed. Paid bills are refused |
 | GET | `/api/opd/bills/{id}/print` | Bearer + `opd` (HTML + OS print) |
 | GET | `/api/ot/stock` | Bearer + `ot` — cupboard on hand |
 | POST | `/api/ot/stock/{id}/return` | Bearer + `ot` — cupboard qty back to MAIN |
@@ -169,6 +191,16 @@ Open `http://localhost:1420` in a browser.
 | GET | `/api/ot/services/history` | Bearer + `ot` |
 | GET / PUT / DELETE | `/api/ot/services/{id}` | Bearer + `ot` — DELETE soft-deactivates |
 | POST | `/api/ot/services/{id}/delete` | Bearer + `ot` — permanent delete |
+| GET / POST | `/api/expenses/services` | Bearer + Admin (`settings`) — expense catalog; name required; code and `price_mmk` optional (null, not 0). GET `?all=1` includes inactive |
+| GET / PUT / DELETE | `/api/expenses/services/{id}` | Bearer + Admin (`settings`) — DELETE soft-deactivates. Omitted `price_mmk` keeps the stored price; JSON `null` clears it |
+| GET | `/api/expenses/catalog/services` | Bearer + `settings`, `opd`, `ot`, `ipd`, or `pharmacy` — active rows only; `?q=` or `?code=` |
+| GET / POST | `/api/expenses/bills` | Bearer + the desk for `portal` (`opd`, `ot`, `ipd`, `pharmacy`). GET `?portal=&q=&status=` lists that portal only (`q` matches bill no and name). POST creates a draft. Lines copy `code` and name from an active expense service and keep the client's `unit_price_mmk`. `total_mmk` is the line sum before discount; net is `total_mmk - discount_mmk` |
+| GET / PUT | `/api/expenses/bills/{id}` | Bearer + that bill's desk. PUT is draft only and replaces lines |
+| POST | `/api/expenses/bills/{id}/pay` | Bearer + that bill's desk — draft to paid (`paid_at`, `paid_by_user_id`). No stock movement and no IPD ledger |
+| POST | `/api/expenses/bills/{id}/printed` | Bearer + that bill's desk — sets `printed_at` once on a draft |
+| POST | `/api/expenses/bills/{id}/void` | Bearer + that bill's desk — reason required. Draft or paid. No stock restore |
+| DELETE | `/api/expenses/bills/{id}` | Bearer + Admin only — permanently removes a `draft` or `void` expense bill. Paid bills are refused |
+| GET | `/api/expenses/bills/{id}/print` | Bearer + that bill's desk — HTML receipt (bill no, portal, Name, description, lines, discount, net) |
 | GET | `/api/ot/settings` | Bearer + `ot` (read-only bill header) |
 | GET / POST | `/api/ot/cases` | Bearer + `ot` |
 | GET / PUT | `/api/ot/cases/{id}` | Bearer + `ot` (edit draft only) |
@@ -176,26 +208,28 @@ Open `http://localhost:1420` in a browser.
 | POST | `/api/ot/cases/{id}/bill` | Bearer + `ot` (cupboard items + OT fee + optional services) |
 | GET | `/api/ot/bills` | Bearer + `ot` |
 | GET / PUT | `/api/ot/bills/{id}` | Bearer + `ot` |
-| POST | `/api/ot/bills/{id}/pay` | Bearer + `ot` (cash; FEFO `SALE` on `ot_batches`, skips expired) |
-| POST | `/api/ot/bills/{id}/void` | Bearer + `ot` (restores cupboard qty; case returns to draft) |
+| POST | `/api/ot/bills/{id}/pay` | Bearer + `ot` — cash when `admission_id` is omitted. Set it to charge an open stay for the case patient. Cupboard FEFO is unchanged |
+| POST | `/api/ot/bills/{id}/void` | Bearer + `ot` (restores cupboard qty; case returns to draft). A charged bill voids only while the stay is open, and writes a ledger reversal |
+| DELETE | `/api/ot/bills/{id}` | Bearer + Admin only — permanently removes a `draft` or `void` bill. Unlinks the OT case (case stays). Cupboard qty unchanged. Paid bills are refused |
 | GET | `/api/ot/bills/{id}/print` | Bearer + `ot` (HTML + OS print) |
 | GET / POST | `/api/backup` | Bearer + Admin (`settings`) — list / create |
 | POST | `/api/backup/restore` | Bearer + Admin — queue restore + API restart |
-| GET | `/api/reports/daily-cash` | Bearer — desk sees only its own paid bills; Admin sees OPD + OT + pharmacy. `?date=YYYY-MM-DD` |
-| GET | `/api/reports/daily-cash/print` | Bearer — HTML print, same scope as the JSON report |
+| GET | `/api/reports/daily-cash` | Bearer — desk sees only its own collected cash bills (`collected_cash` 1), including that desk's void reversals; Admin sees OPD + OT + pharmacy. Account charges are excluded. `?date=YYYY-MM-DD` |
+| GET | `/api/reports/daily-cash/print` | Bearer — HTML print, same desk scope as the JSON report. No IPD and no hospital expenses |
 | GET | `/api/reports/low-stock` | Bearer + Pharmacy/Admin — MAIN qty ≤ reorder |
 | GET | `/api/reports/low-stock/print` | Bearer — HTML print |
 | GET | `/api/reports/near-expiry` | Bearer + Pharmacy/Admin — MAIN batches, `?days=90` |
 | GET | `/api/reports/near-expiry/print` | Bearer — HTML print |
-| GET | `/api/dashboard/overview` | Bearer + Admin (`settings`) — combined cash for the date |
-| GET | `/api/dashboard/daily-report` | Bearer + Admin — combined cash, prior day, and bill lines |
+| GET | `/api/dashboard/overview` | Bearer + Admin (`settings`) — `income_mmk` (desk `grand_total_mmk` plus IPD net), signed `expense_mmk`, and `net_cash_mmk` (`income_mmk + expense_mmk`). `grand_total_mmk` stays OPD + OT + pharmacy |
+| GET | `/api/dashboard/daily-report` | Bearer + Admin — that same cash day, the prior day, deltas, desk lines, IPD lines, and expense lines. `?date=YYYY-MM-DD` |
+| GET | `/api/dashboard/daily-report/print` | Bearer + Admin (`settings`) — HTML print of the three signed totals, desk lines, IPD lines, and expense lines. `?date=YYYY-MM-DD` |
 | GET | `/api/demo/status` | Bearer + Admin — `enabled: false` unless training is turned on. Does not write. |
 | POST | `/api/demo/seed` | Bearer + Admin — 403 unless `MUDITA_ALLOW_TRAINING=1` (or `allow_training`). DEMO- catalog + sample paid OPD |
 | POST | `/api/demo/reset` | Bearer + Admin — 403 unless training is on. Wipe DEMO-/[TRAINING] then re-seed |
 
 Send `Authorization: Bearer <token>` (also accepts `mudita_session` cookie).
 
-OPD, OT, and Pharmacy cannot open hospital Settings, manage users, backup, or training, and cannot list another desk's bills. OPD can maintain doctors and services from its portal (same `/api/doctors` and `/api/services` as Admin). OPD can assign a service category; category names are created in Admin Settings. Admin Settings tabs: Hospital, Doctors, Services, Categories, Users, Backup, **Training**. Combined cash is on the admin dashboard, not inside a clinic portal.
+OPD, OT, and Pharmacy cannot open hospital Settings, manage users, backup, or training, and cannot list another desk's bills. OPD can maintain doctors and services from its portal (same `/api/doctors` and `/api/services` as Admin). OPD can assign a service category; category names are created in Admin Settings. Admin Settings tabs: Hospital, Doctors, Categories, Expenses, Users, Backup, **Training**. Combined cash is on the admin dashboard, not inside a clinic portal.
 
 **Pharmacy:** Admin + Pharmacy. Stock on hand = sum of `item_batches.qty` at `MAIN`. Restock and opening stock accept an optional batch number and expiry, and restock writes a `PURCHASE` movement. A positive adjustment that creates a batch uses the same optional identity. **Transfer to OT** is a `TO-######` slip. Confirm moves saleable MAIN qty into the OT cupboard the same way a sale picks stock: earliest expiry first, then a blank expiry. A date before today stays on the shelf. Batch number and expiry are copied onto the OT row, including blanks. The slip is not pharmacy cash. **FEFO:** pharmacy sale and an OPD item line take the earliest `expiry_date` at `MAIN`. OT bill pay takes the earliest expiry on `ot_batches`. Both skip batches dated before today. A blank expiry is taken after every dated batch. Labeling a row later does not change quantity. Admin adjust-down still uses earliest expiry, including expired and unlabeled batches. Bill prices come from the item catalog. Unknown item codes cannot be restocked — create the item first. Pack quantities and the small unit cannot change while a batch still has quantity.
 
@@ -205,7 +239,7 @@ OPD, OT, and Pharmacy cannot open hospital Settings, manage users, backup, or tr
 
 **OT cupboard:** Pharmacy confirms a Transfer to OT slip (`POST /api/pharmacy/bills/{id}/transfer`). Saleable MAIN qty moves in one transaction. The same batch number and expiry, including blanks, land in `ot_batches`, with a `stock_movements` row, an `ot_stock_movements` row, and one `stock_transfers` row linked to the slip. OT returns qty the other way. A qty the source does not hold is rejected and changes nothing. Void of that slip puts the qty back only when the cupboard still holds it. Migration `011_ot_stock` copies existing `OT_FLOOR` qty into `ot_batches`. Migration `012_ot_bill_stock` returns leftover `OT_RESERVED` qty to `MAIN` and turns open issued or reconciled cases into draft bill documents. Paying an OT bill deducts `ot_batches`. Dashboard stock value counts MAIN and `ot_batches` only. Transfer slips are excluded from pharmacy cash.
 
-**Reports:** Each clinic desk's daily cash is its own paid bills. Combined OPD + OT + pharmacy cash is the admin dashboard. Low stock and near expiry (pharmacy) are MAIN only. UI language **English / မြန်မာ**. Help or `?` opens shortcuts; **Print cheat sheet** / [`docs/CHEATSHEET.md`](docs/CHEATSHEET.md) for laminate. Admin **Settings → Training** seeds/resets `DEMO-` / `[TRAINING]` data only when the server is started with `MUDITA_ALLOW_TRAINING=1`. A hospital install leaves that off.
+**Reports:** Each clinic desk's daily cash is its own collected bills and that desk's void reversals. On the admin dashboard, `grand_total_mmk` is OPD + OT + pharmacy, income adds IPD deposits, collections, and refunds, expenses are signed, and net cash is income plus that signed expense. Low stock and near expiry (pharmacy) are MAIN only. UI language **English / မြန်မာ**. Help or `?` opens shortcuts; **Print cheat sheet** / [`docs/CHEATSHEET.md`](docs/CHEATSHEET.md) for laminate. Admin **Settings → Training** seeds/resets `DEMO-` / `[TRAINING]` data only when the server is started with `MUDITA_ALLOW_TRAINING=1`. A hospital install leaves that off.
 
 ## Config
 

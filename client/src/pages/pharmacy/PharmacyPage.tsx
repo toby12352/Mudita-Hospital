@@ -1,4 +1,6 @@
 import { Fragment, useEffect, useId, useMemo, useState } from "react";
+import { useClinicActions } from "@/app/clinicActions";
+import type { PharmacyScreen } from "@/app/types";
 import {
   deletePharmacyItem,
   formatItemCode,
@@ -15,8 +17,9 @@ import {
 import { matchesActive, type ActiveFilterValue } from "@/shared/ActiveFilter";
 import { ActionIcon } from "@/shared/ActionIcon";
 import { CatalogFilterButton, CatalogFilterPanel } from "@/shared/CatalogListFilter";
-import { DialogCloseButton } from "@/shared/DialogCloseButton";
+import { sortByDateAscDesc, type DateSortValue } from "@/shared/DateSort";
 import { useI18n } from "@/shared/i18n";
+import { CatalogDeleteDialog } from "@/pages/opd/CatalogDeleteDialog";
 import { PharmacyItemForm } from "./PharmacyItemForm";
 import { PharmacyItemLots } from "./PharmacyItemLots";
 import { PharmacyItemsTab, type RestockPriceDraft } from "./PharmacyItemsTab";
@@ -25,20 +28,22 @@ import { PharmacyMovementsTab } from "./PharmacyMovementsTab";
 const listOpts = { includeInactive: true } as const;
 
 export function PharmacyPage({
-  isAdmin,
   initialScreen = "browse",
 }: {
-  isAdmin: boolean;
-  initialScreen?: "browse" | "form";
+  initialScreen?: PharmacyScreen;
 }) {
   const { t } = useI18n();
-  const [mode, setMode] = useState<"items" | "history" | "form">("items");
-  const [creating, setCreating] = useState(initialScreen === "form");
+  const { pharmacyUpdate, pharmacyDelete } = useClinicActions();
+  const [mode, setMode] = useState<"items" | "history" | "form">(
+    initialScreen === "history" ? "history" : "items",
+  );
+  const [creating, setCreating] = useState(initialScreen === "form" && pharmacyUpdate);
   const [createKey, setCreateKey] = useState(0);
   const [filterOpen, setFilterOpen] = useState(false);
   const filterPanelId = useId();
   const [filterQ, setFilterQ] = useState("");
   const [activeFilter, setActiveFilter] = useState<ActiveFilterValue>("all");
+  const [dateSort, setDateSort] = useState<DateSortValue>("desc");
   const [list, setList] = useState<PharmacyItem[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [selectedDetail, setSelectedDetail] = useState<PharmacyItem | null>(null);
@@ -70,6 +75,7 @@ export function PharmacyPage({
   function resetFilters() {
     setFilterQ("");
     setActiveFilter("all");
+    setDateSort("desc");
     runSearch("", "all");
   }
 
@@ -120,8 +126,14 @@ export function PharmacyPage({
   }, [selectedId, creating, mode, detailEpoch, listEpoch]);
 
   const filtered = useMemo(
-    () => list.filter((i) => matchesActive(i.active, activeFilter)),
-    [list, activeFilter],
+    () =>
+      sortByDateAscDesc(
+        list.filter((i) => matchesActive(i.active, activeFilter)),
+        dateSort,
+        (i) => i.created_at,
+        (i) => i.id,
+      ),
+    [list, activeFilter, dateSort],
   );
   const selected = list.find((i) => i.id === selectedId) ?? null;
   const infoItem =
@@ -130,6 +142,8 @@ export function PharmacyPage({
       : selected;
 
   function openCreate() {
+    if (!pharmacyUpdate) return;
+    setMode("items");
     setCreating(true);
     setCreateKey((n) => n + 1);
   }
@@ -139,9 +153,19 @@ export function PharmacyPage({
   }
 
   function selectItem(id: number) {
+    setMode("items");
     setSelectedId(id);
     setCreating(false);
     setRestockDraftPrices(null);
+  }
+
+  function toggleHistory() {
+    if (mode === "history") {
+      setMode("items");
+      return;
+    }
+    setCreating(false);
+    setMode("history");
   }
 
   useEffect(() => {
@@ -149,6 +173,7 @@ export function PharmacyPage({
   }, [selectedId]);
 
   async function openEdit(item: PharmacyItem) {
+    if (!pharmacyUpdate) return;
     setCreating(false);
     setError(null);
     try {
@@ -221,16 +246,6 @@ export function PharmacyPage({
     }
   }
 
-  useEffect(() => {
-    if (!deleteConfirm) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") closeDeleteConfirm();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- close while dialog open
-  }, [deleteConfirm, deleteBusy]);
-
   async function toggleActive(item: PharmacyItem, active: boolean) {
     setError(null);
     setBusyId(item.id);
@@ -282,40 +297,30 @@ export function PharmacyPage({
     );
   }
 
-  if (mode === "history") {
-    return (
-      <section className="classic-list-panel">
-        <div className="drug-setup-title-row">
-          <h2 className="drug-setup-title">{t("itemHistory")}</h2>
-          <div className="desk-text-links">
-            <button type="button" className="desk-text-link" onClick={() => setMode("items")}>
-              {t("drugSetup")}
-            </button>
-          </div>
-        </div>
-        <PharmacyMovementsTab />
-      </section>
-    );
-  }
-
   return (
     <section className="drug-setup" aria-label={t("drugSetup")}>
       <div className="drug-setup-list-pane">
-        <div className="drug-setup-title-row">
+        <div className="drug-setup-heading">
           <h2 className="drug-setup-title">{t("drugSetup")}</h2>
           <div className="tabs">
-            <button type="button" className="btn action primary" onClick={openCreate}>
-              <ActionIcon name="plus" />
-              {t("newBadge")}
-            </button>
+            {pharmacyUpdate ? (
+              <button type="button" className="btn action primary" onClick={openCreate}>
+                <ActionIcon name="plus" />
+                {t("newBadge")}
+              </button>
+            ) : null}
             <CatalogFilterButton
               open={filterOpen}
               controlsId={filterPanelId}
               onToggle={() => setFilterOpen((v) => !v)}
             />
-            <button type="button" className="btn action" onClick={() => setMode("history")}>
+            <button
+              type="button"
+              className={`btn action${mode === "history" ? " on" : ""}`}
+              onClick={toggleHistory}
+            >
               <ActionIcon name="history" />
-              {t("itemHistoryLink")}
+              {t("catalogHistoryLink")}
             </button>
           </div>
         </div>
@@ -330,6 +335,8 @@ export function PharmacyPage({
           onSearch={() => runSearch(filterQ)}
           active={activeFilter}
           onActiveChange={setActiveFilter}
+          dateSort={dateSort}
+          onDateSortChange={setDateSort}
           onReset={resetFilters}
         />
         {error ? <p className="form-error">{error}</p> : null}
@@ -345,12 +352,14 @@ export function PharmacyPage({
               key={item.id}
               role="option"
               tabIndex={0}
-              aria-selected={item.id === selectedId && !creating}
+              aria-selected={item.id === selectedId && mode === "items" && !creating}
               className={`drug-setup-table-row${
-                item.id === selectedId && !creating ? " selected" : ""
+                item.id === selectedId && mode === "items" && !creating ? " selected" : ""
               }${!item.active ? " inactive" : ""}`}
               onClick={() => selectItem(item.id)}
-              onDoubleClick={() => void openEdit(item)}
+              onDoubleClick={() => {
+                if (pharmacyUpdate) void openEdit(item);
+              }}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();
@@ -368,7 +377,7 @@ export function PharmacyPage({
                 <input
                   type="checkbox"
                   checked={item.active}
-                  disabled={busyId === item.id}
+                  disabled={busyId === item.id || !pharmacyUpdate}
                   aria-label={`${t("active")} ${item.code}`}
                   onChange={(e) => void toggleActive(item, e.target.checked)}
                 />
@@ -379,16 +388,13 @@ export function PharmacyPage({
       </div>
 
       <div className="drug-setup-detail-pane">
-        {creating ? (
+        {mode === "history" ? (
+          <PharmacyMovementsTab />
+        ) : creating && pharmacyUpdate ? (
           <>
-            <div className="drug-setup-title-row">
-              <h3 className="drug-setup-title" style={{ fontSize: "1.1rem" }}>
-                {t("createNewItemTitle")}
-              </h3>
-              <button type="button" className="desk-text-link" onClick={closeCreate}>
-                {t("cancel")}
-              </button>
-            </div>
+            <h3 className="drug-setup-title" style={{ fontSize: "1.1rem" }}>
+              {t("createNewItemTitle")}
+            </h3>
             <PharmacyItemForm
               key={createKey}
               editing={null}
@@ -451,9 +457,8 @@ export function PharmacyPage({
                   );
                 })()}
                 <PharmacyItemsTab
-                  isAdmin={isAdmin}
                   onEdit={() => void openEdit(infoItem)}
-                  onDelete={openDeleteConfirm}
+                  onDelete={pharmacyDelete ? openDeleteConfirm : undefined}
                   deleteBusy={deleteBusy}
                   selectedId={infoItem.id}
                   embedDetail
@@ -472,50 +477,14 @@ export function PharmacyPage({
       </div>
 
       {deleteConfirm && infoItem ? (
-        <div
-          className="opd-bill-dialog-overlay"
-          role="presentation"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) closeDeleteConfirm();
-          }}
-        >
-          <div
-            className="opd-bill-dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="delete-item-dialog-title"
-          >
-            <div className="opd-bill-dialog-head">
-              <h2 id="delete-item-dialog-title" className="opd-bill-dialog-title">
-                {t("delete")}
-              </h2>
-              <DialogCloseButton onClick={closeDeleteConfirm} disabled={deleteBusy} />
-            </div>
-            <p className="hint">
-              {formatItemCode(infoItem.code)} · {infoItem.name}
-            </p>
-            <p>{t("deleteItemConfirm")}</p>
-            {deleteError ? <p className="form-error">{deleteError}</p> : null}
-            <div className="btn-row" style={{ justifyContent: "flex-end" }}>
-              <button
-                type="button"
-                className="btn ghost"
-                onClick={closeDeleteConfirm}
-                disabled={deleteBusy}
-              >
-                {t("cancel")}
-              </button>
-              <button
-                type="button"
-                className="btn danger"
-                onClick={() => void confirmDeleteItem()}
-                disabled={deleteBusy}
-              >
-                {t("delete")}
-              </button>
-            </div>
-          </div>
-        </div>
+        <CatalogDeleteDialog
+          identity={`${formatItemCode(infoItem.code)} · ${infoItem.name}`}
+          message={t("deleteItemConfirm")}
+          busy={deleteBusy}
+          error={deleteError}
+          onCancel={closeDeleteConfirm}
+          onConfirm={() => void confirmDeleteItem()}
+        />
       ) : null}
     </section>
   );

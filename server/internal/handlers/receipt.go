@@ -72,9 +72,13 @@ type receiptBill struct {
 	PatientGender string
 	DoctorName    string
 	ProcedureName string
-	Note          string
-	DateLabel     string
-	TotalMMK      int64
+	// PortalLabel and PayeeName are the expense-bill desk and Name header.
+	// Empty on OPD, OT, and pharmacy receipts, which use the patient block instead.
+	PortalLabel string
+	PayeeName   string
+	Note        string
+	DateLabel   string
+	TotalMMK    int64
 	// ShowSettlement prints Total, Discount, Paid, and Remaining Balance.
 	// TotalMMK is the cart sum. NetMMK is the amount due after discount.
 	ShowSettlement bool
@@ -132,6 +136,12 @@ func writeThermalReceipt(b *strings.Builder, hosp *hospitalSettings, bill receip
 	}
 	writeReceiptKV(b, "Date", bill.DateLabel)
 	writeReceiptKV(b, "Status", strings.ToUpper(bill.Status))
+	if label := strings.TrimSpace(bill.PortalLabel); label != "" {
+		writeReceiptKV(b, "Portal", label)
+	}
+	if payee := strings.TrimSpace(bill.PayeeName); payee != "" {
+		writeReceiptKV(b, "Name", payee)
+	}
 
 	name := strings.TrimSpace(bill.PatientName)
 	phone := strings.TrimSpace(bill.PatientPhone)

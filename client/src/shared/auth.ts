@@ -1,7 +1,7 @@
 import { apiFetch, getApiBase } from "@/shared/api";
 import { userMessage } from "@/shared/errors";
 
-export type Role = "Admin" | "OPD" | "OT" | "Pharmacy";
+export type Role = "Admin" | "OPD" | "OT" | "Pharmacy" | "Patients" | "IPD";
 
 export type User = {
   id: number;
@@ -10,6 +10,7 @@ export type User = {
   role: Role;
   must_change_password: boolean;
   active: boolean;
+  access_mode?: "portal" | "unified";
 };
 
 export type LoginResult = {

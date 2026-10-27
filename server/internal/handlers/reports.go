@@ -26,6 +26,7 @@ type cashLine struct {
 	TotalMMK   int64  `json:"total_mmk"`
 	PaidAt     string `json:"paid_at"`
 	PaidByName string `json:"paid_by_name"`
+	Reversal   bool   `json:"reversal,omitempty"`
 }
 
 type cashReport struct {
@@ -64,7 +65,6 @@ type expiryRow struct {
 
 func (h *Reports) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	middleware.RequireAuth(h.DB, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		user := middleware.UserFromContext(r.Context())
 		path := strings.TrimPrefix(r.URL.Path, "/api/reports")
 		path = strings.TrimSuffix(path, "/")
 		if path == "" {
@@ -73,38 +73,32 @@ func (h *Reports) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		switch {
 		case path == "/daily-cash" && r.Method == http.MethodGet:
-			if !canCashReport(user.Role) {
-				writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+			if !h.permitReport(w, r, "cash", false) {
 				return
 			}
 			h.dailyCash(w, r, false)
 		case path == "/daily-cash/print" && r.Method == http.MethodGet:
-			if !canCashReport(user.Role) {
-				http.Error(w, "forbidden", http.StatusForbidden)
+			if !h.permitReport(w, r, "cash", true) {
 				return
 			}
 			h.dailyCash(w, r, true)
 		case path == "/low-stock" && r.Method == http.MethodGet:
-			if !canStockReport(user.Role) {
-				writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+			if !h.permitReport(w, r, "stock", false) {
 				return
 			}
 			h.lowStock(w, r, false)
 		case path == "/low-stock/print" && r.Method == http.MethodGet:
-			if !canStockReport(user.Role) {
-				http.Error(w, "forbidden", http.StatusForbidden)
+			if !h.permitReport(w, r, "stock", true) {
 				return
 			}
 			h.lowStock(w, r, true)
 		case path == "/near-expiry" && r.Method == http.MethodGet:
-			if !canStockReport(user.Role) {
-				writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+			if !h.permitReport(w, r, "stock", false) {
 				return
 			}
 			h.nearExpiry(w, r, false)
 		case path == "/near-expiry/print" && r.Method == http.MethodGet:
-			if !canStockReport(user.Role) {
-				http.Error(w, "forbidden", http.StatusForbidden)
+			if !h.permitReport(w, r, "stock", true) {
 				return
 			}
 			h.nearExpiry(w, r, true)
@@ -126,13 +120,71 @@ func canStockReport(role string) bool {
 		auth.HasPermission(role, auth.PermSettings)
 }
 
+// permitReport allows the reads the dashboard app already calls.
+// Portal desks keep the role checks. The dashboard grant opens these reads
+// and does not satisfy settings anywhere else.
+func (h *Reports) permitReport(w http.ResponseWriter, r *http.Request, kind string, asHTML bool) bool {
+	user := middleware.UserFromContext(r.Context())
+	ok, err := reportAllowed(h.DB, user, kind)
+	if err != nil {
+		if asHTML {
+			http.Error(w, "report failed", http.StatusInternalServerError)
+			return false
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "permission check failed"})
+		return false
+	}
+	if !ok {
+		if asHTML {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return false
+		}
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		return false
+	}
+	return true
+}
+
+func reportAllowed(db *sql.DB, user *auth.User, kind string) (bool, error) {
+	if user == nil {
+		return false, nil
+	}
+	role, mode, err := auth.LoadAccess(db, user.ID)
+	if err != nil {
+		return false, err
+	}
+	if role == auth.RoleAdmin {
+		return true, nil
+	}
+	if mode == auth.AccessPortal {
+		if kind == "stock" {
+			return canStockReport(role), nil
+		}
+		return canCashReport(role), nil
+	}
+	if mode != auth.AccessUnified {
+		return false, nil
+	}
+	ok, err := auth.Allow(db, user.ID, auth.GrantDashboard)
+	if err != nil || ok {
+		return ok, err
+	}
+	if kind == "stock" {
+		return auth.Allow(db, user.ID, auth.GrantPharmacyRead)
+	}
+	for _, grant := range []string{auth.GrantOPDRead, auth.GrantOTRead, auth.GrantPharmacyRead} {
+		ok, err = auth.Allow(db, user.ID, grant)
+		if err != nil || ok {
+			return ok, err
+		}
+	}
+	return false, nil
+}
+
 func reportDate(r *http.Request) string {
 	d := strings.TrimSpace(r.URL.Query().Get("date"))
-	if d == "" {
-		return time.Now().Format("2006-01-02")
-	}
 	if _, err := time.Parse("2006-01-02", d); err != nil {
-		return time.Now().Format("2006-01-02")
+		return localToday()
 	}
 	return d
 }
@@ -149,9 +201,14 @@ func (h *Reports) dailyCash(w http.ResponseWriter, r *http.Request, asHTML bool)
 		return
 	}
 	user := middleware.UserFromContext(r.Context())
-	sources := map[string]bool{}
-	if user != nil {
-		sources = cashSourcesForRole(user.Role)
+	sources, err := cashSourcesForUser(h.DB, user)
+	if err != nil {
+		if asHTML {
+			http.Error(w, "report failed", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "report failed"})
+		return
 	}
 	scopeCashReport(rep, sources)
 	if asHTML {
@@ -164,6 +221,57 @@ func (h *Reports) dailyCash(w http.ResponseWriter, r *http.Request, asHTML bool)
 		return
 	}
 	writeJSON(w, http.StatusOK, rep)
+}
+
+func allCashSources() map[string]bool {
+	return map[string]bool{"OPD": true, "OT": true, "Pharmacy": true}
+}
+
+// cashSourcesForUser keeps each portal desk on its own bills.
+// Admin and the dashboard grant see the combined report.
+func cashSourcesForUser(db *sql.DB, user *auth.User) (map[string]bool, error) {
+	if user == nil {
+		return map[string]bool{}, nil
+	}
+	role, mode, err := auth.LoadAccess(db, user.ID)
+	if err != nil {
+		return nil, err
+	}
+	if role == auth.RoleAdmin {
+		return allCashSources(), nil
+	}
+	if mode == auth.AccessPortal {
+		return cashSourcesForRole(role), nil
+	}
+	if mode != auth.AccessUnified {
+		return map[string]bool{}, nil
+	}
+	ok, err := auth.Allow(db, user.ID, auth.GrantDashboard)
+	if err != nil {
+		return nil, err
+	}
+	if ok {
+		return allCashSources(), nil
+	}
+	sources := map[string]bool{}
+	pairs := []struct {
+		grant  string
+		source string
+	}{
+		{auth.GrantOPDRead, "OPD"},
+		{auth.GrantOTRead, "OT"},
+		{auth.GrantPharmacyRead, "Pharmacy"},
+	}
+	for _, pair := range pairs {
+		ok, err = auth.Allow(db, user.ID, pair.grant)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			sources[pair.source] = true
+		}
+	}
+	return sources, nil
 }
 
 // cashSourcesForRole is the desks whose paid bills this role may see.
@@ -194,106 +302,134 @@ func scopeCashReport(rep *cashReport, sources map[string]bool) {
 			continue
 		}
 		lines = append(lines, line)
-		switch line.Source {
-		case "OPD":
-			rep.OPDCount++
-			rep.OPDTotal += line.TotalMMK
-		case "OT":
-			rep.OTCount++
-			rep.OTTotal += line.TotalMMK
-		case "Pharmacy":
-			rep.PharmacyCount++
-			rep.PharmacyTotal += line.TotalMMK
-		}
+		accumulateCashLine(rep, line)
 	}
 	rep.Lines = lines
 	rep.GrandTotal = rep.OPDTotal + rep.OTTotal + rep.PharmacyTotal
 }
 
+// buildDailyCash is the desk part of buildCashMovement.
+// A collected bill stays on the Asia/Yangon civil day of paid_at, including after a void.
+// The opposite signed amount is posted on the Asia/Yangon civil day of voided_at.
+// voided_at is UTC from datetime('now'); paid_at is already Yangon wall time.
+// A void with a blank voided_at is left out of both days. Drafts, collected_cash = 0,
+// and pharmacy TO- slips are not desk cash. Counts are payment legs only.
 func buildDailyCash(db *sql.DB, date string) (*cashReport, error) {
 	rep := &cashReport{Date: date, Lines: []cashLine{}}
-
-	opdRows, err := db.Query(`
-		SELECT b.bill_no, b.patient_name, COALESCE(b.doctor_name, ''), b.total_mmk,
-		       COALESCE(b.paid_at, ''), COALESCE(u.display_name, '')
-		FROM opd_bills b
-		LEFT JOIN users u ON u.id = b.paid_by_user_id
-		WHERE b.status = 'paid' AND date(b.paid_at) = date(?)
-		ORDER BY b.paid_at ASC, b.id ASC
-	`, date)
-	if err != nil {
-		return nil, err
+	voidStart, voidEnd, ok := yangonDayUTCRange(date)
+	if !ok {
+		return rep, nil
 	}
-	defer opdRows.Close()
-	for opdRows.Next() {
-		var line cashLine
-		line.Source = "OPD"
-		if err := opdRows.Scan(&line.BillNo, &line.Patient, &line.Doctor, &line.TotalMMK, &line.PaidAt, &line.PaidByName); err != nil {
+	for _, source := range []string{"OPD", "OT", "Pharmacy"} {
+		if err := appendDeskCash(db, rep, source, date, voidStart, voidEnd); err != nil {
 			return nil, err
 		}
-		rep.Lines = append(rep.Lines, line)
-		rep.OPDCount++
-		rep.OPDTotal += line.TotalMMK
 	}
-	if err := opdRows.Err(); err != nil {
-		return nil, err
-	}
-
-	otRows, err := db.Query(`
-		SELECT b.bill_no, b.patient_name, COALESCE(b.doctor_name, ''), b.total_mmk,
-		       COALESCE(b.paid_at, ''), COALESCE(u.display_name, '')
-		FROM ot_bills b
-		LEFT JOIN users u ON u.id = b.paid_by_user_id
-		WHERE b.status = 'paid' AND date(b.paid_at) = date(?)
-		ORDER BY b.paid_at ASC, b.id ASC
-	`, date)
-	if err != nil {
-		return nil, err
-	}
-	defer otRows.Close()
-	for otRows.Next() {
-		var line cashLine
-		line.Source = "OT"
-		if err := otRows.Scan(&line.BillNo, &line.Patient, &line.Doctor, &line.TotalMMK, &line.PaidAt, &line.PaidByName); err != nil {
-			return nil, err
-		}
-		rep.Lines = append(rep.Lines, line)
-		rep.OTCount++
-		rep.OTTotal += line.TotalMMK
-	}
-	if err := otRows.Err(); err != nil {
-		return nil, err
-	}
-
-	phRows, err := db.Query(`
-		SELECT b.bill_no, b.patient_name, '',
-		       CASE WHEN b.bill_no LIKE 'RT-%' THEN -b.total_mmk ELSE b.total_mmk END,
-		       COALESCE(b.paid_at, ''), COALESCE(u.display_name, '')
-		FROM pharmacy_bills b
-		LEFT JOIN users u ON u.id = b.paid_by_user_id
-		WHERE b.status = 'paid' AND b.bill_no NOT LIKE 'TO-%' AND date(b.paid_at) = date(?)
-		ORDER BY b.paid_at ASC, b.id ASC
-	`, date)
-	if err != nil {
-		return nil, err
-	}
-	defer phRows.Close()
-	for phRows.Next() {
-		var line cashLine
-		line.Source = "Pharmacy"
-		if err := phRows.Scan(&line.BillNo, &line.Patient, &line.Doctor, &line.TotalMMK, &line.PaidAt, &line.PaidByName); err != nil {
-			return nil, err
-		}
-		rep.Lines = append(rep.Lines, line)
-		rep.PharmacyCount++
-		rep.PharmacyTotal += line.TotalMMK
-	}
-	if err := phRows.Err(); err != nil {
-		return nil, err
-	}
-
 	rep.GrandTotal = rep.OPDTotal + rep.OTTotal + rep.PharmacyTotal
 	return rep, nil
+}
+
+func accumulateCashLine(rep *cashReport, line cashLine) {
+	switch line.Source {
+	case "OPD":
+		if !line.Reversal {
+			rep.OPDCount++
+		}
+		rep.OPDTotal += line.TotalMMK
+	case "OT":
+		if !line.Reversal {
+			rep.OTCount++
+		}
+		rep.OTTotal += line.TotalMMK
+	case "Pharmacy":
+		if !line.Reversal {
+			rep.PharmacyCount++
+		}
+		rep.PharmacyTotal += line.TotalMMK
+	}
+}
+
+func deskBillTable(source string) (table string, pharmacy bool, err error) {
+	switch source {
+	case "OPD":
+		return "opd_bills", false, nil
+	case "OT":
+		return "ot_bills", false, nil
+	case "Pharmacy":
+		return "pharmacy_bills", true, nil
+	default:
+		return "", false, fmt.Errorf("unknown cash desk %s", source)
+	}
+}
+
+func appendDeskCash(db *sql.DB, rep *cashReport, source, date, voidStart, voidEnd string) error {
+	table, pharmacy, err := deskBillTable(source)
+	if err != nil {
+		return err
+	}
+	doctorSQL := "COALESCE(b.doctor_name, '')"
+	payAmount := "b.total_mmk"
+	voidAmount := "-b.total_mmk"
+	extra := ""
+	if pharmacy {
+		doctorSQL = "''"
+		payAmount = "CASE WHEN b.bill_no LIKE 'RT-%' THEN -b.total_mmk ELSE b.total_mmk END"
+		voidAmount = "CASE WHEN b.bill_no LIKE 'RT-%' THEN b.total_mmk ELSE -b.total_mmk END"
+		extra = " AND b.bill_no NOT LIKE 'TO-%'"
+	}
+	paySQL := fmt.Sprintf(`
+		SELECT b.bill_no, b.patient_name, %s, %s,
+		       COALESCE(b.paid_at, ''), COALESCE(u.display_name, '')
+		FROM %s b
+		LEFT JOIN users u ON u.id = b.paid_by_user_id
+		WHERE b.collected_cash = 1
+		  AND b.paid_at IS NOT NULL AND TRIM(b.paid_at) != ''
+		  AND date(b.paid_at) = date(?)
+		  AND (
+		    b.status = 'paid'
+		    OR (b.status = 'void' AND b.voided_at IS NOT NULL AND TRIM(b.voided_at) != '')
+		  )%s
+		ORDER BY b.paid_at ASC, b.id ASC
+	`, doctorSQL, payAmount, table, extra)
+	rows, err := db.Query(paySQL, date)
+	if err != nil {
+		return err
+	}
+	if err := scanDeskRows(rows, rep, source, false); err != nil {
+		return err
+	}
+	voidSQL := fmt.Sprintf(`
+		SELECT b.bill_no, b.patient_name, %s, %s,
+		       COALESCE(b.paid_at, ''), COALESCE(u.display_name, '')
+		FROM %s b
+		LEFT JOIN users u ON u.id = b.paid_by_user_id
+		WHERE b.collected_cash = 1
+		  AND b.paid_at IS NOT NULL AND TRIM(b.paid_at) != ''
+		  AND b.status = 'void'
+		  AND b.voided_at IS NOT NULL AND TRIM(b.voided_at) != ''
+		  AND b.voided_at >= ? AND b.voided_at < ?%s
+		ORDER BY b.voided_at ASC, b.id ASC
+	`, doctorSQL, voidAmount, table, extra)
+	rows, err = db.Query(voidSQL, voidStart, voidEnd)
+	if err != nil {
+		return err
+	}
+	return scanDeskRows(rows, rep, source, true)
+}
+
+func scanDeskRows(rows *sql.Rows, rep *cashReport, source string, reversal bool) error {
+	defer rows.Close()
+	for rows.Next() {
+		var line cashLine
+		line.Source = source
+		line.Reversal = reversal
+		if err := rows.Scan(&line.BillNo, &line.Patient, &line.Doctor, &line.TotalMMK, &line.PaidAt, &line.PaidByName); err != nil {
+			return err
+		}
+		rep.Lines = append(rep.Lines, line)
+		accumulateCashLine(rep, line)
+	}
+	return rows.Err()
 }
 
 func (h *Reports) lowStock(w http.ResponseWriter, r *http.Request, asHTML bool) {
@@ -513,6 +649,102 @@ func renderCashReportHTML(hosp *hospitalSettings, rep *cashReport, sources map[s
 	b.WriteString("</tbody></table>")
 	b.WriteString("<p class=\"meta\">Printed from Mudita Hospital</p>")
 	b.WriteString("</body></html>")
+	return b.String()
+}
+
+// renderDashboardDailyHTML is the admin daily print. It follows the clinic
+// cash sheet and adds the three signed totals plus IPD and expense lines.
+// net_cash_mmk is income_mmk + expense_mmk. expense_mmk is already signed.
+func renderDashboardDailyHTML(hosp *hospitalSettings, move *cashMovement) string {
+	if hosp == nil {
+		hosp = &hospitalSettings{HospitalName: "Mudita Hospital"}
+	}
+	desk := move.Desk
+	if desk == nil {
+		desk = &cashReport{Date: move.Date, Lines: []cashLine{}}
+	}
+	var ipdLines []ipdCashLine
+	if move.IPD != nil {
+		ipdLines = move.IPD.Lines
+	}
+	var b strings.Builder
+	b.WriteString("<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>Daily cash ")
+	b.WriteString(html.EscapeString(move.Date))
+	b.WriteString("</title><style>")
+	b.WriteString(reportPrintCSS())
+	b.WriteString("</style></head><body><h1>")
+	b.WriteString(html.EscapeString(hosp.HospitalName))
+	b.WriteString("</h1><h2>Daily cash report — ")
+	b.WriteString(html.EscapeString(move.Date))
+	b.WriteString("</h2><p class=\"summary\">Income: ")
+	b.WriteString(formatMMK(move.IncomeMMK))
+	b.WriteString(" MMK &nbsp;|&nbsp; Expenses: ")
+	b.WriteString(formatMMK(move.ExpenseMMK))
+	b.WriteString(" MMK &nbsp;|&nbsp; <strong>Net: ")
+	b.WriteString(formatMMK(move.NetCashMMK))
+	b.WriteString(" MMK</strong></p>")
+	b.WriteString("<p class=\"summary\"><strong>Desk</strong></p>")
+	b.WriteString("<table><thead><tr><th>Source</th><th>Bill</th><th>Patient</th><th>Doctor</th><th>Paid</th><th class=\"num\">MMK</th></tr></thead><tbody>")
+	for _, line := range desk.Lines {
+		source := line.Source
+		if line.Reversal {
+			source += " Reversal"
+		}
+		b.WriteString("<tr><td>")
+		b.WriteString(html.EscapeString(source))
+		b.WriteString("</td><td>")
+		b.WriteString(html.EscapeString(line.BillNo))
+		b.WriteString("</td><td>")
+		b.WriteString(html.EscapeString(line.Patient))
+		b.WriteString("</td><td>")
+		b.WriteString(html.EscapeString(line.Doctor))
+		b.WriteString("</td><td>")
+		b.WriteString(html.EscapeString(line.PaidAt))
+		b.WriteString("</td><td class=\"num\">")
+		b.WriteString(formatMMK(line.TotalMMK))
+		b.WriteString("</td></tr>")
+	}
+	if len(desk.Lines) == 0 {
+		b.WriteString("<tr><td colspan=\"6\">No paid bills on this date.</td></tr>")
+	}
+	b.WriteString("</tbody></table>")
+	b.WriteString("<p class=\"summary\"><strong>IPD</strong></p>")
+	b.WriteString("<table><thead><tr><th>Kind</th><th>Admission</th><th>Patient</th><th class=\"num\">MMK</th></tr></thead><tbody>")
+	for _, line := range ipdLines {
+		b.WriteString("<tr><td>")
+		b.WriteString(html.EscapeString(line.Kind))
+		b.WriteString("</td><td>")
+		b.WriteString(html.EscapeString(line.AdmissionNo))
+		b.WriteString("</td><td>")
+		b.WriteString(html.EscapeString(line.Patient))
+		b.WriteString("</td><td class=\"num\">")
+		b.WriteString(formatMMK(line.AmountMMK))
+		b.WriteString("</td></tr>")
+	}
+	if len(ipdLines) == 0 {
+		b.WriteString("<tr><td colspan=\"4\">No IPD cash on this date.</td></tr>")
+	}
+	b.WriteString("</tbody></table>")
+	b.WriteString("<p class=\"summary\"><strong>Expenses</strong></p>")
+	b.WriteString("<table><thead><tr><th>Bill</th><th>Portal</th><th>Payee</th><th>Paid</th><th class=\"num\">MMK</th></tr></thead><tbody>")
+	for _, line := range move.ExpenseLines {
+		b.WriteString("<tr><td>")
+		b.WriteString(html.EscapeString(line.BillNo))
+		b.WriteString("</td><td>")
+		b.WriteString(html.EscapeString(line.Portal))
+		b.WriteString("</td><td>")
+		b.WriteString(html.EscapeString(line.Name))
+		b.WriteString("</td><td>")
+		b.WriteString(html.EscapeString(line.PaidAt))
+		b.WriteString("</td><td class=\"num\">")
+		b.WriteString(formatMMK(line.AmountMMK))
+		b.WriteString("</td></tr>")
+	}
+	if len(move.ExpenseLines) == 0 {
+		b.WriteString("<tr><td colspan=\"5\">No paid expenses on this date.</td></tr>")
+	}
+	b.WriteString("</tbody></table>")
+	b.WriteString("<p class=\"meta\">Printed from Mudita Hospital</p></body></html>")
 	return b.String()
 }
 

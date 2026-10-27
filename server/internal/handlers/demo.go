@@ -394,7 +394,7 @@ func ensureTrainingOpdBill(tx *sql.Tx, actorUID, doctorID, serviceID int64, item
 
 	var svcCode, svcName string
 	var svcPrice int64
-	_ = tx.QueryRow(`SELECT code, name, price_mmk FROM services WHERE id = ?`, serviceID).Scan(&svcCode, &svcName, &svcPrice)
+	_ = tx.QueryRow(`SELECT COALESCE(code, ''), name, price_mmk FROM services WHERE id = ?`, serviceID).Scan(&svcCode, &svcName, &svcPrice)
 
 	total := svcPrice
 

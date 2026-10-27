@@ -10,7 +10,7 @@ Keep application code under `internal/`. Register routes in `main.go`. One expor
 |---------|----------------|
 | `internal/handlers` | HTTP routing switch, request/response, SQL, domain rules |
 | `internal/middleware` | CORS, `RequireAuth`, `RequirePermission` |
-| `internal/auth` | Roles, permissions, sessions, passwords |
+| `internal/auth` | Roles, grant keys, sessions, passwords |
 | `internal/db` | Open DB, migrations, seed |
 | `internal/audit` | Audit log writes |
 | `internal/backup` | Backup / restore |
@@ -45,10 +45,17 @@ func (h *OPD) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 ## Auth and permissions
 
-- Permission constants and role map: `server/internal/auth/roles.go`.
-- New domain capabilities need a new `Perm*` key and role assignments in the same change.
+- Permission constants and the portal role map: `server/internal/auth/roles.go`.
+- `users.access_mode` is `portal` (default) or `unified`. Grant rows live in `user_grants(user_id, perm)`. Migration `028_user_grants` adds both. Keys and the resolver are in `server/internal/auth/grants.go`.
+- `auth.Allow` decides one key. Admin is allowed. Portal uses the role map. Unified is allowed only when that grant row exists; `users.role` is ignored. `auth.CellAllowed` lets a portal desk through after the route gate. Stock adjust uses `Allow`, so portal Pharmacy is denied. Unified stock adjust needs `pharmacy.update`.
+- `DeskAllowed` opens a clinic module when any cell on that module is stored. `settings` and `manage_users` are never opened by a grant, including `dashboard`.
+- `/api/dashboard/` and the dashboard report reads (`/api/reports/daily-cash`, its print, `/api/reports/low-stock`, `/api/reports/near-expiry`) accept Admin or the `dashboard` grant. That grant does not satisfy `PermSettings` anywhere else.
+- Saving grants replaces that user's rows in one transaction, deletes their sessions, and writes an audit row with the old and new key lists. Only Admin can save. An Admin row cannot be given grants.
+- Create, Update, and Delete require Read on the same module. `ipd.delete`, unknown keys, and settings keys are rejected. A save with no clinic Read and no `dashboard` grant is rejected.
+- New domain capabilities need a new `Perm*` key and role assignments in the same change. A unified cell also needs a grant key and a handler check.
 - Catalog / read endpoints for non-admin roles must stay intentional (e.g. OPD reading the OPD catalog without `settings`).
-- Never skip `RequirePermission` on mutating routes.
+- Never skip `RequirePermission` on mutating routes. Hiding a clinic button is not a substitute for the server check.
+- Hard delete of an unused chart stays Admin-only. `patients.delete` is grantable and does not open that route.
 
 ## Schema and migrations
 

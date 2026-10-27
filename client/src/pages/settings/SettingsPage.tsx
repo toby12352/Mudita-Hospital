@@ -3,8 +3,8 @@ import type { SettingsTab } from "@/app/types";
 import { BackupTab } from "./BackupTab";
 import { CategoriesTab } from "./CategoriesTab";
 import { DoctorsTab } from "./DoctorsTab";
+import { ExpensesTab } from "./ExpensesTab";
 import { HospitalTab } from "./HospitalTab";
-import { ServicesTab } from "./ServicesTab";
 import { TrainingTab } from "./TrainingTab";
 import { UsersTab } from "./UsersTab";
 export function SettingsPage({
@@ -25,8 +25,8 @@ export function SettingsPage({
           [
             { id: "hospital" as const, label: t("hospital") },
             { id: "doctors" as const, label: t("doctors") },
-            { id: "services" as const, label: t("services") },
             { id: "categories" as const, label: t("categories") },
+            { id: "expenses" as const, label: t("expenses") },
             ...(canManageUsers ? [{ id: "users" as const, label: t("users") }] : []),
             { id: "backup" as const, label: t("backup") },
             { id: "training" as const, label: t("training") },
@@ -44,8 +44,8 @@ export function SettingsPage({
       </nav>
       {tab === "hospital" ? <HospitalTab /> : null}
       {tab === "doctors" ? <DoctorsTab /> : null}
-      {tab === "services" ? <ServicesTab /> : null}
       {tab === "categories" ? <CategoriesTab /> : null}
+      {tab === "expenses" ? <ExpensesTab /> : null}
       {tab === "users" && canManageUsers ? <UsersTab /> : null}
       {tab === "backup" ? <BackupTab /> : null}
       {tab === "training" ? <TrainingTab t={t} /> : null}

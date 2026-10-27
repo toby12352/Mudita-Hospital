@@ -49,6 +49,22 @@ export function AccountMenu({
 
   return (
     <div className="account-menu" ref={rootRef}>
+      <div className="lang-switch lang-compact" role="group" aria-label={t("language")}>
+        <button
+          type="button"
+          className={`btn ghost ${locale === "en" ? "lang-active" : ""}`}
+          onClick={() => onLocale("en")}
+        >
+          {t("english")}
+        </button>
+        <button
+          type="button"
+          className={`btn ghost ${locale === "my" ? "lang-active" : ""}`}
+          onClick={() => onLocale("my")}
+        >
+          {t("myanmar")}
+        </button>
+      </div>
       <button
         type="button"
         className="account-avatar"
@@ -65,22 +81,6 @@ export function AccountMenu({
           <div className="account-identity">
             <p className="account-name">{name}</p>
             <p className="account-role">{user.role}</p>
-          </div>
-          <div className="lang-switch lang-compact" role="group" aria-label={t("language")}>
-            <button
-              type="button"
-              className={`btn ghost ${locale === "en" ? "lang-active" : ""}`}
-              onClick={() => onLocale("en")}
-            >
-              {t("english")}
-            </button>
-            <button
-              type="button"
-              className={`btn ghost ${locale === "my" ? "lang-active" : ""}`}
-              onClick={() => onLocale("my")}
-            >
-              {t("myanmar")}
-            </button>
           </div>
           <ServerBadge
             conn={conn}

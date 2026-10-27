@@ -1,0 +1,1 @@
+Write a concrete implementation plan to tackle this safely and in detail instruction. If needs to, create a plan we can use in multiple chats, once a chat n build is complete, make sure to include agent to update the plan with chat 'n' complete and paste me the hand off prompt for chat n+1. I will just attacht the plan and paste the text in the new fresh chat.

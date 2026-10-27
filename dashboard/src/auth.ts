@@ -1,7 +1,7 @@
 import { apiFetch, getApiBase, TOKEN_KEY } from "./api";
 import { userMessage } from "./errors";
 
-export type Role = "Admin" | "OPD" | "OT" | "Pharmacy";
+export type Role = "Admin" | "OPD" | "OT" | "Pharmacy" | "Patients";
 
 export type User = {
   id: number;
@@ -26,12 +26,10 @@ export type MeResult = {
 const USER_KEY = "mudita_dash_user";
 const IDLE_MS = 15 * 60 * 1000;
 
-/** Dashboard is Admin-only (settings / manage_users). */
+/** Dashboard opens for Admin, or for an account with the dashboard grant. */
 export function isDashboardAdmin(user: User, permissions?: string[] | null): boolean {
   if (user.role === "Admin") return true;
-  return (
-    !!permissions?.includes("settings") && !!permissions?.includes("manage_users")
-  );
+  return !!permissions?.includes("dashboard");
 }
 
 export function getStoredToken(): string | null {

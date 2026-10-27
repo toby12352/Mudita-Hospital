@@ -15,6 +15,10 @@ export type DashOverview = {
   low_stock_count: number;
   near_expiry_count: number;
   near_expiry_days: number;
+  ipd_cash_mmk: number;
+  income_mmk: number;
+  expense_mmk: number;
+  net_cash_mmk: number;
 };
 
 export type TrendPoint = {
@@ -24,6 +28,10 @@ export type TrendPoint = {
   pharmacy_total_mmk: number;
   grand_total_mmk: number;
   bill_count: number;
+  ipd_cash_mmk: number;
+  income_mmk: number;
+  expense_mmk: number;
+  net_cash_mmk: number;
 };
 
 export type TrendsResponse = {
@@ -160,6 +168,25 @@ export type DailyCashLine = {
   total_mmk: number;
   paid_at: string;
   paid_by_name: string;
+  reversal?: boolean;
+};
+
+export type IpdCashLine = {
+  kind: string;
+  amount_mmk: number;
+  admission_no: string;
+  patient: string;
+  note: string;
+  created_at: string;
+};
+
+export type ExpenseCashLine = {
+  bill_no: string;
+  portal: string;
+  name: string;
+  amount_mmk: number;
+  paid_at: string;
+  reversal?: boolean;
 };
 
 export type DailyReportResponse = {
@@ -185,6 +212,18 @@ export type DailyReportResponse = {
   delta_pharmacy_mmk: number;
   delta_grand_mmk: number;
   delta_bills: number;
+  income_mmk: number;
+  expense_mmk: number;
+  net_cash_mmk: number;
+  prev_income_mmk: number;
+  prev_expense_mmk: number;
+  prev_net_cash_mmk: number;
+  delta_income_mmk: number;
+  delta_expense_mmk: number;
+  delta_net_cash_mmk: number;
+  ipd_cash_mmk: number;
+  ipd_lines: IpdCashLine[];
+  expense_lines: ExpenseCashLine[];
 };
 
 export async function fetchStockHealth(opts?: {

@@ -15,7 +15,8 @@ import (
 
 // Pharmacy handles inventory items, batches, restock, and stock movements.
 // Stock on hand = SUM(item_batches.qty) at a location (default MAIN).
-// FEFO (earliest expiry first) is used for Admin adjust-down without batch_id.
+// FEFO (earliest expiry first) is used for adjust-down without batch_id.
+// Adjust is Admin or unified pharmacy.update. Portal Pharmacy is denied.
 // Pharmacy and OPD sales skip expired batches and batches with no expiry.
 type Pharmacy struct {
 	DB *sql.DB
@@ -147,6 +148,9 @@ func (h *Pharmacy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if path == "" {
 			path = "/"
 		}
+		if grant, skip := pharmacyGrant(r.Method, path); !skip && !allowCell(h.DB, w, r, grant) {
+			return
+		}
 
 		switch {
 		case path == "/locations" && r.Method == http.MethodGet:
@@ -169,6 +173,8 @@ func (h *Pharmacy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.printPharmacyBill(w, r, path)
 		case strings.HasPrefix(path, "/bills/") && r.Method == http.MethodGet:
 			h.getPharmacyBill(w, r, path)
+		case strings.HasPrefix(path, "/bills/") && r.Method == http.MethodDelete:
+			h.purgePharmacyBill(w, r, path)
 		case strings.HasPrefix(path, "/bills/") && r.Method == http.MethodPut:
 			h.updatePharmacyBill(w, r, path)
 		case path == "/items" && r.Method == http.MethodGet:
@@ -683,6 +689,19 @@ func (h *Pharmacy) restock(w http.ResponseWriter, r *http.Request, path string) 
 		}
 	}
 
+	user := middleware.UserFromContext(r.Context())
+	if user == nil {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		return
+	}
+	// Quantity is Create. Prices in the same body apply only for Admin or pharmacy.update.
+	// Portal Pharmacy still applies prices, which is today's desk.
+	applyPrices, err := auth.CellAllowed(h.DB, user.ID, auth.GrantPharmacyUpdate)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "permission check failed"})
+		return
+	}
+
 	tx, err := h.DB.Begin()
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "tx failed"})
@@ -691,21 +710,23 @@ func (h *Pharmacy) restock(w http.ResponseWriter, r *http.Request, path string) 
 	defer tx.Rollback()
 
 	buy, sell := existing.BuyPriceMMK, existing.SellPriceMMK
-	if req.BuyPriceMMK != nil {
-		if *req.BuyPriceMMK < 0 {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "buy_price_mmk must be >= 0"})
-			return
+	if applyPrices {
+		if req.BuyPriceMMK != nil {
+			if *req.BuyPriceMMK < 0 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "buy_price_mmk must be >= 0"})
+				return
+			}
+			buy = *req.BuyPriceMMK
 		}
-		buy = *req.BuyPriceMMK
-	}
-	if req.SellPriceMMK != nil {
-		if *req.SellPriceMMK < 0 {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "sell_price_mmk must be >= 0"})
-			return
+		if req.SellPriceMMK != nil {
+			if *req.SellPriceMMK < 0 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "sell_price_mmk must be >= 0"})
+				return
+			}
+			sell = *req.SellPriceMMK
 		}
-		sell = *req.SellPriceMMK
 	}
-	if req.BuyPriceMMK != nil || req.SellPriceMMK != nil {
+	if applyPrices && (req.BuyPriceMMK != nil || req.SellPriceMMK != nil) {
 		if _, err := tx.Exec(`
 			UPDATE items SET buy_price_mmk = ?, sell_price_mmk = ?, updated_at = datetime('now') WHERE id = ?
 		`, buy, sell, id); err != nil {
@@ -714,7 +735,6 @@ func (h *Pharmacy) restock(w http.ResponseWriter, r *http.Request, path string) 
 		}
 	}
 
-	user := middleware.UserFromContext(r.Context())
 	uid := user.ID
 	var batchID int64
 	if req.Qty > 0 {
@@ -760,8 +780,19 @@ func (h *Pharmacy) restock(w http.ResponseWriter, r *http.Request, path string) 
 
 func (h *Pharmacy) adjust(w http.ResponseWriter, r *http.Request, path string) {
 	user := middleware.UserFromContext(r.Context())
-	if user.Role != auth.RoleAdmin {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "Admin only"})
+	if user == nil {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		return
+	}
+	// Allow denies portal Pharmacy: the role map has no pharmacy.update key.
+	// Admin passes. Unified passes only with that grant.
+	ok, err := auth.Allow(h.DB, user.ID, auth.GrantPharmacyUpdate)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "permission check failed"})
+		return
+	}
+	if !ok {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
 		return
 	}
 

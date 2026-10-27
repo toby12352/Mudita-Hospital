@@ -29,15 +29,22 @@ func localToday() string {
 
 // execPayDraft marks a draft bill paid only if it is still draft.
 // n is 0 when another request already paid or voided it.
-func execPayDraft(tx *sql.Tx, table string, id, userID int64) (int64, error) {
+// admissionID nil is cash (collected_cash 1). A set id is an account charge (collected_cash 0).
+func execPayDraft(tx *sql.Tx, table string, id, userID int64, admissionID *int64) (int64, error) {
 	switch table {
 	case "opd_bills", "pharmacy_bills", "ot_bills":
 	default:
 		return 0, fmt.Errorf("unknown bill table")
 	}
+	collected := 1
+	var admission any
+	if admissionID != nil {
+		collected = 0
+		admission = *admissionID
+	}
 	res, err := tx.Exec(
-		`UPDATE `+table+` SET status = 'paid', paid_at = ?, paid_by_user_id = ?, updated_at = datetime('now') WHERE id = ? AND status = 'draft'`,
-		localCivilNow(), userID, id,
+		`UPDATE `+table+` SET status = 'paid', paid_at = ?, paid_by_user_id = ?, collected_cash = ?, admission_id = ?, updated_at = datetime('now') WHERE id = ? AND status = 'draft'`,
+		localCivilNow(), userID, collected, admission, id,
 	)
 	if err != nil {
 		return 0, err

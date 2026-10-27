@@ -505,6 +505,9 @@ body {
 .account-menu {
   position: relative;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
 }
 
 .account-avatar {

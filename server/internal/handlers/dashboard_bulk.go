@@ -434,7 +434,7 @@ func (h *Dashboard) exportItemsCSV(w http.ResponseWriter, r *http.Request) {
 
 func (h *Dashboard) exportServicesCSV(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.DB.Query(`
-		SELECT code, name, price_mmk, active FROM services ORDER BY code COLLATE NOCASE
+		SELECT COALESCE(code, ''), name, price_mmk, active FROM services ORDER BY code COLLATE NOCASE
 	`)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "export failed"})

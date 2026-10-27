@@ -41,6 +41,8 @@ func (h *ServiceCategories) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
 				return
 			}
+		} else if !allowCell(h.DB, w, r, auth.GrantOPDRead) {
+			return
 		}
 
 		switch {

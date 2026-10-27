@@ -52,6 +52,8 @@ export type ManagedUser = {
   must_change_password: boolean;
   active: boolean;
   created_at?: string;
+  access_mode?: "portal" | "unified";
+  grants?: string[];
 };
 
 export async function fetchHospitalSettings(): Promise<HospitalSettings> {
@@ -220,8 +222,8 @@ export async function listUsers(q = ""): Promise<ManagedUser[]> {
 export async function createUser(body: {
   username: string;
   display_name: string;
-  role: "OPD" | "OT" | "Pharmacy";
   password: string;
+  grants: string[];
 }): Promise<ManagedUser> {
   return apiFetch<ManagedUser>("/api/users", {
     method: "POST",
@@ -233,9 +235,9 @@ export async function updateUser(
   id: number,
   body: {
     display_name?: string;
-    role?: "OPD" | "OT" | "Pharmacy" | "Admin";
     active?: boolean;
     password?: string;
+    grants?: string[];
   },
 ): Promise<ManagedUser> {
   return apiFetch<ManagedUser>(`/api/users/${id}`, {
