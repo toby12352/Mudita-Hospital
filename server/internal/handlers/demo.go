@@ -329,17 +329,20 @@ func ensureTrainingItems(tx *sql.Tx, actorUID int64) ([]int64, int, error) {
 			} else if s.category == "OT" {
 				pack.L3Unit = "Tablet"
 			}
+			pack = padPackTail(pack)
 			units := packToItemUnits(pack)
 			buyPerBox := s.buy * units.UnitsPerPurchase // seed buy was per L3; store per box
 			res, err := tx.Exec(`
 				INSERT INTO items (
 					code, name, category, dosage, pack_size,
 					pack_l1_qty, pack_l1_unit, pack_l2_qty, pack_l2_unit, pack_l3_qty, pack_l3_unit,
+					pack_l4_qty, pack_l4_unit, pack_l5_qty, pack_l5_unit, pack_l6_qty, pack_l6_unit,
 					purchase_unit, stock_unit, billing_unit, units_per_purchase, billing_per_stock, charge_full_stock_unit,
 					buy_price_mmk, sell_price_mmk, reorder_level, active
-				) VALUES (?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?, 1)
+				) VALUES (?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?, 1)
 			`, s.code, s.name, s.category, units.UnitsPerPurchase,
 				pack.L1Qty, pack.L1Unit, pack.L2Qty, pack.L2Unit, pack.L3Qty, pack.L3Unit,
+				pack.L4Qty, pack.L4Unit, pack.L5Qty, pack.L5Unit, pack.L6Qty, pack.L6Unit,
 				units.PurchaseUnit, units.StockUnit, units.BillingUnit, units.UnitsPerPurchase,
 				buyPerBox, s.sell, s.reorder)
 			if err != nil {

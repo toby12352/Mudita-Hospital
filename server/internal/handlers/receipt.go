@@ -61,6 +61,8 @@ type receiptLine struct {
 	Unit        string
 	UnitPrice   int64
 	LineTotal   int64
+	// BlankQty leaves the qty cell empty (FOC companion rows).
+	BlankQty bool
 }
 
 type receiptBill struct {
@@ -188,9 +190,12 @@ func writeThermalReceipt(b *strings.Builder, hosp *hospitalSettings, bill receip
 		b.WriteString(`<th class="col-no">No.</th><th class="col-name">Name</th><th class="col-qty">Qty</th><th class="col-amt">Amt</th>`)
 		b.WriteString(`</tr></thead><tbody>`)
 		for i, line := range bill.Lines {
-			qtyLabel := fmt.Sprintf("%d", line.Qty)
-			if unit := strings.TrimSpace(line.Unit); unit != "" {
-				qtyLabel = fmt.Sprintf("%d %s", line.Qty, unit)
+			qtyLabel := ""
+			if !line.BlankQty {
+				qtyLabel = fmt.Sprintf("%d", line.Qty)
+				if unit := strings.TrimSpace(line.Unit); unit != "" {
+					qtyLabel = fmt.Sprintf("%d %s", line.Qty, unit)
+				}
 			}
 			b.WriteString(`<tr><td class="col-no">`)
 			b.WriteString(fmt.Sprintf("%d", i+1))

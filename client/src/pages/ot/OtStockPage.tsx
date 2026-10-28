@@ -1,15 +1,30 @@
-import { FormEvent, Fragment, useEffect, useMemo, useState } from "react";
+import {
+  FormEvent,
+  Fragment,
+  type FocusEvent as ReactFocusEvent,
+  type KeyboardEvent,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { labelOtBatch, listOtStock, returnOtStock, type OtStockBatch } from "@/features/ot/api";
 import {
   formatPackCompact,
   packFromItem,
   packLevelsFromItemPack,
   packPriceSlots,
+  saleUnitsFromPack,
   sellOuterFromSmallest,
+  type ItemPack,
 } from "@/features/pharmacy/api";
 import { useClinicActions } from "@/app/clinicActions";
 import { ActionIcon } from "@/shared/ActionIcon";
+import { matchesActive, type ActiveFilterValue } from "@/shared/ActiveFilter";
+import { CatalogFilterButton, CatalogFilterPanel } from "@/shared/CatalogListFilter";
 import { DatePicker } from "@/shared/DatePicker";
+import { sortByDateAscDesc, type DateSortValue } from "@/shared/DateSort";
 import { useI18n } from "@/shared/i18n";
 
 type CupboardItem = {
@@ -26,6 +41,14 @@ type CupboardItem = {
   pack_l2_unit: string;
   pack_l3_qty: number;
   pack_l3_unit: string;
+  pack_l4_qty: number;
+  pack_l4_unit: string;
+  pack_l5_qty: number;
+  pack_l5_unit: string;
+  pack_l6_qty: number;
+  pack_l6_unit: string;
+  active: boolean;
+  created_at: string;
   ot_on_hand: number;
   batches: OtStockBatch[];
 };
@@ -53,6 +76,14 @@ function groupBatches(batches: OtStockBatch[]): CupboardItem[] {
       pack_l2_unit: b.pack_l2_unit || "Strip",
       pack_l3_qty: b.pack_l3_qty ?? 1,
       pack_l3_unit: b.pack_l3_unit || "Tablet",
+      pack_l4_qty: b.pack_l4_qty ?? 1,
+      pack_l4_unit: b.pack_l4_unit || b.pack_l3_unit || "Tablet",
+      pack_l5_qty: b.pack_l5_qty ?? 1,
+      pack_l5_unit: b.pack_l5_unit || b.pack_l3_unit || "Tablet",
+      pack_l6_qty: b.pack_l6_qty ?? 1,
+      pack_l6_unit: b.pack_l6_unit || b.pack_l3_unit || "Tablet",
+      active: b.active !== false,
+      created_at: b.created_at ?? "",
       ot_on_hand: b.qty,
       batches: [b],
     });
@@ -60,13 +91,30 @@ function groupBatches(batches: OtStockBatch[]): CupboardItem[] {
   return Array.from(byId.values());
 }
 
+function openUnitSelect(el: HTMLSelectElement | null) {
+  if (!el) return;
+  el.focus();
+  if (typeof el.showPicker !== "function") return;
+  window.setTimeout(() => {
+    if (!el.isConnected) return;
+    try {
+      el.showPicker();
+    } catch {
+      // Focus is enough when this WebView refuses showPicker outside a direct gesture.
+    }
+  }, 0);
+}
+
 export function OtStockPage() {
   const { t } = useI18n();
   const { otCreate, otUpdate } = useClinicActions();
   const [batches, setBatches] = useState<OtStockBatch[]>([]);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const filterPanelId = useId();
   const [filterQ, setFilterQ] = useState("");
+  const [activeFilter, setActiveFilter] = useState<ActiveFilterValue>("all");
+  const [dateSort, setDateSort] = useState<DateSortValue>("desc");
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [qtyById, setQtyById] = useState<Record<number, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -75,12 +123,15 @@ export function OtStockPage() {
 
   const filtered = useMemo(() => {
     const q = filterQ.trim().toLowerCase();
-    if (!q) return items;
-    return items.filter(
-      (it) =>
-        it.item_code.toLowerCase().includes(q) || it.item_name.toLowerCase().includes(q),
-    );
-  }, [items, filterQ]);
+    const matched = items.filter((it) => {
+      if (!matchesActive(it.active, activeFilter)) return false;
+      if (!q) return true;
+      return (
+        it.item_code.toLowerCase().includes(q) || it.item_name.toLowerCase().includes(q)
+      );
+    });
+    return sortByDateAscDesc(matched, dateSort, (it) => it.created_at, (it) => it.item_id);
+  }, [items, filterQ, activeFilter, dateSort]);
 
   const activeId =
     filtered.length === 0
@@ -89,6 +140,12 @@ export function OtStockPage() {
         ? selectedId
         : filtered[0].item_id;
   const selected = filtered.find((it) => it.item_id === activeId) ?? null;
+
+  function resetFilters() {
+    setFilterQ("");
+    setActiveFilter("all");
+    setDateSort("desc");
+  }
 
   async function reload(preferItemId?: number | null) {
     const data = await listOtStock();
@@ -140,23 +197,47 @@ export function OtStockPage() {
     }
   }
 
-  async function onReturn(e: FormEvent, batch: OtStockBatch) {
+  async function onReturn(
+    e: FormEvent,
+    batch: OtStockBatch,
+    enteredQty: string,
+    unitId: string,
+    pack: ItemPack,
+  ): Promise<"ok" | "need-unit" | "error"> {
     e.preventDefault();
-    setBusy(true);
     setError(null);
     setNotice(null);
+
+    const entered = Number(enteredQty);
+    if (!entered || entered <= 0) {
+      setError(t("qtyMustBePositive"));
+      return "error";
+    }
+
+    const units = saleUnitsFromPack(pack, selected?.sell_price_mmk ?? 0);
+    const unitKey = unitId.trim();
+    const chosen = unitKey
+      ? units.find((u) => u.id.toLowerCase() === unitKey.toLowerCase())
+      : undefined;
+    if (units.length > 0 && !chosen) return "need-unit";
+
+    const qty = entered * (chosen?.factor ?? 1);
+    if (qty > batch.qty) {
+      setError(t("qtyExceedsOt"));
+      return "error";
+    }
+
+    setBusy(true);
     try {
-      const qty = Number(qtyById[batch.id]);
-      if (!qty || qty <= 0) throw new Error(t("qtyMustBePositive"));
-      if (qty > batch.qty) throw new Error(t("qtyExceedsOt"));
       const result = await returnOtStock(batch.id, qty);
-      setQtyById((prev) => ({ ...prev, [batch.id]: "" }));
       setNotice(
         `${t("returnedToPharmacy")}: ${result.qty.toLocaleString()}. ${t("otOnHand")} ${result.ot_qty.toLocaleString()}. ${t("inStock")} ${result.pharmacy_qty.toLocaleString()}.`,
       );
       await reload(batch.item_id);
+      return "ok";
     } catch (err) {
       setError(err instanceof Error ? err.message : "Return failed");
+      return "error";
     } finally {
       setBusy(false);
     }
@@ -177,7 +258,26 @@ export function OtStockPage() {
             placeholder={t("idCodeOrName")}
             aria-label={t("search")}
           />
+          <CatalogFilterButton
+            open={filterOpen}
+            controlsId={filterPanelId}
+            onToggle={() => setFilterOpen((v) => !v)}
+          />
         </div>
+        <CatalogFilterPanel
+          id={filterPanelId}
+          open={filterOpen}
+          query={filterQ}
+          onQueryChange={setFilterQ}
+          queryPlaceholder={t("idCodeOrName")}
+          searchLabel={t("searchItems")}
+          onSearch={() => setFilterOpen(false)}
+          active={activeFilter}
+          onActiveChange={setActiveFilter}
+          dateSort={dateSort}
+          onDateSortChange={setDateSort}
+          onReset={resetFilters}
+        />
         {error && !selected ? <p className="form-error">{error}</p> : null}
         <div className="drug-setup-table" role="listbox" aria-label={t("cupboardItems")}>
           <div className="drug-setup-table-head ot-cupboard-cols">
@@ -285,28 +385,15 @@ export function OtStockPage() {
                     <span>{batch.qty.toLocaleString()}</span>
                     <span>{batch.expiry_date || t("none")}</span>
                     {otCreate ? (
-                    <form
-                      className="ot-stock-return"
-                      onSubmit={(e) => void onReturn(e, batch)}
-                    >
-                      <input
-                        type="number"
-                        min={1}
-                        max={batch.qty}
-                        value={qtyById[batch.id] ?? ""}
-                        onChange={(e) =>
-                          setQtyById((prev) => ({ ...prev, [batch.id]: e.target.value }))
+                      <OtReturnFields
+                        pack={packFromItem(selected)}
+                        sellPrice={selected.sell_price_mmk}
+                        busy={busy}
+                        t={t}
+                        onReturn={(ev, qty, unitId) =>
+                          onReturn(ev, batch, qty, unitId, packFromItem(selected))
                         }
-                        disabled={busy}
-                        required
-                        aria-label={t("qtyToReturn")}
-                        placeholder={t("qty")}
                       />
-                      <button type="submit" className="btn action" disabled={busy}>
-                        <ActionIcon name="undo" />
-                        {t("returnToPharmacy")}
-                      </button>
-                    </form>
                     ) : (
                       <span />
                     )}
@@ -329,6 +416,110 @@ export function OtStockPage() {
         )}
       </div>
     </section>
+  );
+}
+
+function OtReturnFields({
+  pack,
+  sellPrice,
+  busy,
+  t,
+  onReturn,
+}: {
+  pack: ItemPack;
+  sellPrice: number;
+  busy: boolean;
+  t: (k: string) => string;
+  onReturn: (
+    e: FormEvent,
+    qty: string,
+    unitId: string,
+  ) => Promise<"ok" | "need-unit" | "error">;
+}) {
+  const [qty, setQty] = useState("");
+  const [unitId, setUnitId] = useState("");
+  const unitRef = useRef<HTMLSelectElement>(null);
+  const qtyUnitRowRef = useRef<HTMLDivElement>(null);
+  const units = saleUnitsFromPack(pack, sellPrice || 0);
+
+  function needsUnitPick(): boolean {
+    if (unitId.trim()) return false;
+    const n = Number(qty);
+    if (!Number.isFinite(n) || n <= 0) return false;
+    return units.length > 0;
+  }
+
+  function finishQty() {
+    if (!needsUnitPick()) return;
+    openUnitSelect(unitRef.current);
+  }
+
+  function onQtyKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    finishQty();
+  }
+
+  function onQtyBlur(e: ReactFocusEvent<HTMLInputElement>) {
+    const next = e.relatedTarget;
+    if (next instanceof Node && qtyUnitRowRef.current?.contains(next)) return;
+    if (unitRef.current != null && next === unitRef.current) return;
+    finishQty();
+  }
+
+  return (
+    <form
+      className="ot-stock-return"
+      onSubmit={(e) => {
+        void (async () => {
+          const result = await onReturn(e, qty, unitId);
+          if (result === "need-unit") {
+            openUnitSelect(unitRef.current);
+            return;
+          }
+          if (result === "ok") {
+            setQty("");
+            setUnitId("");
+          }
+        })();
+      }}
+    >
+      <div className="drug-info-qty-unit" ref={qtyUnitRowRef}>
+        <input
+          className="drug-info-input"
+          type="number"
+          min={1}
+          value={qty}
+          onChange={(e) => setQty(e.target.value)}
+          onKeyDown={onQtyKeyDown}
+          onBlur={onQtyBlur}
+          disabled={busy}
+          required
+          aria-label={t("qtyToReturn")}
+          placeholder={t("qty")}
+        />
+        <select
+          ref={unitRef}
+          className="drug-info-input"
+          value={unitId}
+          onChange={(e) => setUnitId(e.target.value)}
+          disabled={busy || units.length === 0}
+          required={Number(qty) > 0}
+          aria-label={t("restockUnit")}
+        >
+          <option value="">{t("chooseUnit")}</option>
+          {units.map((u) => (
+            <option key={u.id} value={u.id}>
+              {u.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      <button type="submit" className="btn action" disabled={busy}>
+        <ActionIcon name="undo" />
+        {t("returnToPharmacy")}
+      </button>
+    </form>
   );
 }
 

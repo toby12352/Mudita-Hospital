@@ -35,6 +35,7 @@ export type NavSectionId =
   | "pharmacy_return"
   | "pharmacy_transfer"
   | "patients"
+  | "patients_create"
   | "ipd"
   | "ipd_expense"
   | "stock"
@@ -50,6 +51,7 @@ export type SettingsTab =
 export type PharmacyTab = "items" | "movements";
 export type OpdScreen = "doctors" | "services" | "bill" | "expense";
 export type PharmacyScreen = "browse" | "form" | "history";
+export type PatientsScreen = "list" | "create";
 
 /** Deep-link intent when opening a view from the sticky nav. */
 export type NavIntent = {
@@ -58,4 +60,6 @@ export type NavIntent = {
   otMode?: "case" | "stock" | "expense";
   pharmacyScreen?: PharmacyScreen;
   opdScreen?: OpdScreen;
+  patientsScreen?: PatientsScreen;
+  patientsFocusId?: number;
 };

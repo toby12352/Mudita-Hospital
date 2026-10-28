@@ -45,6 +45,7 @@ type ipdAdmission struct {
 type ipdAdmitRequest struct {
 	PatientID int64  `json:"patient_id"`
 	Notes     string `json:"notes"`
+	BilledAt  string `json:"billed_at,omitempty"`
 }
 
 type ipdNotesRequest struct {
@@ -156,6 +157,16 @@ func (h *IPD) admit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	role := ""
+	if user := middleware.UserFromContext(r.Context()); user != nil {
+		role = user.Role
+	}
+	override, status, errMsg := parseAdminBilledAt(role, req.BilledAt)
+	if errMsg != "" {
+		writeJSON(w, status, map[string]string{"error": errMsg})
+		return
+	}
+
 	tx, err := h.DB.Begin()
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "admit failed"})
@@ -209,11 +220,20 @@ func (h *IPD) admit(w http.ResponseWriter, r *http.Request) {
 		auditActor = &id
 	}
 
-	res, err := tx.Exec(`
-		INSERT INTO ipd_admissions (
-			admission_no, patient_id, status, notes, admitted_at, created_by_user_id
-		) VALUES (?, ?, 'open', ?, datetime('now'), ?)
-	`, admissionNo, req.PatientID, notes, actorID)
+	var res sql.Result
+	if override != nil {
+		res, err = tx.Exec(`
+			INSERT INTO ipd_admissions (
+				admission_no, patient_id, status, notes, admitted_at, created_by_user_id
+			) VALUES (?, ?, 'open', ?, ?, ?)
+		`, admissionNo, req.PatientID, notes, override.UTC, actorID)
+	} else {
+		res, err = tx.Exec(`
+			INSERT INTO ipd_admissions (
+				admission_no, patient_id, status, notes, admitted_at, created_by_user_id
+			) VALUES (?, ?, 'open', ?, datetime('now'), ?)
+		`, admissionNo, req.PatientID, notes, actorID)
+	}
 	if err != nil {
 		if isUniqueErr(err) {
 			writeJSON(w, http.StatusConflict, map[string]string{"error": "patient already has an open stay"})
@@ -229,10 +249,15 @@ func (h *IPD) admit(w http.ResponseWriter, r *http.Request) {
 	}
 	committed = true
 
-	audit.WriteAudit(h.DB, auditActor, "create", "ipd_admission", &id, map[string]any{
+	auditPayload := map[string]any{
 		"admission_no": admissionNo,
 		"patient_id":   req.PatientID,
-	})
+	}
+	if override != nil {
+		auditPayload["billed_at"] = override.Yangon
+		auditPayload["admitted_at"] = override.UTC
+	}
+	audit.WriteAudit(h.DB, auditActor, "create", "ipd_admission", &id, auditPayload)
 
 	row, err := loadAdmissionDetail(h.DB, id)
 	if err != nil {

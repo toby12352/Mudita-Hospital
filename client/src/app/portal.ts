@@ -43,7 +43,7 @@ export function landingFor(portal: PortalId): PortalLanding {
         section: "pharmacy",
       };
     case "patients":
-      return { view: "patients", intent: {}, section: "patients" };
+      return { view: "patients", intent: { patientsScreen: "list" }, section: "patients" };
     case "ipd":
       return { view: "ipd", intent: {}, section: "ipd" };
     case "settings":

@@ -18,6 +18,14 @@ export type OtStockBatch = {
   pack_l2_unit: string;
   pack_l3_qty: number;
   pack_l3_unit: string;
+  pack_l4_qty: number;
+  pack_l4_unit: string;
+  pack_l5_qty: number;
+  pack_l5_unit: string;
+  pack_l6_qty: number;
+  pack_l6_unit: string;
+  active: boolean;
+  created_at: string;
   batch_no: string;
   expiry_date: string | null;
   qty: number;
@@ -58,6 +66,12 @@ export type OtCatalogItem = {
   pack_l2_unit: string;
   pack_l3_qty: number;
   pack_l3_unit: string;
+  pack_l4_qty: number;
+  pack_l4_unit: string;
+  pack_l5_qty: number;
+  pack_l5_unit: string;
+  pack_l6_qty: number;
+  pack_l6_unit: string;
 };
 
 export async function listOtCatalogItems(q = ""): Promise<OtCatalogItem[]> {
@@ -182,6 +196,14 @@ export type OtCaseItem = {
   pack_l2_unit?: string;
   pack_l3_qty?: number;
   pack_l3_unit?: string;
+  pack_l4_qty?: number;
+  pack_l4_unit?: string;
+  pack_l5_qty?: number;
+  pack_l5_unit?: string;
+  pack_l6_qty?: number;
+  pack_l6_unit?: string;
+  /** 1 = free of charge on the patient bill. */
+  foc?: number;
 };
 
 /** Draft cart service line. unit_price_mmk is the case charge (null until typed). */
@@ -192,6 +214,7 @@ export type OtCaseService = {
   description: string;
   unit_price_mmk: number | null;
   sort_order?: number;
+  foc?: number;
 };
 
 export type OtCase = {
@@ -239,6 +262,7 @@ export type OtBillLine = {
   unit_price_mmk: number;
   line_total_mmk: number;
   sort_order?: number;
+  foc?: number;
 };
 
 export type OtBill = {
@@ -283,6 +307,8 @@ export type OtCaseWrite = {
   services: OtCaseService[];
   discount_value?: number;
   discount_unit?: "percent" | "mmk";
+  /** Admin-only on create. Yangon wall time as `YYYY-MM-DDTHH:mm`. */
+  billed_at?: string;
 };
 
 export async function listOtDoctors(q = ""): Promise<OtDoctor[]> {

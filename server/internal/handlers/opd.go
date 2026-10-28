@@ -27,6 +27,8 @@ type opdBillLine struct {
 	UnitPriceMMK int64  `json:"unit_price_mmk"`
 	LineTotalMMK int64  `json:"line_total_mmk"`
 	SortOrder    int    `json:"sort_order"`
+	// FOC marks the line free of charge. Stored price stays non-negative; bill total skips it.
+	Foc int `json:"foc"`
 }
 
 type opdBill struct {
@@ -56,6 +58,7 @@ type opdBill struct {
 	CreatedByUserID *int64        `json:"created_by_user_id,omitempty"`
 	CreatedAt       string        `json:"created_at"`
 	UpdatedAt       string        `json:"updated_at"`
+	BilledAt        *string       `json:"billed_at,omitempty"`
 	Lines           []opdBillLine `json:"lines,omitempty"`
 }
 
@@ -72,6 +75,7 @@ type opdBillWriteRequest struct {
 	DiscountValue   int64         `json:"discount_value"`
 	DiscountUnit    string        `json:"discount_unit"`
 	PatientID       *int64        `json:"patient_id,omitempty"`
+	BilledAt        string        `json:"billed_at,omitempty"`
 }
 
 type voidRequest struct {
@@ -291,7 +295,7 @@ func (h *OPD) listBills(w http.ResponseWriter, r *http.Request) {
 		SELECT id, bill_no, patient_id, patient_name, patient_phone, patient_age_years, patient_gender,
 			doctor_id, doctor_name, description, status, total_mmk, paid_at, paid_by_user_id,
 			voided_at, voided_by_user_id, void_reason, created_by_user_id, created_at, updated_at,
-			discount_value, discount_unit, discount_mmk, printed_at, admission_id, collected_cash
+			discount_value, discount_unit, discount_mmk, printed_at, admission_id, collected_cash, billed_at
 		FROM opd_bills
 	`
 	args := make([]any, 0)
@@ -352,6 +356,11 @@ func (h *OPD) createBill(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "patient_name required"})
 		return
 	}
+	override, status, errMsg := parseAdminBilledAt(user.Role, req.BilledAt)
+	if errMsg != "" {
+		writeJSON(w, status, map[string]string{"error": errMsg})
+		return
+	}
 	tx, err := h.DB.Begin()
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "tx failed"})
@@ -394,15 +403,28 @@ func (h *OPD) createBill(w http.ResponseWriter, r *http.Request) {
 	}
 
 	uid := user.ID
-	res, err := tx.Exec(`
-		INSERT INTO opd_bills (
-			bill_no, patient_id, patient_name, patient_phone, patient_age_years, patient_gender,
-			doctor_id, doctor_name, description, status, total_mmk, created_by_user_id,
-			discount_value, discount_unit, discount_mmk
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?)
-	`, billNo, patientID, req.PatientName, strings.TrimSpace(req.PatientPhone), req.PatientAgeYears,
-		strings.TrimSpace(req.PatientGender), doctorID, doctorName, strings.TrimSpace(req.Description),
-		net, uid, req.DiscountValue, discountUnit, discountMMK)
+	var res sql.Result
+	if override != nil {
+		res, err = tx.Exec(`
+			INSERT INTO opd_bills (
+				bill_no, patient_id, patient_name, patient_phone, patient_age_years, patient_gender,
+				doctor_id, doctor_name, description, status, total_mmk, created_by_user_id,
+				discount_value, discount_unit, discount_mmk, billed_at, created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?)
+		`, billNo, patientID, req.PatientName, strings.TrimSpace(req.PatientPhone), req.PatientAgeYears,
+			strings.TrimSpace(req.PatientGender), doctorID, doctorName, strings.TrimSpace(req.Description),
+			net, uid, req.DiscountValue, discountUnit, discountMMK, override.Yangon, override.UTC, override.UTC)
+	} else {
+		res, err = tx.Exec(`
+			INSERT INTO opd_bills (
+				bill_no, patient_id, patient_name, patient_phone, patient_age_years, patient_gender,
+				doctor_id, doctor_name, description, status, total_mmk, created_by_user_id,
+				discount_value, discount_unit, discount_mmk
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?)
+		`, billNo, patientID, req.PatientName, strings.TrimSpace(req.PatientPhone), req.PatientAgeYears,
+			strings.TrimSpace(req.PatientGender), doctorID, doctorName, strings.TrimSpace(req.Description),
+			net, uid, req.DiscountValue, discountUnit, discountMMK)
+	}
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "create failed"})
 		return
@@ -417,9 +439,13 @@ func (h *OPD) createBill(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	audit.WriteAudit(h.DB, &uid, "create", "opd_bill", &billID, map[string]any{
+	auditPayload := map[string]any{
 		"bill_no": billNo, "total_mmk": net, "discount_mmk": discountMMK,
-	})
+	}
+	if override != nil {
+		auditPayload["billed_at"] = override.Yangon
+	}
+	audit.WriteAudit(h.DB, &uid, "create", "opd_bill", &billID, auditPayload)
 
 	bill, err := loadOpdBill(h.DB, billID)
 	if err != nil {
@@ -1003,6 +1029,11 @@ func normalizeBillLines(q queryRower, doctorID *int64, doctorName string, in []o
 		if l.LineType != "service" && l.LineType != "consultation" {
 			return nil, 0, "invalid line_type"
 		}
+		foc, errMsg := normalizeFocFlag(l.Foc)
+		if errMsg != "" {
+			return nil, 0, errMsg
+		}
+		l.Foc = foc
 		if l.LineType == "consultation" {
 			consultations++
 			if consultations > 1 {
@@ -1061,7 +1092,7 @@ func normalizeBillLines(q queryRower, doctorID *int64, doctorName string, in []o
 		}
 		l.LineTotalMMK = l.Qty * l.UnitPriceMMK
 		l.SortOrder = i
-		total += l.LineTotalMMK
+		total += billableLineTotal(l.LineTotalMMK, l.Foc)
 		out = append(out, l)
 	}
 	return out, total, ""
@@ -1132,9 +1163,9 @@ func nextBillNo(tx *sql.Tx) (string, error) {
 func insertBillLines(tx *sql.Tx, billID int64, lines []opdBillLine) error {
 	for _, l := range lines {
 		if _, err := tx.Exec(`
-			INSERT INTO bill_lines (bill_id, line_type, ref_id, code, description, qty, unit_price_mmk, line_total_mmk, sort_order)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`, billID, l.LineType, l.RefID, l.Code, l.Description, l.Qty, l.UnitPriceMMK, l.LineTotalMMK, l.SortOrder); err != nil {
+			INSERT INTO bill_lines (bill_id, line_type, ref_id, code, description, qty, unit_price_mmk, line_total_mmk, sort_order, foc)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`, billID, l.LineType, l.RefID, l.Code, l.Description, l.Qty, l.UnitPriceMMK, l.LineTotalMMK, l.SortOrder, l.Foc); err != nil {
 			return err
 		}
 	}
@@ -1143,7 +1174,7 @@ func insertBillLines(tx *sql.Tx, billID int64, lines []opdBillLine) error {
 
 func loadBillLinesTx(tx *sql.Tx, billID int64) ([]opdBillLine, error) {
 	rows, err := tx.Query(`
-		SELECT id, line_type, ref_id, code, description, qty, unit_price_mmk, line_total_mmk, sort_order
+		SELECT id, line_type, ref_id, code, description, qty, unit_price_mmk, line_total_mmk, sort_order, foc
 		FROM bill_lines WHERE bill_id = ? ORDER BY sort_order, id
 	`, billID)
 	if err != nil {
@@ -1154,7 +1185,7 @@ func loadBillLinesTx(tx *sql.Tx, billID int64) ([]opdBillLine, error) {
 	for rows.Next() {
 		var l opdBillLine
 		var ref sql.NullInt64
-		if err := rows.Scan(&l.ID, &l.LineType, &ref, &l.Code, &l.Description, &l.Qty, &l.UnitPriceMMK, &l.LineTotalMMK, &l.SortOrder); err != nil {
+		if err := rows.Scan(&l.ID, &l.LineType, &ref, &l.Code, &l.Description, &l.Qty, &l.UnitPriceMMK, &l.LineTotalMMK, &l.SortOrder, &l.Foc); err != nil {
 			return nil, err
 		}
 		if ref.Valid {
@@ -1171,35 +1202,24 @@ func loadOpdBill(db *sql.DB, id int64) (opdBill, error) {
 		SELECT id, bill_no, patient_id, patient_name, patient_phone, patient_age_years, patient_gender,
 			doctor_id, doctor_name, description, status, total_mmk, paid_at, paid_by_user_id,
 			voided_at, voided_by_user_id, void_reason, created_by_user_id, created_at, updated_at,
-			discount_value, discount_unit, discount_mmk, printed_at, admission_id, collected_cash
+			discount_value, discount_unit, discount_mmk, printed_at, admission_id, collected_cash, billed_at
 		FROM opd_bills WHERE id = ?
 	`, id)
 	b, err := scanOpdBill(row)
 	if err != nil {
 		return b, err
 	}
-	rows, err := db.Query(`
-		SELECT id, line_type, ref_id, code, description, qty, unit_price_mmk, line_total_mmk, sort_order
-		FROM bill_lines WHERE bill_id = ? ORDER BY sort_order, id
-	`, id)
+	tx, err := db.Begin()
 	if err != nil {
 		return b, err
 	}
-	defer rows.Close()
-	b.Lines = make([]opdBillLine, 0)
-	for rows.Next() {
-		var l opdBillLine
-		var ref sql.NullInt64
-		if err := rows.Scan(&l.ID, &l.LineType, &ref, &l.Code, &l.Description, &l.Qty, &l.UnitPriceMMK, &l.LineTotalMMK, &l.SortOrder); err != nil {
-			return b, err
-		}
-		if ref.Valid {
-			v := ref.Int64
-			l.RefID = &v
-		}
-		b.Lines = append(b.Lines, l)
+	defer tx.Rollback()
+	lines, err := loadBillLinesTx(tx, id)
+	if err != nil {
+		return b, err
 	}
-	return b, rows.Err()
+	b.Lines = lines
+	return b, nil
 }
 
 type scannable interface {
@@ -1210,12 +1230,12 @@ func scanOpdBill(row scannable) (opdBill, error) {
 	var b opdBill
 	var patientID, doctorID, paidBy, voidedBy, createdBy, admissionID sql.NullInt64
 	var age sql.NullInt64
-	var paidAt, voidedAt, printedAt sql.NullString
+	var paidAt, voidedAt, printedAt, billedAt sql.NullString
 	err := row.Scan(
 		&b.ID, &b.BillNo, &patientID, &b.PatientName, &b.PatientPhone, &age, &b.PatientGender,
 		&doctorID, &b.DoctorName, &b.Description, &b.Status, &b.TotalMMK, &paidAt, &paidBy,
 		&voidedAt, &voidedBy, &b.VoidReason, &createdBy, &b.CreatedAt, &b.UpdatedAt,
-		&b.DiscountValue, &b.DiscountUnit, &b.DiscountMMK, &printedAt, &admissionID, &b.CollectedCash,
+		&b.DiscountValue, &b.DiscountUnit, &b.DiscountMMK, &printedAt, &admissionID, &b.CollectedCash, &billedAt,
 	)
 	if err != nil {
 		return b, err
@@ -1260,23 +1280,30 @@ func scanOpdBill(row scannable) (opdBill, error) {
 		v := admissionID.Int64
 		b.AdmissionID = &v
 	}
+	if billedAt.Valid && strings.TrimSpace(billedAt.String) != "" {
+		v := billedAt.String
+		b.BilledAt = &v
+	}
 	return b, nil
 }
 
 func renderBillHTML(hosp *hospitalSettings, bill opdBill) string {
 	dateLabel := bill.CreatedAt
+	if bill.BilledAt != nil && *bill.BilledAt != "" {
+		dateLabel = *bill.BilledAt
+	}
 	if bill.PaidAt != nil {
 		dateLabel = *bill.PaidAt
 	}
-	lines := make([]receiptLine, 0, len(bill.Lines))
+	lines := make([]receiptLine, 0, len(bill.Lines)*2)
 	for _, line := range bill.Lines {
-		lines = append(lines, receiptLine{
+		lines = appendReceiptLine(lines, receiptLine{
 			Code:        line.Code,
 			Description: line.Description,
 			Qty:         line.Qty,
 			UnitPrice:   line.UnitPriceMMK,
 			LineTotal:   line.LineTotalMMK,
-		})
+		}, line.Foc)
 	}
 	printedAt := ""
 	if bill.PrintedAt != nil {

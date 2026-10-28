@@ -37,6 +37,7 @@ type expenseBill struct {
 	CreatedByUserID *int64            `json:"created_by_user_id,omitempty"`
 	CreatedAt       string            `json:"created_at"`
 	UpdatedAt       string            `json:"updated_at"`
+	BilledAt        *string           `json:"billed_at,omitempty"`
 	Lines           []expenseBillLine `json:"lines,omitempty"`
 }
 
@@ -58,6 +59,7 @@ type expenseBillWriteRequest struct {
 	DiscountValue int64                  `json:"discount_value"`
 	DiscountUnit  string                 `json:"discount_unit"`
 	Lines         []expenseBillLineInput `json:"lines"`
+	BilledAt      string                 `json:"billed_at,omitempty"`
 }
 
 // expenseBillLineInput keeps qty and unit_price_mmk raw so a fractional JSON
@@ -73,7 +75,7 @@ const expenseBillColumns = `
 	discount_value, discount_unit, discount_mmk,
 	paid_at, paid_by_user_id, printed_at,
 	voided_at, voided_by_user_id, void_reason,
-	created_by_user_id, created_at, updated_at`
+	created_by_user_id, created_at, updated_at, billed_at`
 
 func (h *Expenses) listExpenseBills(w http.ResponseWriter, r *http.Request) {
 	_, portal, ok := h.allowPortal(w, r, r.URL.Query().Get("portal"), auth.ActionRead)
@@ -152,6 +154,11 @@ func (h *Expenses) createExpenseBill(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name required"})
 		return
 	}
+	override, status, errMsg := parseAdminBilledAt(user.Role, req.BilledAt)
+	if errMsg != "" {
+		writeJSON(w, status, map[string]string{"error": errMsg})
+		return
+	}
 
 	tx, err := h.DB.Begin()
 	if err != nil {
@@ -173,13 +180,26 @@ func (h *Expenses) createExpenseBill(w http.ResponseWriter, r *http.Request) {
 	}
 
 	uid := user.ID
-	res, err := tx.Exec(`
-		INSERT INTO expense_bills (
-			bill_no, portal, name, description, status, total_mmk,
-			discount_value, discount_unit, discount_mmk, created_by_user_id
-		) VALUES (?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?)
-	`, billNo, portal, req.Name, strings.TrimSpace(req.Description), gross,
-		req.DiscountValue, discountUnit, discountMMK, uid)
+	var res sql.Result
+	if override != nil {
+		res, err = tx.Exec(`
+			INSERT INTO expense_bills (
+				bill_no, portal, name, description, status, total_mmk,
+				discount_value, discount_unit, discount_mmk, created_by_user_id,
+				billed_at, created_at, updated_at
+			) VALUES (?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?)
+		`, billNo, portal, req.Name, strings.TrimSpace(req.Description), gross,
+			req.DiscountValue, discountUnit, discountMMK, uid,
+			override.Yangon, override.UTC, override.UTC)
+	} else {
+		res, err = tx.Exec(`
+			INSERT INTO expense_bills (
+				bill_no, portal, name, description, status, total_mmk,
+				discount_value, discount_unit, discount_mmk, created_by_user_id
+			) VALUES (?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?)
+		`, billNo, portal, req.Name, strings.TrimSpace(req.Description), gross,
+			req.DiscountValue, discountUnit, discountMMK, uid)
+	}
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "create failed"})
 		return
@@ -194,9 +214,13 @@ func (h *Expenses) createExpenseBill(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	audit.WriteAudit(h.DB, &uid, "create", "expense_bill", &billID, map[string]any{
+	auditPayload := map[string]any{
 		"bill_no": billNo, "portal": portal, "total_mmk": gross, "discount_mmk": discountMMK,
-	})
+	}
+	if override != nil {
+		auditPayload["billed_at"] = override.Yangon
+	}
+	audit.WriteAudit(h.DB, &uid, "create", "expense_bill", &billID, auditPayload)
 
 	bill, err := loadExpenseBill(h.DB, billID)
 	if err != nil {
@@ -434,11 +458,16 @@ func (h *Expenses) payExpenseBill(w http.ResponseWriter, r *http.Request, path s
 	}
 
 	uid := user.ID
+	paidAt, err := payAtForBill(tx, "expense_bills", id)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "pay failed"})
+		return
+	}
 	res, err := tx.Exec(`
 		UPDATE expense_bills
 		SET status = 'paid', paid_at = ?, paid_by_user_id = ?, updated_at = datetime('now')
 		WHERE id = ? AND status = 'draft'
-	`, localCivilNow(), uid, id)
+	`, paidAt, uid, id)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "pay failed"})
 		return
@@ -619,6 +648,9 @@ func (h *Expenses) printExpenseBill(w http.ResponseWriter, r *http.Request, path
 
 func renderExpenseBillHTML(hosp *hospitalSettings, bill expenseBill) string {
 	dateLabel := bill.CreatedAt
+	if bill.BilledAt != nil && *bill.BilledAt != "" {
+		dateLabel = *bill.BilledAt
+	}
 	if bill.PaidAt != nil {
 		dateLabel = *bill.PaidAt
 	}
@@ -847,13 +879,13 @@ func queryExpenseBillLines(db sqlQuery, billID int64) ([]expenseBillLine, error)
 func scanExpenseBill(row scannable) (expenseBill, error) {
 	var b expenseBill
 	var paidBy, voidedBy, createdBy sql.NullInt64
-	var paidAt, printedAt, voidedAt sql.NullString
+	var paidAt, printedAt, voidedAt, billedAt sql.NullString
 	err := row.Scan(
 		&b.ID, &b.BillNo, &b.Portal, &b.Name, &b.Description, &b.Status, &b.TotalMMK,
 		&b.DiscountValue, &b.DiscountUnit, &b.DiscountMMK,
 		&paidAt, &paidBy, &printedAt,
 		&voidedAt, &voidedBy, &b.VoidReason,
-		&createdBy, &b.CreatedAt, &b.UpdatedAt,
+		&createdBy, &b.CreatedAt, &b.UpdatedAt, &billedAt,
 	)
 	if err != nil {
 		return b, err
@@ -877,6 +909,10 @@ func scanExpenseBill(row scannable) (expenseBill, error) {
 	if voidedBy.Valid {
 		v := voidedBy.Int64
 		b.VoidedByUserID = &v
+	}
+	if billedAt.Valid && strings.TrimSpace(billedAt.String) != "" {
+		v := billedAt.String
+		b.BilledAt = &v
 	}
 	if createdBy.Valid {
 		v := createdBy.Int64

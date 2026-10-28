@@ -1137,6 +1137,53 @@ ALTER TABLE patients ADD COLUMN nrc TEXT NOT NULL DEFAULT '';
 ALTER TABLE patients ADD COLUMN father_mother_name TEXT NOT NULL DEFAULT '';
 `,
 	},
+	{
+		Name: "030_pharmacy_pack_depth",
+		SQL: `
+-- Grow pharmacy packing from 3 to 6 slots. Existing items pad L4–L6 from pack_l3_unit
+-- (qty 1 + same unit collapses in visiblePackLevels). Bill lines get optional qty_l4–l6.
+ALTER TABLE items ADD COLUMN pack_l4_qty INTEGER NOT NULL DEFAULT 1 CHECK (pack_l4_qty >= 1);
+ALTER TABLE items ADD COLUMN pack_l4_unit TEXT NOT NULL DEFAULT '';
+ALTER TABLE items ADD COLUMN pack_l5_qty INTEGER NOT NULL DEFAULT 1 CHECK (pack_l5_qty >= 1);
+ALTER TABLE items ADD COLUMN pack_l5_unit TEXT NOT NULL DEFAULT '';
+ALTER TABLE items ADD COLUMN pack_l6_qty INTEGER NOT NULL DEFAULT 1 CHECK (pack_l6_qty >= 1);
+ALTER TABLE items ADD COLUMN pack_l6_unit TEXT NOT NULL DEFAULT '';
+
+UPDATE items SET
+  pack_l4_unit = pack_l3_unit,
+  pack_l5_unit = pack_l3_unit,
+  pack_l6_unit = pack_l3_unit
+WHERE pack_l4_unit = '' OR pack_l5_unit = '' OR pack_l6_unit = '';
+
+ALTER TABLE pharmacy_bill_lines ADD COLUMN qty_l4 INTEGER NOT NULL DEFAULT 0 CHECK (qty_l4 >= 0);
+ALTER TABLE pharmacy_bill_lines ADD COLUMN qty_l5 INTEGER NOT NULL DEFAULT 0 CHECK (qty_l5 >= 0);
+ALTER TABLE pharmacy_bill_lines ADD COLUMN qty_l6 INTEGER NOT NULL DEFAULT 0 CHECK (qty_l6 >= 0);
+`,
+	},
+	{
+		Name: "031_bill_line_foc",
+		SQL: `
+-- Free-of-charge flag on cart lines. Prices stay non-negative; bill gross skips foc=1.
+-- Existing rows default to charged (0).
+ALTER TABLE bill_lines ADD COLUMN foc INTEGER NOT NULL DEFAULT 0 CHECK (foc IN (0, 1));
+ALTER TABLE pharmacy_bill_lines ADD COLUMN foc INTEGER NOT NULL DEFAULT 0 CHECK (foc IN (0, 1));
+ALTER TABLE ot_bill_lines ADD COLUMN foc INTEGER NOT NULL DEFAULT 0 CHECK (foc IN (0, 1));
+ALTER TABLE ot_case_items ADD COLUMN foc INTEGER NOT NULL DEFAULT 0 CHECK (foc IN (0, 1));
+ALTER TABLE ot_case_services ADD COLUMN foc INTEGER NOT NULL DEFAULT 0 CHECK (foc IN (0, 1));
+`,
+	},
+	{
+		Name: "032_bill_billed_at",
+		SQL: `
+-- Admin-chosen bill / case civil time. Nullable; existing rows stay on the real clock.
+-- Yangon wall time in billed_at; create paths store the UTC equivalent in created_at.
+ALTER TABLE opd_bills ADD COLUMN billed_at TEXT;
+ALTER TABLE ot_bills ADD COLUMN billed_at TEXT;
+ALTER TABLE ot_cases ADD COLUMN billed_at TEXT;
+ALTER TABLE pharmacy_bills ADD COLUMN billed_at TEXT;
+ALTER TABLE expense_bills ADD COLUMN billed_at TEXT;
+`,
+	},
 }
 
 // Migrate applies pending migrations inside a transaction per migration.

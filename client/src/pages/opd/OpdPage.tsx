@@ -23,7 +23,9 @@ import {
   type DiscountUnit,
 } from "@/shared/discount";
 import { AlertDialog } from "@/shared/AlertDialog";
+import { formatUtcAsLocal, nowDatetimeLocal } from "@/shared/BillDateField";
 import { userMessage } from "@/shared/errors";
+import { getStoredUser } from "@/shared/auth";
 import { useClinicActions } from "@/app/clinicActions";
 import { useI18n } from "@/shared/i18n";
 import { OpdBillForm } from "@/pages/opd/OpdBillForm";
@@ -66,6 +68,9 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
   const [discountUnit, setDiscountUnit] = useState<DiscountUnit>("percent");
   const [createdAt, setCreatedAt] = useState<string | null>(null);
   const [nowTick, setNowTick] = useState(() => Date.now());
+  const [billedAtLocal, setBilledAtLocal] = useState(() => nowDatetimeLocal());
+  const isAdmin = getStoredUser()?.role === "Admin";
+  const dateEditable = isAdmin && billId == null;
 
   const isDraft = billStatus === "draft";
   const openAdmissionId = useOpenAdmission(linkedChartId);
@@ -110,6 +115,7 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
     setDiscountValue("");
     setDiscountUnit("percent");
     setCreatedAt(null);
+    setBilledAtLocal(nowDatetimeLocal());
     setError(null);
     setOkMsg(null);
   }
@@ -164,6 +170,7 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
       save_patient: true,
       ...(linkedChartId != null ? { patient_id: linkedChartId } : {}),
       ...discountWrite(discountValue, discountUnit),
+      ...(dateEditable && billedAtLocal ? { billed_at: billedAtLocal } : {}),
       lines: lines.map((l, i) => {
         const qty = Math.max(1, Math.floor(Number(l.qty)) || 1);
         return {
@@ -175,6 +182,7 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
           unit_price_mmk: l.unit_price_mmk,
           line_total_mmk: qty * l.unit_price_mmk,
           sort_order: i,
+          foc: l.foc === 1 ? 1 : 0,
         };
       }),
     };
@@ -198,6 +206,7 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
     setPrintedAt(b.printed_at ?? null);
     setCollectedCash(b.collected_cash ?? null);
     setPatientId(b.patient_id ?? null);
+    setLinkedChartId(b.patient_id ?? null);
     setCreatedAt(b.created_at);
     setLines(
       (b.lines ?? []).map((l) => ({
@@ -224,12 +233,22 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
     setPatientGender(p.gender || "");
   }
 
+  function clearLinkedPatient() {
+    setLinkedChartId(null);
+    setPatientId(null);
+    setPatientName("");
+    setPatientPhone("");
+    setPatientAge("");
+    setPatientGender("");
+    window.setTimeout(() => patientNameRef.current?.focus(), 0);
+  }
+
   function pickDoctor(d: OpdDoctor) {
     setDoctorId(String(d.id));
     setDoctorName(d.name);
   }
 
-  function addOpdService(svc: OpdService, qty: number) {
+  function addOpdService(svc: OpdService, qty: number, foc = false) {
     const n = Math.max(1, Math.floor(qty) || 1);
     setLines((prev) => [
       ...prev,
@@ -241,6 +260,7 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
         qty: n,
         unit_price_mmk: svc.price_mmk,
         line_total_mmk: n * svc.price_mmk,
+        foc: foc ? 1 : 0,
       },
     ]);
   }
@@ -489,6 +509,12 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
     setLines((prev) => prev.filter((_, i) => i !== index));
   }
 
+  function clearLineFoc(index: number) {
+    setLines((prev) =>
+      prev.map((line, i) => (i === index ? { ...line, foc: 0 } : line)),
+    );
+  }
+
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (dialog) return;
@@ -537,7 +563,7 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- shortcut wiring
   }, [dialog, busy, isDraft, billId, billStatus, billNo, lines, patientName, linkedChartId, discountValue, discountUnit, opdCreate, opdDelete]);
 
-  const displayWhen = formatDisplayWhen(createdAt, nowTick);
+  const displayWhen = formatUtcAsLocal(createdAt, nowTick);
 
   return (
     <>
@@ -558,6 +584,9 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
         lines={lines}
         doctors={doctors}
         displayWhen={displayWhen}
+        dateEditable={dateEditable}
+        billedAtLocal={billedAtLocal}
+        onBilledAtLocal={setBilledAtLocal}
         busy={busy}
         error={error}
         okMsg={okMsg}
@@ -570,6 +599,7 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
         patientNameRef={patientNameRef}
         onPatientName={onPatientName}
         onPickPatient={pickPatient}
+        onClearPatient={clearLinkedPatient}
         onPatientPhone={setPatientPhone}
         onPatientAge={setPatientAge}
         onPatientGender={setPatientGender}
@@ -577,15 +607,16 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
         onClearDoctorId={() => setDoctorId("")}
         onPickDoctor={pickDoctor}
         onDescription={setDescription}
-        onCommitService={(s, qty) => {
+        onCommitService={(s, qty, foc) => {
           setError(null);
-          addOpdService(s, qty);
+          addOpdService(s, qty, foc);
         }}
         onLookupService={addByCode}
         onAddConsultation={addConsultation}
         loadServiceSuggestions={loadOpdServiceSuggestions}
         onCommitLineQty={commitLineQty}
         onRemoveLine={removeLine}
+        onClearFoc={clearLineFoc}
         onPrint={() => void doPrint()}
         onMarkPaid={() => void doMarkPaid()}
         onChargeToIpd={isDraft && openAdmissionId != null ? () => void doChargeToIpd() : undefined}
@@ -629,16 +660,3 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
   );
 }
 
-function formatDisplayWhen(createdAt: string | null, nowTick: number): string {
-  const d = createdAt
-    ? new Date(createdAt.includes("T") ? createdAt : createdAt.replace(" ", "T") + "Z")
-    : new Date(nowTick);
-  if (Number.isNaN(d.getTime())) return createdAt ?? "";
-  return d.toLocaleString(undefined, {
-    year: "numeric",
-    month: "numeric",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}

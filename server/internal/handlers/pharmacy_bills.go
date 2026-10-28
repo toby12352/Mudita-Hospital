@@ -20,6 +20,9 @@ type pharmacyBillLine struct {
 	BoxQty       int64  `json:"box_qty"`
 	StripQty     int64  `json:"strip_qty"`
 	TabletQty    int64  `json:"tablet_qty"`
+	QtyL4        int64  `json:"qty_l4"`
+	QtyL5        int64  `json:"qty_l5"`
+	QtyL6        int64  `json:"qty_l6"`
 	BillingQty   int64  `json:"billing_qty"`
 	BillingUnit  string `json:"billing_unit"`
 	StockQty     int64  `json:"stock_qty"`
@@ -27,6 +30,10 @@ type pharmacyBillLine struct {
 	UnitPriceMMK int64  `json:"unit_price_mmk"`
 	LineTotalMMK int64  `json:"line_total_mmk"`
 	SortOrder    int    `json:"sort_order"`
+	// FOC marks the line free of charge. Stored price stays non-negative; bill total skips it.
+	Foc int `json:"foc"`
+	// PackDepth is sent by the clinic app (6). Missing/0 means an older client.
+	PackDepth int `json:"pack_depth,omitempty"`
 	// Joined from items on read so the screen and the receipt can name the chosen unit.
 	// Ignored when a bill is saved; normalize reloads the pack from the item.
 	PackL1Qty  int64  `json:"pack_l1_qty,omitempty"`
@@ -35,6 +42,12 @@ type pharmacyBillLine struct {
 	PackL2Unit string `json:"pack_l2_unit,omitempty"`
 	PackL3Qty  int64  `json:"pack_l3_qty,omitempty"`
 	PackL3Unit string `json:"pack_l3_unit,omitempty"`
+	PackL4Qty  int64  `json:"pack_l4_qty,omitempty"`
+	PackL4Unit string `json:"pack_l4_unit,omitempty"`
+	PackL5Qty  int64  `json:"pack_l5_qty,omitempty"`
+	PackL5Unit string `json:"pack_l5_unit,omitempty"`
+	PackL6Qty  int64  `json:"pack_l6_qty,omitempty"`
+	PackL6Unit string `json:"pack_l6_unit,omitempty"`
 }
 
 type pharmacyBill struct {
@@ -62,6 +75,7 @@ type pharmacyBill struct {
 	CreatedByUserID *int64             `json:"created_by_user_id,omitempty"`
 	CreatedAt       string             `json:"created_at"`
 	UpdatedAt       string             `json:"updated_at"`
+	BilledAt        *string            `json:"billed_at,omitempty"`
 	Lines           []pharmacyBillLine `json:"lines,omitempty"`
 }
 
@@ -79,6 +93,7 @@ type pharmacyBillWriteRequest struct {
 	DiscountValue int64  `json:"discount_value"`
 	DiscountUnit  string `json:"discount_unit"`
 	PatientID     *int64 `json:"patient_id,omitempty"`
+	BilledAt      string `json:"billed_at,omitempty"`
 }
 
 func isPharmacyReturnBillNo(billNo string) bool {
@@ -97,7 +112,7 @@ func (h *Pharmacy) listPharmacyBills(w http.ResponseWriter, r *http.Request) {
 		SELECT id, bill_no, patient_id, patient_name, patient_phone, patient_age_years, patient_gender,
 		       description, status, total_mmk, paid_at, paid_by_user_id, voided_at, voided_by_user_id,
 		       void_reason, created_by_user_id, created_at, updated_at,
-		       discount_value, discount_unit, discount_mmk, printed_at, admission_id, collected_cash
+		       discount_value, discount_unit, discount_mmk, printed_at, admission_id, collected_cash, billed_at
 		FROM pharmacy_bills
 	`
 	args := make([]any, 0)
@@ -198,6 +213,11 @@ func (h *Pharmacy) createPharmacyBill(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "patient_name required"})
 		return
 	}
+	override, status, errMsg := parseAdminBilledAt(user.Role, req.BilledAt)
+	if errMsg != "" {
+		writeJSON(w, status, map[string]string{"error": errMsg})
+		return
+	}
 	lines, total, errMsg := normalizePharmacyBillLines(h.DB, req.Lines)
 	if errMsg != "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": errMsg})
@@ -239,15 +259,28 @@ func (h *Pharmacy) createPharmacyBill(w http.ResponseWriter, r *http.Request) {
 	}
 
 	uid := user.ID
-	res, err := tx.Exec(`
-		INSERT INTO pharmacy_bills (
-			bill_no, patient_id, patient_name, patient_phone, patient_age_years, patient_gender,
-			description, status, total_mmk, created_by_user_id,
-			discount_value, discount_unit, discount_mmk
-		) VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?)
-	`, billNo, patientID, req.PatientName, strings.TrimSpace(req.PatientPhone), req.PatientAgeYears,
-		strings.TrimSpace(req.PatientGender), strings.TrimSpace(req.Description), net, uid,
-		discountValue, discountUnit, discountMMK)
+	var res sql.Result
+	if override != nil {
+		res, err = tx.Exec(`
+			INSERT INTO pharmacy_bills (
+				bill_no, patient_id, patient_name, patient_phone, patient_age_years, patient_gender,
+				description, status, total_mmk, created_by_user_id,
+				discount_value, discount_unit, discount_mmk, billed_at, created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?)
+		`, billNo, patientID, req.PatientName, strings.TrimSpace(req.PatientPhone), req.PatientAgeYears,
+			strings.TrimSpace(req.PatientGender), strings.TrimSpace(req.Description), net, uid,
+			discountValue, discountUnit, discountMMK, override.Yangon, override.UTC, override.UTC)
+	} else {
+		res, err = tx.Exec(`
+			INSERT INTO pharmacy_bills (
+				bill_no, patient_id, patient_name, patient_phone, patient_age_years, patient_gender,
+				description, status, total_mmk, created_by_user_id,
+				discount_value, discount_unit, discount_mmk
+			) VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?)
+		`, billNo, patientID, req.PatientName, strings.TrimSpace(req.PatientPhone), req.PatientAgeYears,
+			strings.TrimSpace(req.PatientGender), strings.TrimSpace(req.Description), net, uid,
+			discountValue, discountUnit, discountMMK)
+	}
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "create failed"})
 		return
@@ -262,9 +295,13 @@ func (h *Pharmacy) createPharmacyBill(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	audit.WriteAudit(h.DB, &uid, "create", "pharmacy_bill", &billID, map[string]any{
+	auditPayload := map[string]any{
 		"bill_no": billNo, "total_mmk": net, "discount_mmk": discountMMK, "kind": kind,
-	})
+	}
+	if override != nil {
+		auditPayload["billed_at"] = override.Yangon
+	}
+	audit.WriteAudit(h.DB, &uid, "create", "pharmacy_bill", &billID, auditPayload)
 
 	bill, err := loadPharmacyBill(h.DB, billID)
 	if err != nil {
@@ -908,24 +945,27 @@ func (h *Pharmacy) printPharmacyBill(w http.ResponseWriter, r *http.Request, pat
 	}
 
 	dateLabel := bill.CreatedAt
+	if bill.BilledAt != nil && *bill.BilledAt != "" {
+		dateLabel = *bill.BilledAt
+	}
 	if bill.PaidAt != nil {
 		dateLabel = *bill.PaidAt
 	}
-	lines := make([]receiptLine, 0, len(bill.Lines))
+	lines := make([]receiptLine, 0, len(bill.Lines)*2)
 	for _, line := range bill.Lines {
 		qty, unit, price := pharmacyReceiptQty(line)
 		desc := line.Description
 		if unit == "" && line.BillingUnit != "" {
 			desc = fmt.Sprintf("%s (%s)", line.Description, line.BillingUnit)
 		}
-		lines = append(lines, receiptLine{
+		lines = appendReceiptLine(lines, receiptLine{
 			Code:        line.Code,
 			Description: desc,
 			Qty:         qty,
 			Unit:        unit,
 			UnitPrice:   price,
 			LineTotal:   line.LineTotalMMK,
-		})
+		}, line.Foc)
 	}
 
 	title := "PHARMACY RECEIPT"
@@ -979,35 +1019,37 @@ func pharmacyDiscount(kind string, gross, value int64, unit string) (int64, stri
 	return value, unitOut, off, net, ""
 }
 
-// pharmacyReceiptQty prints the chosen unit when exactly one of box/strip/tablet
+// pharmacyReceiptQty prints the chosen unit when exactly one pack sale slot
 // is set. Mixed legacy lines keep the smallest-unit qty and price.
 func pharmacyReceiptQty(line pharmacyBillLine) (qty int64, unit string, price int64) {
 	qty = line.BillingQty
 	price = line.UnitPriceMMK
+	slots := []struct {
+		qty  int64
+		unit string
+	}{
+		{line.BoxQty, line.PackL1Unit},
+		{line.StripQty, line.PackL2Unit},
+		{line.TabletQty, line.PackL3Unit},
+		{line.QtyL4, line.PackL4Unit},
+		{line.QtyL5, line.PackL5Unit},
+		{line.QtyL6, line.PackL6Unit},
+	}
 	n := 0
-	if line.BoxQty > 0 {
-		n++
-	}
-	if line.StripQty > 0 {
-		n++
-	}
-	if line.TabletQty > 0 {
-		n++
+	var chosenQty int64
+	var chosenUnit string
+	for _, s := range slots {
+		if s.qty > 0 {
+			n++
+			chosenQty = s.qty
+			chosenUnit = strings.TrimSpace(s.unit)
+		}
 	}
 	if n != 1 {
 		return qty, "", price
 	}
-	switch {
-	case line.BoxQty > 0:
-		qty = line.BoxQty
-		unit = strings.TrimSpace(line.PackL1Unit)
-	case line.StripQty > 0:
-		qty = line.StripQty
-		unit = strings.TrimSpace(line.PackL2Unit)
-	default:
-		qty = line.TabletQty
-		unit = strings.TrimSpace(line.PackL3Unit)
-	}
+	qty = chosenQty
+	unit = chosenUnit
 	if qty > 0 {
 		price = line.LineTotalMMK / qty
 	}
@@ -1021,6 +1063,10 @@ func normalizePharmacyBillLines(db *sql.DB, in []pharmacyBillLine) ([]pharmacyBi
 		if l.ItemID <= 0 {
 			return nil, 0, "item_id required"
 		}
+		foc, errMsg := normalizeFocFlag(l.Foc)
+		if errMsg != "" {
+			return nil, 0, errMsg
+		}
 		item, err := loadPharmacyItem(db, l.ItemID, false)
 		if err == sql.ErrNoRows {
 			return nil, 0, fmt.Sprintf("item %d not found", l.ItemID)
@@ -1033,42 +1079,54 @@ func normalizePharmacyBillLines(db *sql.DB, in []pharmacyBillLine) ([]pharmacyBi
 		}
 
 		pack := itemPackFromPharmacyItem(item)
-		boxQty, stripQty, tabletQty := l.BoxQty, l.StripQty, l.TabletQty
+		depth := packVisibleDepth(pack)
+		if depth > 3 && l.PackDepth < maxPackDepth {
+			return nil, 0, fmt.Sprintf("%s: update the clinic app to sell this item's packing size", item.Code)
+		}
+		sale := packSaleQtys{
+			Box: l.BoxQty, Strip: l.StripQty, Tablet: l.TabletQty,
+			L4: l.QtyL4, L5: l.QtyL5, L6: l.QtyL6,
+		}
 		var billingQty int64
 		var msg string
-		if boxQty > 0 || stripQty > 0 || tabletQty > 0 {
-			billingQty, msg = totalTabletsFromPackQtys(boxQty, stripQty, tabletQty, pack)
+		if sale.Box > 0 || sale.Strip > 0 || sale.Tablet > 0 || sale.L4 > 0 || sale.L5 > 0 || sale.L6 > 0 {
+			billingQty, msg = totalTabletsFromPackQtys(sale, pack)
 			if msg != "" {
 				return nil, 0, fmt.Sprintf("%s: %s", item.Code, msg)
 			}
 		} else if l.BillingQty > 0 {
-			// Legacy: single billing_qty treated as L3 units.
+			// Legacy: single billing_qty treated as smallest units.
 			billingQty = l.BillingQty
-			tabletQty = l.BillingQty
+			sale.Tablet = l.BillingQty
 		} else {
 			return nil, 0, "quantity required"
 		}
 		stockQty := billingQty
 		// Catalog price, code, and name. Client unit_price_mmk is ignored.
 		sell := item.SellPriceMMK
-		lineTotal := pharmacyPackLineChargeMMK(boxQty, stripQty, tabletQty, sell, pack)
+		lineTotal := pharmacyPackLineChargeMMK(sale, sell, pack)
+		inner := packInnermostUnit(pack)
 
 		out = append(out, pharmacyBillLine{
 			ItemID:       item.ID,
 			Code:         item.Code,
 			Description:  item.Name,
-			BoxQty:       boxQty,
-			StripQty:     stripQty,
-			TabletQty:    tabletQty,
+			BoxQty:       sale.Box,
+			StripQty:     sale.Strip,
+			TabletQty:    sale.Tablet,
+			QtyL4:        sale.L4,
+			QtyL5:        sale.L5,
+			QtyL6:        sale.L6,
 			BillingQty:   billingQty,
-			BillingUnit:  item.PackL3Unit,
+			BillingUnit:  inner,
 			StockQty:     stockQty,
-			StockUnit:    item.PackL3Unit,
+			StockUnit:    inner,
 			UnitPriceMMK: sell,
 			LineTotalMMK: lineTotal,
 			SortOrder:    i,
+			Foc:          foc,
 		})
-		total += lineTotal
+		total += billableLineTotal(lineTotal, foc)
 	}
 	return out, total, ""
 }
@@ -1118,10 +1176,12 @@ func insertPharmacyBillLines(tx *sql.Tx, billID int64, lines []pharmacyBillLine)
 		if _, err := tx.Exec(`
 			INSERT INTO pharmacy_bill_lines (
 				bill_id, item_id, code, description, box_qty, strip_qty, tablet_qty,
-				billing_qty, billing_unit, stock_qty, stock_unit, unit_price_mmk, line_total_mmk, sort_order
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				qty_l4, qty_l5, qty_l6,
+				billing_qty, billing_unit, stock_qty, stock_unit, unit_price_mmk, line_total_mmk, sort_order, foc
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`, billID, l.ItemID, l.Code, l.Description, l.BoxQty, l.StripQty, l.TabletQty,
-			l.BillingQty, l.BillingUnit, l.StockQty, l.StockUnit, l.UnitPriceMMK, l.LineTotalMMK, l.SortOrder); err != nil {
+			l.QtyL4, l.QtyL5, l.QtyL6,
+			l.BillingQty, l.BillingUnit, l.StockQty, l.StockUnit, l.UnitPriceMMK, l.LineTotalMMK, l.SortOrder, l.Foc); err != nil {
 			return err
 		}
 	}
@@ -1131,10 +1191,14 @@ func insertPharmacyBillLines(tx *sql.Tx, billID int64, lines []pharmacyBillLine)
 func loadPharmacyBillLinesTx(tx *sql.Tx, billID int64) ([]pharmacyBillLine, error) {
 	rows, err := tx.Query(`
 		SELECT l.id, l.item_id, l.code, l.description, l.box_qty, l.strip_qty, l.tablet_qty,
-		       l.billing_qty, l.billing_unit, l.stock_qty, l.stock_unit, l.unit_price_mmk, l.line_total_mmk, l.sort_order,
+		       COALESCE(l.qty_l4, 0), COALESCE(l.qty_l5, 0), COALESCE(l.qty_l6, 0),
+		       l.billing_qty, l.billing_unit, l.stock_qty, l.stock_unit, l.unit_price_mmk, l.line_total_mmk, l.sort_order, l.foc,
 		       COALESCE(i.pack_l1_qty, 1), COALESCE(i.pack_l1_unit, ''),
 		       COALESCE(i.pack_l2_qty, 1), COALESCE(i.pack_l2_unit, ''),
-		       COALESCE(i.pack_l3_qty, 1), COALESCE(i.pack_l3_unit, '')
+		       COALESCE(i.pack_l3_qty, 1), COALESCE(i.pack_l3_unit, ''),
+		       COALESCE(i.pack_l4_qty, 1), COALESCE(i.pack_l4_unit, ''),
+		       COALESCE(i.pack_l5_qty, 1), COALESCE(i.pack_l5_unit, ''),
+		       COALESCE(i.pack_l6_qty, 1), COALESCE(i.pack_l6_unit, '')
 		FROM pharmacy_bill_lines l
 		LEFT JOIN items i ON i.id = l.item_id
 		WHERE l.bill_id = ? ORDER BY l.sort_order, l.id
@@ -1148,8 +1212,10 @@ func loadPharmacyBillLinesTx(tx *sql.Tx, billID int64) ([]pharmacyBillLine, erro
 		var l pharmacyBillLine
 		if err := rows.Scan(
 			&l.ID, &l.ItemID, &l.Code, &l.Description, &l.BoxQty, &l.StripQty, &l.TabletQty,
-			&l.BillingQty, &l.BillingUnit, &l.StockQty, &l.StockUnit, &l.UnitPriceMMK, &l.LineTotalMMK, &l.SortOrder,
+			&l.QtyL4, &l.QtyL5, &l.QtyL6,
+			&l.BillingQty, &l.BillingUnit, &l.StockQty, &l.StockUnit, &l.UnitPriceMMK, &l.LineTotalMMK, &l.SortOrder, &l.Foc,
 			&l.PackL1Qty, &l.PackL1Unit, &l.PackL2Qty, &l.PackL2Unit, &l.PackL3Qty, &l.PackL3Unit,
+			&l.PackL4Qty, &l.PackL4Unit, &l.PackL5Qty, &l.PackL5Unit, &l.PackL6Qty, &l.PackL6Unit,
 		); err != nil {
 			return nil, err
 		}
@@ -1163,7 +1229,7 @@ func loadPharmacyBill(db *sql.DB, id int64) (pharmacyBill, error) {
 		SELECT id, bill_no, patient_id, patient_name, patient_phone, patient_age_years, patient_gender,
 		       description, status, total_mmk, paid_at, paid_by_user_id, voided_at, voided_by_user_id,
 		       void_reason, created_by_user_id, created_at, updated_at,
-		       discount_value, discount_unit, discount_mmk, printed_at, admission_id, collected_cash
+		       discount_value, discount_unit, discount_mmk, printed_at, admission_id, collected_cash, billed_at
 		FROM pharmacy_bills WHERE id = ?
 	`, id)
 	bill, err := scanPharmacyBill(row)
@@ -1186,12 +1252,12 @@ func loadPharmacyBill(db *sql.DB, id int64) (pharmacyBill, error) {
 func scanPharmacyBill(s scanner) (pharmacyBill, error) {
 	var b pharmacyBill
 	var patientID, paidBy, voidedBy, createdBy, age, admissionID sql.NullInt64
-	var paidAt, voidedAt, printedAt sql.NullString
+	var paidAt, voidedAt, printedAt, billedAt sql.NullString
 	err := s.Scan(
 		&b.ID, &b.BillNo, &patientID, &b.PatientName, &b.PatientPhone, &age, &b.PatientGender,
 		&b.Description, &b.Status, &b.TotalMMK, &paidAt, &paidBy, &voidedAt, &voidedBy,
 		&b.VoidReason, &createdBy, &b.CreatedAt, &b.UpdatedAt,
-		&b.DiscountValue, &b.DiscountUnit, &b.DiscountMMK, &printedAt, &admissionID, &b.CollectedCash,
+		&b.DiscountValue, &b.DiscountUnit, &b.DiscountMMK, &printedAt, &admissionID, &b.CollectedCash, &billedAt,
 	)
 	if err != nil {
 		return b, err
@@ -1231,6 +1297,10 @@ func scanPharmacyBill(s scanner) (pharmacyBill, error) {
 	if admissionID.Valid {
 		v := admissionID.Int64
 		b.AdmissionID = &v
+	}
+	if billedAt.Valid && strings.TrimSpace(billedAt.String) != "" {
+		s := billedAt.String
+		b.BilledAt = &s
 	}
 	return b, nil
 }

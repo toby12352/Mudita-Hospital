@@ -5,14 +5,17 @@ import (
 	"strings"
 )
 
+const maxPackDepth = 6
+
 var allowedUnits = map[string]bool{
 	"Box": true, "Carton": true, "Bottle": true, "Vial": true, "Ampoule": true,
 	"Piece": true, "Tablet": true, "Capsule": true, "Tube": true, "Cylinder": true,
 	"Bag": true, "Each": true, "mL": true, "g": true, "oz": true,
 	"Strip": true, "Card": true, "Sachet": true, "Pack": true,
+	"Puff": true, "Pairs": true,
 }
 
-// Any allowed pharmacy unit may appear at L1, L2, or L3 (packing chain is free-form).
+// Any allowed pharmacy unit may appear at any pack level (packing chain is free-form).
 
 type itemUnits struct {
 	PurchaseUnit        string
@@ -30,6 +33,12 @@ type itemPack struct {
 	L2Unit string
 	L3Qty  int64
 	L3Unit string
+	L4Qty  int64
+	L4Unit string
+	L5Qty  int64
+	L5Unit string
+	L6Qty  int64
+	L6Unit string
 }
 
 func categoryUnitDefaults(category string) itemUnits {
@@ -75,10 +84,85 @@ func defaultItemPack() itemPack {
 		L1Qty: 1, L1Unit: "Box",
 		L2Qty: 1, L2Unit: "Strip",
 		L3Qty: 1, L3Unit: "Tablet",
+		L4Qty: 1, L4Unit: "Tablet",
+		L5Qty: 1, L5Unit: "Tablet",
+		L6Qty: 1, L6Unit: "Tablet",
 	}
 }
 
-func resolveItemPack(l1Qty, l2Qty, l3Qty *int64, l1Unit, l2Unit, l3Unit string) (itemPack, string) {
+// padPackTail fills empty L4–L6 with qty 1 and the innermost known unit so
+// older 3-slot clients keep a valid six-slot row without changing factors.
+func padPackTail(p itemPack) itemPack {
+	if p.L1Qty < 1 {
+		p.L1Qty = 1
+	}
+	if p.L2Qty < 1 {
+		p.L2Qty = 1
+	}
+	if p.L3Qty < 1 {
+		p.L3Qty = 1
+	}
+	if p.L4Qty < 1 {
+		p.L4Qty = 1
+	}
+	if p.L5Qty < 1 {
+		p.L5Qty = 1
+	}
+	if p.L6Qty < 1 {
+		p.L6Qty = 1
+	}
+	if p.L1Unit == "" {
+		p.L1Unit = "Box"
+	}
+	if p.L2Unit == "" {
+		p.L2Unit = "Strip"
+	}
+	if p.L3Unit == "" {
+		p.L3Unit = "Tablet"
+	}
+	smallest := p.L3Unit
+	if p.L4Unit != "" {
+		smallest = p.L4Unit
+	}
+	if p.L5Unit != "" {
+		smallest = p.L5Unit
+	}
+	if p.L6Unit != "" {
+		smallest = p.L6Unit
+	}
+	if p.L4Unit == "" {
+		p.L4Unit = smallest
+		p.L4Qty = 1
+	}
+	if p.L5Unit == "" {
+		p.L5Unit = smallest
+		p.L5Qty = 1
+	}
+	if p.L6Unit == "" {
+		p.L6Unit = smallest
+		p.L6Qty = 1
+	}
+	return p
+}
+
+func packSlotQtys(p itemPack) [6]int64 {
+	return [6]int64{p.L1Qty, p.L2Qty, p.L3Qty, p.L4Qty, p.L5Qty, p.L6Qty}
+}
+
+func packSlotUnits(p itemPack) [6]string {
+	return [6]string{p.L1Unit, p.L2Unit, p.L3Unit, p.L4Unit, p.L5Unit, p.L6Unit}
+}
+
+// packInnermostUnit is the stored L6 name after padding (stock / billing unit).
+func packInnermostUnit(p itemPack) string {
+	p = padPackTail(p)
+	return p.L6Unit
+}
+
+func resolveItemPack(
+	l1Qty, l2Qty, l3Qty, l4Qty, l5Qty, l6Qty *int64,
+	l1Unit, l2Unit, l3Unit, l4Unit, l5Unit, l6Unit string,
+) (itemPack, string) {
 	p := defaultItemPack()
 	if l1Qty != nil {
 		p.L1Qty = *l1Qty
@@ -89,6 +173,15 @@ func resolveItemPack(l1Qty, l2Qty, l3Qty *int64, l1Unit, l2Unit, l3Unit string) 
 	if l3Qty != nil {
 		p.L3Qty = *l3Qty
 	}
+	if l4Qty != nil {
+		p.L4Qty = *l4Qty
+	}
+	if l5Qty != nil {
+		p.L5Qty = *l5Qty
+	}
+	if l6Qty != nil {
+		p.L6Qty = *l6Qty
+	}
 	if u := normalizeUnitName(l1Unit); u != "" {
 		p.L1Unit = u
 	}
@@ -98,23 +191,48 @@ func resolveItemPack(l1Qty, l2Qty, l3Qty *int64, l1Unit, l2Unit, l3Unit string) 
 	if u := normalizeUnitName(l3Unit); u != "" {
 		p.L3Unit = u
 	}
-	if p.L1Qty < 1 {
-		return p, "pack_l1_qty must be >= 1"
+	if u := normalizeUnitName(l4Unit); u != "" {
+		p.L4Unit = u
+	} else {
+		p.L4Unit = ""
 	}
-	if p.L2Qty < 1 {
-		return p, "pack_l2_qty must be >= 1"
+	if u := normalizeUnitName(l5Unit); u != "" {
+		p.L5Unit = u
+	} else {
+		p.L5Unit = ""
 	}
-	if p.L3Qty < 1 {
-		return p, "pack_l3_qty must be >= 1"
+	if u := normalizeUnitName(l6Unit); u != "" {
+		p.L6Unit = u
+	} else {
+		p.L6Unit = ""
 	}
-	if !validateUnitName(p.L1Unit) {
-		return p, "invalid pack_l1_unit"
+	// Older clients omit L4–L6: pad from L3 so factors match the three-slot product.
+	p = padPackTail(p)
+
+	qtys := packSlotQtys(p)
+	units := packSlotUnits(p)
+	for i := 0; i < maxPackDepth; i++ {
+		if qtys[i] < 1 {
+			return p, "pack quantities must be >= 1"
+		}
+		if !validateUnitName(units[i]) {
+			return p, "invalid pack unit"
+		}
 	}
-	if !validateUnitName(p.L2Unit) {
-		return p, "invalid pack_l2_unit"
+	if _, err := tabletsPerBox(p); err != "" {
+		return p, err
 	}
-	if !validateUnitName(p.L3Unit) {
-		return p, "invalid pack_l3_unit"
+	levels := visiblePackLevels(p)
+	if len(levels) > maxPackDepth {
+		return p, "at most six packing units"
+	}
+	seen := map[string]bool{}
+	for _, lv := range levels {
+		key := strings.ToLower(lv.Unit)
+		if seen[key] {
+			return p, "pack unit names must be unique in the visible chain"
+		}
+		seen[key] = true
 	}
 	return p, ""
 }
@@ -140,44 +258,98 @@ func roundPayableMMK(n int64) int64 {
 	return out
 }
 
-// pharmacyPackLineChargeMMK prices a mixed pack qty at payable unit prices
+type packSaleQtys struct {
+	Box    int64
+	Strip  int64
+	Tablet int64
+	L4     int64
+	L5     int64
+	L6     int64
+}
+
+// pharmacyPackLineChargeMMK prices mixed pack qtys at payable unit prices
 // (each pack slot rounded separately), not as raw smallest-units × catalog sell.
-func pharmacyPackLineChargeMMK(boxQty, stripQty, tabletQty, sellPerSmallest int64, p itemPack) int64 {
+func pharmacyPackLineChargeMMK(q packSaleQtys, sellPerSmallest int64, p itemPack) int64 {
 	sell := sellPerSmallest
 	if sell < 0 {
 		sell = 0
 	}
+	factors := packSlotFactors(p)
 	var total int64
-	if boxQty > 0 {
-		total += boxQty * roundPayableMMK(sell*tabletsPerBox(p))
-	}
-	if stripQty > 0 {
-		l3 := p.L3Qty
-		if l3 < 1 {
-			l3 = 1
+	slots := [6]int64{q.Box, q.Strip, q.Tablet, q.L4, q.L5, q.L6}
+	for i, qty := range slots {
+		if qty > 0 {
+			total += qty * roundPayableMMK(sell*factors[i])
 		}
-		total += stripQty * roundPayableMMK(sell*l3)
-	}
-	if tabletQty > 0 {
-		total += tabletQty * roundPayableMMK(sell)
 	}
 	return total
 }
 
-// tabletsPerBox is L3 units contained in one L1 unit (box/bottle).
-func tabletsPerBox(p itemPack) int64 {
-	return p.L2Qty * p.L3Qty
+// tabletsPerBox is L6 units contained in one L1 unit (product of L2…L6 qtys).
+func tabletsPerBox(p itemPack) (int64, string) {
+	p = padPackTail(p)
+	product := int64(1)
+	for _, q := range []int64{p.L2Qty, p.L3Qty, p.L4Qty, p.L5Qty, p.L6Qty} {
+		if q < 1 {
+			q = 1
+		}
+		if product > math.MaxInt64/q {
+			return 0, "pack quantities too large"
+		}
+		product *= q
+	}
+	return product, ""
 }
 
-// totalTabletsFromPackQtys converts mixed box/strip/tablet sale qty into L3 units.
-func totalTabletsFromPackQtys(boxQty, stripQty, tabletQty int64, p itemPack) (int64, string) {
-	if boxQty < 0 || stripQty < 0 || tabletQty < 0 {
+// packSlotFactors returns how many smallest units one of each stored slot contains.
+// Index 0 is L1 (outer), index 5 is L6 (innermost, always 1).
+func packSlotFactors(p itemPack) [6]int64 {
+	p = padPackTail(p)
+	qtys := packSlotQtys(p)
+	var factors [6]int64
+	factor := int64(1)
+	for i := maxPackDepth - 1; i >= 0; i-- {
+		factors[i] = factor
+		if i > 0 {
+			q := qtys[i]
+			if q < 1 {
+				q = 1
+			}
+			if factor > math.MaxInt64/q {
+				factor = math.MaxInt64
+			} else {
+				factor *= q
+			}
+		}
+	}
+	return factors
+}
+
+// totalTabletsFromPackQtys converts mixed sale qtys into L6 (smallest) units.
+func totalTabletsFromPackQtys(q packSaleQtys, p itemPack) (int64, string) {
+	if q.Box < 0 || q.Strip < 0 || q.Tablet < 0 || q.L4 < 0 || q.L5 < 0 || q.L6 < 0 {
 		return 0, "pack quantities must be >= 0"
 	}
-	if boxQty == 0 && stripQty == 0 && tabletQty == 0 {
+	if q.Box == 0 && q.Strip == 0 && q.Tablet == 0 && q.L4 == 0 && q.L5 == 0 && q.L6 == 0 {
 		return 0, "quantity required"
 	}
-	total := boxQty*tabletsPerBox(p) + stripQty*p.L3Qty + tabletQty
+	factors := packSlotFactors(p)
+	slots := [6]int64{q.Box, q.Strip, q.Tablet, q.L4, q.L5, q.L6}
+	var total int64
+	for i, qty := range slots {
+		if qty == 0 {
+			continue
+		}
+		f := factors[i]
+		if qty > math.MaxInt64/f {
+			return 0, "quantity too large"
+		}
+		add := qty * f
+		if total > math.MaxInt64-add {
+			return 0, "quantity too large"
+		}
+		total += add
+	}
 	if total <= 0 {
 		return 0, "quantity must be > 0"
 	}
@@ -187,33 +359,50 @@ func totalTabletsFromPackQtys(boxQty, stripQty, tabletQty int64, p itemPack) (in
 type packLevel struct {
 	Unit   string
 	Factor int64
+	// Slot is 0-based index into pack_l1…pack_l6 (box/strip/tablet/l4/l5/l6 sale columns).
+	Slot int
 }
 
-// visiblePackLevels matches the clinic pack chain: hidden pass-through levels
-// are collapsed, and Factor is how many smallest units one of that level contains.
+// visiblePackLevels collapses pass-through padding: after the first slot, drop
+// any slot whose qty is 1 and unit equals the previous kept unit.
 func visiblePackLevels(p itemPack) []packLevel {
-	l1, l2, l3 := p.L1Unit, p.L2Unit, p.L3Unit
-	q2, q3 := p.L2Qty, p.L3Qty
-	if q2 < 1 {
-		q2 = 1
+	p = padPackTail(p)
+	units := packSlotUnits(p)
+	qtys := packSlotQtys(p)
+	factors := packSlotFactors(p)
+
+	type raw struct {
+		unit string
+		qty  int64
+		slot int
 	}
-	if q3 < 1 {
-		q3 = 1
+	rawSlots := make([]raw, 0, maxPackDepth)
+	for i := 0; i < maxPackDepth; i++ {
+		rawSlots = append(rawSlots, raw{unit: units[i], qty: qtys[i], slot: i})
 	}
-	if l1 == l2 && l2 == l3 && q2 == 1 && q3 == 1 {
-		return []packLevel{{Unit: l1, Factor: 1}}
+
+	kept := make([]raw, 0, maxPackDepth)
+	for i, s := range rawSlots {
+		if i == 0 {
+			kept = append(kept, s)
+			continue
+		}
+		prev := kept[len(kept)-1]
+		if s.qty == 1 && strings.EqualFold(s.unit, prev.unit) {
+			continue
+		}
+		kept = append(kept, s)
 	}
-	if q3 == 1 && l2 == l3 {
-		return []packLevel{{Unit: l1, Factor: q2}, {Unit: l2, Factor: 1}}
+
+	out := make([]packLevel, len(kept))
+	for i, s := range kept {
+		out[i] = packLevel{Unit: s.unit, Factor: factors[s.slot], Slot: s.slot}
 	}
-	if l1 == l2 && q2 == 1 {
-		return []packLevel{{Unit: l1, Factor: q3}, {Unit: l3, Factor: 1}}
-	}
-	return []packLevel{
-		{Unit: l1, Factor: q2 * q3},
-		{Unit: l2, Factor: q3},
-		{Unit: l3, Factor: 1},
-	}
+	return out
+}
+
+func packVisibleDepth(p itemPack) int {
+	return len(visiblePackLevels(p))
 }
 
 func saleUnitFactor(p itemPack, unit string) (factor int64, canonical string, ok bool) {
@@ -250,11 +439,7 @@ func restockStockQty(item pharmacyItem, qty int64, qtyUnit string) (stockQty int
 	if strings.EqualFold(unit, "stock") {
 		return qty, "stock", ""
 	}
-	pack := itemPack{
-		L1Qty: item.PackL1Qty, L1Unit: item.PackL1Unit,
-		L2Qty: item.PackL2Qty, L2Unit: item.PackL2Unit,
-		L3Qty: item.PackL3Qty, L3Unit: item.PackL3Unit,
-	}
+	pack := itemPackFromPharmacyItem(item)
 	factor, canonical, ok := saleUnitFactor(pack, unit)
 	if !ok || factor < 1 {
 		return 0, "", "unknown unit"
@@ -266,11 +451,17 @@ func restockStockQty(item pharmacyItem, qty int64, qtyUnit string) (stockQty int
 }
 
 func packToItemUnits(p itemPack) itemUnits {
+	p = padPackTail(p)
+	upp, _ := tabletsPerBox(p)
+	if upp < 1 {
+		upp = 1
+	}
+	inner := packInnermostUnit(p)
 	return itemUnits{
 		PurchaseUnit:        p.L1Unit,
-		StockUnit:           p.L3Unit,
-		BillingUnit:         p.L3Unit,
-		UnitsPerPurchase:    tabletsPerBox(p),
+		StockUnit:           inner,
+		BillingUnit:         inner,
+		UnitsPerPurchase:    upp,
 		BillingPerStock:     1,
 		ChargeFullStockUnit: false,
 	}

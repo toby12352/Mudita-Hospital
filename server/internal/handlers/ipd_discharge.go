@@ -2,8 +2,10 @@ package handlers
 
 import (
 	"database/sql"
+	"fmt"
 	"html"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -131,11 +133,18 @@ func (h *IPD) discharge(w http.ResponseWriter, r *http.Request, path string) {
 	writeJSON(w, http.StatusOK, row)
 }
 
-func (h *IPD) printStatement(w http.ResponseWriter, _ *http.Request, path string) {
+func (h *IPD) printStatement(w http.ResponseWriter, r *http.Request, path string) {
 	id, ok := admissionActionID(path, "statement")
 	if !ok {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid id"})
 		return
+	}
+	daily := strings.TrimSpace(r.URL.Query().Get("date"))
+	if daily != "" {
+		if _, _, ok := yangonDayUTCRange(daily); !ok {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid date"})
+			return
+		}
 	}
 	row, err := loadAdmissionDetail(h.DB, id)
 	if err == sql.ErrNoRows {
@@ -151,7 +160,7 @@ func (h *IPD) printStatement(w http.ResponseWriter, _ *http.Request, path string
 		hosp = &hospitalSettings{HospitalName: "Mudita Hospital"}
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = w.Write([]byte(renderIpdStatement(h.DB, hosp, row)))
+	_, _ = w.Write([]byte(renderIpdStatement(h.DB, hosp, row, daily)))
 }
 
 type ipdCashLine struct {
@@ -292,10 +301,29 @@ func statementKind(line ipdLedgerLine) string {
 	case "ward":
 		return "Ward"
 	case "charge":
-		if line.AmountMMK < 0 {
-			return "Desk charge"
+		charge := line.AmountMMK < 0
+		switch line.Source {
+		case "opd":
+			if charge {
+				return "OPD charge"
+			}
+			return "OPD credit"
+		case "ot":
+			if charge {
+				return "OT charge"
+			}
+			return "OT credit"
+		case "pharmacy":
+			if charge {
+				return "Pharmacy charge"
+			}
+			return "Pharmacy credit"
+		default:
+			if charge {
+				return "Desk charge"
+			}
+			return "Desk credit"
 		}
-		return "Desk credit"
 	case "reversal":
 		return "Reversal"
 	case "refund":
@@ -314,62 +342,285 @@ func statementDetail(db *sql.DB, line ipdLedgerLine) string {
 		return detail
 	}
 	bill := ledgerBillNo(db, line.Source, line.SourceID)
+	// Charge/credit kinds already name the desk (e.g. "OPD charge"), so detail keeps the bill only.
 	label := desk
-	if bill != "" {
+	if line.Kind == "charge" {
+		label = bill
+		if label == "" {
+			return detail
+		}
+	} else if bill != "" {
 		label = desk + " " + bill
 	}
 	if detail == "" {
 		return label
 	}
+	if label == "" {
+		return detail
+	}
 	return label + " · " + detail
 }
 
-func renderIpdStatement(db *sql.DB, hosp *hospitalSettings, row ipdAdmission) string {
-	if hosp == nil {
-		hosp = &hospitalSettings{HospitalName: "Mudita Hospital"}
+func ipdStatementCSS() string {
+	return a4ReceiptCSS() + `
+.a4-kv .label{flex-basis:14ch}
+.a4-day{margin:12px 0 6px;font-size:12pt;font-weight:700}
+.a4-items tfoot td{font-weight:700}
+.a4-time{width:8ch;white-space:nowrap}
+`
+}
+
+// ledgerUTC parses a stored datetime('now') value. Those rows are UTC.
+func ledgerUTC(createdAt string) (time.Time, bool) {
+	ts, err := time.ParseInLocation("2006-01-02 15:04:05", strings.TrimSpace(createdAt), time.UTC)
+	if err != nil {
+		return time.Time{}, false
 	}
-	balance := int64(0)
-	if row.BalanceMMK != nil {
-		balance = *row.BalanceMMK
+	return ts, true
+}
+
+func yangonDateKey(createdAt string) (string, bool) {
+	ts, ok := ledgerUTC(createdAt)
+	if !ok {
+		return "", false
 	}
-	var b strings.Builder
-	b.WriteString(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>`)
-	b.WriteString(html.EscapeString(row.AdmissionNo))
-	b.WriteString(`</title><style>`)
-	b.WriteString(reportPrintCSS())
-	b.WriteString(`</style></head><body><h1>`)
-	b.WriteString(html.EscapeString(hosp.HospitalName))
-	b.WriteString(`</h1><h2>IPD statement — `)
-	b.WriteString(html.EscapeString(row.AdmissionNo))
-	b.WriteString(`</h2><p class="summary">`)
-	b.WriteString(html.EscapeString(row.Patient.Name))
-	b.WriteString(` · Admitted `)
-	b.WriteString(html.EscapeString(row.AdmittedAt))
-	if row.DischargedAt != nil && *row.DischargedAt != "" {
-		b.WriteString(` · Discharged `)
-		b.WriteString(html.EscapeString(*row.DischargedAt))
+	return ts.In(yangon).Format("2006-01-02"), true
+}
+
+func formatLedgerDate(createdAt string) string {
+	ts, ok := ledgerUTC(createdAt)
+	if !ok {
+		return strings.TrimSpace(createdAt)
 	}
-	b.WriteString(` · `)
-	b.WriteString(html.EscapeString(row.Status))
-	b.WriteString(`</p>`)
-	b.WriteString(`<table><thead><tr><th>Kind</th><th>Detail</th><th>When</th><th class="num">MMK</th></tr></thead><tbody>`)
-	for _, line := range row.Ledger {
-		b.WriteString(`<tr><td>`)
+	return ts.In(yangon).Format("02 Jan 2006")
+}
+
+func formatLedgerTime(createdAt string) string {
+	ts, ok := ledgerUTC(createdAt)
+	if !ok {
+		return strings.TrimSpace(createdAt)
+	}
+	return ts.In(yangon).Format("15:04")
+}
+
+func formatLedgerDateTime(createdAt string) string {
+	ts, ok := ledgerUTC(createdAt)
+	if !ok {
+		return strings.TrimSpace(createdAt)
+	}
+	return ts.In(yangon).Format("02 Jan 2006 15:04")
+}
+
+func formatCivilDate(iso string) string {
+	ts, err := time.ParseInLocation("2006-01-02", strings.TrimSpace(iso), yangon)
+	if err != nil {
+		return strings.TrimSpace(iso)
+	}
+	return ts.Format("02 Jan 2006")
+}
+
+func lineOnYangonDay(createdAt, start, end string) bool {
+	ts, ok := ledgerUTC(createdAt)
+	if !ok {
+		return false
+	}
+	stamp := ts.Format("2006-01-02 15:04:05")
+	return stamp >= start && stamp < end
+}
+
+type statementSection struct {
+	heading string
+	lines   []ipdLedgerLine
+}
+
+// groupStatementDays returns one section per Yangon day, oldest first, when
+// lines fall on more than one day. A single day (or none) stays one table.
+// Unparseable timestamps stay in that single table, or in a final Undated
+// section when the sheet already has day headings.
+func groupStatementDays(lines []ipdLedgerLine) (sections []statementSection, multi bool) {
+	var undated []ipdLedgerLine
+	buckets := map[string][]ipdLedgerLine{}
+	var order []string
+	for _, line := range lines {
+		key, ok := yangonDateKey(line.CreatedAt)
+		if !ok {
+			undated = append(undated, line)
+			continue
+		}
+		if _, seen := buckets[key]; !seen {
+			order = append(order, key)
+		}
+		buckets[key] = append(buckets[key], line)
+	}
+	if len(order) <= 1 {
+		return nil, false
+	}
+	sort.Strings(order)
+	sections = make([]statementSection, 0, len(order)+1)
+	for _, key := range order {
+		sections = append(sections, statementSection{
+			heading: formatCivilDate(key),
+			lines:   buckets[key],
+		})
+	}
+	if len(undated) > 0 {
+		sections = append(sections, statementSection{heading: "Undated", lines: undated})
+	}
+	return sections, true
+}
+
+func writeStatementTable(b *strings.Builder, db *sql.DB, lines []ipdLedgerLine, dayTotal bool, empty string) {
+	b.WriteString(`<table class="a4-items"><thead><tr>`)
+	b.WriteString(`<th class="col-no">No.</th><th>Kind</th><th>Detail</th><th class="a4-time">Time</th><th class="col-amt">MMK</th>`)
+	b.WriteString(`</tr></thead><tbody>`)
+	if len(lines) == 0 {
+		b.WriteString(`<tr><td colspan="5">`)
+		b.WriteString(html.EscapeString(empty))
+		b.WriteString(`</td></tr>`)
+	}
+	var sum int64
+	for i, line := range lines {
+		sum += line.AmountMMK
+		b.WriteString(`<tr><td class="col-no">`)
+		b.WriteString(fmt.Sprintf("%d", i+1))
+		b.WriteString(`</td><td>`)
 		b.WriteString(html.EscapeString(statementKind(line)))
 		b.WriteString(`</td><td>`)
 		b.WriteString(html.EscapeString(statementDetail(db, line)))
-		b.WriteString(`</td><td>`)
-		b.WriteString(html.EscapeString(line.CreatedAt))
-		b.WriteString(`</td><td class="num">`)
+		b.WriteString(`</td><td class="a4-time">`)
+		b.WriteString(html.EscapeString(formatLedgerTime(line.CreatedAt)))
+		b.WriteString(`</td><td class="col-amt">`)
 		b.WriteString(formatMMK(line.AmountMMK))
 		b.WriteString(`</td></tr>`)
 	}
-	if len(row.Ledger) == 0 {
-		b.WriteString(`<tr><td colspan="4">No ledger lines.</td></tr>`)
+	b.WriteString(`</tbody>`)
+	if dayTotal {
+		b.WriteString(`<tfoot><tr><td colspan="4">Day total</td><td class="col-amt">`)
+		b.WriteString(formatMMK(sum))
+		b.WriteString(`</td></tr></tfoot>`)
 	}
-	b.WriteString(`</tbody></table><p class="summary"><strong>Balance: `)
-	b.WriteString(formatMMK(balance))
-	b.WriteString(` MMK</strong></p><p class="meta">Printed from Mudita Hospital</p></body></html>`)
+	b.WriteString(`</table>`)
+}
+
+func writeStatementSettle(b *strings.Builder, rows [][2]string) {
+	b.WriteString(`<table class="a4-settle"><tbody>`)
+	last := len(rows) - 1
+	for i, row := range rows {
+		class := ""
+		if i == last {
+			class = ` class="emph"`
+		}
+		b.WriteString(`<tr`)
+		b.WriteString(class)
+		b.WriteString(`><td>`)
+		b.WriteString(html.EscapeString(row[0]))
+		b.WriteString(`</td><td>`)
+		b.WriteString(html.EscapeString(row[1]))
+		b.WriteString(` MMK</td></tr>`)
+	}
+	b.WriteString(`</tbody></table>`)
+}
+
+// statementBalanceLabel returns the Myanmar closing-balance label and the
+// absolute kyat amount. Remaining deposit (and zero) is ပိုငွေ; amount owed is လိုငွေ.
+func statementBalanceLabel(balance int64) (string, int64) {
+	if balance < 0 {
+		return "လိုငွေ", -balance
+	}
+	return "ပိုငွေ", balance
+}
+
+// renderIpdStatement prints the final stay sheet. dailyDate (YYYY-MM-DD) limits
+// the body to that Asia/Yangon civil day and swaps the footer for a day total
+// plus the balance through the end of that day.
+func renderIpdStatement(db *sql.DB, hosp *hospitalSettings, row ipdAdmission, dailyDate string) string {
+	if hosp == nil {
+		hosp = &hospitalSettings{HospitalName: "Mudita Hospital"}
+	}
+	dailyDate = strings.TrimSpace(dailyDate)
+	daily := dailyDate != ""
+	lines := row.Ledger
+	var through int64
+	if daily {
+		start, end, _ := yangonDayUTCRange(dailyDate)
+		filtered := make([]ipdLedgerLine, 0)
+		for _, line := range row.Ledger {
+			if lineOnYangonDay(line.CreatedAt, start, end) {
+				filtered = append(filtered, line)
+			}
+			if ts, ok := ledgerUTC(line.CreatedAt); ok && ts.Format("2006-01-02 15:04:05") < end {
+				through += line.AmountMMK
+			}
+		}
+		lines = filtered
+	}
+
+	title := "IPD FINAL STATEMENT"
+	headerDate := formatLedgerDate(row.AdmittedAt)
+	if daily {
+		title = "IPD DAILY STATEMENT"
+		headerDate = formatCivilDate(dailyDate)
+	}
+
+	var b strings.Builder
+	b.WriteString(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>`)
+	b.WriteString(html.EscapeString(title + " " + row.AdmissionNo))
+	b.WriteString(`</title><style>`)
+	b.WriteString(ipdStatementCSS())
+	b.WriteString(`</style></head><body><div class="a4-sheet">`)
+	writeA4Letterhead(&b, hosp)
+	b.WriteString(`<p class="a4-title">`)
+	b.WriteString(html.EscapeString(title))
+	b.WriteString(`</p><div class="a4-meta"><div class="a4-meta-col">`)
+	b.WriteString(`<p class="a4-meta-heading">Patient</p>`)
+	writeA4KV(&b, "Name", strings.TrimSpace(row.Patient.Name))
+	if row.Patient.AgeYears != nil {
+		writeA4KV(&b, "Age", fmt.Sprintf("%d", *row.Patient.AgeYears))
+	}
+	writeA4KV(&b, "Sex", strings.TrimSpace(row.Patient.Gender))
+	writeA4KV(&b, "Phone", strings.TrimSpace(row.Patient.Phone))
+	b.WriteString(`</div><div class="a4-meta-col">`)
+	b.WriteString(`<p class="a4-meta-heading">Stay</p>`)
+	writeA4KV(&b, "Admission No", row.AdmissionNo)
+	writeA4KV(&b, "Date", headerDate)
+	writeA4KV(&b, "Status", strings.ToUpper(strings.TrimSpace(row.Status)))
+	if row.DischargedAt != nil && strings.TrimSpace(*row.DischargedAt) != "" {
+		writeA4KV(&b, "Discharged", formatLedgerDateTime(*row.DischargedAt))
+	}
+	b.WriteString(`</div></div>`)
+
+	if daily {
+		empty := "No lines on this date."
+		writeStatementTable(&b, db, lines, false, empty)
+		var daySum int64
+		for _, line := range lines {
+			daySum += line.AmountMMK
+		}
+		balLabel, balAmt := statementBalanceLabel(through)
+		writeStatementSettle(&b, [][2]string{
+			{"Day total", formatMMK(daySum)},
+			{balLabel, formatMMK(balAmt)},
+		})
+	} else {
+		sections, multi := groupStatementDays(lines)
+		if !multi {
+			writeStatementTable(&b, db, lines, false, "No ledger lines.")
+		} else {
+			for _, sec := range sections {
+				b.WriteString(`<p class="a4-day">`)
+				b.WriteString(html.EscapeString(sec.heading))
+				b.WriteString(`</p>`)
+				writeStatementTable(&b, db, sec.lines, true, "No ledger lines.")
+			}
+		}
+		balance := int64(0)
+		if row.BalanceMMK != nil {
+			balance = *row.BalanceMMK
+		}
+		balLabel, balAmt := statementBalanceLabel(balance)
+		writeStatementSettle(&b, [][2]string{{balLabel, formatMMK(balAmt)}})
+	}
+	b.WriteString(`</div></body></html>`)
 	return b.String()
 }
 

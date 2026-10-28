@@ -115,6 +115,8 @@ export type ExpenseBillWrite = {
   discount_value: number;
   discount_unit: "percent" | "mmk";
   lines: { ref_id: number; qty: number; unit_price_mmk: number }[];
+  /** Admin-only on create. Yangon wall time as `YYYY-MM-DDTHH:mm`. */
+  billed_at?: string;
 };
 
 export async function listExpenseBills(

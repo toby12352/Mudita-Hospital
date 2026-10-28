@@ -35,6 +35,8 @@ import {
   type SaleUnit,
 } from "@/features/pharmacy/api";
 import { ActionIcon } from "@/shared/ActionIcon";
+import { getStoredUser } from "@/shared/auth";
+import { BillDateField, formatUtcAsLocal, nowDatetimeLocal } from "@/shared/BillDateField";
 import { BillTotals } from "@/shared/BillTotals";
 import {
   discountFieldsFromBill,
@@ -69,6 +71,7 @@ type OtServiceLine = {
   description: string;
   qty: number;
   unit_price_mmk: number | null;
+  foc?: number;
 };
 
 type OtServiceLineFields = Omit<OtServiceLine, "seq">;
@@ -82,6 +85,7 @@ function servicesFromBill(b: OtBill): OtServiceLineFields[] {
       description: l.description,
       qty: l.qty,
       unit_price_mmk: l.unit_price_mmk,
+      foc: l.foc === 1 ? 1 : 0,
     }));
 }
 
@@ -92,6 +96,7 @@ function servicesFromCase(c: OtCase): OtServiceLineFields[] {
     description: s.description,
     qty: 1,
     unit_price_mmk: s.unit_price_mmk,
+    foc: s.foc === 1 ? 1 : 0,
   }));
 }
 
@@ -134,6 +139,7 @@ export function OtPage() {
   const [otBillId, setOtBillId] = useState<number | null>(null);
   const [createdAt, setCreatedAt] = useState<string | null>(null);
   const [nowTick, setNowTick] = useState(() => Date.now());
+  const [billedAtLocal, setBilledAtLocal] = useState(() => nowDatetimeLocal());
   /** Next client cart seq. Not persisted. */
   const nextSeqRef = useRef(1);
   const servicesRef = useRef(services);
@@ -142,6 +148,8 @@ export function OtPage() {
   const [bill, setBill] = useState<OtBill | null>(null);
   const [discountValue, setDiscountValue] = useState("");
   const [discountUnit, setDiscountUnit] = useState<DiscountUnit>("percent");
+  const isAdmin = getStoredUser()?.role === "Admin";
+  const dateEditable = isAdmin && caseId == null;
 
   /** Editable until the OT bill is paid or void (Print does not lock). */
   const isDraft = !(bill?.status === "paid" || bill?.status === "void");
@@ -200,6 +208,7 @@ export function OtPage() {
     setDiscountValue("");
     setDiscountUnit("percent");
     setCreatedAt(null);
+    setBilledAtLocal(nowDatetimeLocal());
     setError(null);
     setOkMsg(null);
   }
@@ -307,6 +316,7 @@ export function OtPage() {
       procedure_name: procedureName.trim(),
       notes: notes.trim(),
       ...discountWrite(discountValue, discountUnit),
+      ...(dateEditable && billedAtLocal ? { billed_at: billedAtLocal } : {}),
       items: items.map((it) => ({
         item_id: it.item_id,
         code: it.code,
@@ -319,12 +329,14 @@ export function OtPage() {
         qty_returned: 0,
         qty_wasted: 0,
         qty_kept_on_floor: 0,
+        foc: it.foc === 1 ? 1 : 0,
       })),
       services: services.map((s) => ({
         ref_id: s.ref_id,
         code: s.code,
         description: s.description,
         unit_price_mmk: s.unit_price_mmk,
+        foc: s.foc === 1 ? 1 : 0,
       })),
     };
   }
@@ -336,7 +348,7 @@ export function OtPage() {
     );
   }
 
-  function addOtItem(item: OtCatalogItem, qty: number, unit: SaleUnit | null) {
+  function addOtItem(item: OtCatalogItem, qty: number, unit: SaleUnit | null, foc = false) {
     const units = saleUnitsFromPack(packFromItem(item), item.sell_price_mmk);
     const chosen = unit ?? (units.length === 1 ? units[0] : null);
     if (!chosen && units.length > 0) {
@@ -371,16 +383,23 @@ export function OtPage() {
         pack_l2_unit: item.pack_l2_unit,
         pack_l3_qty: item.pack_l3_qty,
         pack_l3_unit: item.pack_l3_unit,
+        pack_l4_qty: item.pack_l4_qty,
+        pack_l4_unit: item.pack_l4_unit,
+        pack_l5_qty: item.pack_l5_qty,
+        pack_l5_unit: item.pack_l5_unit,
+        pack_l6_qty: item.pack_l6_qty,
+        pack_l6_unit: item.pack_l6_unit,
         qty_used: 0,
         qty_returned: 0,
         qty_wasted: 0,
         qty_kept_on_floor: 0,
+        foc: foc ? 1 : 0,
       },
     ]);
     setError(null);
   }
 
-  function addOtService(svc: OtService) {
+  function addOtService(svc: OtService, foc = false) {
     const seq = takeSeq();
     setServices((prev) => [
       ...prev,
@@ -391,6 +410,7 @@ export function OtPage() {
         description: svc.name,
         qty: 1,
         unit_price_mmk: svc.price_mmk,
+        foc: foc ? 1 : 0,
       },
     ]);
     setError(null);
@@ -527,6 +547,7 @@ export function OtPage() {
           qty: 1,
           unit_price_mmk: s.unit_price_mmk as number,
           line_total_mmk: s.unit_price_mmk as number,
+          foc: s.foc === 1 ? 1 : 0,
         }));
         const discount = discountWrite(discountValue, discountUnit);
         const updated = await updateOtBill(otBillId, serviceLines, discount);
@@ -579,6 +600,7 @@ export function OtPage() {
       qty: 1,
       unit_price_mmk: s.unit_price_mmk as number,
       line_total_mmk: s.unit_price_mmk as number,
+      foc: s.foc === 1 ? 1 : 0,
     }));
     const discount = discountWrite(discountValue, discountUnit);
 
@@ -801,6 +823,7 @@ export function OtPage() {
   }, [dialog, busy, isDraft, caseId, caseNo, caseStatus, patientName, linkedChartId, items, services, otBillId, bill, discountValue, discountUnit, canSaveCase, otCreate, otDelete]);
 
   const itemsTotal = items.reduce((sum, it) => {
+    if (it.foc === 1) return sum;
     const units = saleUnitsFromPack(packFromItem(it), it.sell_price_mmk);
     const chosen = it.sale_unit
       ? units.find((u) => u.id.toLowerCase() === it.sale_unit!.toLowerCase())
@@ -812,7 +835,8 @@ export function OtPage() {
     return sum + roundPayableMMK(it.sell_price_mmk) * Math.max(0, it.qty_issued);
   }, 0);
   const servicesTotal = services.reduce(
-    (sum, s) => sum + (s.unit_price_mmk == null ? 0 : s.unit_price_mmk),
+    (sum, s) =>
+      s.foc === 1 || s.unit_price_mmk == null ? sum : sum + s.unit_price_mmk,
     0,
   );
   const liveGross = itemsTotal + servicesTotal + doctorFeeMmk;
@@ -825,7 +849,20 @@ export function OtPage() {
   const balanceAmount = Math.max(0, netTotal - paidAmount);
   const discountEditable = (bill ? bill.status === "draft" : isDraft) && canSaveCase;
   const writable = isDraft && canSaveCase;
-  const displayWhen = formatDisplayWhen(createdAt, nowTick);
+  const patientLocked = linkedChartId != null;
+  const identityEditable = writable && !patientLocked;
+  const idName =
+    linkedChartId != null ? `${linkedChartId} / ${patientName}` : patientName;
+
+  function clearLinkedPatient() {
+    setLinkedChartId(null);
+    setPatientName("");
+    setPatientPhone("");
+    setPatientAge("");
+    setPatientGender("");
+    window.setTimeout(() => patientNameRef.current?.focus(), 0);
+  }
+  const displayWhen = formatUtcAsLocal(createdAt, nowTick);
 
   const otKinds: Array<
     { kind: "item"; index: number } | { kind: "service"; index: number } | { kind: "fee" }
@@ -871,6 +908,7 @@ export function OtPage() {
         priceMmk: price,
         amountMmk: amount,
         removable: true,
+        foc: it.foc === 1,
       });
     } else {
       const s = services[entry.index];
@@ -884,6 +922,7 @@ export function OtPage() {
         qtyLocked: true,
         priceEditable: true,
         removable: true,
+        foc: s.foc === 1,
       });
     }
   }
@@ -910,29 +949,49 @@ export function OtPage() {
             <div className="opd-bill-header-col">
               <div className="opd-bill-field opd-bill-field--typeahead">
                 <span className="opd-bill-label">{t("idName")}</span>
-                <PatientChartTypeahead
-                  value={patientName}
-                  disabled={!writable}
-                  inputRef={patientNameRef}
-                  onChange={(v) => {
-                    setPatientName(v);
-                    setLinkedChartId(null);
-                  }}
-                  onPick={(p: PatientChart) => {
-                    setLinkedChartId(p.id);
-                    setPatientName(p.name);
-                    setPatientPhone(p.phone || "");
-                    setPatientAge(p.age_years != null ? String(p.age_years) : "");
-                    setPatientGender(p.gender || "");
-                  }}
-                />
+                {identityEditable ? (
+                  <PatientChartTypeahead
+                    value={patientName}
+                    inputRef={patientNameRef}
+                    onChange={(v) => {
+                      setPatientName(v);
+                      setLinkedChartId(null);
+                    }}
+                    onPick={(p: PatientChart) => {
+                      setLinkedChartId(p.id);
+                      setPatientName(p.name);
+                      setPatientPhone(p.phone || "");
+                      setPatientAge(p.age_years != null ? String(p.age_years) : "");
+                      setPatientGender(p.gender || "");
+                    }}
+                  />
+                ) : (
+                  <div className="opd-bill-control">
+                    <input
+                      className="opd-bill-input"
+                      data-focus="bill-patient"
+                      value={idName}
+                      disabled
+                      aria-label={t("patientName")}
+                    />
+                    {writable && patientLocked ? (
+                      <button
+                        type="button"
+                        className="btn action opd-bill-consult"
+                        onClick={clearLinkedPatient}
+                      >
+                        {t("clearPatient")}
+                      </button>
+                    ) : null}
+                  </div>
+                )}
               </div>
               <label className="opd-bill-field">
                 <span className="opd-bill-label">{t("phone")}</span>
                 <input
                   className="opd-bill-input"
                   value={patientPhone}
-                  disabled={!writable}
+                  disabled={!identityEditable}
                   onChange={(e) => setPatientPhone(e.target.value)}
                 />
               </label>
@@ -942,7 +1001,7 @@ export function OtPage() {
                   <input
                     className="opd-bill-input opd-bill-input--narrow"
                     value={patientAge}
-                    disabled={!writable}
+                    disabled={!identityEditable}
                     inputMode="numeric"
                     onChange={(e) => setPatientAge(e.target.value)}
                   />
@@ -954,7 +1013,7 @@ export function OtPage() {
                 <select
                   className="opd-bill-input"
                   value={patientGender}
-                  disabled={!writable}
+                  disabled={!identityEditable}
                   onChange={(e) => setPatientGender(e.target.value)}
                 >
                   <option value="">—</option>
@@ -1010,10 +1069,13 @@ export function OtPage() {
             </div>
 
             <div className="opd-bill-header-col">
-              <div className="opd-bill-field">
-                <span className="opd-bill-label">{t("dateTime")}</span>
-                <span className="opd-bill-readonly">{displayWhen}</span>
-              </div>
+              <BillDateField
+                editable={dateEditable}
+                value={billedAtLocal}
+                displayWhen={displayWhen}
+                onChange={setBilledAtLocal}
+                disabled={busy}
+              />
               <div className="opd-bill-field">
                 <span className="opd-bill-label">{t("vouNo")}</span>
                 <span className="opd-bill-readonly">{caseNo || "—"}</span>
@@ -1051,6 +1113,7 @@ export function OtPage() {
             draft={writable}
             showUnitColumn
             showPackColumn
+            showFoc
             itemHeader={t("particular")}
             priceHeader={t("fees")}
             emptyLabel={t("noCartItems")}
@@ -1083,6 +1146,19 @@ export function OtPage() {
                 setServices((prev) => prev.filter((_, i) => i !== kind.index));
               }
             }}
+            onClearFoc={(index) => {
+              const kind = otKinds[index];
+              if (!kind || kind.kind === "fee") return;
+              if (kind.kind === "item") {
+                setItems((prev) =>
+                  prev.map((it, i) => (i === kind.index ? { ...it, foc: 0 } : it)),
+                );
+              } else {
+                setServices((prev) =>
+                  prev.map((s, i) => (i === kind.index ? { ...s, foc: 0 } : s)),
+                );
+              }
+            }}
             entries={[
               createBillLineEntry<OtCatalogItem>(
                 {
@@ -1110,12 +1186,13 @@ export function OtPage() {
                     })),
                   packFor: (item) => formatPackCompact(packFromItem(item)),
                   packTitleFor: (item) => formatPackPreview(packFromItem(item)),
-                  onCommit: (item, qty, unit) => {
+                  onCommit: (item, qty, unit, foc) => {
                     const units = saleUnitsFromPack(packFromItem(item), item.sell_price_mmk);
                     addOtItem(
                       item,
                       qty,
                       unit ? (units.find((u) => u.id === unit.id) ?? null) : null,
+                      foc,
                     );
                   },
                   onSubmitCode: lookupOtItem,
@@ -1123,6 +1200,7 @@ export function OtPage() {
                 {
                   showUnitColumn: true,
                   showPackColumn: true,
+                  showFoc: true,
                   sourceLabel: t("otInventory"),
                   sourceIcon: "box",
                 },
@@ -1150,12 +1228,13 @@ export function OtPage() {
                   ),
                   unitsFor: () => [],
                   commitOnPick: true,
-                  onCommit: (svc) => addOtService(svc),
+                  onCommit: (svc, _qty, _unit, foc) => addOtService(svc, foc),
                   onSubmitCode: lookupOtService,
                 },
                 {
                   showUnitColumn: true,
                   showPackColumn: true,
+                  showFoc: true,
                   sourceLabel: t("otServices"),
                   sourceIcon: "clipboard",
                 },
@@ -1321,16 +1400,3 @@ export function OtPage() {
   );
 }
 
-function formatDisplayWhen(createdAt: string | null, nowTick: number): string {
-  const d = createdAt
-    ? new Date(createdAt.includes("T") ? createdAt : createdAt.replace(" ", "T") + "Z")
-    : new Date(nowTick);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleString(undefined, {
-    year: "numeric",
-    month: "numeric",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}

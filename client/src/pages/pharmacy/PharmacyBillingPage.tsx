@@ -6,6 +6,7 @@ import {
   lineChargeFromPack,
   listPharmacyBills,
   listPharmacyItems,
+  itemStockUnitLabel,
   packFromItem,
   packQtysForSale,
   markPharmacyBillPrinted,
@@ -23,6 +24,8 @@ import {
 } from "@/features/pharmacy/api";
 import type { PatientChart } from "@/features/patients/api";
 import { useOpenAdmission } from "@/features/patients/useOpenAdmission";
+import { getStoredUser } from "@/shared/auth";
+import { formatUtcAsLocal, nowDatetimeLocal } from "@/shared/BillDateField";
 import {
   discountFieldsFromBill,
   discountWrite,
@@ -84,8 +87,11 @@ export function PharmacyBillingPage({
   const [onHandByItemId, setOnHandByItemId] = useState<Record<number, number>>({});
   const [createdAt, setCreatedAt] = useState<string | null>(null);
   const [nowTick, setNowTick] = useState(() => Date.now());
+  const [billedAtLocal, setBilledAtLocal] = useState(() => nowDatetimeLocal());
   const [awaitingConfirm, setAwaitingConfirm] = useState(false);
   const [transferDone, setTransferDone] = useState(false);
+  const isAdmin = getStoredUser()?.role === "Admin";
+  const dateEditable = isAdmin && billId == null;
 
   const isDraft = billStatus === "draft";
   const openAdmissionId = useOpenAdmission(isTransfer ? null : linkedChartId);
@@ -153,6 +159,7 @@ export function PharmacyBillingPage({
     setDiscountUnit("percent");
     setOnHandByItemId({});
     setCreatedAt(null);
+    setBilledAtLocal(nowDatetimeLocal());
     setAwaitingConfirm(false);
     setTransferDone(false);
     setError(null);
@@ -240,6 +247,10 @@ export function PharmacyBillingPage({
         box_qty: line.box_qty ?? 0,
         strip_qty: line.strip_qty ?? 0,
         tablet_qty: line.tablet_qty ?? 0,
+        qty_l4: line.qty_l4 ?? 0,
+        qty_l5: line.qty_l5 ?? 0,
+        qty_l6: line.qty_l6 ?? 0,
+        pack_depth: 6,
         billing_qty: line.billing_qty,
         billing_unit: line.billing_unit,
         stock_qty: line.stock_qty,
@@ -247,6 +258,7 @@ export function PharmacyBillingPage({
         unit_price_mmk: line.unit_price_mmk,
         line_total_mmk: line.line_total_mmk,
         sort_order: line.sort_order,
+        foc: !isReturn && !isTransfer && line.foc === 1 ? 1 : 0,
       })),
       save_patient: false,
       ...(!isTransfer && linkedChartId != null ? { patient_id: linkedChartId } : {}),
@@ -254,6 +266,7 @@ export function PharmacyBillingPage({
       ...(isTransfer
         ? { discount_value: 0, discount_unit: "percent" as const }
         : discountWrite(discountValue, discountUnit)),
+      ...(dateEditable && billedAtLocal ? { billed_at: billedAtLocal } : {}),
     };
   }
 
@@ -270,43 +283,66 @@ export function PharmacyBillingPage({
     setPatientGender(p.gender || "");
   }
 
-  function addLineFromItem(item: PharmacyItem, boxQty: number, stripQty: number, tabletQty: number) {
+  function clearLinkedPatient() {
+    setLinkedChartId(null);
+    setPatientName("");
+    setPatientPhone("");
+    setPatientAge("");
+    setPatientGender("");
+    window.setTimeout(() => patientNameRef.current?.focus(), 0);
+  }
+
+  function addLineFromItem(
+    item: PharmacyItem,
+    qtys: {
+      box_qty: number;
+      strip_qty: number;
+      tablet_qty: number;
+      qty_l4: number;
+      qty_l5: number;
+      qty_l6: number;
+    },
+    foc = false,
+  ) {
     const pack = packFromItem(item);
     const { total: billingQty, charge: lineTotal, error: convErr } = lineChargeFromPack(
-      boxQty,
-      stripQty,
-      tabletQty,
-      pack.pack_l2_qty,
-      pack.pack_l3_qty,
+      qtys,
+      pack,
       item.sell_price_mmk,
     );
     if (convErr) {
       setError(`${item.code}: ${convErr}`);
       return;
     }
-    const l3 = pack.pack_l3_unit || item.billing_unit || "Tablet";
+    const inner = itemStockUnitLabel({ ...item, pack_l6_unit: pack.pack_l6_unit });
     setLines((prev) => [
       ...prev,
       {
         item_id: item.id,
         code: item.code,
         description: item.name,
-        pack_l1_qty: item.pack_l1_qty,
-        pack_l1_unit: item.pack_l1_unit,
-        pack_l2_qty: item.pack_l2_qty,
-        pack_l2_unit: item.pack_l2_unit,
-        pack_l3_qty: item.pack_l3_qty,
-        pack_l3_unit: item.pack_l3_unit,
-        box_qty: boxQty,
-        strip_qty: stripQty,
-        tablet_qty: tabletQty,
+        pack_l1_qty: pack.pack_l1_qty,
+        pack_l1_unit: pack.pack_l1_unit,
+        pack_l2_qty: pack.pack_l2_qty,
+        pack_l2_unit: pack.pack_l2_unit,
+        pack_l3_qty: pack.pack_l3_qty,
+        pack_l3_unit: pack.pack_l3_unit,
+        pack_l4_qty: pack.pack_l4_qty,
+        pack_l4_unit: pack.pack_l4_unit,
+        pack_l5_qty: pack.pack_l5_qty,
+        pack_l5_unit: pack.pack_l5_unit,
+        pack_l6_qty: pack.pack_l6_qty,
+        pack_l6_unit: pack.pack_l6_unit,
+        ...qtys,
+        pack_depth: 6,
         billing_qty: billingQty,
-        billing_unit: l3,
+        billing_unit: inner,
         stock_qty: billingQty,
-        stock_unit: l3,
+        stock_unit: inner,
         unit_price_mmk: item.sell_price_mmk,
         line_total_mmk: lineTotal,
         sort_order: prev.length,
+        foc: !isReturn && !isTransfer && foc ? 1 : 0,
       },
     ]);
     setError(null);
@@ -575,7 +611,7 @@ export function PharmacyBillingPage({
     );
   }
 
-  function commitNewItem(item: PharmacyItem, qty: number, unitId: string | null) {
+  function commitNewItem(item: PharmacyItem, qty: number, unitId: string | null, foc = false) {
     disarm();
     const pack = packFromItem(item);
     const units = saleUnitsFromPack(pack, item.sell_price_mmk);
@@ -588,14 +624,14 @@ export function PharmacyBillingPage({
     if (!isReturn) {
       const demand = qty * chosen.factor;
       const already = otherStockQty(item.id, -1);
-      const unit = pack.pack_l3_unit || item.billing_unit || "Tablet";
+      const unit = itemStockUnitLabel({ ...item, pack_l6_unit: pack.pack_l6_unit });
       if (item.stock_main < already + demand) {
         setError(stockLeftMessage(item.stock_main - already, unit));
         return;
       }
     }
     const qtys = packQtysForSale(chosen, qty);
-    addLineFromItem(item, qtys.box_qty, qtys.strip_qty, qtys.tablet_qty);
+    addLineFromItem(item, qtys, foc);
   }
 
   function commitLineQty(index: number, qty: number): boolean {
@@ -609,7 +645,7 @@ export function PharmacyBillingPage({
     if (!isReturn) {
       const onHand = onHandByItemId[line.item_id];
       const already = otherStockQty(line.item_id, index);
-      const stockUnit = line.stock_unit || line.pack_l3_unit || "Tablet";
+      const stockUnit = itemStockUnitLabel(line);
       if (onHand != null && onHand < already + billing) {
         setError(stockLeftMessage(onHand - already, stockUnit));
         return false;
@@ -618,34 +654,27 @@ export function PharmacyBillingPage({
     setLines((prev) =>
       prev.map((row, i) => {
         if (i !== index) return row;
+        const pack = packFromItem(row);
         if (!unit) {
-          const { charge } = lineChargeFromPack(
-            0,
-            0,
-            billing,
-            row.pack_l2_qty || 1,
-            row.pack_l3_qty || 1,
-            row.unit_price_mmk,
-          );
-          return {
-            ...row,
+          const qtys = {
             box_qty: 0,
             strip_qty: 0,
             tablet_qty: billing,
+            qty_l4: 0,
+            qty_l5: 0,
+            qty_l6: 0,
+          };
+          const { charge } = lineChargeFromPack(qtys, pack, row.unit_price_mmk);
+          return {
+            ...row,
+            ...qtys,
             billing_qty: billing,
             stock_qty: billing,
             line_total_mmk: charge,
           };
         }
         const qtys = packQtysForSale(unit, qty);
-        const { charge } = lineChargeFromPack(
-          qtys.box_qty,
-          qtys.strip_qty,
-          qtys.tablet_qty,
-          row.pack_l2_qty || 1,
-          row.pack_l3_qty || 1,
-          row.unit_price_mmk,
-        );
+        const { charge } = lineChargeFromPack(qtys, pack, row.unit_price_mmk);
         return {
           ...row,
           ...qtys,
@@ -671,7 +700,7 @@ export function PharmacyBillingPage({
     if (!isReturn) {
       const onHand = onHandByItemId[line.item_id];
       const already = otherStockQty(line.item_id, index);
-      const stockUnit = line.stock_unit || line.pack_l3_unit || "Tablet";
+      const stockUnit = itemStockUnitLabel(line);
       if (onHand != null && onHand < already + billing) {
         setError(stockLeftMessage(onHand - already, stockUnit));
         return;
@@ -681,14 +710,7 @@ export function PharmacyBillingPage({
       prev.map((row, i) => {
         if (i !== index) return row;
         const qtys = packQtysForSale(unit, view.qty);
-        const { charge } = lineChargeFromPack(
-          qtys.box_qty,
-          qtys.strip_qty,
-          qtys.tablet_qty,
-          row.pack_l2_qty || 1,
-          row.pack_l3_qty || 1,
-          row.unit_price_mmk,
-        );
+        const { charge } = lineChargeFromPack(qtys, packFromItem(row), row.unit_price_mmk);
         return {
           ...row,
           ...qtys,
@@ -771,7 +793,7 @@ export function PharmacyBillingPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- shortcut wiring
   }, [dialog, busy, isDraft, billId, billStatus, billNo, lines, patientName, linkedChartId, awaitingConfirm, isTransfer, discountValue, discountUnit, pharmacyCreate, pharmacyDelete]);
 
-  const displayWhen = formatDisplayWhen(createdAt, nowTick);
+  const displayWhen = formatUtcAsLocal(createdAt, nowTick);
 
   return (
     <>
@@ -783,6 +805,7 @@ export function PharmacyBillingPage({
         collectedCash={collectedCash}
         chargedSales={chargedSales}
         returnSaleId={returnSaleId}
+        patientId={linkedChartId}
         patientName={patientName}
         patientPhone={patientPhone}
         patientAge={patientAge}
@@ -790,6 +813,9 @@ export function PharmacyBillingPage({
         description={description}
         lines={lines}
         displayWhen={displayWhen}
+        dateEditable={dateEditable}
+        billedAtLocal={billedAtLocal}
+        onBilledAtLocal={setBilledAtLocal}
         busy={busy}
         error={error}
         okMsg={okMsg}
@@ -806,6 +832,7 @@ export function PharmacyBillingPage({
         patientNameRef={patientNameRef}
         onPatientName={onPatientName}
         onPickPatient={pickPatient}
+        onClearPatient={clearLinkedPatient}
         onPatientPhone={setPatientPhone}
         onPatientAge={setPatientAge}
         onPatientGender={setPatientGender}
@@ -821,6 +848,12 @@ export function PharmacyBillingPage({
         onRemoveLine={(i) => {
           disarm();
           setLines((prev) => prev.filter((_, j) => j !== i));
+        }}
+        onClearFoc={(i) => {
+          disarm();
+          setLines((prev) =>
+            prev.map((line, j) => (j === i ? { ...line, foc: 0 } : line)),
+          );
         }}
         onPrint={() => void doPrint()}
         onMarkPaid={() => void doMarkPaid()}
@@ -879,18 +912,4 @@ export function PharmacyBillingPage({
       ) : null}
     </>
   );
-}
-
-function formatDisplayWhen(createdAt: string | null, nowTick: number): string {
-  const d = createdAt
-    ? new Date(createdAt.includes("T") ? createdAt : createdAt.replace(" ", "T") + "Z")
-    : new Date(nowTick);
-  if (Number.isNaN(d.getTime())) return createdAt ?? "";
-  return d.toLocaleString(undefined, {
-    year: "numeric",
-    month: "numeric",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
 }

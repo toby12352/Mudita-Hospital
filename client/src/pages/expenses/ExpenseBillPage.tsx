@@ -24,6 +24,8 @@ import {
   BillPrintButton,
   moneyStatusLabel,
 } from "@/shared/BillPayPrint";
+import { getStoredUser } from "@/shared/auth";
+import { BillDateField, formatUtcAsLocal, nowDatetimeLocal } from "@/shared/BillDateField";
 import { BillTotals } from "@/shared/BillTotals";
 import {
   discountFieldsFromBill,
@@ -80,6 +82,9 @@ export function ExpenseBillPage({ portal }: { portal: ExpensePortal }) {
   const [discountUnit, setDiscountUnit] = useState<DiscountUnit>("percent");
   const [createdAt, setCreatedAt] = useState<string | null>(null);
   const [nowTick, setNowTick] = useState(() => Date.now());
+  const [billedAtLocal, setBilledAtLocal] = useState(() => nowDatetimeLocal());
+  const isAdmin = getStoredUser()?.role === "Admin";
+  const dateEditable = isAdmin && billId == null;
 
   const isDraft = billStatus === "draft";
 
@@ -116,6 +121,7 @@ export function ExpenseBillPage({ portal }: { portal: ExpensePortal }) {
     setDiscountValue("");
     setDiscountUnit("percent");
     setCreatedAt(null);
+    setBilledAtLocal(nowDatetimeLocal());
     setError(null);
     setOkMsg(null);
   }
@@ -172,6 +178,7 @@ export function ExpenseBillPage({ portal }: { portal: ExpensePortal }) {
       name: name.trim(),
       description: description.trim(),
       ...discountWrite(discountValue, discountUnit),
+      ...(dateEditable && billedAtLocal ? { billed_at: billedAtLocal } : {}),
       lines: lines.map((l) => ({
         ref_id: l.ref_id,
         qty: Math.max(1, Math.floor(Number(l.qty)) || 1),
@@ -435,7 +442,7 @@ export function ExpenseBillPage({ portal }: { portal: ExpensePortal }) {
   const net = Math.max(0, total - discountKyats(total, discountValue, discountUnit));
   const paid = billStatus === "paid" ? net : 0;
   const balance = billStatus === "paid" ? 0 : net;
-  const displayWhen = formatDisplayWhen(createdAt, nowTick);
+  const displayWhen = formatUtcAsLocal(createdAt, nowTick);
 
   return (
     <>
@@ -471,10 +478,13 @@ export function ExpenseBillPage({ portal }: { portal: ExpensePortal }) {
             </div>
 
             <div className="opd-bill-header-col">
-              <div className="opd-bill-field">
-                <span className="opd-bill-label">{t("dateTime")}</span>
-                <span className="opd-bill-readonly">{displayWhen}</span>
-              </div>
+              <BillDateField
+                editable={dateEditable}
+                value={billedAtLocal}
+                displayWhen={displayWhen}
+                onChange={setBilledAtLocal}
+                disabled={busy}
+              />
               <div className="opd-bill-field">
                 <span className="opd-bill-label">{t("vouNo")}</span>
                 <span className="opd-bill-readonly">{billNo || "—"}</span>
@@ -672,16 +682,3 @@ export function ExpenseBillPage({ portal }: { portal: ExpensePortal }) {
   );
 }
 
-function formatDisplayWhen(createdAt: string | null, nowTick: number): string {
-  const d = createdAt
-    ? new Date(createdAt.includes("T") ? createdAt : createdAt.replace(" ", "T") + "Z")
-    : new Date(nowTick);
-  if (Number.isNaN(d.getTime())) return createdAt ?? "";
-  return d.toLocaleString(undefined, {
-    year: "numeric",
-    month: "numeric",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}

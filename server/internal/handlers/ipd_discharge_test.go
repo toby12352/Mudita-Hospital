@@ -109,8 +109,9 @@ func TestIpdDischargeCashAndAttach(t *testing.T) {
 	w = doJSON(ipd, http.MethodGet, stayPath+"/statement", token, "")
 	mustCode(t, w, http.StatusOK)
 	statement := w.Body.String()
-	if !strings.Contains(statement, phPaid.BillNo) || !strings.Contains(statement, "Desk charge") ||
-		!strings.Contains(statement, "Refund") || !strings.Contains(statement, "Balance: 0 MMK") {
+	if !strings.Contains(statement, phPaid.BillNo) || !strings.Contains(statement, "Pharmacy charge") ||
+		!strings.Contains(statement, "Refund") || !strings.Contains(statement, ">ပိုငွေ</td><td>0 MMK</td>") ||
+		!strings.Contains(statement, "IPD FINAL STATEMENT") {
 		t.Fatalf("statement missing lines: %s", statement)
 	}
 

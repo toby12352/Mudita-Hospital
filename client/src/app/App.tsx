@@ -448,7 +448,20 @@ export default function App() {
         <OtPage key={pageKey} />
       ) : null}
       {portal === "patients" && shownView === "patients" ? (
-        <PatientsPage key={pageKey} />
+        <PatientsPage
+          key={pageKey}
+          startCreate={shownIntent.patientsScreen === "create"}
+          focusId={shownIntent.patientsFocusId}
+          onViewList={(id) =>
+            navigate(
+              "patients",
+              id != null
+                ? { patientsScreen: "list", patientsFocusId: id }
+                : { patientsScreen: "list" },
+              "patients",
+            )
+          }
+        />
       ) : null}
       {portal === "ipd" && shownView === "ipd" ? <IpdPage key={pageKey} /> : null}
       {portal === "ipd" && shownView === "ipd_expense" ? (

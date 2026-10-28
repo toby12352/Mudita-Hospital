@@ -115,13 +115,12 @@ export function openPrintPreview(html: string, opts: PrintPreviewOptions = {}): 
   iframe.srcdoc = html;
 }
 
-/** Fetch authenticated print HTML then open preview. */
-export async function fetchAndPreviewPrint(
+/** Fetch authenticated print HTML without opening the shared preview. */
+export async function fetchPrintHtml(
   path: string,
   getBase: () => string,
   getToken: () => string | null,
-  opts: PrintPreviewOptions = {},
-): Promise<void> {
+): Promise<string> {
   const token = getToken();
   const res = await fetch(`${getBase()}${path}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -130,6 +129,16 @@ export async function fetchAndPreviewPrint(
     const text = await res.text();
     throw new Error(userMessage(text || `print failed (${res.status})`, res.status));
   }
-  const html = await res.text();
+  return res.text();
+}
+
+/** Fetch authenticated print HTML then open preview. */
+export async function fetchAndPreviewPrint(
+  path: string,
+  getBase: () => string,
+  getToken: () => string | null,
+  opts: PrintPreviewOptions = {},
+): Promise<void> {
+  const html = await fetchPrintHtml(path, getBase, getToken);
   openPrintPreview(html, opts);
 }

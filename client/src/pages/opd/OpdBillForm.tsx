@@ -13,6 +13,7 @@ import {
   BillPrintButton,
   moneyStatusLabel,
 } from "@/shared/BillPayPrint";
+import { BillDateField } from "@/shared/BillDateField";
 import { BillTotals } from "@/shared/BillTotals";
 import { discountKyats, type DiscountUnit } from "@/shared/discount";
 import { revealField } from "@/shared/FieldError";
@@ -37,6 +38,9 @@ type Props = {
   lines: OpdBillLine[];
   doctors: OpdDoctor[];
   displayWhen: string;
+  dateEditable: boolean;
+  billedAtLocal: string;
+  onBilledAtLocal: (value: string) => void;
   busy: boolean;
   error: string | null;
   okMsg: string | null;
@@ -48,6 +52,7 @@ type Props = {
   onDismissError: () => void;
   onPatientName: (v: string) => void;
   onPickPatient: (patient: PatientChart) => void;
+  onClearPatient: () => void;
   patientNameRef?: Ref<HTMLInputElement>;
   onPatientPhone: (v: string) => void;
   onPatientAge: (v: string) => void;
@@ -56,12 +61,13 @@ type Props = {
   onClearDoctorId: () => void;
   onPickDoctor: (d: OpdDoctor) => void;
   onDescription: (v: string) => void;
-  onCommitService: (s: OpdService, qty: number) => void;
+  onCommitService: (s: OpdService, qty: number, foc: boolean) => void;
   onLookupService: (code: string) => Promise<OpdService | null>;
   onAddConsultation: () => void;
   loadServiceSuggestions: (term: string) => Promise<OpdService[]>;
   onCommitLineQty: (index: number, qty: number) => void;
   onRemoveLine: (index: number) => void;
+  onClearFoc: (index: number) => void;
   onPrint: () => void;
   onMarkPaid: () => void;
   onChargeToIpd?: () => void;
@@ -91,6 +97,8 @@ export function OpdBillForm(props: Props) {
     lines,
     doctors,
     displayWhen,
+    dateEditable,
+    billedAtLocal,
     busy,
     error,
     okMsg,
@@ -100,13 +108,18 @@ export function OpdBillForm(props: Props) {
   } = props;
   const { opdCreate, opdDelete } = useClinicActions();
   const writable = isDraft && opdCreate;
+  const patientLocked = patientId != null;
+  const identityEditable = writable && !patientLocked;
   const okMsgRef = useRef<HTMLParagraphElement>(null);
 
   useEffect(() => {
     if (okMsg?.trim()) revealField(okMsgRef.current);
   }, [okMsg]);
 
-  const total = lines.reduce((s, l) => s + l.qty * l.unit_price_mmk, 0);
+  const total = lines.reduce(
+    (s, l) => (l.foc === 1 ? s : s + l.qty * l.unit_price_mmk),
+    0,
+  );
   const net = Math.max(0, total - discountKyats(total, discountValue, discountUnit));
   const paid = billStatus === "paid" ? net : 0;
   const balance = billStatus === "paid" ? 0 : net;
@@ -126,7 +139,7 @@ export function OpdBillForm(props: Props) {
           <div className="opd-bill-header-col">
             <div className="opd-bill-field opd-bill-field--typeahead">
               <span className="opd-bill-label">{t("idName")}</span>
-              {writable ? (
+              {identityEditable ? (
                 <PatientChartTypeahead
                   value={patientName}
                   inputRef={props.patientNameRef}
@@ -134,13 +147,24 @@ export function OpdBillForm(props: Props) {
                   onPick={props.onPickPatient}
                 />
               ) : (
-                <input
-                  className="opd-bill-input"
-                  data-focus="bill-patient"
-                  value={idName}
-                  disabled
-                  aria-label={t("patientName")}
-                />
+                <div className="opd-bill-control">
+                  <input
+                    className="opd-bill-input"
+                    data-focus="bill-patient"
+                    value={idName}
+                    disabled
+                    aria-label={t("patientName")}
+                  />
+                  {writable && patientLocked ? (
+                    <button
+                      type="button"
+                      className="btn action opd-bill-consult"
+                      onClick={props.onClearPatient}
+                    >
+                      {t("clearPatient")}
+                    </button>
+                  ) : null}
+                </div>
               )}
             </div>
             <label className="opd-bill-field">
@@ -148,7 +172,7 @@ export function OpdBillForm(props: Props) {
               <input
                 className="opd-bill-input"
                 value={patientPhone}
-                disabled={!writable}
+                disabled={!identityEditable}
                 onChange={(e) => props.onPatientPhone(e.target.value)}
               />
             </label>
@@ -158,7 +182,7 @@ export function OpdBillForm(props: Props) {
                 <input
                   className="opd-bill-input opd-bill-input--narrow"
                   value={patientAge}
-                  disabled={!writable}
+                  disabled={!identityEditable}
                   inputMode="numeric"
                   onChange={(e) => props.onPatientAge(e.target.value)}
                 />
@@ -170,7 +194,7 @@ export function OpdBillForm(props: Props) {
               <select
                 className="opd-bill-input"
                 value={patientGender}
-                disabled={!writable}
+                disabled={!identityEditable}
                 onChange={(e) => props.onPatientGender(e.target.value)}
               >
                 <option value="">—</option>
@@ -238,10 +262,13 @@ export function OpdBillForm(props: Props) {
           </div>
 
           <div className="opd-bill-header-col">
-            <div className="opd-bill-field">
-              <span className="opd-bill-label">{t("dateTime")}</span>
-              <span className="opd-bill-readonly">{displayWhen}</span>
-            </div>
+            <BillDateField
+              editable={dateEditable}
+              value={billedAtLocal}
+              displayWhen={displayWhen}
+              onChange={props.onBilledAtLocal}
+              disabled={busy}
+            />
             <div className="opd-bill-field">
               <span className="opd-bill-label">{t("vouNo")}</span>
               <span className="opd-bill-readonly">{billNo || "—"}</span>
@@ -265,6 +292,7 @@ export function OpdBillForm(props: Props) {
 
         <BillLineGrid
           draft={writable}
+          showFoc
           itemHeader={t("particular")}
           priceHeader={t("fees")}
           emptyLabel={t("noLinesYet")}
@@ -276,9 +304,11 @@ export function OpdBillForm(props: Props) {
             amountMmk: l.qty * l.unit_price_mmk,
             locked: l.line_type === "consultation",
             removable: true,
+            foc: l.foc === 1,
           }))}
           onQtyCommit={props.onCommitLineQty}
           onRemove={props.onRemoveLine}
+          onClearFoc={props.onClearFoc}
           entries={[
             createBillLineEntry<OpdService>(
               {
@@ -299,11 +329,12 @@ export function OpdBillForm(props: Props) {
                   </>
                 ),
                 unitsFor: () => [],
-                onCommit: (s, qty) => props.onCommitService(s, qty),
+                onCommit: (s, qty, _unit, foc) => props.onCommitService(s, qty, foc),
                 onSubmitCode: props.onLookupService,
               },
               {
                 showUnitColumn: false,
+                showFoc: true,
                 sourceLabel: t("opdServices"),
                 sourceIcon: "clipboard",
               },

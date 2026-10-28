@@ -885,7 +885,7 @@ func buildRevenueByService(db *sql.DB, from, to string) ([]serviceRevenueRow, er
 			       COALESCE(bl.code, '') AS code,
 			       COALESCE(bl.description, '') AS description,
 			       COALESCE(bl.qty, 0) AS qty,
-			       COALESCE(bl.line_total_mmk, 0) AS total_mmk
+			       CASE WHEN bl.foc = 1 THEN 0 ELSE COALESCE(bl.line_total_mmk, 0) END AS total_mmk
 			FROM bill_lines bl
 			JOIN opd_bills b ON b.id = bl.bill_id
 			WHERE b.status = 'paid' AND b.collected_cash = 1
@@ -896,7 +896,7 @@ func buildRevenueByService(db *sql.DB, from, to string) ([]serviceRevenueRow, er
 			       COALESCE(bl.code, ''),
 			       COALESCE(bl.description, ''),
 			       COALESCE(bl.qty, 0),
-			       COALESCE(bl.line_total_mmk, 0)
+			       CASE WHEN bl.foc = 1 THEN 0 ELSE COALESCE(bl.line_total_mmk, 0) END
 			FROM ot_bill_lines bl
 			JOIN ot_bills b ON b.id = bl.bill_id
 			WHERE b.status = 'paid' AND b.collected_cash = 1
@@ -929,7 +929,7 @@ func buildPharmacyMargin(db *sql.DB, from, to string) (*pharmacyMarginReport, er
 			       COALESCE(NULLIF(TRIM(bl.code), ''), COALESCE(i.code, '')) AS code,
 			       COALESCE(NULLIF(TRIM(bl.description), ''), COALESCE(i.name, '(item)')) AS name,
 			       COALESCE(bl.qty, 0) AS qty_sold,
-			       COALESCE(bl.line_total_mmk, 0) AS revenue_mmk,
+			       CASE WHEN bl.foc = 1 THEN 0 ELSE COALESCE(bl.line_total_mmk, 0) END AS revenue_mmk,
 			       CAST(ROUND(
 			         COALESCE(bl.qty, 0) * COALESCE(i.buy_price_mmk, 0) * 1.0 /
 			         CASE WHEN COALESCE(i.units_per_purchase, 1) < 1 THEN 1 ELSE i.units_per_purchase END
@@ -945,7 +945,7 @@ func buildPharmacyMargin(db *sql.DB, from, to string) (*pharmacyMarginReport, er
 			       COALESCE(NULLIF(TRIM(bl.code), ''), COALESCE(i.code, '')),
 			       COALESCE(NULLIF(TRIM(bl.description), ''), COALESCE(i.name, '(item)')),
 			       COALESCE(bl.qty, 0),
-			       COALESCE(bl.line_total_mmk, 0),
+			       CASE WHEN bl.foc = 1 THEN 0 ELSE COALESCE(bl.line_total_mmk, 0) END,
 			       CAST(ROUND(
 			         COALESCE(bl.qty, 0) * COALESCE(i.buy_price_mmk, 0) * 1.0 /
 			         CASE WHEN COALESCE(i.units_per_purchase, 1) < 1 THEN 1 ELSE i.units_per_purchase END
@@ -961,7 +961,11 @@ func buildPharmacyMargin(db *sql.DB, from, to string) (*pharmacyMarginReport, er
 			       COALESCE(NULLIF(TRIM(bl.code), ''), COALESCE(i.code, '')),
 			       COALESCE(NULLIF(TRIM(bl.description), ''), COALESCE(i.name, '(item)')),
 			       CASE WHEN b.bill_no LIKE 'RT-%' THEN -COALESCE(bl.stock_qty, 0) ELSE COALESCE(bl.stock_qty, 0) END,
-			       CASE WHEN b.bill_no LIKE 'RT-%' THEN -COALESCE(bl.line_total_mmk, 0) ELSE COALESCE(bl.line_total_mmk, 0) END,
+			       CASE
+			         WHEN bl.foc = 1 THEN 0
+			         WHEN b.bill_no LIKE 'RT-%' THEN -COALESCE(bl.line_total_mmk, 0)
+			         ELSE COALESCE(bl.line_total_mmk, 0)
+			       END,
 			       CAST(ROUND(
 			         (CASE WHEN b.bill_no LIKE 'RT-%' THEN -COALESCE(bl.stock_qty, 0) ELSE COALESCE(bl.stock_qty, 0) END)
 			         * COALESCE(i.buy_price_mmk, 0) * 1.0 /

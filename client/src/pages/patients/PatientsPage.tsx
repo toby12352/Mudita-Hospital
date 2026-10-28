@@ -20,6 +20,7 @@ import {
   CatalogFilterButton,
   CatalogFilterPanel,
 } from "@/shared/CatalogListFilter";
+import { formatUtcAsLocal } from "@/shared/BillDateField";
 import { DatePicker, formatDateDisplay } from "@/shared/DatePicker";
 import { sortByDateAscDesc, type DateSortValue } from "@/shared/DateSort";
 import { DialogCloseButton } from "@/shared/DialogCloseButton";
@@ -75,11 +76,18 @@ function historyIsEmpty(h: PatientHistory): boolean {
   return h.opd.length === 0 && h.pharmacy.length === 0 && h.ot.length === 0 && h.ipd.length === 0;
 }
 
-export function PatientsPage() {
+export function PatientsPage({
+  startCreate = false,
+  focusId,
+  onViewList,
+}: {
+  startCreate?: boolean;
+  focusId?: number;
+  onViewList?: (id?: number) => void;
+} = {}) {
   const { t } = useI18n();
   const { patientsCreate, patientsUpdate, patientsDelete } = useClinicActions();
-  const [creating, setCreating] = useState(false);
-  const [createKey, setCreateKey] = useState(0);
+  const [creating, setCreating] = useState(() => startCreate && patientsCreate);
   const [editing, setEditing] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
   const filterPanelId = useId();
@@ -92,7 +100,8 @@ export function PatientsPage() {
   const [historyKind, setHistoryKind] = useState<HistoryKindFilter>("all");
   const [historyDateSort, setHistoryDateSort] = useState<DateSortValue>("desc");
   const [list, setList] = useState<PatientChart[]>([]);
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selectedId, setSelectedId] = useState<number | null>(focusId ?? null);
+  const [createdPatient, setCreatedPatient] = useState<PatientChart | null>(null);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [age, setAge] = useState("");
@@ -144,7 +153,12 @@ export function PatientsPage() {
         const data = await listPatients("");
         if (cancelled) return;
         setList(data);
-        if (data.length > 0 && selectedId == null) setSelectedId(data[0].id);
+        if (creating) return;
+        if (focusId != null && data.some((p) => p.id === focusId)) {
+          setSelectedId(focusId);
+        } else if (data.length > 0 && selectedId == null) {
+          setSelectedId(data[0].id);
+        }
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Load failed");
       }
@@ -244,21 +258,20 @@ export function PatientsPage() {
     setNotes(p.notes);
   }
 
-  function openCreate() {
-    if (!patientsCreate) return;
-    setEditing(false);
-    fillForm(null);
-    setCreating(true);
-    setCreateKey((n) => n + 1);
-    setBillNo("");
-    setError(null);
-  }
-
   function closeForm() {
     setCreating(false);
     setEditing(false);
     fillForm(null);
     setError(null);
+  }
+
+  function leaveCreatePage() {
+    setCreatedPatient(null);
+    if (onViewList) {
+      onViewList();
+      return;
+    }
+    closeForm();
   }
 
   function selectItem(id: number) {
@@ -288,18 +301,20 @@ export function PatientsPage() {
     setNameError(null);
     try {
       const body = chartBody(name, phone, age, gender, dateOfBirth, nrc, fatherMotherName, notes);
-      const saved =
-        editing && selectedId != null
-          ? await updatePatient(selectedId, body)
-          : await createPatient(body);
-      setFilterQ("");
-      setCreating(false);
-      setEditing(false);
-      fillForm(null);
-      const data = await listPatients("");
-      setList(data);
-      setSelectedId(saved.id);
-      setHistory(await fetchPatientHistory(saved.id));
+      if (editing && selectedId != null) {
+        const saved = await updatePatient(selectedId, body);
+        setFilterQ("");
+        setCreating(false);
+        setEditing(false);
+        fillForm(null);
+        const data = await listPatients("");
+        setList(data);
+        setSelectedId(saved.id);
+        setHistory(await fetchPatientHistory(saved.id));
+      } else {
+        const saved = await createPatient(body);
+        setCreatedPatient(saved);
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Save failed";
       if (fieldKeyForApiError(err) === "name") {
@@ -312,6 +327,27 @@ export function PatientsPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  function viewCreatedPatientList() {
+    const id = createdPatient?.id;
+    setCreatedPatient(null);
+    if (id == null) return;
+    if (onViewList) {
+      onViewList(id);
+      return;
+    }
+    setFilterQ("");
+    setCreating(false);
+    setEditing(false);
+    fillForm(null);
+    void listPatients("")
+      .then(async (data) => {
+        setList(data);
+        setSelectedId(id);
+        setHistory(await fetchPatientHistory(id));
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : "Load failed"));
   }
 
   async function attachBill() {
@@ -398,69 +434,69 @@ export function PatientsPage() {
 
   const canDeleteSelected =
     patientsDelete && selected != null && !showForm && historyReady && historyIsEmpty(history);
+  const createOnly = creating && patientsCreate && !editing;
 
   return (
-    <section className="drug-setup" aria-label={t("patients")}>
-      <div className="drug-setup-list-pane">
-        <div className="drug-setup-heading">
-          <h2 className="drug-setup-title">{t("patients")}</h2>
-          <div className="tabs">
-            {patientsCreate ? (
-              <button type="button" className="btn action primary" onClick={openCreate}>
-                <ActionIcon name="plus" />
-                {t("newBadge")}
-              </button>
-            ) : null}
-            <CatalogFilterButton
-              open={filterOpen}
-              controlsId={filterPanelId}
-              onToggle={() => setFilterOpen((v) => !v)}
-            />
-          </div>
-        </div>
-        <p className="drug-setup-selected" aria-hidden="true" />
-        <CatalogFilterPanel
-          id={filterPanelId}
-          open={filterOpen}
-          query={filterQ}
-          onQueryChange={setFilterQ}
-          queryPlaceholder={t("patientSearchPlaceholder")}
-          searchLabel={t("searchPatients")}
-          onSearch={() => runSearch(filterQ)}
-          dateSort={dateSort}
-          onDateSortChange={setDateSort}
-          onReset={resetFilters}
-        />
-        {error && !showForm ? <p className="form-error">{error}</p> : null}
-        <div className="drug-setup-table" role="listbox" aria-label={t("patients")}>
-          <div className="drug-setup-table-head opd-master-cols">
-            <span title={t("name")}>{t("name")}</span>
-            <span title={t("phone")}>{t("phone")}</span>
-          </div>
-          {sortedList.length === 0 ? <p className="empty-row">{t("noPatientsYet")}</p> : null}
-          {sortedList.map((p) => (
-            <div
-              key={p.id}
-              role="option"
-              tabIndex={0}
-              aria-selected={p.id === selectedId && !creating && !editing}
-              className={`drug-setup-table-row opd-master-cols${
-                p.id === selectedId && !creating && !editing ? " selected" : ""
-              }`}
-              onClick={() => selectItem(p.id)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  selectItem(p.id);
-                }
-              }}
-            >
-              <span title={p.name}>{p.name}</span>
-              <span title={p.phone || "—"}>{p.phone || "—"}</span>
+    <section
+      className={`drug-setup${createOnly ? " drug-setup--solo" : ""}`}
+      aria-label={t("patients")}
+    >
+      {!createOnly ? (
+        <div className="drug-setup-list-pane">
+          <div className="drug-setup-heading">
+            <h2 className="drug-setup-title">{t("patients")}</h2>
+            <div className="tabs">
+              <CatalogFilterButton
+                open={filterOpen}
+                controlsId={filterPanelId}
+                onToggle={() => setFilterOpen((v) => !v)}
+              />
             </div>
-          ))}
+          </div>
+          <p className="drug-setup-selected" aria-hidden="true" />
+          <CatalogFilterPanel
+            id={filterPanelId}
+            open={filterOpen}
+            query={filterQ}
+            onQueryChange={setFilterQ}
+            queryPlaceholder={t("patientSearchPlaceholder")}
+            searchLabel={t("searchPatients")}
+            onSearch={() => runSearch(filterQ)}
+            dateSort={dateSort}
+            onDateSortChange={setDateSort}
+            onReset={resetFilters}
+          />
+          {error && !showForm ? <p className="form-error">{error}</p> : null}
+          <div className="drug-setup-table" role="listbox" aria-label={t("patients")}>
+            <div className="drug-setup-table-head opd-master-cols">
+              <span title={t("name")}>{t("name")}</span>
+              <span title={t("phone")}>{t("phone")}</span>
+            </div>
+            {sortedList.length === 0 ? <p className="empty-row">{t("noPatientsYet")}</p> : null}
+            {sortedList.map((p) => (
+              <div
+                key={p.id}
+                role="option"
+                tabIndex={0}
+                aria-selected={p.id === selectedId && !creating && !editing}
+                className={`drug-setup-table-row opd-master-cols${
+                  p.id === selectedId && !creating && !editing ? " selected" : ""
+                }`}
+                onClick={() => selectItem(p.id)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    selectItem(p.id);
+                  }
+                }}
+              >
+                <span title={p.name}>{p.name}</span>
+                <span title={p.phone || "—"}>{p.phone || "—"}</span>
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      ) : null}
 
       <div className="drug-setup-detail-pane">
         {showForm ? (
@@ -471,30 +507,36 @@ export function PatientsPage() {
                   ? `${t("editPatient")} #${selectedId}`
                   : t("createNewPatientTitle")}
               </h3>
-              <DialogCloseButton onClick={closeForm} />
+              <DialogCloseButton onClick={createOnly ? leaveCreatePage : closeForm} />
             </div>
             <form
-              key={editing && selectedId != null ? `edit-${selectedId}` : `create-${createKey}`}
+              key={editing && selectedId != null ? `edit-${selectedId}` : "create"}
               className="card-form"
               onSubmit={(e) => void submit(e)}
             >
               <FormSection title={t("patientSectionDemographics")} titleId="patient-demographics">
-                <label className={`field${nameError ? " is-invalid" : ""}`}>
-                  <span>{t("name")}</span>
-                  <input
-                    ref={nameInputRef}
-                    value={name}
-                    onChange={(e) => {
-                      setName(e.target.value);
-                      setNameError(null);
-                    }}
-                    required
-                    disabled={busy}
-                    aria-invalid={nameError ? true : undefined}
-                    aria-describedby={nameError ? nameErrorId : undefined}
-                  />
-                  <FieldError id={nameErrorId}>{nameError}</FieldError>
-                </label>
+                <div className="field-row">
+                  <label className={`field${nameError ? " is-invalid" : ""}`}>
+                    <span>{t("name")}</span>
+                    <input
+                      ref={nameInputRef}
+                      value={name}
+                      onChange={(e) => {
+                        setName(e.target.value);
+                        setNameError(null);
+                      }}
+                      required
+                      disabled={busy}
+                      aria-invalid={nameError ? true : undefined}
+                      aria-describedby={nameError ? nameErrorId : undefined}
+                    />
+                    <FieldError id={nameErrorId}>{nameError}</FieldError>
+                  </label>
+                  <label className="field">
+                    <span>{t("dateOfBirth")}</span>
+                    <DatePicker value={dateOfBirth} onChange={setDateOfBirth} disabled={busy} />
+                  </label>
+                </div>
                 <div className="field-row">
                   <label className="field">
                     <span>{t("age")}</span>
@@ -517,31 +559,29 @@ export function PatientsPage() {
                     </select>
                   </label>
                 </div>
-                <label className="field">
-                  <span>{t("dateOfBirth")}</span>
-                  <DatePicker value={dateOfBirth} onChange={setDateOfBirth} disabled={busy} />
-                </label>
               </FormSection>
 
               <FormSection
                 title={t("patientSectionIdentityContact")}
                 titleId="patient-identity-contact"
               >
-                <label className="field">
-                  <span>{t("phone")}</span>
-                  <input value={phone} onChange={(e) => setPhone(e.target.value)} disabled={busy} />
-                </label>
+                <div className="field-row">
+                  <label className="field">
+                    <span>{t("phone")}</span>
+                    <input value={phone} onChange={(e) => setPhone(e.target.value)} disabled={busy} />
+                  </label>
+                  <label className="field">
+                    <span>{t("fatherMotherName")}</span>
+                    <input
+                      value={fatherMotherName}
+                      onChange={(e) => setFatherMotherName(e.target.value)}
+                      disabled={busy}
+                    />
+                  </label>
+                </div>
                 <label className="field">
                   <span>{t("nrc")}</span>
                   <input value={nrc} onChange={(e) => setNrc(e.target.value)} disabled={busy} />
-                </label>
-                <label className="field">
-                  <span>{t("fatherMotherName")}</span>
-                  <input
-                    value={fatherMotherName}
-                    onChange={(e) => setFatherMotherName(e.target.value)}
-                    disabled={busy}
-                  />
                 </label>
               </FormSection>
 
@@ -564,7 +604,7 @@ export function PatientsPage() {
               ) : null}
               <div className="btn-row">
                 <button type="submit" className="btn primary" disabled={busy}>
-                  {busy ? t("saving") : t("save")}
+                  {busy ? t("saving") : creating ? t("create") : t("save")}
                 </button>
               </div>
             </form>
@@ -778,7 +818,7 @@ export function PatientsPage() {
                         row.admission_no,
                         row.settled ? t("ipdStatusSettled") : t("ipdStatusOpen"),
                         `${formatMMK(row.balance_mmk)} ${t("mmk")}`,
-                        row.admitted_at,
+                        formatUtcAsLocal(row.admitted_at),
                       ]
                         .filter(Boolean)
                         .join(" · "),
@@ -868,6 +908,16 @@ export function PatientsPage() {
           </>
         )}
       </div>
+
+      {createdPatient ? (
+        <AlertDialog
+          tone="success"
+          title={t("patientCreatedTitle")}
+          message={t("patientCreatedBody").replace("{name}", createdPatient.name)}
+          okLabel={t("viewPatientList")}
+          onClose={viewCreatedPatientList}
+        />
+      ) : null}
 
       {deleteTarget ? (
         <AlertDialog

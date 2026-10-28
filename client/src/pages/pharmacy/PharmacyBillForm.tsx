@@ -5,6 +5,7 @@ import type { PharmacyBillLine, PharmacyItem } from "@/features/pharmacy/api";
 import {
   formatPackCompact,
   formatPackPreview,
+  itemStockUnitLabel,
   packFromItem,
   pharmacyLineSaleView,
   saleUnitsFromPack,
@@ -20,6 +21,7 @@ import {
   BillPrintButton,
   moneyStatusLabel,
 } from "@/shared/BillPayPrint";
+import { BillDateField } from "@/shared/BillDateField";
 import { BillTotals } from "@/shared/BillTotals";
 import { discountKyats, type DiscountUnit } from "@/shared/discount";
 import { revealField } from "@/shared/FieldError";
@@ -36,6 +38,7 @@ type Props = {
   collectedCash?: number | null;
   chargedSales?: { id: number; bill_no: string }[];
   returnSaleId?: number | null;
+  patientId: number | null;
   patientName: string;
   patientPhone: string;
   patientAge: string;
@@ -43,6 +46,9 @@ type Props = {
   description: string;
   lines: PharmacyBillLineView[];
   displayWhen: string;
+  dateEditable: boolean;
+  billedAtLocal: string;
+  onBilledAtLocal: (value: string) => void;
   busy: boolean;
   error: string | null;
   okMsg: string | null;
@@ -61,12 +67,14 @@ type Props = {
   onDismissTransferDone?: () => void;
   onPatientName: (v: string) => void;
   onPickPatient: (patient: PatientChart) => void;
+  onClearPatient: () => void;
   patientNameRef?: Ref<HTMLInputElement>;
   onPatientPhone: (v: string) => void;
   onPatientAge: (v: string) => void;
   onPatientGender: (v: string) => void;
   onDescription: (v: string) => void;
-  onCommitItem: (item: PharmacyItem, qty: number, unitId: string | null) => void;
+  onCommitItem: (item: PharmacyItem, qty: number, unitId: string | null, foc: boolean) => void;
+  onClearFoc?: (index: number) => void;
   onLookupItem: (code: string) => Promise<PharmacyItem | null>;
   loadItemSuggestions: (term: string) => Promise<PharmacyItem[]>;
   onCommitLineQty: (index: number, qty: number) => boolean | void;
@@ -94,6 +102,7 @@ export function PharmacyBillForm(props: Props) {
     billNo,
     billStatus,
     printedAt,
+    patientId,
     patientName,
     patientPhone,
     patientAge,
@@ -101,6 +110,8 @@ export function PharmacyBillForm(props: Props) {
     description,
     lines,
     displayWhen,
+    dateEditable,
+    billedAtLocal,
     busy,
     error,
     okMsg,
@@ -113,6 +124,8 @@ export function PharmacyBillForm(props: Props) {
   } = props;
   const { pharmacyCreate, pharmacyDelete, billPurge } = useClinicActions();
   const writable = isDraft && pharmacyCreate;
+  const patientLocked = patientId != null;
+  const identityEditable = writable && !patientLocked;
   const okMsgRef = useRef<HTMLParagraphElement>(null);
 
   useEffect(() => {
@@ -121,12 +134,19 @@ export function PharmacyBillForm(props: Props) {
 
   const isReturn = kind === "return";
   const isTransfer = kind === "transfer";
-  const total = lines.reduce((s, l) => s + l.line_total_mmk, 0);
+  const allowFoc = !isReturn && !isTransfer;
+  const total = lines.reduce((s, l) => (l.foc === 1 ? s : s + l.line_total_mmk), 0);
   const net = isTransfer
     ? total
     : Math.max(0, total - discountKyats(total, discountValue, discountUnit));
   const paid = billStatus === "paid" ? net : 0;
   const balance = billStatus === "paid" ? 0 : net;
+  const idName =
+    patientId != null
+      ? `${patientId} / ${patientName}`
+      : billNo
+        ? `${billNo} / ${patientName}`
+        : patientName;
   return (
     <section className="opd-bill-desk">
       <div className="opd-bill-desk-main">
@@ -151,13 +171,33 @@ export function PharmacyBillForm(props: Props) {
             {isTransfer ? null : (
             <div className="opd-bill-field opd-bill-field--typeahead">
               <span className="opd-bill-label">{t("patientName")}</span>
-              <PatientChartTypeahead
-                value={patientName}
-                disabled={!writable}
-                inputRef={props.patientNameRef}
-                onChange={props.onPatientName}
-                onPick={props.onPickPatient}
-              />
+              {identityEditable ? (
+                <PatientChartTypeahead
+                  value={patientName}
+                  inputRef={props.patientNameRef}
+                  onChange={props.onPatientName}
+                  onPick={props.onPickPatient}
+                />
+              ) : (
+                <div className="opd-bill-control">
+                  <input
+                    className="opd-bill-input"
+                    data-focus="bill-patient"
+                    value={idName}
+                    disabled
+                    aria-label={t("patientName")}
+                  />
+                  {writable && patientLocked ? (
+                    <button
+                      type="button"
+                      className="btn action opd-bill-consult"
+                      onClick={props.onClearPatient}
+                    >
+                      {t("clearPatient")}
+                    </button>
+                  ) : null}
+                </div>
+              )}
             </div>
             )}
             {isTransfer ? null : (
@@ -166,7 +206,7 @@ export function PharmacyBillForm(props: Props) {
               <input
                 className="opd-bill-input"
                 value={patientPhone}
-                disabled={!writable}
+                disabled={!identityEditable}
                 onChange={(e) => props.onPatientPhone(e.target.value)}
               />
             </label>
@@ -178,7 +218,7 @@ export function PharmacyBillForm(props: Props) {
                 <input
                   className="opd-bill-input opd-bill-input--narrow"
                   value={patientAge}
-                  disabled={!writable}
+                  disabled={!identityEditable}
                   inputMode="numeric"
                   onChange={(e) => props.onPatientAge(e.target.value)}
                 />
@@ -192,7 +232,7 @@ export function PharmacyBillForm(props: Props) {
               <select
                 className="opd-bill-input"
                 value={patientGender}
-                disabled={!writable}
+                disabled={!identityEditable}
                 onChange={(e) => props.onPatientGender(e.target.value)}
               >
                 <option value="">—</option>
@@ -217,10 +257,13 @@ export function PharmacyBillForm(props: Props) {
           </div>
 
           <div className="opd-bill-header-col">
-            <div className="opd-bill-field">
-              <span className="opd-bill-label">{t("dateTime")}</span>
-              <span className="opd-bill-readonly">{displayWhen}</span>
-            </div>
+            <BillDateField
+              editable={dateEditable}
+              value={billedAtLocal}
+              displayWhen={displayWhen}
+              onChange={props.onBilledAtLocal}
+              disabled={busy}
+            />
             <div className="opd-bill-field">
               <span className="opd-bill-label">{t("status")}</span>
               <span className="opd-bill-readonly">
@@ -236,6 +279,7 @@ export function PharmacyBillForm(props: Props) {
           draft={writable}
           showUnitColumn
           showPackColumn
+          showFoc={allowFoc}
           itemHeader={`${t("code")} — ${t("description")}`}
           priceHeader={t("price")}
           emptyLabel={t("noLinesYet")}
@@ -254,11 +298,13 @@ export function PharmacyBillForm(props: Props) {
               amountMmk: l.line_total_mmk,
               locked: view.locked,
               removable: true,
+              foc: allowFoc && l.foc === 1,
             };
           })}
           onQtyCommit={props.onCommitLineQty}
           onUnitChange={props.onUnitChange}
           onRemove={props.onRemoveLine}
+          onClearFoc={allowFoc ? props.onClearFoc : undefined}
           entries={[
             createBillLineEntry<PharmacyItem>(
               {
@@ -273,7 +319,7 @@ export function PharmacyBillForm(props: Props) {
                 },
                 renderOption: (item) => {
                   const dosage = (item.dosage || "").trim();
-                  const l3 = item.pack_l3_unit || item.billing_unit;
+                  const unit = itemStockUnitLabel(item);
                   return (
                     <>
                       <span className="typeahead-title">
@@ -281,8 +327,8 @@ export function PharmacyBillForm(props: Props) {
                         {dosage ? ` (${dosage})` : ""}
                       </span>
                       <span className="typeahead-sub">
-                        {t("inStock")} {item.stock_main} {l3} · {formatMMK(item.sell_price_mmk)}{" "}
-                        {t("mmk")}/{l3}
+                        {t("inStock")} {item.stock_main} {unit} · {formatMMK(item.sell_price_mmk)}{" "}
+                        {t("mmk")}/{unit}
                       </span>
                     </>
                   );
@@ -294,12 +340,14 @@ export function PharmacyBillForm(props: Props) {
                     id: u.id,
                     label: u.label,
                   })),
-                onCommit: (item, qty, unit) => props.onCommitItem(item, qty, unit?.id ?? null),
+                onCommit: (item, qty, unit, foc) =>
+                  props.onCommitItem(item, qty, unit?.id ?? null, foc),
                 onSubmitCode: props.onLookupItem,
               },
               {
                 showUnitColumn: true,
                 showPackColumn: true,
+                showFoc: allowFoc,
                 sourceLabel: t("pharmacyStock"),
                 sourceIcon: "box",
               },

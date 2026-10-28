@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useClinicActions } from "./clinicActions";
 import { clinicModules, type ClinicModule } from "./portal";
 import type { NavIntent, NavSectionId, PortalId, View } from "./types";
 
@@ -37,7 +38,9 @@ function sectionForView(view: View, intent: NavIntent, fallback: NavSectionId): 
   if (view === "pharmacy_return") return "pharmacy_return";
   if (view === "pharmacy_transfer") return "pharmacy_transfer";
   if (view === "pharmacy") return "stock";
-  if (view === "patients") return "patients";
+  if (view === "patients") {
+    return intent.patientsScreen === "create" ? "patients_create" : "patients";
+  }
   if (view === "ipd") return "ipd";
   if (view === "settings") return "settings";
   return fallback;
@@ -120,15 +123,31 @@ function otEntries(): NavEntry[] {
   ];
 }
 
-function patientsEntries(): NavEntry[] {
-  return [
-    {
-      id: "patients",
-      labelKey: "navPatients",
+function patientsEntries(canCreate: boolean): NavEntry[] {
+  const entries: NavEntry[] = [];
+  if (canCreate) {
+    entries.push({
+      id: "patients_create",
+      labelKey: "navCreatePatient",
       enabled: true,
-      action: { kind: "navigate", view: "patients", intent: {} },
+      action: {
+        kind: "navigate",
+        view: "patients",
+        intent: { patientsScreen: "create" },
+      },
+    });
+  }
+  entries.push({
+    id: "patients",
+    labelKey: "navPatients",
+    enabled: true,
+    action: {
+      kind: "navigate",
+      view: "patients",
+      intent: { patientsScreen: "list" },
     },
-  ];
+  });
+  return entries;
 }
 
 function ipdEntries(): NavEntry[] {
@@ -199,10 +218,10 @@ function pharmacyEntries(): NavEntry[] {
   ];
 }
 
-function entriesForDesk(portal: PortalId): NavEntry[] {
+function entriesForDesk(portal: PortalId, canCreatePatients: boolean): NavEntry[] {
   if (portal === "opd") return opdEntries();
   if (portal === "ot") return otEntries();
-  if (portal === "patients") return patientsEntries();
+  if (portal === "patients") return patientsEntries(canCreatePatients);
   if (portal === "ipd") return ipdEntries();
   if (portal === "pharmacy") return pharmacyEntries();
   return [
@@ -215,14 +234,23 @@ function entriesForDesk(portal: PortalId): NavEntry[] {
   ];
 }
 
-function adminEntries(read: ReadonlySet<ClinicModule>, showSettings: boolean): NavEntry[] {
+function adminEntries(
+  read: ReadonlySet<ClinicModule>,
+  showSettings: boolean,
+  canCreatePatients: boolean,
+): NavEntry[] {
   const groups: {
     id: NavSectionId;
     module: ClinicModule;
     labelKey: string;
     children: () => NavEntry[];
   }[] = [
-    { id: "admin_patients", module: "patients", labelKey: "patients", children: patientsEntries },
+    {
+      id: "admin_patients",
+      module: "patients",
+      labelKey: "patients",
+      children: () => patientsEntries(canCreatePatients),
+    },
     { id: "admin_ipd", module: "ipd", labelKey: "ipd", children: ipdEntries },
     { id: "admin_opd", module: "opd", labelKey: "opd", children: opdEntries },
     { id: "admin_ot", module: "ot", labelKey: "ot", children: otEntries },
@@ -294,6 +322,7 @@ export function AppNavBar({
   /** Settings and user management. Full Admin only. */
   showSettings?: boolean;
 }) {
+  const { patientsCreate } = useClinicActions();
   const [expanded, setExpanded] = useState(readExpanded);
   const [openIds, setOpenIds] = useState<Set<NavSectionId>>(() => new Set());
   const navRef = useRef<HTMLElement | null>(null);
@@ -301,10 +330,10 @@ export function AppNavBar({
 
   const readKey = (readModules ?? clinicModules).join("\0");
   const entries = useMemo(() => {
-    if (mode !== "admin") return portal ? entriesForDesk(portal) : [];
+    if (mode !== "admin") return portal ? entriesForDesk(portal, patientsCreate) : [];
     const modules = (readKey.length === 0 ? [] : readKey.split("\0")) as ClinicModule[];
-    return adminEntries(new Set(modules), showSettings ?? true);
-  }, [mode, portal, readKey, showSettings]);
+    return adminEntries(new Set(modules), showSettings ?? true, patientsCreate);
+  }, [mode, portal, readKey, showSettings, patientsCreate]);
 
   useEffect(() => {
     const ancestors = openAncestorsOf(entries, currentSection);
@@ -627,8 +656,8 @@ const glyphs: Record<NavSectionId, ReactNode> = {
   ),
   pharmacy: (
     <>
-      <path d="M4 3.25h8v9.5H4z" />
-      <path d="M6.5 6.25h3M8 4.75v3" />
+      <rect x="3.25" y="2.75" width="9.5" height="10.5" rx="1.25" />
+      <path d="M5.5 5.5h5M5.5 8h5M5.5 10.5h3" />
     </>
   ),
   pharmacy_expense: expenseGlyph(),
@@ -648,6 +677,13 @@ const glyphs: Record<NavSectionId, ReactNode> = {
     <>
       <circle cx="8" cy="5.25" r="1.75" />
       <path d="M4.75 12.25c.55-1.9 1.9-2.85 3.25-2.85s2.7.95 3.25 2.85" />
+    </>
+  ),
+  patients_create: (
+    <>
+      <circle cx="6.5" cy="5.25" r="1.6" />
+      <path d="M3.5 12c.5-1.7 1.7-2.55 3-2.55" />
+      <path d="M11 5.5v4M9 7.5h4" />
     </>
   ),
   ipd: (

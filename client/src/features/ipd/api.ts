@@ -1,6 +1,6 @@
 import { apiFetch, getApiBase } from "@/shared/api";
 import { getStoredToken } from "@/shared/auth";
-import { fetchAndPreviewPrint } from "@/shared/print";
+import { fetchAndPreviewPrint, fetchPrintHtml } from "@/shared/print";
 
 export type IpdPatient = {
   id: number;
@@ -48,10 +48,15 @@ export async function getIpdAdmission(id: number): Promise<IpdAdmission> {
   return apiFetch<IpdAdmission>(`/api/ipd/admissions/${id}`);
 }
 
-export async function admitPatient(patientId: number): Promise<IpdAdmission> {
+export async function admitPatient(
+  patientId: number,
+  opts?: { billed_at?: string },
+): Promise<IpdAdmission> {
+  const body: { patient_id: number; billed_at?: string } = { patient_id: patientId };
+  if (opts?.billed_at) body.billed_at = opts.billed_at;
   return apiFetch<IpdAdmission>("/api/ipd/admissions", {
     method: "POST",
-    body: JSON.stringify({ patient_id: patientId }),
+    body: JSON.stringify(body),
   });
 }
 
@@ -99,6 +104,11 @@ export async function printIpdStatement(id: number, title: string): Promise<void
     title,
     receipt: false,
   });
+}
+
+export async function fetchIpdStatementHtml(id: number, date: string): Promise<string> {
+  const q = date ? `?date=${encodeURIComponent(date)}` : "";
+  return fetchPrintHtml(`/api/ipd/admissions/${id}/statement${q}`, getApiBase, getStoredToken);
 }
 
 export type IpdCashLine = {

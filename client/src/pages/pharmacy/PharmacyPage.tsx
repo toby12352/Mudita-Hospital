@@ -7,6 +7,7 @@ import {
   formatPackCompact,
   getPharmacyItem,
   listPharmacyItems,
+  itemStockUnitLabel,
   packFromItem,
   packLevelsFromItemPack,
   packPriceSlots,
@@ -264,6 +265,12 @@ export function PharmacyPage({
         pack_l2_unit: pack.pack_l2_unit,
         pack_l3_qty: pack.pack_l3_qty,
         pack_l3_unit: pack.pack_l3_unit,
+        pack_l4_qty: pack.pack_l4_qty,
+        pack_l4_unit: pack.pack_l4_unit,
+        pack_l5_qty: pack.pack_l5_qty,
+        pack_l5_unit: pack.pack_l5_unit,
+        pack_l6_qty: pack.pack_l6_qty,
+        pack_l6_unit: pack.pack_l6_unit,
         buy_price_mmk: item.buy_price_mmk,
         sell_price_mmk: item.sell_price_mmk,
         active,
@@ -433,7 +440,7 @@ export function PharmacyPage({
                     </div>
                     <PharmacyItemLots
                       batches={infoItem.batches}
-                      stockUnit={infoItem.stock_unit || infoItem.pack_l3_unit || ""}
+                      stockUnit={itemStockUnitLabel(infoItem)}
                       showOnHand
                       onHand={infoItem.stock_main}
                     />

@@ -34,9 +34,17 @@ export const PHARMACY_UNITS = [
   "Card",
   "Sachet",
   "Pack",
+  "Puff",
+  "Pairs",
 ] as const;
 
 export type PharmacyUnit = (typeof PHARMACY_UNITS)[number];
+
+/** Max names in a packing chain (five packing relations). */
+export const MAX_PACK_DEPTH = 6;
+
+/** Clinic bill lines send this so the API accepts packs deeper than 3. */
+export const PACK_DEPTH_CLIENT = 6;
 
 /** @deprecated Prefer PHARMACY_UNITS — kept for callers that still filter by level. */
 export const PACK_L1_UNITS = ["Box", "Bottle"] as const;
@@ -54,6 +62,21 @@ export type ItemPack = {
   pack_l2_unit: string;
   pack_l3_qty: number;
   pack_l3_unit: string;
+  pack_l4_qty: number;
+  pack_l4_unit: string;
+  pack_l5_qty: number;
+  pack_l5_unit: string;
+  pack_l6_qty: number;
+  pack_l6_unit: string;
+};
+
+export type PackSaleQtys = {
+  box_qty: number;
+  strip_qty: number;
+  tablet_qty: number;
+  qty_l4: number;
+  qty_l5: number;
+  qty_l6: number;
 };
 
 /** One packing relation: parent contains packing of child. */
@@ -84,47 +107,124 @@ export function defaultItemPack(): ItemPack {
     pack_l2_unit: "Strip",
     pack_l3_qty: 10,
     pack_l3_unit: "Tablet",
+    pack_l4_qty: 1,
+    pack_l4_unit: "Tablet",
+    pack_l5_qty: 1,
+    pack_l5_unit: "Tablet",
+    pack_l6_qty: 1,
+    pack_l6_unit: "Tablet",
   };
 }
 
-export function tabletsPerBox(p: ItemPack): number {
-  return Math.max(1, p.pack_l2_qty || 1) * Math.max(1, p.pack_l3_qty || 1);
+function padItemPack(p: ItemPack): ItemPack {
+  const l1 = (p.pack_l1_unit || "Box").trim() || "Box";
+  const l2 = (p.pack_l2_unit || "Strip").trim() || "Strip";
+  const l3 = (p.pack_l3_unit || "Tablet").trim() || "Tablet";
+  let l4 = (p.pack_l4_unit || "").trim();
+  let l5 = (p.pack_l5_unit || "").trim();
+  let l6 = (p.pack_l6_unit || "").trim();
+  let smallest = l3;
+  if (l4) smallest = l4;
+  if (l5) smallest = l5;
+  if (l6) smallest = l6;
+  if (!l4) l4 = smallest;
+  if (!l5) l5 = smallest;
+  if (!l6) l6 = smallest;
+  return {
+    pack_l1_qty: 1,
+    pack_l1_unit: l1,
+    pack_l2_qty: Math.max(1, p.pack_l2_qty || 1),
+    pack_l2_unit: l2,
+    pack_l3_qty: Math.max(1, p.pack_l3_qty || 1),
+    pack_l3_unit: l3,
+    pack_l4_qty: Math.max(1, p.pack_l4_qty || 1),
+    pack_l4_unit: l4,
+    pack_l5_qty: Math.max(1, p.pack_l5_qty || 1),
+    pack_l5_unit: l5,
+    pack_l6_qty: Math.max(1, p.pack_l6_qty || 1),
+    pack_l6_unit: l6,
+  };
 }
 
-/** Total L3 units from mixed box/strip/tablet sale quantities. */
+function packSlotQtys(p: ItemPack): number[] {
+  const x = padItemPack(p);
+  return [x.pack_l1_qty, x.pack_l2_qty, x.pack_l3_qty, x.pack_l4_qty, x.pack_l5_qty, x.pack_l6_qty];
+}
+
+function packSlotUnits(p: ItemPack): string[] {
+  const x = padItemPack(p);
+  return [x.pack_l1_unit, x.pack_l2_unit, x.pack_l3_unit, x.pack_l4_unit, x.pack_l5_unit, x.pack_l6_unit];
+}
+
+/** Smallest units inside one outer unit (product of L2…L6). */
+export function tabletsPerBox(p: ItemPack): number {
+  const qtys = packSlotQtys(p);
+  let product = 1;
+  for (let i = 1; i < qtys.length; i++) {
+    product *= Math.max(1, qtys[i] || 1);
+  }
+  return Math.max(1, product);
+}
+
+/** Factors for stored slots L1…L6 (how many smallest units one of that slot holds). */
+export function packSlotFactors(p: ItemPack): number[] {
+  const qtys = packSlotQtys(p);
+  const factors = new Array<number>(MAX_PACK_DEPTH);
+  let factor = 1;
+  for (let i = MAX_PACK_DEPTH - 1; i >= 0; i--) {
+    factors[i] = factor;
+    if (i > 0) factor *= Math.max(1, qtys[i] || 1);
+  }
+  return factors;
+}
+
+export function emptyPackSaleQtys(): PackSaleQtys {
+  return { box_qty: 0, strip_qty: 0, tablet_qty: 0, qty_l4: 0, qty_l5: 0, qty_l6: 0 };
+}
+
+/** Total smallest units from mixed sale quantities. */
 export function totalTablets(
-  boxQty: number,
-  stripQty: number,
-  tabletQty: number,
-  stripsPerBox: number,
-  tabsPerStrip: number,
+  qtys: PackSaleQtys,
+  pack: ItemPack,
 ): { total: number; error?: string } {
-  const b = Math.max(0, boxQty || 0);
-  const s = Math.max(0, stripQty || 0);
-  const t = Math.max(0, tabletQty || 0);
-  if (b === 0 && s === 0 && t === 0) return { total: 0, error: "quantity required" };
-  const l2 = Math.max(1, stripsPerBox || 1);
-  const l3 = Math.max(1, tabsPerStrip || 1);
-  return { total: b * l2 * l3 + s * l3 + t };
+  const slots = [
+    Math.max(0, qtys.box_qty || 0),
+    Math.max(0, qtys.strip_qty || 0),
+    Math.max(0, qtys.tablet_qty || 0),
+    Math.max(0, qtys.qty_l4 || 0),
+    Math.max(0, qtys.qty_l5 || 0),
+    Math.max(0, qtys.qty_l6 || 0),
+  ];
+  if (slots.every((n) => n === 0)) return { total: 0, error: "quantity required" };
+  const factors = packSlotFactors(pack);
+  let total = 0;
+  for (let i = 0; i < slots.length; i++) {
+    total += slots[i] * factors[i];
+  }
+  return { total };
 }
 
 export function lineChargeFromPack(
-  boxQty: number,
-  stripQty: number,
-  tabletQty: number,
-  stripsPerBox: number,
-  tabsPerStrip: number,
+  qtys: PackSaleQtys,
+  pack: ItemPack,
   sellPerTablet: number,
 ): { total: number; charge: number; error?: string } {
-  const { total, error } = totalTablets(boxQty, stripQty, tabletQty, stripsPerBox, tabsPerStrip);
+  const { total, error } = totalTablets(qtys, pack);
   if (error) return { total: 0, charge: 0, error };
   const sell = Math.max(0, sellPerTablet || 0);
-  const q2 = Math.max(1, stripsPerBox || 1);
-  const q3 = Math.max(1, tabsPerStrip || 1);
-  const charge =
-    Math.max(0, boxQty || 0) * roundPayableMMK(sell * q2 * q3) +
-    Math.max(0, stripQty || 0) * roundPayableMMK(sell * q3) +
-    Math.max(0, tabletQty || 0) * roundPayableMMK(sell);
+  const factors = packSlotFactors(pack);
+  const slots = [
+    Math.max(0, qtys.box_qty || 0),
+    Math.max(0, qtys.strip_qty || 0),
+    Math.max(0, qtys.tablet_qty || 0),
+    Math.max(0, qtys.qty_l4 || 0),
+    Math.max(0, qtys.qty_l5 || 0),
+    Math.max(0, qtys.qty_l6 || 0),
+  ];
+  let charge = 0;
+  for (let i = 0; i < slots.length; i++) {
+    if (slots[i] > 0) charge += slots[i] * roundPayableMMK(sell * factors[i]);
+  }
   return { total, charge };
 }
 
@@ -149,33 +249,33 @@ function shortUnit(unit: string): string {
   if (u === "oz") return "oz";
   if (u === "sachet") return "Sa";
   if (u === "pack") return "Pk";
+  if (u === "puff") return "Pf";
+  if (u === "pairs") return "Pr";
   return unit.slice(0, 3) || "u";
 }
 
-/** Collapse stored 3-level pack into visible units (1–3), hiding pass-through L3. */
+/** Collapse stored pack into visible units, hiding qty-1 same-unit padding. */
 export function packLevelsFromItemPack(p: ItemPack): PackLevels {
-  const l1 = (p.pack_l1_unit || "Box").trim() || "Box";
-  const l2 = (p.pack_l2_unit || "Strip").trim() || "Strip";
-  const l3 = (p.pack_l3_unit || "Tablet").trim() || "Tablet";
-  const q2 = Math.max(1, p.pack_l2_qty || 1);
-  const q3 = Math.max(1, p.pack_l3_qty || 1);
-
-  // Single unit: Tube = Tube (stored as L1=Tube, L2=1 Tube, L3=1 Tube)
-  if (l1 === l2 && l2 === l3 && q2 === 1 && q3 === 1) {
-    return { units: [l1], qtys: [] };
+  const units = packSlotUnits(p);
+  const qtys = packSlotQtys(p);
+  const keptUnits: string[] = [];
+  const keptQtys: number[] = [];
+  for (let i = 0; i < MAX_PACK_DEPTH; i++) {
+    if (i === 0) {
+      keptUnits.push(units[i]);
+      continue;
+    }
+    const prev = keptUnits[keptUnits.length - 1];
+    if (qtys[i] === 1 && units[i].toLowerCase() === prev.toLowerCase()) {
+      continue;
+    }
+    keptQtys.push(qtys[i]);
+    keptUnits.push(units[i]);
   }
-  // Two units: Box → Tablet (L3 qty 1 and L3 unit matches L2 — pass-through)
-  if (q3 === 1 && l2 === l3) {
-    return { units: [l1, l2], qtys: [q2] };
-  }
-  // Two units where L1 equals L2 (odd legacy) — treat as L1 → L3
-  if (l1 === l2 && q2 === 1) {
-    return { units: [l1, l3], qtys: [q3] };
-  }
-  return { units: [l1, l2, l3], qtys: [q2, q3] };
+  return { units: keptUnits, qtys: keptQtys };
 }
 
-/** Expand visible relations + smallest unit into the stored three-level pack. */
+/** Expand visible relations + smallest unit into the stored six-level pack. */
 export function itemPackFromRelations(
   relations: PackRelation[],
   smallestUnit: string,
@@ -183,8 +283,10 @@ export function itemPackFromRelations(
   const smallest = smallestUnit.trim();
   if (!smallest) return { error: "smallest unit required" };
   const rows = relations.filter((r) => r.parent.trim() && r.child.trim() && r.packing >= 1);
+  if (rows.length > MAX_PACK_DEPTH - 1) {
+    return { error: "at most five packing relations" };
+  }
   if (rows.length === 0) {
-    // One unit only
     return {
       pack_l1_qty: 1,
       pack_l1_unit: smallest,
@@ -192,6 +294,12 @@ export function itemPackFromRelations(
       pack_l2_unit: smallest,
       pack_l3_qty: 1,
       pack_l3_unit: smallest,
+      pack_l4_qty: 1,
+      pack_l4_unit: smallest,
+      pack_l5_qty: 1,
+      pack_l5_unit: smallest,
+      pack_l6_qty: 1,
+      pack_l6_unit: smallest,
     };
   }
   const last = rows[rows.length - 1];
@@ -203,28 +311,39 @@ export function itemPackFromRelations(
       return { error: "pack chain must link parent to previous child" };
     }
   }
-  if (rows.length === 1) {
-    // Outer → smallest; pass-through L3
-    return {
-      pack_l1_qty: 1,
-      pack_l1_unit: rows[0].parent.trim(),
-      pack_l2_qty: Math.max(1, rows[0].packing),
-      pack_l2_unit: rows[0].child.trim(),
-      pack_l3_qty: 1,
-      pack_l3_unit: rows[0].child.trim(),
-    };
+  const names = [rows[0].parent.trim(), ...rows.map((r) => r.child.trim())];
+  const seen = new Set<string>();
+  for (const n of names) {
+    const key = n.toLowerCase();
+    if (seen.has(key)) return { error: "pack unit names must be unique in the visible chain" };
+    seen.add(key);
   }
-  if (rows.length === 2) {
-    return {
-      pack_l1_qty: 1,
-      pack_l1_unit: rows[0].parent.trim(),
-      pack_l2_qty: Math.max(1, rows[0].packing),
-      pack_l2_unit: rows[0].child.trim(),
-      pack_l3_qty: Math.max(1, rows[1].packing),
-      pack_l3_unit: rows[1].child.trim(),
-    };
+  const slotUnits = new Array<string>(MAX_PACK_DEPTH);
+  const slotQtys = new Array<number>(MAX_PACK_DEPTH);
+  slotUnits[0] = names[0];
+  slotQtys[0] = 1;
+  for (let i = 0; i < rows.length; i++) {
+    slotUnits[i + 1] = rows[i].child.trim();
+    slotQtys[i + 1] = Math.max(1, rows[i].packing);
   }
-  return { error: "at most two packing relations" };
+  for (let i = rows.length + 1; i < MAX_PACK_DEPTH; i++) {
+    slotUnits[i] = smallest;
+    slotQtys[i] = 1;
+  }
+  return {
+    pack_l1_qty: slotQtys[0],
+    pack_l1_unit: slotUnits[0],
+    pack_l2_qty: slotQtys[1],
+    pack_l2_unit: slotUnits[1],
+    pack_l3_qty: slotQtys[2],
+    pack_l3_unit: slotUnits[2],
+    pack_l4_qty: slotQtys[3],
+    pack_l4_unit: slotUnits[3],
+    pack_l5_qty: slotQtys[4],
+    pack_l5_unit: slotUnits[4],
+    pack_l6_qty: slotQtys[5],
+    pack_l6_unit: slotUnits[5],
+  };
 }
 
 /** Relations for the packing-size editor, derived from a stored pack. */
@@ -273,21 +392,27 @@ export function formatPackCompact(p: ItemPack): string {
   return out;
 }
 
-/** Which billing qty inputs are meaningful (hide pass-through strip/tablet). */
+/** Which stored sale slots are meaningful after collapsing padding. */
 export function packBillingSlots(p: ItemPack): {
   showL1: boolean;
   showL2: boolean;
   showL3: boolean;
+  showL4: boolean;
+  showL5: boolean;
+  showL6: boolean;
 } {
   const levels = packLevelsFromItemPack(p);
-  if (levels.units.length === 1) {
-    return { showL1: true, showL2: false, showL3: false };
-  }
-  if (levels.units.length === 2) {
-    // Stored as L1 → L2 with L3 pass-through: show L1 and L2 (L2 is smallest)
-    return { showL1: true, showL2: true, showL3: false };
-  }
-  return { showL1: true, showL2: true, showL3: true };
+  const padded = padItemPack(p);
+  const units = packSlotUnits(padded);
+  const visible = new Set(levels.units.map((u) => u.toLowerCase()));
+  return {
+    showL1: visible.has(units[0].toLowerCase()),
+    showL2: visible.has(units[1].toLowerCase()),
+    showL3: visible.has(units[2].toLowerCase()),
+    showL4: visible.has(units[3].toLowerCase()),
+    showL5: visible.has(units[4].toLowerCase()),
+    showL6: visible.has(units[5].toLowerCase()),
+  };
 }
 
 function roundHalfUp(n: number): number {
@@ -414,8 +539,10 @@ export function sellOuterFromSmallest(p: ItemPack, sellPerSmallest: number): num
   return Math.max(0, sellPerSmallest || 0) * tabletsPerBox(p);
 }
 
-/** Which of box_qty / strip_qty / tablet_qty holds a chosen sale unit. */
-export type SaleQtySlot = "box" | "strip" | "tablet";
+/** Which sale qty column holds a chosen pack level. */
+export type SaleQtySlot = "box" | "strip" | "tablet" | "l4" | "l5" | "l6";
+
+const SALE_SLOTS: SaleQtySlot[] = ["box", "strip", "tablet", "l4", "l5", "l6"];
 
 /** One visible pack level the cashier can sell. Price is per that unit. */
 export type SaleUnit = {
@@ -430,68 +557,78 @@ export type SaleUnit = {
 /**
  * Visible sale units for a pack.
  * price_mmk = sell-per-smallest × how many smallest units that level contains.
- * Two-level packs put the smallest count in the slot packBillingSlots shows
- * (strip for a pass-through L3, tablet when the stored smallest is L3) so the
- * server total is not counted twice.
+ * Each visible name maps to its stored slot so a two-level pack still sells
+ * the smallest unit as strip when L3 is pass-through padding.
  */
 export function saleUnitsFromPack(pack: ItemPack, sellPerSmallest: number): SaleUnit[] {
-  const levels = packLevelsFromItemPack(pack);
+  const padded = padItemPack(pack);
+  const levels = packLevelsFromItemPack(padded);
   const sell = Math.max(0, Math.floor(sellPerSmallest || 0));
-  const l1 = (pack.pack_l1_unit || "Box").trim() || "Box";
-  const l2 = (pack.pack_l2_unit || "Strip").trim() || "Strip";
-  const l3 = (pack.pack_l3_unit || "Tablet").trim() || "Tablet";
-  const q2 = Math.max(1, pack.pack_l2_qty || 1);
-  const q3 = Math.max(1, pack.pack_l3_qty || 1);
+  const slotFactors = packSlotFactors(padded);
+  const units = packSlotUnits(padded);
+  const qtys = packSlotQtys(padded);
 
-  let slots: SaleQtySlot[];
-  if (levels.units.length <= 1) {
-    slots = ["box"];
-  } else if (q3 === 1 && l2 === l3) {
-    slots = ["box", "strip"];
-  } else if (l1 === l2 && q2 === 1) {
-    slots = ["box", "tablet"];
-  } else {
-    slots = ["box", "strip", "tablet"];
+  // Map each visible unit to the first matching stored slot (left to right).
+  const keptSlots: number[] = [];
+  for (let i = 0; i < MAX_PACK_DEPTH; i++) {
+    if (i === 0) {
+      keptSlots.push(i);
+      continue;
+    }
+    const prevUnit = units[keptSlots[keptSlots.length - 1]];
+    if (qtys[i] === 1 && units[i].toLowerCase() === prevUnit.toLowerCase()) {
+      continue;
+    }
+    keptSlots.push(i);
   }
 
-  const factors = new Array<number>(levels.units.length);
-  let factor = 1;
-  for (let i = levels.units.length - 1; i >= 0; i--) {
-    factors[i] = factor;
-    if (i > 0) factor *= Math.max(1, levels.qtys[i - 1] || 1);
-  }
-
-  return levels.units.map((unit, i) => ({
-    id: unit,
-    label: unit,
-    factor: factors[i] ?? 1,
-    price_mmk: roundPayableMMK(sell * (factors[i] ?? 1)),
-    slot: slots[i] ?? "tablet",
-  }));
+  return levels.units.map((unit, i) => {
+    const slotIndex = keptSlots[i] ?? MAX_PACK_DEPTH - 1;
+    const factor = slotFactors[slotIndex] ?? 1;
+    return {
+      id: unit,
+      label: unit,
+      factor,
+      price_mmk: roundPayableMMK(sell * factor),
+      slot: SALE_SLOTS[slotIndex] ?? "l6",
+    };
+  });
 }
 
-/** One pack field set, the other two zero. */
-export function packQtysForSale(
-  unit: SaleUnit,
-  qty: number,
-): { box_qty: number; strip_qty: number; tablet_qty: number } {
+/** One pack field set; the others zero. */
+export function packQtysForSale(unit: SaleUnit, qty: number): PackSaleQtys {
   const n = Math.max(0, Math.floor(qty) || 0);
-  return {
-    box_qty: unit.slot === "box" ? n : 0,
-    strip_qty: unit.slot === "strip" ? n : 0,
-    tablet_qty: unit.slot === "tablet" ? n : 0,
-  };
+  const out = emptyPackSaleQtys();
+  if (unit.slot === "box") out.box_qty = n;
+  else if (unit.slot === "strip") out.strip_qty = n;
+  else if (unit.slot === "tablet") out.tablet_qty = n;
+  else if (unit.slot === "l4") out.qty_l4 = n;
+  else if (unit.slot === "l5") out.qty_l5 = n;
+  else out.qty_l6 = n;
+  return out;
+}
+
+function saleQtyForSlot(line: PackSaleQtys, slot: SaleQtySlot): number {
+  if (slot === "box") return line.box_qty ?? 0;
+  if (slot === "strip") return line.strip_qty ?? 0;
+  if (slot === "tablet") return line.tablet_qty ?? 0;
+  if (slot === "l4") return line.qty_l4 ?? 0;
+  if (slot === "l5") return line.qty_l5 ?? 0;
+  return line.qty_l6 ?? 0;
 }
 
 /**
  * How a saved pharmacy line should appear in the grid.
- * Exactly one of box/strip/tablet is editable in that unit.
+ * Exactly one sale slot is editable in that unit.
  * Two or more stay locked on the smallest-unit qty so a later save does not split them.
  */
 export function pharmacyLineSaleView(line: {
   box_qty?: number;
   strip_qty?: number;
   tablet_qty?: number;
+  qty_l4?: number;
+  qty_l5?: number;
+  qty_l6?: number;
   billing_qty: number;
   unit_price_mmk: number;
   pack_l1_qty?: number;
@@ -500,6 +637,12 @@ export function pharmacyLineSaleView(line: {
   pack_l2_unit?: string;
   pack_l3_qty?: number;
   pack_l3_unit?: string;
+  pack_l4_qty?: number;
+  pack_l4_unit?: string;
+  pack_l5_qty?: number;
+  pack_l5_unit?: string;
+  pack_l6_qty?: number;
+  pack_l6_unit?: string;
 }): {
   qty: number;
   unitId: string | null;
@@ -509,9 +652,17 @@ export function pharmacyLineSaleView(line: {
 } {
   const units = saleUnitsFromPack(packFromItem(line), line.unit_price_mmk);
   const slots: SaleQtySlot[] = [];
-  if ((line.box_qty ?? 0) > 0) slots.push("box");
-  if ((line.strip_qty ?? 0) > 0) slots.push("strip");
-  if ((line.tablet_qty ?? 0) > 0) slots.push("tablet");
+  const sale: PackSaleQtys = {
+    box_qty: line.box_qty ?? 0,
+    strip_qty: line.strip_qty ?? 0,
+    tablet_qty: line.tablet_qty ?? 0,
+    qty_l4: line.qty_l4 ?? 0,
+    qty_l5: line.qty_l5 ?? 0,
+    qty_l6: line.qty_l6 ?? 0,
+  };
+  for (const slot of SALE_SLOTS) {
+    if (saleQtyForSlot(sale, slot) > 0) slots.push(slot);
+  }
   const smallest = {
     qty: line.billing_qty,
     unitId: null as string | null,
@@ -522,12 +673,7 @@ export function pharmacyLineSaleView(line: {
   if (slots.length !== 1) return smallest;
   const unit = units.find((u) => u.slot === slots[0]);
   if (!unit) return { ...smallest, locked: true };
-  const qty =
-    slots[0] === "box"
-      ? (line.box_qty ?? 0)
-      : slots[0] === "strip"
-        ? (line.strip_qty ?? 0)
-        : (line.tablet_qty ?? 0);
+  const qty = saleQtyForSlot(sale, slots[0]);
   if (qty < 1) return { ...smallest, locked: true };
   return {
     qty,
@@ -545,16 +691,48 @@ export function packFromItem(item: {
   pack_l2_unit?: string;
   pack_l3_qty?: number;
   pack_l3_unit?: string;
+  pack_l4_qty?: number;
+  pack_l4_unit?: string;
+  pack_l5_qty?: number;
+  pack_l5_unit?: string;
+  pack_l6_qty?: number;
+  pack_l6_unit?: string;
 }): ItemPack {
-  const d = defaultItemPack();
-  return {
-    pack_l1_qty: item.pack_l1_qty ?? d.pack_l1_qty,
-    pack_l1_unit: item.pack_l1_unit || d.pack_l1_unit,
-    pack_l2_qty: item.pack_l2_qty ?? d.pack_l2_qty,
-    pack_l2_unit: item.pack_l2_unit || d.pack_l2_unit,
-    pack_l3_qty: item.pack_l3_qty ?? d.pack_l3_qty,
-    pack_l3_unit: item.pack_l3_unit || d.pack_l3_unit,
-  };
+  return padItemPack({
+    pack_l1_qty: item.pack_l1_qty ?? 1,
+    pack_l1_unit: item.pack_l1_unit || "",
+    pack_l2_qty: item.pack_l2_qty ?? 1,
+    pack_l2_unit: item.pack_l2_unit || "",
+    pack_l3_qty: item.pack_l3_qty ?? 1,
+    pack_l3_unit: item.pack_l3_unit || "",
+    pack_l4_qty: item.pack_l4_qty ?? 1,
+    pack_l4_unit: item.pack_l4_unit || "",
+    pack_l5_qty: item.pack_l5_qty ?? 1,
+    pack_l5_unit: item.pack_l5_unit || "",
+    pack_l6_qty: item.pack_l6_qty ?? 1,
+    pack_l6_unit: item.pack_l6_unit || "",
+  });
+}
+
+/** Innermost stored unit name (stock / billing). */
+export function packInnermostUnit(p: ItemPack): string {
+  return padItemPack(p).pack_l6_unit;
+}
+
+/** Label for on-hand / restock "will add" text — prefer stock_unit, then innermost pack. */
+export function itemStockUnitLabel(item: {
+  stock_unit?: string;
+  pack_l6_unit?: string;
+  pack_l3_unit?: string;
+  billing_unit?: string;
+}): string {
+  return (
+    (item.stock_unit || "").trim() ||
+    (item.pack_l6_unit || "").trim() ||
+    (item.pack_l3_unit || "").trim() ||
+    (item.billing_unit || "").trim() ||
+    "units"
+  );
 }
 
 /** User-facing label for stock location codes (API still uses MAIN, etc.). */
@@ -728,14 +906,20 @@ export type PharmacyItem = {
   pack_l2_unit: string;
   pack_l3_qty: number;
   pack_l3_unit: string;
+  pack_l4_qty: number;
+  pack_l4_unit: string;
+  pack_l5_qty: number;
+  pack_l5_unit: string;
+  pack_l6_qty: number;
+  pack_l6_unit: string;
   purchase_unit: string;
   stock_unit: string;
   billing_unit: string;
   units_per_purchase: number;
   billing_per_stock: number;
   charge_full_stock_unit: boolean;
-  buy_price_mmk: number; // per box
-  sell_price_mmk: number; // per L3
+  buy_price_mmk: number; // per outer unit
+  sell_price_mmk: number; // per smallest unit
   reorder_level: number;
   active: boolean;
   stock_main: number;
@@ -769,6 +953,10 @@ export type PharmacyBillLine = {
   box_qty?: number;
   strip_qty?: number;
   tablet_qty?: number;
+  qty_l4?: number;
+  qty_l5?: number;
+  qty_l6?: number;
+  pack_depth?: number;
   billing_qty: number;
   billing_unit: string;
   stock_qty: number;
@@ -776,6 +964,8 @@ export type PharmacyBillLine = {
   unit_price_mmk: number;
   line_total_mmk: number;
   sort_order: number;
+  /** 1 = free of charge; bill total skips this line. */
+  foc?: number;
   /** Joined from the item on read so a reloaded line can name its unit. */
   pack_l1_qty?: number;
   pack_l1_unit?: string;
@@ -783,6 +973,12 @@ export type PharmacyBillLine = {
   pack_l2_unit?: string;
   pack_l3_qty?: number;
   pack_l3_unit?: string;
+  pack_l4_qty?: number;
+  pack_l4_unit?: string;
+  pack_l5_qty?: number;
+  pack_l5_unit?: string;
+  pack_l6_qty?: number;
+  pack_l6_unit?: string;
 };
 
 export type PharmacyBill = {
@@ -845,6 +1041,12 @@ export type PharmacyItemWrite = {
   pack_l2_unit: string;
   pack_l3_qty: number;
   pack_l3_unit: string;
+  pack_l4_qty: number;
+  pack_l4_unit: string;
+  pack_l5_qty: number;
+  pack_l5_unit: string;
+  pack_l6_qty: number;
+  pack_l6_unit: string;
   buy_price_mmk: number;
   sell_price_mmk: number;
   initial_qty?: number;
@@ -984,6 +1186,10 @@ export async function createPharmacyBill(body: {
   save_patient?: boolean;
   patient_id?: number | null;
   kind?: PharmacyBillKind;
+  discount_value?: number;
+  discount_unit?: "percent" | "mmk";
+  /** Admin-only on create. Yangon wall time as `YYYY-MM-DDTHH:mm`. */
+  billed_at?: string;
 }): Promise<PharmacyBill> {
   return apiFetch<PharmacyBill>("/api/pharmacy/bills", {
     method: "POST",

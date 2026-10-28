@@ -81,7 +81,9 @@ func renderA4ReceiptHTML(hosp *hospitalSettings, bill receiptBill) string {
 	return b.String()
 }
 
-func writeA4Receipt(b *strings.Builder, hosp *hospitalSettings, bill receiptBill) {
+// writeA4Letterhead is the shared logo, name, address, and phone block.
+// OT receipts and IPD statements both start with it.
+func writeA4Letterhead(b *strings.Builder, hosp *hospitalSettings) {
 	b.WriteString(`<div class="a4-header">`)
 	b.WriteString(`<div class="a4-brand">`)
 	if src := receiptLogoDataURI(hosp); src != "" {
@@ -104,6 +106,10 @@ func writeA4Receipt(b *strings.Builder, hosp *hospitalSettings, bill receiptBill
 		b.WriteString(`</p>`)
 	}
 	b.WriteString(`</div></div>`)
+}
+
+func writeA4Receipt(b *strings.Builder, hosp *hospitalSettings, bill receiptBill) {
+	writeA4Letterhead(b, hosp)
 
 	title := strings.TrimSpace(bill.Title)
 	if title == "" {
@@ -144,9 +150,12 @@ func writeA4Receipt(b *strings.Builder, hosp *hospitalSettings, bill receiptBill
 		b.WriteString(`<th class="col-no">No.</th><th>Description</th><th class="col-qty">Qty</th><th class="col-amt">Amount (MMK)</th>`)
 		b.WriteString(`</tr></thead><tbody>`)
 		for i, line := range bill.Lines {
-			qtyLabel := fmt.Sprintf("%d", line.Qty)
-			if unit := strings.TrimSpace(line.Unit); unit != "" {
-				qtyLabel = fmt.Sprintf("%d %s", line.Qty, unit)
+			qtyLabel := ""
+			if !line.BlankQty {
+				qtyLabel = fmt.Sprintf("%d", line.Qty)
+				if unit := strings.TrimSpace(line.Unit); unit != "" {
+					qtyLabel = fmt.Sprintf("%d %s", line.Qty, unit)
+				}
 			}
 			b.WriteString(`<tr><td class="col-no">`)
 			b.WriteString(fmt.Sprintf("%d", i+1))

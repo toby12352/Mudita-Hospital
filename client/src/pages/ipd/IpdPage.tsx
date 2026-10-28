@@ -17,8 +17,12 @@ import {
 } from "@/features/ipd/api";
 import type { PatientChart } from "@/features/patients/api";
 import { PatientChartTypeahead } from "@/features/patients/PatientChartTypeahead";
+import { IpdDailyStatementPreview } from "@/pages/ipd/IpdDailyStatementPreview";
+import { defaultIpdStatementDate } from "@/pages/ipd/ipdStatementDate";
 import { ActionIcon } from "@/shared/ActionIcon";
 import { AlertDialog } from "@/shared/AlertDialog";
+import { getStoredUser } from "@/shared/auth";
+import { BillDateField, formatUtcAsLocal, nowDatetimeLocal } from "@/shared/BillDateField";
 import { fieldKeyForApiError } from "@/shared/errors";
 import { FieldError, revealField } from "@/shared/FieldError";
 import { formatMMK } from "@/shared/format";
@@ -31,6 +35,8 @@ export function IpdPage() {
   const [notes, setNotes] = useState("");
   const [patientName, setPatientName] = useState("");
   const [chartId, setChartId] = useState<number | null>(null);
+  const [billedAtLocal, setBilledAtLocal] = useState(() => nowDatetimeLocal());
+  const isAdmin = getStoredUser()?.role === "Admin";
   const [depositAmount, setDepositAmount] = useState("");
   const [depositNote, setDepositNote] = useState("");
   const [wardDescription, setWardDescription] = useState("");
@@ -45,6 +51,7 @@ export function IpdPage() {
   const [listStatus, setListStatus] = useState<"open" | "settled">("open");
   const [showCash, setShowCash] = useState(false);
   const [confirmDischarge, setConfirmDischarge] = useState(false);
+  const [dailyOpen, setDailyOpen] = useState(false);
   const patientFieldRef = useRef<HTMLDivElement>(null);
   const depositAmountRef = useRef<HTMLInputElement>(null);
   const wardDescriptionRef = useRef<HTMLInputElement>(null);
@@ -55,6 +62,10 @@ export function IpdPage() {
   useEffect(() => {
     if (okMsg?.trim()) revealField(okMsgRef.current);
   }, [okMsg]);
+
+  useEffect(() => {
+    setDailyOpen(false);
+  }, [stay?.id]);
 
   function clearFieldErrors() {
     setPatientError(null);
@@ -153,8 +164,12 @@ export function IpdPage() {
     clearFieldErrors();
     setOkMsg(null);
     try {
-      const created = await admitPatient(chartId);
+      const created = await admitPatient(
+        chartId,
+        isAdmin && billedAtLocal ? { billed_at: billedAtLocal } : undefined,
+      );
       showStay(created);
+      setBilledAtLocal(nowDatetimeLocal());
       await loadStays();
     } catch (e) {
       applyApiError(e);
@@ -352,7 +367,11 @@ export function IpdPage() {
                 </label>
                 <label className="opd-bill-field">
                   <span className="opd-bill-label">{t("ipdAdmittedAt")}</span>
-                  <input className="opd-bill-input" value={stay.admitted_at} disabled />
+                  <input
+                    className="opd-bill-input"
+                    value={formatUtcAsLocal(stay.admitted_at)}
+                    disabled
+                  />
                 </label>
                 <label className="opd-bill-field">
                   <span className="opd-bill-label">{t("status")}</span>
@@ -376,26 +395,31 @@ export function IpdPage() {
                 onChange={(e) => setNotes(e.target.value)}
               />
             </label>
-            <div className="opd-bill-footer">
-              <label className="opd-bill-field">
-                <span className="opd-bill-label">{t("balance")}</span>
-                <input
-                  className="opd-bill-input"
-                  value={`${formatMMK(stay.balance_mmk ?? 0)} ${t("mmk")}`}
-                  disabled
-                  readOnly
-                />
-              </label>
-              <p className="hint">{t("ipdBalanceHint")}</p>
+            <div className="ipd-stay-summary">
+              <p className="ipd-stay-summary-item">
+                <span className="ipd-stay-summary-label">{t("ipdRemainingBalance")}:</span>{" "}
+                <span className="ipd-stay-summary-amount">
+                  {formatMMK(stay.balance_mmk ?? 0)} {t("mmk")}
+                </span>
+              </p>
+              <p className="ipd-stay-summary-item">
+                <span className="ipd-stay-summary-label">{t("ipdTotalCharges")}:</span>{" "}
+                <span className="ipd-stay-summary-amount">
+                  {formatMMK(totalChargesMmk(stay.ledger ?? []))} {t("mmk")}
+                </span>
+              </p>
             </div>
-            <span className="opd-bill-label">{t("ipdLedger")}</span>
-            <ul className="data-list">
-              {(stay.ledger ?? []).length === 0 ? <li className="empty-row">{t("ipdNoLedger")}</li> : null}
+            <h3 className="ipd-ledger-title">{t("ipdLedger")}</h3>
+            <ul className="ipd-ledger-cards">
+              {(stay.ledger ?? []).length === 0 ? (
+                <li className="ipd-ledger-card ipd-ledger-card--empty">{t("ipdNoLedger")}</li>
+              ) : null}
               {(stay.ledger ?? []).map((line) => (
-                <li key={line.id}>
+                <li key={line.id} className="ipd-ledger-card">
                   <div>
-                    <p className="row-title">
-                      {ledgerKindLabel(line.kind, line.amount_mmk, t)} · {formatMMK(line.amount_mmk)} {t("mmk")}
+                    <p className={`row-title${line.amount_mmk < 0 ? " ipd-ledger-amount--charge" : ""}`}>
+                      {ledgerKindLabel(line.kind, line.amount_mmk, line.source, t)} ·{" "}
+                      {formatMMK(line.amount_mmk)} {t("mmk")}
                     </p>
                     <p className="row-sub">{ledgerSub(line)}</p>
                   </div>
@@ -503,23 +527,34 @@ export function IpdPage() {
               />
             </div>
             <FieldError>{patientError}</FieldError>
+            {isAdmin ? (
+              <BillDateField
+                editable
+                value={billedAtLocal}
+                displayWhen={formatUtcAsLocal(null)}
+                onChange={setBilledAtLocal}
+                disabled={busy}
+              />
+            ) : null}
             {error && !stay ? (
               <p ref={formErrorRef} className="form-error" role="alert">
                 {error}
               </p>
             ) : null}
-            <ul className="data-list">
+            <ul className="ipd-ledger-cards ipd-stay-list">
               {stays.length === 0 ? (
-                <li className="empty-row">{listStatus === "open" ? t("ipdNoStays") : t("ipdNoSettled")}</li>
+                <li className="ipd-ledger-card ipd-ledger-card--empty">
+                  {listStatus === "open" ? t("ipdNoStays") : t("ipdNoSettled")}
+                </li>
               ) : null}
               {stays.map((row) => (
-                <li key={row.id}>
+                <li key={row.id} className="ipd-ledger-card">
                   <div>
                     <p className="row-title">
                       {row.admission_no} · {row.patient.name}
                     </p>
                     <p className="row-sub">
-                      {t("chartLabel")} {row.patient.id} · {row.admitted_at}
+                      {t("chartLabel")} {row.patient.id} · {formatUtcAsLocal(row.admitted_at)}
                     </p>
                   </div>
                   <button
@@ -604,6 +639,12 @@ export function IpdPage() {
                 </button>
               </>
             ) : null}
+            <button type="button" className="opd-bill-rail-btn" disabled={busy} onClick={() => setDailyOpen(true)}>
+              <span className="opd-bill-rail-btn-main">
+                <ActionIcon name="print" />
+                <span>{t("ipdPrintDailyStatement")}</span>
+              </span>
+            </button>
             <button type="button" className="opd-bill-rail-btn" disabled={busy} onClick={() => void printStatement()}>
               <span className="opd-bill-rail-btn-main">
                 <ActionIcon name="print" />
@@ -658,6 +699,14 @@ export function IpdPage() {
           </>
         )}
       </aside>
+      {dailyOpen && stay ? (
+        <IpdDailyStatementPreview
+          stayId={stay.id}
+          initialDate={defaultIpdStatementDate(stay)}
+          title={t("ipdDailyStatement")}
+          onClose={() => setDailyOpen(false)}
+        />
+      ) : null}
       {confirmDischarge ? (
         <AlertDialog
           tone="warning"
@@ -689,14 +738,35 @@ function statusLabel(status: string, t: (key: string) => string): string {
   return status;
 }
 
-function ledgerKindLabel(kind: string, amount: number, t: (key: string) => string): string {
+function ledgerKindLabel(
+  kind: string,
+  amount: number,
+  source: string,
+  t: (key: string) => string,
+): string {
   if (kind === "deposit") return t("ipdKindDeposit");
   if (kind === "ward") return t("ipdKindWard");
-  if (kind === "charge") return amount < 0 ? t("ipdKindCharge") : t("ipdKindCredit");
+  if (kind === "charge") {
+    const charge = amount < 0;
+    if (source === "opd") return charge ? t("ipdKindOpdCharge") : t("ipdKindOpdCredit");
+    if (source === "ot") return charge ? t("ipdKindOtCharge") : t("ipdKindOtCredit");
+    if (source === "pharmacy") return charge ? t("ipdKindPharmacyCharge") : t("ipdKindPharmacyCredit");
+    return charge ? t("ipdKindCharge") : t("ipdKindCredit");
+  }
   if (kind === "reversal") return t("ipdKindReversal");
   if (kind === "refund") return t("ipdKindRefund");
   if (kind === "collection") return t("ipdKindCollection");
   return kind;
+}
+
+function totalChargesMmk(ledger: IpdLedgerLine[]): number {
+  let sum = 0;
+  for (const line of ledger) {
+    if (line.kind === "ward" || line.kind === "charge" || line.kind === "reversal") {
+      sum += line.amount_mmk;
+    }
+  }
+  return -sum;
 }
 
 function ledgerCanPrint(line: IpdLedgerLine): boolean {
@@ -707,7 +777,15 @@ function ledgerCanPrint(line: IpdLedgerLine): boolean {
 
 function ledgerSub(line: IpdLedgerLine): string {
   const desk =
-    line.source === "opd" ? "OPD" : line.source === "ot" ? "OT" : line.source === "pharmacy" ? "Pharmacy" : "";
+    line.kind === "charge"
+      ? ""
+      : line.source === "opd"
+        ? "OPD"
+        : line.source === "ot"
+          ? "OT"
+          : line.source === "pharmacy"
+            ? "Pharmacy"
+            : "";
   return [desk, line.note, line.created_at].filter(Boolean).join(" · ");
 }
 
@@ -776,7 +854,8 @@ function IpdCashPanel({ onBack }: { onBack: () => void }) {
                 <li key={`${line.admission_no}-${line.created_at}-${index}`}>
                   <div>
                     <p className="row-title">
-                      {ledgerKindLabel(line.kind, line.amount_mmk, t)} · {formatMMK(line.amount_mmk)} {t("mmk")}
+                      {ledgerKindLabel(line.kind, line.amount_mmk, "", t)} · {formatMMK(line.amount_mmk)}{" "}
+                      {t("mmk")}
                     </p>
                     <p className="row-sub">
                       {line.admission_no} · {line.patient}

@@ -22,6 +22,7 @@ import {
   labelPharmacyBatch,
   listPharmacyItems,
   listStockMovements,
+  itemStockUnitLabel,
   packFromItem,
   packLevelsFromItemPack,
   restockItem,
@@ -61,6 +62,8 @@ const UNIT_I18N: Record<string, string> = {
   Card: "packUnitCard",
   Sachet: "packUnitSachet",
   Pack: "packUnitPack",
+  Puff: "packUnitPuff",
+  Pairs: "packUnitPairs",
 };
 
 export function PharmacyItemsTab({
@@ -545,7 +548,7 @@ export function PharmacyItemsTab({
           {!item.active ? ` ${t("inactive")}` : ""}
         </span>
         <span className="typeahead-sub">
-          {t("inStock")} {item.stock_main.toLocaleString()} {item.pack_l3_unit || item.stock_unit || ""}
+          {t("inStock")} {item.stock_main.toLocaleString()} {itemStockUnitLabel(item)}
           {item.low_stock && item.active ? ` · ${t("lowStockLabel")}` : ""}
         </span>
       </>
@@ -624,9 +627,9 @@ export function PharmacyItemsTab({
                 <p className="row-sub">
                   {(item.dosage || "").trim() ? `${item.dosage} · ` : ""}
                   {t("inStock")} {item.stock_main.toLocaleString()}{" "}
-                  {item.pack_l3_unit || item.stock_unit || "units"} · {t("sellAbbrev")}{" "}
+                  {itemStockUnitLabel(item)} · {t("sellAbbrev")}{" "}
                   {item.sell_price_mmk.toLocaleString()} {t("mmk")}/
-                  {item.pack_l3_unit || item.billing_unit || "unit"}
+                  {itemStockUnitLabel(item)}
                 </p>
               </div>
               <div className="btn-row">
@@ -778,7 +781,7 @@ export function PharmacyItemsTab({
                             )
                           : undefined;
                         const smallest =
-                          panelItem.pack_l3_unit || panelItem.stock_unit || "units";
+                          itemStockUnitLabel(panelItem);
                         return (
                           <>
                             <div className="drug-info-field">
@@ -878,7 +881,7 @@ export function PharmacyItemsTab({
                         : undefined;
                       const entered = parseAdjustEntered(adjustDelta);
                       const smallest =
-                        panelItem.pack_l3_unit || panelItem.stock_unit || "units";
+                        itemStockUnitLabel(panelItem);
                       return (
                         <>
                           <div className="drug-info-field">
@@ -992,7 +995,7 @@ export function PharmacyItemsTab({
                   ? units.find((u) => u.id.toLowerCase() === restockUnitId.trim().toLowerCase())
                   : undefined;
                 const smallest =
-                  panelItem.pack_l3_unit || panelItem.stock_unit || "units";
+                  itemStockUnitLabel(panelItem);
                 return (
                   <>
                     <div className="field-row">
@@ -1088,7 +1091,7 @@ export function PharmacyItemsTab({
                     : undefined;
                   const entered = parseAdjustEntered(adjustDelta);
                   const smallest =
-                    panelItem.pack_l3_unit || panelItem.stock_unit || "units";
+                    itemStockUnitLabel(panelItem);
                   return (
                     <>
                       <div className="field-row">

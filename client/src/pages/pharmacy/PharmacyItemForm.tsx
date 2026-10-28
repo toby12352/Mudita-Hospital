@@ -9,10 +9,13 @@ import {
   useState,
 } from "react";
 import {
+  MAX_PACK_DEPTH,
   PHARMACY_UNITS,
   createPharmacyItem,
   formatPackLevelsPreview,
   itemPackFromRelations,
+  itemStockUnitLabel,
+  packFromItem,
   packLevelsFromItemPack,
   relationsFromItemPack,
   saleUnitsFromPack,
@@ -49,7 +52,12 @@ const UNIT_I18N: Record<string, string> = {
   Card: "packUnitCard",
   Sachet: "packUnitSachet",
   Pack: "packUnitPack",
+  Puff: "packUnitPuff",
+  Pairs: "packUnitPairs",
 };
+
+/** Max packing relation rows = chain length − 1. */
+const MAX_PACK_RELATIONS = MAX_PACK_DEPTH - 1;
 
 function emptyRelation(parent = ""): PackRelation {
   return { parent, packing: 0, child: "" };
@@ -90,14 +98,7 @@ export function PharmacyItemForm({
 }) {
   const { t } = useI18n();
   const initial = editing
-    ? relationsFromItemPack({
-        pack_l1_qty: editing.pack_l1_qty,
-        pack_l1_unit: editing.pack_l1_unit,
-        pack_l2_qty: editing.pack_l2_qty,
-        pack_l2_unit: editing.pack_l2_unit,
-        pack_l3_qty: editing.pack_l3_qty,
-        pack_l3_unit: editing.pack_l3_unit,
-      })
+    ? relationsFromItemPack(packFromItem(editing))
     : { smallest: "Tablet", relations: [] as PackRelation[] };
 
   const [formError, setFormError] = useState<string | null>(null);
@@ -111,10 +112,11 @@ export function PharmacyItemForm({
   const [smallestUnit, setSmallestUnit] = useState(initial.smallest);
   const [relations, setRelations] = useState<PackRelation[]>(() => {
     if (initial.relations.length === 0) return [emptyRelation()];
-    if (initial.relations.length === 1) {
-      return [...initial.relations, emptyRelation(initial.relations[0].child)];
+    const rows = initial.relations.slice(0, MAX_PACK_RELATIONS);
+    if (rows.length < MAX_PACK_RELATIONS) {
+      return [...rows, emptyRelation(rows[rows.length - 1].child)];
     }
-    return initial.relations.slice(0, 2);
+    return rows;
   });
   const [batchNo, setBatchNo] = useState("");
   const [expiry, setExpiry] = useState("");
@@ -188,7 +190,13 @@ export function PharmacyItemForm({
     ? initialUnits.find((u) => u.id.toLowerCase() === quantityUnitId.trim().toLowerCase())
     : undefined;
   const enteredQty = parseInitialQty(quantity);
-  const smallestLabel = pack?.pack_l3_unit || smallestUnit || "units";
+  const smallestLabel = pack
+    ? itemStockUnitLabel({
+        stock_unit: pack.pack_l6_unit,
+        pack_l6_unit: pack.pack_l6_unit,
+        pack_l3_unit: pack.pack_l3_unit,
+      })
+    : smallestUnit || "units";
 
   function openUnitSelect(el: HTMLSelectElement | null) {
     if (!el) return;
@@ -213,8 +221,8 @@ export function PharmacyItemForm({
     const rows = relationsRef.current;
     const row = rows[index];
     if (!row || (row.packing ?? 0) < 1) return null;
-    const parentLocked = index === 1;
-    const parentValue = parentLocked ? rows[0]?.child || row.parent : row.parent;
+    const parentLocked = index > 0;
+    const parentValue = parentLocked ? rows[index - 1]?.child || row.parent : row.parent;
     const parentEl = packingParentRefs.current[index] ?? null;
     const childEl = packingChildRefs.current[index] ?? null;
     if (!parentValue.trim() && parentEl && !parentEl.disabled) return parentEl;
@@ -329,23 +337,40 @@ export function PharmacyItemForm({
         next.push(emptyRelation(prevChild || ""));
       }
       next[index] = { ...next[index], ...patch };
-      if (index === 0 && patch.child !== undefined && next.length > 1) {
-        next[1] = { ...next[1], parent: patch.child };
+      if (patch.child !== undefined) {
+        for (let i = index + 1; i < next.length; i++) {
+          next[i] = { ...next[i], parent: next[i - 1].child };
+        }
       }
-      // Keep at most two rows; ensure a trailing empty row when first is complete
-      const firstDone =
-        next[0]?.parent.trim() && next[0]?.child.trim() && (next[0]?.packing ?? 0) >= 1;
-      if (firstDone && next.length === 1) {
-        next = [next[0], emptyRelation(next[0].child)];
+      const filled = completedRelations(next);
+      if (filled.length >= MAX_PACK_RELATIONS) {
+        return filled.slice(0, MAX_PACK_RELATIONS);
       }
-      return next.slice(0, 2);
+      // Keep the row being edited even when incomplete so packing/child keystrokes
+      // are not wiped by rebuilding from completed rows only.
+      const draft = next[index];
+      const draftIncomplete =
+        draft &&
+        !completedRelations([draft]).length &&
+        (draft.parent.trim() || draft.child.trim() || (draft.packing ?? 0) > 0);
+      if (filled.length === 0) {
+        return draftIncomplete ? [draft] : [emptyRelation()];
+      }
+      const trailerParent = filled[filled.length - 1].child;
+      if (draftIncomplete && index === filled.length) {
+        return [...filled, { ...draft, parent: trailerParent || draft.parent }];
+      }
+      return [...filled, emptyRelation(trailerParent)];
     });
   }
 
-  function removeSecondRelation() {
+  function removeLastFilledRelation() {
     setRelations((prev) => {
-      if (prev.length < 2) return prev;
-      return [prev[0], emptyRelation(prev[0].child)];
+      const filled = completedRelations(prev);
+      if (filled.length === 0) return [emptyRelation()];
+      const kept = filled.slice(0, -1);
+      if (kept.length === 0) return [emptyRelation()];
+      return [...kept, emptyRelation(kept[kept.length - 1].child)];
     });
   }
 
@@ -454,6 +479,12 @@ export function PharmacyItemForm({
         pack_l2_unit: pack.pack_l2_unit,
         pack_l3_qty: pack.pack_l3_qty,
         pack_l3_unit: pack.pack_l3_unit,
+        pack_l4_qty: pack.pack_l4_qty,
+        pack_l4_unit: pack.pack_l4_unit,
+        pack_l5_qty: pack.pack_l5_qty,
+        pack_l5_unit: pack.pack_l5_unit,
+        pack_l6_qty: pack.pack_l6_qty,
+        pack_l6_unit: pack.pack_l6_unit,
         buy_price_mmk: Math.max(0, buyOuter || 0),
         sell_price_mmk: Math.max(0, sellSmallest || 0),
         active,
@@ -501,7 +532,7 @@ export function PharmacyItemForm({
       : null;
   const packingRowInvalid = attempted && packingRequired && !packingFilled;
 
-  const secondIsEmpty = relations.length < 2 || isEmptyTrailingRelation(relations[1]);
+  const lastFilledIndex = doneRels.length - 1;
 
   return (
     <form className="card-form" onSubmit={submit}>
@@ -570,14 +601,20 @@ export function PharmacyItemForm({
             <span role="columnheader" className="packing-rel-actions" />
           </div>
           {relations.map((row, index) => {
-            const parentLocked = index === 1;
-            const parentValue = parentLocked ? relations[0]?.child || row.parent : row.parent;
+            const parentLocked = index > 0;
+            const parentValue = parentLocked
+              ? relations[index - 1]?.child || row.parent
+              : row.parent;
             const markFirstRow = packingRowInvalid && index === 0;
             const markChildMismatch =
               attempted &&
               index === doneRels.length - 1 &&
               doneRels.length > 0 &&
               !childMatches;
+            const showRemove =
+              index === lastFilledIndex &&
+              lastFilledIndex >= 0 &&
+              !isEmptyTrailingRelation(row);
             return (
               <div
                 className="packing-rel-row"
@@ -646,11 +683,11 @@ export function PharmacyItemForm({
                   ))}
                 </select>
                 <span className="packing-rel-actions">
-                  {index === 1 && !secondIsEmpty ? (
+                  {showRemove ? (
                     <button
                       type="button"
                       className="btn ghost danger packing-rel-remove"
-                      onClick={removeSecondRelation}
+                      onClick={removeLastFilledRelation}
                       disabled={busy}
                       aria-label={t("packRemoveRelation")}
                       title={t("packRemoveRelation")}
@@ -694,7 +731,7 @@ export function PharmacyItemForm({
         ) : (
           <PharmacyItemLots
             batches={editing.batches}
-            stockUnit={editing.stock_unit || editing.pack_l3_unit || ""}
+            stockUnit={itemStockUnitLabel(editing)}
             showOnHand
             onHand={editing.stock_main}
           />

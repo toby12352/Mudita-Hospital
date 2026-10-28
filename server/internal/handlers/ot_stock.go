@@ -30,6 +30,14 @@ type otStockBatch struct {
 	PackL2Unit   string  `json:"pack_l2_unit"`
 	PackL3Qty    int64   `json:"pack_l3_qty"`
 	PackL3Unit   string  `json:"pack_l3_unit"`
+	PackL4Qty    int64   `json:"pack_l4_qty"`
+	PackL4Unit   string  `json:"pack_l4_unit"`
+	PackL5Qty    int64   `json:"pack_l5_qty"`
+	PackL5Unit   string  `json:"pack_l5_unit"`
+	PackL6Qty    int64   `json:"pack_l6_qty"`
+	PackL6Unit   string  `json:"pack_l6_unit"`
+	Active       bool    `json:"active"`
+	CreatedAt    string  `json:"created_at"`
 	BatchNo      string  `json:"batch_no"`
 	ExpiryDate   *string `json:"expiry_date"`
 	Qty          int64   `json:"qty"`
@@ -42,6 +50,10 @@ func (h *OT) listOtStock(w http.ResponseWriter, r *http.Request) {
 		       COALESCE(i.pack_l1_qty, 1), COALESCE(i.pack_l1_unit, 'Box'),
 		       COALESCE(i.pack_l2_qty, 1), COALESCE(i.pack_l2_unit, 'Strip'),
 		       COALESCE(i.pack_l3_qty, 1), COALESCE(i.pack_l3_unit, 'Tablet'),
+		       COALESCE(i.pack_l4_qty, 1), COALESCE(i.pack_l4_unit, ''),
+		       COALESCE(i.pack_l5_qty, 1), COALESCE(i.pack_l5_unit, ''),
+		       COALESCE(i.pack_l6_qty, 1), COALESCE(i.pack_l6_unit, ''),
+		       i.active, i.created_at,
 		       b.batch_no, b.expiry_date, b.qty
 		FROM ot_batches b
 		JOIN items i ON i.id = b.item_id
@@ -60,15 +72,30 @@ func (h *OT) listOtStock(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var b otStockBatch
 		var expiry sql.NullString
+		var active int
 		if err := rows.Scan(
 			&b.ID, &b.ItemID, &b.ItemCode, &b.ItemName, &b.StockUnit,
 			&b.Dosage, &b.BuyPriceMMK, &b.SellPriceMMK,
 			&b.PackL1Qty, &b.PackL1Unit, &b.PackL2Qty, &b.PackL2Unit, &b.PackL3Qty, &b.PackL3Unit,
+			&b.PackL4Qty, &b.PackL4Unit, &b.PackL5Qty, &b.PackL5Unit, &b.PackL6Qty, &b.PackL6Unit,
+			&active, &b.CreatedAt,
 			&b.BatchNo, &expiry, &b.Qty,
 		); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "scan failed"})
 			return
 		}
+		b.Active = active == 1
+		padded := itemPackFromPharmacyItem(pharmacyItem{
+			PackL1Qty: b.PackL1Qty, PackL1Unit: b.PackL1Unit,
+			PackL2Qty: b.PackL2Qty, PackL2Unit: b.PackL2Unit,
+			PackL3Qty: b.PackL3Qty, PackL3Unit: b.PackL3Unit,
+			PackL4Qty: b.PackL4Qty, PackL4Unit: b.PackL4Unit,
+			PackL5Qty: b.PackL5Qty, PackL5Unit: b.PackL5Unit,
+			PackL6Qty: b.PackL6Qty, PackL6Unit: b.PackL6Unit,
+		})
+		b.PackL4Qty, b.PackL4Unit = padded.L4Qty, padded.L4Unit
+		b.PackL5Qty, b.PackL5Unit = padded.L5Qty, padded.L5Unit
+		b.PackL6Qty, b.PackL6Unit = padded.L6Qty, padded.L6Unit
 		b.ExpiryDate = nullStringPtr(expiry)
 		list = append(list, b)
 	}

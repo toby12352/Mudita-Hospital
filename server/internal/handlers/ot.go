@@ -33,6 +33,8 @@ type otCaseItem struct {
 	QtyWasted      int64  `json:"qty_wasted"`
 	QtyKeptOnFloor int64  `json:"qty_kept_on_floor"`
 	SortOrder      int    `json:"sort_order"`
+	// FOC marks the item free of charge on the patient bill.
+	Foc int `json:"foc"`
 	// Joined from items on read so the cart can offer that item's units again.
 	PackL1Qty  int64  `json:"pack_l1_qty,omitempty"`
 	PackL1Unit string `json:"pack_l1_unit,omitempty"`
@@ -40,6 +42,12 @@ type otCaseItem struct {
 	PackL2Unit string `json:"pack_l2_unit,omitempty"`
 	PackL3Qty  int64  `json:"pack_l3_qty,omitempty"`
 	PackL3Unit string `json:"pack_l3_unit,omitempty"`
+	PackL4Qty  int64  `json:"pack_l4_qty,omitempty"`
+	PackL4Unit string `json:"pack_l4_unit,omitempty"`
+	PackL5Qty  int64  `json:"pack_l5_qty,omitempty"`
+	PackL5Unit string `json:"pack_l5_unit,omitempty"`
+	PackL6Qty  int64  `json:"pack_l6_qty,omitempty"`
+	PackL6Unit string `json:"pack_l6_unit,omitempty"`
 }
 
 // Draft cart service line. unit_price_mmk is the case charge (nullable until typed).
@@ -50,6 +58,7 @@ type otCaseService struct {
 	Description  string `json:"description"`
 	UnitPriceMMK *int64 `json:"unit_price_mmk"`
 	SortOrder    int    `json:"sort_order"`
+	Foc          int    `json:"foc"`
 }
 
 type otCase struct {
@@ -76,6 +85,7 @@ type otCase struct {
 	CreatedByUserID   *int64          `json:"created_by_user_id,omitempty"`
 	CreatedAt         string          `json:"created_at"`
 	UpdatedAt         string          `json:"updated_at"`
+	BilledAt          *string         `json:"billed_at,omitempty"`
 	Items             []otCaseItem    `json:"items,omitempty"`
 	Services          []otCaseService `json:"services,omitempty"`
 	DoctorOTFeeMMK    int64           `json:"doctor_ot_fee_mmk,omitempty"`
@@ -95,6 +105,7 @@ type otCaseWriteRequest struct {
 	Services        []otCaseService `json:"services"`
 	DiscountValue   int64           `json:"discount_value"`
 	DiscountUnit    string          `json:"discount_unit"`
+	BilledAt        string          `json:"billed_at,omitempty"`
 }
 
 type otBillLine struct {
@@ -107,6 +118,7 @@ type otBillLine struct {
 	UnitPriceMMK int64  `json:"unit_price_mmk"`
 	LineTotalMMK int64  `json:"line_total_mmk"`
 	SortOrder    int    `json:"sort_order"`
+	Foc          int    `json:"foc"`
 }
 
 type otBill struct {
@@ -134,6 +146,7 @@ type otBill struct {
 	VoidReason      string       `json:"void_reason,omitempty"`
 	CreatedAt       string       `json:"created_at"`
 	UpdatedAt       string       `json:"updated_at"`
+	BilledAt        *string      `json:"billed_at,omitempty"`
 	Lines           []otBillLine `json:"lines,omitempty"`
 }
 
@@ -142,6 +155,7 @@ type otServiceCharge struct {
 	RefID        *int64 `json:"ref_id"`
 	Qty          int64  `json:"qty"`
 	UnitPriceMMK *int64 `json:"unit_price_mmk"`
+	Foc          int    `json:"foc"`
 }
 
 type otCreateBillRequest struct {
@@ -171,6 +185,12 @@ type otCatalogItem struct {
 	PackL2Unit   string `json:"pack_l2_unit"`
 	PackL3Qty    int64  `json:"pack_l3_qty"`
 	PackL3Unit   string `json:"pack_l3_unit"`
+	PackL4Qty    int64  `json:"pack_l4_qty"`
+	PackL4Unit   string `json:"pack_l4_unit"`
+	PackL5Qty    int64  `json:"pack_l5_qty"`
+	PackL5Unit   string `json:"pack_l5_unit"`
+	PackL6Qty    int64  `json:"pack_l6_qty"`
+	PackL6Unit   string `json:"pack_l6_unit"`
 }
 
 func (h *OT) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -347,7 +367,10 @@ func (h *OT) catalogItems(w http.ResponseWriter, r *http.Request) {
 			COALESCE((SELECT SUM(b.qty) FROM ot_batches b WHERE b.item_id = i.id), 0),
 			COALESCE(i.pack_l1_qty, 1), COALESCE(i.pack_l1_unit, 'Box'),
 			COALESCE(i.pack_l2_qty, 1), COALESCE(i.pack_l2_unit, 'Strip'),
-			COALESCE(i.pack_l3_qty, 1), COALESCE(i.pack_l3_unit, 'Tablet')
+			COALESCE(i.pack_l3_qty, 1), COALESCE(i.pack_l3_unit, 'Tablet'),
+			COALESCE(i.pack_l4_qty, 1), COALESCE(i.pack_l4_unit, ''),
+			COALESCE(i.pack_l5_qty, 1), COALESCE(i.pack_l5_unit, ''),
+			COALESCE(i.pack_l6_qty, 1), COALESCE(i.pack_l6_unit, '')
 		FROM items i`
 	var rows *sql.Rows
 	var err error
@@ -381,10 +404,22 @@ func (h *OT) catalogItems(w http.ResponseWriter, r *http.Request) {
 		if err := rows.Scan(
 			&it.ID, &it.Code, &it.Name, &it.SellPriceMMK, &it.StockUnit, &it.OtOnHand,
 			&it.PackL1Qty, &it.PackL1Unit, &it.PackL2Qty, &it.PackL2Unit, &it.PackL3Qty, &it.PackL3Unit,
+			&it.PackL4Qty, &it.PackL4Unit, &it.PackL5Qty, &it.PackL5Unit, &it.PackL6Qty, &it.PackL6Unit,
 		); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "scan failed"})
 			return
 		}
+		padded := itemPackFromPharmacyItem(pharmacyItem{
+			PackL1Qty: it.PackL1Qty, PackL1Unit: it.PackL1Unit,
+			PackL2Qty: it.PackL2Qty, PackL2Unit: it.PackL2Unit,
+			PackL3Qty: it.PackL3Qty, PackL3Unit: it.PackL3Unit,
+			PackL4Qty: it.PackL4Qty, PackL4Unit: it.PackL4Unit,
+			PackL5Qty: it.PackL5Qty, PackL5Unit: it.PackL5Unit,
+			PackL6Qty: it.PackL6Qty, PackL6Unit: it.PackL6Unit,
+		})
+		it.PackL4Qty, it.PackL4Unit = padded.L4Qty, padded.L4Unit
+		it.PackL5Qty, it.PackL5Unit = padded.L5Qty, padded.L5Unit
+		it.PackL6Qty, it.PackL6Unit = padded.L6Qty, padded.L6Unit
 		out = append(out, it)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": out})
@@ -462,6 +497,11 @@ func (h *OT) createCase(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "patient_name required"})
 		return
 	}
+	override, status, errMsg := parseAdminBilledAt(user.Role, req.BilledAt)
+	if errMsg != "" {
+		writeJSON(w, status, map[string]string{"error": errMsg})
+		return
+	}
 	items, errMsg := normalizeOtCaseItems(req.Items)
 	if errMsg != "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": errMsg})
@@ -514,16 +554,30 @@ func (h *OT) createCase(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	uid := user.ID
-	res, err := tx.Exec(`
-		INSERT INTO ot_cases (
-			case_no, patient_id, patient_name, patient_phone, patient_age_years, patient_gender,
-			doctor_id, doctor_name, procedure_name, notes, status, created_by_user_id,
-			discount_value, discount_unit
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?)
-	`, caseNo, patientID, req.PatientName, strings.TrimSpace(req.PatientPhone), req.PatientAgeYears,
-		strings.TrimSpace(req.PatientGender), doctorID, doctorName,
-		strings.TrimSpace(req.ProcedureName), strings.TrimSpace(req.Notes), uid,
-		discountValue, discountUnit)
+	var res sql.Result
+	if override != nil {
+		res, err = tx.Exec(`
+			INSERT INTO ot_cases (
+				case_no, patient_id, patient_name, patient_phone, patient_age_years, patient_gender,
+				doctor_id, doctor_name, procedure_name, notes, status, created_by_user_id,
+				discount_value, discount_unit, billed_at, created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?)
+		`, caseNo, patientID, req.PatientName, strings.TrimSpace(req.PatientPhone), req.PatientAgeYears,
+			strings.TrimSpace(req.PatientGender), doctorID, doctorName,
+			strings.TrimSpace(req.ProcedureName), strings.TrimSpace(req.Notes), uid,
+			discountValue, discountUnit, override.Yangon, override.UTC, override.UTC)
+	} else {
+		res, err = tx.Exec(`
+			INSERT INTO ot_cases (
+				case_no, patient_id, patient_name, patient_phone, patient_age_years, patient_gender,
+				doctor_id, doctor_name, procedure_name, notes, status, created_by_user_id,
+				discount_value, discount_unit
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?)
+		`, caseNo, patientID, req.PatientName, strings.TrimSpace(req.PatientPhone), req.PatientAgeYears,
+			strings.TrimSpace(req.PatientGender), doctorID, doctorName,
+			strings.TrimSpace(req.ProcedureName), strings.TrimSpace(req.Notes), uid,
+			discountValue, discountUnit)
+	}
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "create failed"})
 		return
@@ -542,7 +596,11 @@ func (h *OT) createCase(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	audit.WriteAudit(h.DB, &uid, "create", "ot_case", &caseID, map[string]any{"case_no": caseNo})
+	auditPayload := map[string]any{"case_no": caseNo}
+	if override != nil {
+		auditPayload["billed_at"] = override.Yangon
+	}
+	audit.WriteAudit(h.DB, &uid, "create", "ot_case", &caseID, auditPayload)
 	c, err := loadOtCase(h.DB, caseID)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "reload failed"})
@@ -763,15 +821,33 @@ func (h *OT) createBillFromCase(w http.ResponseWriter, r *http.Request, path str
 		return
 	}
 	uid := user.ID
-	res, err := tx.Exec(`
-		INSERT INTO ot_bills (
-			bill_no, case_id, case_no, patient_name, patient_phone, patient_age_years, patient_gender,
-			doctor_id, doctor_name, procedure_name, status, total_mmk, created_by_user_id,
-			discount_value, discount_unit, discount_mmk
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?)
-	`, billNo, c.ID, c.CaseNo, c.PatientName, c.PatientPhone, c.PatientAgeYears, c.PatientGender,
-		c.DoctorID, c.DoctorName, c.ProcedureName, net, uid,
-		req.DiscountValue, discountUnit, discountMMK)
+	var res sql.Result
+	if c.BilledAt != nil && strings.TrimSpace(*c.BilledAt) != "" {
+		override, parseStatus, parseErr := parseAdminBilledAt(auth.RoleAdmin, *c.BilledAt)
+		if parseErr != "" {
+			writeJSON(w, parseStatus, map[string]string{"error": parseErr})
+			return
+		}
+		res, err = tx.Exec(`
+			INSERT INTO ot_bills (
+				bill_no, case_id, case_no, patient_name, patient_phone, patient_age_years, patient_gender,
+				doctor_id, doctor_name, procedure_name, status, total_mmk, created_by_user_id,
+				discount_value, discount_unit, discount_mmk, billed_at, created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?)
+		`, billNo, c.ID, c.CaseNo, c.PatientName, c.PatientPhone, c.PatientAgeYears, c.PatientGender,
+			c.DoctorID, c.DoctorName, c.ProcedureName, net, uid,
+			req.DiscountValue, discountUnit, discountMMK, override.Yangon, override.UTC, override.UTC)
+	} else {
+		res, err = tx.Exec(`
+			INSERT INTO ot_bills (
+				bill_no, case_id, case_no, patient_name, patient_phone, patient_age_years, patient_gender,
+				doctor_id, doctor_name, procedure_name, status, total_mmk, created_by_user_id,
+				discount_value, discount_unit, discount_mmk
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?)
+		`, billNo, c.ID, c.CaseNo, c.PatientName, c.PatientPhone, c.PatientAgeYears, c.PatientGender,
+			c.DoctorID, c.DoctorName, c.ProcedureName, net, uid,
+			req.DiscountValue, discountUnit, discountMMK)
+	}
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "create bill failed"})
 		return
@@ -792,9 +868,13 @@ func (h *OT) createBillFromCase(w http.ResponseWriter, r *http.Request, path str
 		return
 	}
 
-	audit.WriteAudit(h.DB, &uid, "create", "ot_bill", &billID, map[string]any{
+	auditPayload := map[string]any{
 		"bill_no": billNo, "case_no": c.CaseNo, "total_mmk": net, "discount_mmk": discountMMK,
-	})
+	}
+	if c.BilledAt != nil && strings.TrimSpace(*c.BilledAt) != "" {
+		auditPayload["billed_at"] = *c.BilledAt
+	}
+	audit.WriteAudit(h.DB, &uid, "create", "ot_bill", &billID, auditPayload)
 	bill, err := loadOtBill(h.DB, billID)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "reload failed"})
@@ -834,7 +914,7 @@ func (h *OT) listBills(w http.ResponseWriter, r *http.Request) {
 		SELECT id, bill_no, case_id, case_no, patient_name, patient_phone, patient_age_years, patient_gender,
 			doctor_id, doctor_name, procedure_name, status, total_mmk, paid_at, voided_at, void_reason,
 			created_at, updated_at, discount_value, discount_unit, discount_mmk, printed_at,
-			admission_id, collected_cash
+			admission_id, collected_cash, billed_at
 		FROM ot_bills
 	`
 	args := make([]any, 0)
@@ -1518,6 +1598,11 @@ func normalizeOtCaseItems(in []otCaseItem) ([]otCaseItem, string) {
 		} else {
 			it.SaleQty = 0
 		}
+		foc, errMsg := normalizeFocFlag(it.Foc)
+		if errMsg != "" {
+			return nil, errMsg
+		}
+		it.Foc = foc
 		it.SortOrder = i
 		out = append(out, it)
 	}
@@ -1529,15 +1614,21 @@ func enrichOtCaseItems(tx *sql.Tx, items []otCaseItem) error {
 		var code, name string
 		var price int64
 		var active int
-		var l1q, l2q, l3q int64
-		var l1u, l2u, l3u string
+		var l1q, l2q, l3q, l4q, l5q, l6q int64
+		var l1u, l2u, l3u, l4u, l5u, l6u string
 		err := tx.QueryRow(`
 			SELECT code, name, sell_price_mmk, active,
 				COALESCE(pack_l1_qty, 1), COALESCE(pack_l1_unit, ''),
 				COALESCE(pack_l2_qty, 1), COALESCE(pack_l2_unit, ''),
-				COALESCE(pack_l3_qty, 1), COALESCE(pack_l3_unit, '')
+				COALESCE(pack_l3_qty, 1), COALESCE(pack_l3_unit, ''),
+				COALESCE(pack_l4_qty, 1), COALESCE(pack_l4_unit, ''),
+				COALESCE(pack_l5_qty, 1), COALESCE(pack_l5_unit, ''),
+				COALESCE(pack_l6_qty, 1), COALESCE(pack_l6_unit, '')
 			FROM items WHERE id = ?
-		`, items[i].ItemID).Scan(&code, &name, &price, &active, &l1q, &l1u, &l2q, &l2u, &l3q, &l3u)
+		`, items[i].ItemID).Scan(
+			&code, &name, &price, &active,
+			&l1q, &l1u, &l2q, &l2u, &l3q, &l3u, &l4q, &l4u, &l5q, &l5u, &l6q, &l6u,
+		)
 		if err == sql.ErrNoRows {
 			return fmt.Errorf("item not found")
 		}
@@ -1551,7 +1642,10 @@ func enrichOtCaseItems(tx *sql.Tx, items []otCaseItem) error {
 		items[i].Name = name
 		items[i].SellPriceMMK = price
 		if items[i].SaleUnit != "" {
-			pack := itemPack{L1Qty: l1q, L1Unit: l1u, L2Qty: l2q, L2Unit: l2u, L3Qty: l3q, L3Unit: l3u}
+			pack := padPackTail(itemPack{
+				L1Qty: l1q, L1Unit: l1u, L2Qty: l2q, L2Unit: l2u, L3Qty: l3q, L3Unit: l3u,
+				L4Qty: l4q, L4Unit: l4u, L5Qty: l5q, L5Unit: l5u, L6Qty: l6q, L6Unit: l6u,
+			})
 			factor, canonical, ok := saleUnitFactor(pack, items[i].SaleUnit)
 			if !ok {
 				return fmt.Errorf("%s: unknown unit %s", code, items[i].SaleUnit)
@@ -1576,9 +1670,9 @@ func insertOtCaseItems(tx *sql.Tx, caseID int64, items []otCaseItem) error {
 			INSERT INTO ot_case_items (
 				case_id, item_id, code, name, sell_price_mmk, qty_issued,
 				qty_used, qty_returned, qty_wasted, qty_kept_on_floor, sort_order,
-				sale_qty, sale_unit
-			) VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0, 0, ?, ?, ?)
-		`, caseID, it.ItemID, it.Code, it.Name, it.SellPriceMMK, it.QtyIssued, it.SortOrder, it.SaleQty, it.SaleUnit); err != nil {
+				sale_qty, sale_unit, foc
+			) VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0, 0, ?, ?, ?, ?)
+		`, caseID, it.ItemID, it.Code, it.Name, it.SellPriceMMK, it.QtyIssued, it.SortOrder, it.SaleQty, it.SaleUnit, it.Foc); err != nil {
 			return err
 		}
 	}
@@ -1594,6 +1688,11 @@ func normalizeOtCaseServices(in []otCaseService) ([]otCaseService, string) {
 		if s.UnitPriceMMK != nil && *s.UnitPriceMMK < 0 {
 			return nil, "service unit_price_mmk must be >= 0"
 		}
+		foc, errMsg := normalizeFocFlag(s.Foc)
+		if errMsg != "" {
+			return nil, errMsg
+		}
+		s.Foc = foc
 		s.SortOrder = i
 		out = append(out, s)
 	}
@@ -1638,9 +1737,9 @@ func insertOtCaseServices(tx *sql.Tx, caseID int64, services []otCaseService) er
 	for _, s := range services {
 		if _, err := tx.Exec(`
 			INSERT INTO ot_case_services (
-				case_id, service_id, code, description, unit_price_mmk, sort_order
-			) VALUES (?, ?, ?, ?, ?, ?)
-		`, caseID, s.RefID, s.Code, s.Description, s.UnitPriceMMK, s.SortOrder); err != nil {
+				case_id, service_id, code, description, unit_price_mmk, sort_order, foc
+			) VALUES (?, ?, ?, ?, ?, ?, ?)
+		`, caseID, s.RefID, s.Code, s.Description, s.UnitPriceMMK, s.SortOrder, s.Foc); err != nil {
 			return err
 		}
 	}
@@ -1649,7 +1748,7 @@ func insertOtCaseServices(tx *sql.Tx, caseID int64, services []otCaseService) er
 
 func loadOtCaseServicesTx(tx *sql.Tx, caseID int64) ([]otCaseService, error) {
 	rows, err := tx.Query(`
-		SELECT id, service_id, code, description, unit_price_mmk, sort_order
+		SELECT id, service_id, code, description, unit_price_mmk, sort_order, foc
 		FROM ot_case_services
 		WHERE case_id = ? ORDER BY sort_order, id
 	`, caseID)
@@ -1661,7 +1760,7 @@ func loadOtCaseServicesTx(tx *sql.Tx, caseID int64) ([]otCaseService, error) {
 	for rows.Next() {
 		var s otCaseService
 		var price sql.NullInt64
-		if err := rows.Scan(&s.ID, &s.RefID, &s.Code, &s.Description, &price, &s.SortOrder); err != nil {
+		if err := rows.Scan(&s.ID, &s.RefID, &s.Code, &s.Description, &price, &s.SortOrder, &s.Foc); err != nil {
 			return nil, err
 		}
 		if price.Valid {
@@ -1698,10 +1797,13 @@ func nextOtBillNo(tx *sql.Tx) (string, error) {
 func loadOtCaseItemsTx(tx *sql.Tx, caseID int64) ([]otCaseItem, error) {
 	rows, err := tx.Query(`
 		SELECT c.id, c.item_id, c.code, c.name, c.sell_price_mmk, c.qty_issued, c.sale_qty, c.sale_unit,
-			c.qty_used, c.qty_returned, c.qty_wasted, c.qty_kept_on_floor, c.sort_order,
+			c.qty_used, c.qty_returned, c.qty_wasted, c.qty_kept_on_floor, c.sort_order, c.foc,
 			COALESCE(i.pack_l1_qty, 1), COALESCE(i.pack_l1_unit, ''),
 			COALESCE(i.pack_l2_qty, 1), COALESCE(i.pack_l2_unit, ''),
-			COALESCE(i.pack_l3_qty, 1), COALESCE(i.pack_l3_unit, '')
+			COALESCE(i.pack_l3_qty, 1), COALESCE(i.pack_l3_unit, ''),
+			COALESCE(i.pack_l4_qty, 1), COALESCE(i.pack_l4_unit, ''),
+			COALESCE(i.pack_l5_qty, 1), COALESCE(i.pack_l5_unit, ''),
+			COALESCE(i.pack_l6_qty, 1), COALESCE(i.pack_l6_unit, '')
 		FROM ot_case_items c
 		LEFT JOIN items i ON i.id = c.item_id
 		WHERE c.case_id = ? ORDER BY c.sort_order, c.id
@@ -1715,8 +1817,9 @@ func loadOtCaseItemsTx(tx *sql.Tx, caseID int64) ([]otCaseItem, error) {
 		var it otCaseItem
 		if err := rows.Scan(
 			&it.ID, &it.ItemID, &it.Code, &it.Name, &it.SellPriceMMK, &it.QtyIssued, &it.SaleQty, &it.SaleUnit,
-			&it.QtyUsed, &it.QtyReturned, &it.QtyWasted, &it.QtyKeptOnFloor, &it.SortOrder,
+			&it.QtyUsed, &it.QtyReturned, &it.QtyWasted, &it.QtyKeptOnFloor, &it.SortOrder, &it.Foc,
 			&it.PackL1Qty, &it.PackL1Unit, &it.PackL2Qty, &it.PackL2Unit, &it.PackL3Qty, &it.PackL3Unit,
+			&it.PackL4Qty, &it.PackL4Unit, &it.PackL5Qty, &it.PackL5Unit, &it.PackL6Qty, &it.PackL6Unit,
 		); err != nil {
 			return nil, err
 		}
@@ -1743,7 +1846,7 @@ func loadOtCaseTx(tx *sql.Tx, id int64) (otCase, error) {
 		SELECT id, case_no, patient_id, patient_name, patient_phone, patient_age_years, patient_gender,
 			doctor_id, doctor_name, procedure_name, notes, status, issued_at, reconciled_at,
 			ot_bill_id, created_by_user_id, created_at, updated_at,
-			discount_value, discount_unit
+			discount_value, discount_unit, billed_at
 		FROM ot_cases WHERE id = ?
 	`, id)
 	c, err := scanOtCase(row)
@@ -1773,12 +1876,12 @@ func loadOtCaseTx(tx *sql.Tx, id int64) (otCase, error) {
 func scanOtCase(row scannable) (otCase, error) {
 	var c otCase
 	var patientID, age, doctorID, billID, createdBy sql.NullInt64
-	var issuedAt, reconciledAt sql.NullString
+	var issuedAt, reconciledAt, billedAt sql.NullString
 	err := row.Scan(
 		&c.ID, &c.CaseNo, &patientID, &c.PatientName, &c.PatientPhone, &age, &c.PatientGender,
 		&doctorID, &c.DoctorName, &c.ProcedureName, &c.Notes, &c.Status, &issuedAt, &reconciledAt,
 		&billID, &createdBy, &c.CreatedAt, &c.UpdatedAt,
-		&c.DiscountValue, &c.DiscountUnit,
+		&c.DiscountValue, &c.DiscountUnit, &billedAt,
 	)
 	if err != nil {
 		return c, err
@@ -1810,6 +1913,10 @@ func scanOtCase(row scannable) (otCase, error) {
 	if createdBy.Valid {
 		v := createdBy.Int64
 		c.CreatedByUserID = &v
+	}
+	if billedAt.Valid && strings.TrimSpace(billedAt.String) != "" {
+		v := billedAt.String
+		c.BilledAt = &v
 	}
 	return c, nil
 }
@@ -1880,6 +1987,11 @@ func otBillServiceLines(in []otServiceCharge) ([]otServiceCharge, string) {
 		case "item", "ot_fee":
 			continue
 		case "service":
+			foc, errMsg := normalizeFocFlag(l.Foc)
+			if errMsg != "" {
+				return nil, errMsg
+			}
+			l.Foc = foc
 			out = append(out, l)
 		default:
 			return nil, "invalid line_type"
@@ -1917,10 +2029,14 @@ func buildOtBillLines(tx *sql.Tx, c otCase, services []otServiceCharge) ([]otBil
 				lineTotal = it.SaleQty * unitPrice
 			}
 		}
+		foc, errMsg := normalizeFocFlag(it.Foc)
+		if errMsg != "" {
+			return nil, 0, errMsg
+		}
 		lines = append(lines, otBillLine{
 			LineType: "item", RefID: &itemID, Code: code,
 			Description: name, Qty: it.QtyIssued, UnitPriceMMK: price,
-			LineTotalMMK: lineTotal, SortOrder: sort,
+			LineTotalMMK: lineTotal, SortOrder: sort, Foc: foc,
 		})
 		sort++
 	}
@@ -1955,6 +2071,10 @@ func buildOtBillLines(tx *sql.Tx, c otCase, services []otServiceCharge) ([]otBil
 		if *s.UnitPriceMMK < 0 {
 			return nil, 0, "service unit_price_mmk must be >= 0"
 		}
+		foc, errMsg := normalizeFocFlag(s.Foc)
+		if errMsg != "" {
+			return nil, 0, errMsg
+		}
 		var code sql.NullString
 		var name string
 		var active int
@@ -1982,7 +2102,7 @@ func buildOtBillLines(tx *sql.Tx, c otCase, services []otServiceCharge) ([]otBil
 		}
 		lines = append(lines, otBillLine{
 			LineType: "service", RefID: &ref, Code: svcCode, Description: name,
-			Qty: 1, UnitPriceMMK: price, LineTotalMMK: price, SortOrder: sort,
+			Qty: 1, UnitPriceMMK: price, LineTotalMMK: price, SortOrder: sort, Foc: foc,
 		})
 		sort++
 	}
@@ -1991,7 +2111,7 @@ func buildOtBillLines(tx *sql.Tx, c otCase, services []otServiceCharge) ([]otBil
 	}
 	var total int64
 	for _, l := range lines {
-		total += l.LineTotalMMK
+		total += billableLineTotal(l.LineTotalMMK, l.Foc)
 	}
 	return lines, total, ""
 }
@@ -1999,9 +2119,9 @@ func buildOtBillLines(tx *sql.Tx, c otCase, services []otServiceCharge) ([]otBil
 func insertOtBillLines(tx *sql.Tx, billID int64, lines []otBillLine) error {
 	for _, l := range lines {
 		if _, err := tx.Exec(`
-			INSERT INTO ot_bill_lines (bill_id, line_type, ref_id, code, description, qty, unit_price_mmk, line_total_mmk, sort_order)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`, billID, l.LineType, l.RefID, l.Code, l.Description, l.Qty, l.UnitPriceMMK, l.LineTotalMMK, l.SortOrder); err != nil {
+			INSERT INTO ot_bill_lines (bill_id, line_type, ref_id, code, description, qty, unit_price_mmk, line_total_mmk, sort_order, foc)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`, billID, l.LineType, l.RefID, l.Code, l.Description, l.Qty, l.UnitPriceMMK, l.LineTotalMMK, l.SortOrder, l.Foc); err != nil {
 			return err
 		}
 	}
@@ -2010,7 +2130,7 @@ func insertOtBillLines(tx *sql.Tx, billID int64, lines []otBillLine) error {
 
 func loadOtBillLinesTx(tx *sql.Tx, billID int64) ([]otBillLine, error) {
 	rows, err := tx.Query(`
-		SELECT id, line_type, ref_id, code, description, qty, unit_price_mmk, line_total_mmk, sort_order
+		SELECT id, line_type, ref_id, code, description, qty, unit_price_mmk, line_total_mmk, sort_order, foc
 		FROM ot_bill_lines WHERE bill_id = ? ORDER BY sort_order, id
 	`, billID)
 	if err != nil {
@@ -2021,7 +2141,7 @@ func loadOtBillLinesTx(tx *sql.Tx, billID int64) ([]otBillLine, error) {
 	for rows.Next() {
 		var l otBillLine
 		var ref sql.NullInt64
-		if err := rows.Scan(&l.ID, &l.LineType, &ref, &l.Code, &l.Description, &l.Qty, &l.UnitPriceMMK, &l.LineTotalMMK, &l.SortOrder); err != nil {
+		if err := rows.Scan(&l.ID, &l.LineType, &ref, &l.Code, &l.Description, &l.Qty, &l.UnitPriceMMK, &l.LineTotalMMK, &l.SortOrder, &l.Foc); err != nil {
 			return nil, err
 		}
 		if ref.Valid {
@@ -2038,46 +2158,35 @@ func loadOtBill(db *sql.DB, id int64) (otBill, error) {
 		SELECT id, bill_no, case_id, case_no, patient_name, patient_phone, patient_age_years, patient_gender,
 			doctor_id, doctor_name, procedure_name, status, total_mmk, paid_at, voided_at, void_reason,
 			created_at, updated_at, discount_value, discount_unit, discount_mmk, printed_at,
-			admission_id, collected_cash
+			admission_id, collected_cash, billed_at
 		FROM ot_bills WHERE id = ?
 	`, id)
 	b, err := scanOtBill(row)
 	if err != nil {
 		return b, err
 	}
-	rows, err := db.Query(`
-		SELECT id, line_type, ref_id, code, description, qty, unit_price_mmk, line_total_mmk, sort_order
-		FROM ot_bill_lines WHERE bill_id = ? ORDER BY sort_order, id
-	`, id)
+	tx, err := db.Begin()
 	if err != nil {
 		return b, err
 	}
-	defer rows.Close()
-	b.Lines = make([]otBillLine, 0)
-	for rows.Next() {
-		var l otBillLine
-		var ref sql.NullInt64
-		if err := rows.Scan(&l.ID, &l.LineType, &ref, &l.Code, &l.Description, &l.Qty, &l.UnitPriceMMK, &l.LineTotalMMK, &l.SortOrder); err != nil {
-			return b, err
-		}
-		if ref.Valid {
-			v := ref.Int64
-			l.RefID = &v
-		}
-		b.Lines = append(b.Lines, l)
+	defer tx.Rollback()
+	lines, err := loadOtBillLinesTx(tx, id)
+	if err != nil {
+		return b, err
 	}
-	return b, rows.Err()
+	b.Lines = lines
+	return b, nil
 }
 
 func scanOtBill(row scannable) (otBill, error) {
 	var b otBill
 	var age, doctorID, admissionID sql.NullInt64
-	var paidAt, voidedAt, printedAt sql.NullString
+	var paidAt, voidedAt, printedAt, billedAt sql.NullString
 	err := row.Scan(
 		&b.ID, &b.BillNo, &b.CaseID, &b.CaseNo, &b.PatientName, &b.PatientPhone, &age, &b.PatientGender,
 		&doctorID, &b.DoctorName, &b.ProcedureName, &b.Status, &b.TotalMMK, &paidAt, &voidedAt, &b.VoidReason,
 		&b.CreatedAt, &b.UpdatedAt, &b.DiscountValue, &b.DiscountUnit, &b.DiscountMMK, &printedAt,
-		&admissionID, &b.CollectedCash,
+		&admissionID, &b.CollectedCash, &billedAt,
 	)
 	if err != nil {
 		return b, err
@@ -2089,6 +2198,10 @@ func scanOtBill(row scannable) (otBill, error) {
 	if doctorID.Valid {
 		v := doctorID.Int64
 		b.DoctorID = &v
+	}
+	if billedAt.Valid && strings.TrimSpace(billedAt.String) != "" {
+		v := billedAt.String
+		b.BilledAt = &v
 	}
 	if paidAt.Valid {
 		v := paidAt.String
@@ -2183,11 +2296,14 @@ th.num,td.num{text-align:right}
 
 func renderOtBillHTML(hosp *hospitalSettings, bill otBill, caseItems []otCaseItem) string {
 	dateLabel := bill.CreatedAt
+	if bill.BilledAt != nil && *bill.BilledAt != "" {
+		dateLabel = *bill.BilledAt
+	}
 	if bill.PaidAt != nil {
 		dateLabel = *bill.PaidAt
 	}
 	used := map[int]bool{}
-	lines := make([]receiptLine, 0, len(bill.Lines))
+	lines := make([]receiptLine, 0, len(bill.Lines)*2)
 	for _, line := range bill.Lines {
 		rl := receiptLine{
 			Code:        line.Code,
@@ -2210,7 +2326,7 @@ func renderOtBillHTML(hosp *hospitalSettings, bill otBill, caseItems []otCaseIte
 				break
 			}
 		}
-		lines = append(lines, rl)
+		lines = appendReceiptLine(lines, rl, line.Foc)
 	}
 	printedAt := ""
 	if bill.PrintedAt != nil {

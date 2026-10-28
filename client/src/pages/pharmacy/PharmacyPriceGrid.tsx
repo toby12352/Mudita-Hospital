@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
   impliedMarkupPercent,
   packPriceSlots,
@@ -18,6 +18,19 @@ type FocusCell =
 function markupFromPrices(buyOuter: number, sellOuter: number): string {
   const p = impliedMarkupPercent(buyOuter, sellOuter);
   return p != null ? String(p) : "";
+}
+
+function parseWholePercent(raw: string): number | null {
+  const trim = raw.trim();
+  if (trim === "") return null;
+  const pct = Number(trim);
+  if (!Number.isFinite(pct) || pct < 0 || !Number.isInteger(pct)) return null;
+  return pct;
+}
+
+/** Fingerprint of packing chain so deepening/qty edits re-sync sell factors. */
+function packChainKey(levels: PackLevels): string {
+  return `${levels.units.join("\0")}|${levels.qtys.join(",")}`;
 }
 
 export function PharmacyPriceGrid({
@@ -45,9 +58,21 @@ export function PharmacyPriceGrid({
   const unitsPerOuter = Math.max(1, factors[0] || 1);
   const sellOuter = Math.max(0, sellSmallest || 0) * unitsPerOuter;
   const slots = packPriceSlots(levels, buyOuter, sellOuter);
+  const chainKey = packChainKey(levels);
 
   const [markup, setMarkup] = useState(() => markupFromPrices(buyOuter, sellOuter));
   const [focus, setFocus] = useState<FocusCell | null>(null);
+
+  const unitsPerOuterRef = useRef(unitsPerOuter);
+  const chainKeyRef = useRef(chainKey);
+  const buyOuterRef = useRef(buyOuter);
+  const sellSmallestRef = useRef(sellSmallest);
+  const markupRef = useRef(markup);
+  const onPricesRef = useRef(onPrices);
+  buyOuterRef.current = buyOuter;
+  sellSmallestRef.current = sellSmallest;
+  markupRef.current = markup;
+  onPricesRef.current = onPrices;
 
   useEffect(() => {
     setMarkup(markupFromPrices(buyOuter, sellOuter));
@@ -56,18 +81,38 @@ export function PharmacyPriceGrid({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- syncToken is the intentional trigger
   }, [syncToken]);
 
+  // When packing depth or qtys change, keep outer sale (or markup %) aligned with the new factor.
+  useEffect(() => {
+    const prevFactor = unitsPerOuterRef.current;
+    const prevChain = chainKeyRef.current;
+    unitsPerOuterRef.current = unitsPerOuter;
+    chainKeyRef.current = chainKey;
+    if (prevChain === chainKey || prevFactor === unitsPerOuter) return;
+
+    setFocus(null);
+    const buy = buyOuterRef.current;
+    const sell = sellSmallestRef.current;
+    const pct = parseWholePercent(markupRef.current);
+    let nextSell = sell;
+    if (pct != null && buy > 0) {
+      nextSell = sellSmallestFromMarkup(buy, unitsPerOuter, pct);
+      setMarkup(String(pct));
+    } else if (sell > 0 && prevFactor > 0) {
+      const oldSellOuter = sell * prevFactor;
+      nextSell = Math.round(oldSellOuter / unitsPerOuter);
+      setMarkup(markupFromPrices(buy, nextSell * unitsPerOuter));
+    } else {
+      setMarkup(markupFromPrices(buy, sell * unitsPerOuter));
+    }
+    if (nextSell !== sell) {
+      onPricesRef.current(buy, nextSell);
+    }
+  }, [chainKey, unitsPerOuter]);
+
   function parseNonNeg(raw: string): number {
     if (raw.trim() === "") return 0;
     const n = Number(raw);
     return Number.isFinite(n) && n >= 0 ? n : 0;
-  }
-
-  function parseWholePercent(raw: string): number | null {
-    const trim = raw.trim();
-    if (trim === "") return null;
-    const pct = Number(trim);
-    if (!Number.isFinite(pct) || pct < 0 || !Number.isInteger(pct)) return null;
-    return pct;
   }
 
   function currentMarkupRaw(): string {

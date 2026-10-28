@@ -250,6 +250,7 @@ const EXACT: Record<string, string> = {
   "not found": "errNotFound",
   "invalid id": "errNotFound",
   "invalid json": "errInvalidForm",
+  "invalid billed_at": "errInvalidForm",
   "method not allowed": "errInvalidForm",
   "report failed": "errGeneric",
   "load failed": "errGeneric",

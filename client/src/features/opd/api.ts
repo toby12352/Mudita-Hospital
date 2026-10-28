@@ -12,6 +12,8 @@ export type OpdBillLine = {
   unit_price_mmk: number;
   line_total_mmk: number;
   sort_order?: number;
+  /** 1 = free of charge; bill total skips this line. */
+  foc?: number;
 };
 
 export type OpdBill = {
@@ -76,6 +78,8 @@ export type OpdBillWrite = {
   patient_id?: number | null;
   discount_value?: number;
   discount_unit?: "percent" | "mmk";
+  /** Admin-only on create. Yangon wall time as `YYYY-MM-DDTHH:mm`. */
+  billed_at?: string;
 };
 
 export async function listOpdDoctors(q = ""): Promise<OpdDoctor[]> {

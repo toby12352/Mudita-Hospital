@@ -15,6 +15,8 @@ type Props = {
   onConfirm?: () => void;
   /** Label for the confirm button (defaults: print → Print, danger → Delete, else Confirm). */
   confirmLabel?: string;
+  /** Label for the single OK button when not confirming (defaults: alertOk). */
+  okLabel?: string;
   /** Filled red confirm button (delete / restore). */
   danger?: boolean;
   /** Disables buttons and close while an action is in flight. */
@@ -152,6 +154,7 @@ export function AlertDialog({
   title,
   onConfirm,
   confirmLabel,
+  okLabel,
   danger = false,
   busy = false,
   error = null,
@@ -166,6 +169,7 @@ export function AlertDialog({
   const isConfirm = typeof onConfirm === "function";
   const heading = title?.trim() || defaultTitle(tone, t);
   const actionLabel = confirmLabel?.trim() || defaultConfirmLabel(tone, danger, t);
+  const singleOkLabel = okLabel?.trim() || t("alertOk");
   const errorText = error?.trim() ?? "";
 
   useEffect(() => {
@@ -268,7 +272,7 @@ export function AlertDialog({
             onClick={onClose}
             disabled={busy}
           >
-            {t("alertOk")}
+            {singleOkLabel}
           </button>
         )}
       </div>

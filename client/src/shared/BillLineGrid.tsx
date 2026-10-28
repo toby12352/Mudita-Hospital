@@ -28,6 +28,8 @@ export type BillLineGridRow = {
   /** Draft row shows an integer kyat price input. */
   priceEditable?: boolean;
   removable?: boolean;
+  /** Free-of-charge: show a companion FOC row with the negative amount. */
+  foc?: boolean;
 };
 
 type RowSnapshot = {
@@ -96,7 +98,7 @@ export type BillLineGridEntry<T> = {
   unitsFor: (item: T) => BillLineUnitOption[];
   /** Pick adds the row immediately with qty 1. */
   commitOnPick?: boolean;
-  onCommit: (item: T, qty: number, unit: BillLineUnitOption | null) => void;
+  onCommit: (item: T, qty: number, unit: BillLineUnitOption | null, foc: boolean) => void;
   /** Enter on an exact code while the suggestion menu is closed. */
   onSubmitCode?: (code: string) => Promise<T | null>;
 };
@@ -112,6 +114,7 @@ export type BillLineEntryNode = {
 export type BillLineEntryOptions = {
   showUnitColumn: boolean;
   showPackColumn?: boolean;
+  showFoc?: boolean;
   sourceLabel: string;
   sourceIcon?: ActionIconName;
 };
@@ -129,6 +132,7 @@ export function createBillLineEntry<T>(
         entry={entry}
         showUnitColumn={options.showUnitColumn}
         showPackColumn={options.showPackColumn ?? false}
+        showFoc={options.showFoc ?? false}
       />
     ),
   };
@@ -138,6 +142,7 @@ type GridProps = {
   draft: boolean;
   showUnitColumn?: boolean;
   showPackColumn?: boolean;
+  showFoc?: boolean;
   itemHeader: string;
   priceHeader: string;
   rows: BillLineGridRow[];
@@ -147,6 +152,8 @@ type GridProps = {
   onPriceCommit?: (index: number, priceMmk: number | null) => boolean | void;
   onUnitChange?: (index: number, unitId: string) => void;
   onRemove: (index: number) => void;
+  /** Drop FOC only; the priced line stays. */
+  onClearFoc?: (index: number) => void;
   entries?: BillLineEntryNode[];
 };
 
@@ -162,6 +169,7 @@ export function BillLineGrid({
   draft,
   showUnitColumn = false,
   showPackColumn = false,
+  showFoc = false,
   itemHeader,
   priceHeader,
   rows,
@@ -170,6 +178,7 @@ export function BillLineGrid({
   onPriceCommit,
   onUnitChange,
   onRemove,
+  onClearFoc,
   entries = [],
 }: GridProps) {
   const { t } = useI18n();
@@ -184,6 +193,7 @@ export function BillLineGrid({
     "opd-bill-grid",
     showUnitColumn ? "opd-bill-grid--units" : "",
     showPackColumn ? "opd-bill-grid--pack" : "",
+    showFoc ? "opd-bill-grid--foc" : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -265,6 +275,7 @@ export function BillLineGrid({
         {showUnitColumn ? <span>{t("unit")}</span> : null}
         <span className="num">{priceHeader}</span>
         <span className="num">{t("amount")}</span>
+        {showFoc ? <span className="num">{t("foc")}</span> : null}
         <span />
       </div>
       <div className="opd-bill-grid-body" ref={bodyRef}>
@@ -276,6 +287,7 @@ export function BillLineGrid({
             draft={draft}
             showUnitColumn={showUnitColumn}
             showPackColumn={showPackColumn}
+            showFoc={showFoc}
             onQtyCommit={(qty) => onQtyCommit(index, qty)}
             onPriceCommit={
               onPriceCommit ? (price) => onPriceCommit(index, price) : undefined
@@ -284,6 +296,7 @@ export function BillLineGrid({
               onUnitChange ? (unitId) => onUnitChange(index, unitId) : undefined
             }
             onRemove={() => onRemove(index)}
+            onClearFoc={onClearFoc ? () => onClearFoc(index) : undefined}
           />
         ))}
       </div>
@@ -365,19 +378,23 @@ function CommittedRow({
   draft,
   showUnitColumn,
   showPackColumn,
+  showFoc,
   onQtyCommit,
   onPriceCommit,
   onUnitChange,
   onRemove,
+  onClearFoc,
 }: {
   row: BillLineGridRow;
   draft: boolean;
   showUnitColumn: boolean;
   showPackColumn: boolean;
+  showFoc: boolean;
   onQtyCommit: (qty: number) => boolean | void;
   onPriceCommit?: (priceMmk: number | null) => boolean | void;
   onUnitChange?: (unitId: string) => void;
   onRemove: () => void;
+  onClearFoc?: () => void;
 }) {
   const { t } = useI18n();
   const editable = draft && !row.locked;
@@ -385,66 +402,93 @@ function CommittedRow({
   const units = row.units ?? [];
   const canChangeUnit = editable && units.length > 1 && !!onUnitChange;
   const priceEditable = draft && !!row.priceEditable && !!onPriceCommit;
+  const showCompanion = !!row.foc && row.priceMmk != null;
 
   return (
-    <div className="opd-bill-grid-row" data-row-key={row.key}>
-      <span className="bill-line-title" title={row.title}>
-        {row.title}
-      </span>
-      {showPackColumn ? (
-        <span className="bill-line-pack" title={row.packTitle || row.packLabel || undefined}>
-          {row.packLabel ?? ""}
+    <>
+      <div className="opd-bill-grid-row" data-row-key={row.key}>
+        <span className="bill-line-title" title={row.title}>
+          {row.title}
         </span>
-      ) : null}
-      <span className="num">
-        {qtyEditable ? (
-          <QtyField qty={row.qty} ariaLabel={t("qty")} onCommit={onQtyCommit} />
-        ) : (
-          row.qty
-        )}
-      </span>
-      {showUnitColumn ? (
-        <span className="bill-line-cell">
-          {canChangeUnit ? (
-            <select
-              className="bill-unit-select"
-              aria-label={t("unit")}
-              value={row.unitId ?? units[0]?.id ?? ""}
-              onChange={(e) => onUnitChange?.(e.target.value)}
-            >
-              {units.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.label}
-                </option>
-              ))}
-            </select>
+        {showPackColumn ? (
+          <span className="bill-line-pack" title={row.packTitle || row.packLabel || undefined}>
+            {row.packLabel ?? ""}
+          </span>
+        ) : null}
+        <span className="num">
+          {qtyEditable ? (
+            <QtyField qty={row.qty} ariaLabel={t("qty")} onCommit={onQtyCommit} />
           ) : (
-            unitText(row)
+            row.qty
           )}
         </span>
-      ) : null}
-      <span className="num">
-        {priceEditable ? (
-          <PriceField
-            priceMmk={row.priceMmk}
-            ariaLabel={t("fees")}
-            onCommit={onPriceCommit}
-          />
-        ) : row.priceMmk == null ? (
-          ""
-        ) : (
-          formatMMK(row.priceMmk)
-        )}
-      </span>
-      <span className="num">{row.priceMmk == null ? "" : formatMMK(row.amountMmk)}</span>
-      <span>
-        {draft && row.removable !== false ? (
-          <button type="button" className="btn ghost danger" aria-label={t("delete")} onClick={onRemove}>
-            <ActionIcon name="trash" />
-          </button>
+        {showUnitColumn ? (
+          <span className="bill-line-cell">
+            {canChangeUnit ? (
+              <select
+                className="bill-unit-select"
+                aria-label={t("unit")}
+                value={row.unitId ?? units[0]?.id ?? ""}
+                onChange={(e) => onUnitChange?.(e.target.value)}
+              >
+                {units.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.label}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              unitText(row)
+            )}
+          </span>
         ) : null}
-      </span>
-    </div>
+        <span className="num">
+          {priceEditable ? (
+            <PriceField
+              priceMmk={row.priceMmk}
+              ariaLabel={t("fees")}
+              onCommit={onPriceCommit}
+            />
+          ) : row.priceMmk == null ? (
+            ""
+          ) : (
+            formatMMK(row.priceMmk)
+          )}
+        </span>
+        <span className="num">{row.priceMmk == null ? "" : formatMMK(row.amountMmk)}</span>
+        {showFoc ? <span className="num" /> : null}
+        <span>
+          {draft && row.removable !== false ? (
+            <button type="button" className="btn ghost danger" aria-label={t("delete")} onClick={onRemove}>
+              <ActionIcon name="trash" />
+            </button>
+          ) : null}
+        </span>
+      </div>
+      {showCompanion ? (
+        <div className="opd-bill-grid-row bill-line-foc" data-row-key={`${row.key}-foc`}>
+          <span className="bill-line-title">{t("foc")}</span>
+          {showPackColumn ? <span className="bill-line-pack" /> : null}
+          <span className="num" />
+          {showUnitColumn ? <span className="bill-line-cell" /> : null}
+          <span className="num" />
+          <span className="num">{formatMMK(-row.amountMmk)}</span>
+          {showFoc ? <span className="num" /> : null}
+          <span>
+            {draft && onClearFoc ? (
+              <button
+                type="button"
+                className="btn ghost danger"
+                aria-label={t("delete")}
+                onClick={onClearFoc}
+              >
+                <ActionIcon name="trash" />
+              </button>
+            ) : null}
+          </span>
+        </div>
+      ) : null}
+    </>
   );
 }
 
@@ -557,10 +601,12 @@ function EntryRow<T>({
   entry,
   showUnitColumn,
   showPackColumn,
+  showFoc,
 }: {
   entry: BillLineGridEntry<T>;
   showUnitColumn: boolean;
   showPackColumn: boolean;
+  showFoc: boolean;
 }) {
   const { t } = useI18n();
   const rowRef = useRef<HTMLDivElement>(null);
@@ -571,10 +617,12 @@ function EntryRow<T>({
   const submitSeq = useRef(0);
   const pickedRef = useRef<T | null>(null);
   const unitIdRef = useRef("");
+  const focRef = useRef(false);
   const [text, setText] = useState("");
   const [picked, setPicked] = useState<T | null>(null);
   const [qty, setQty] = useState("");
   const [unitId, setUnitId] = useState("");
+  const [foc, setFoc] = useState(false);
 
   const units = picked ? entry.unitsFor(picked) : [];
   const needsUnit = showUnitColumn && units.length > 0;
@@ -584,6 +632,7 @@ function EntryRow<T>({
 
   pickedRef.current = picked;
   unitIdRef.current = unitId;
+  focRef.current = foc;
 
   useEffect(() => {
     if (!pickedKey) {
@@ -634,15 +683,17 @@ function EntryRow<T>({
     submitSeq.current += 1;
     pickedRef.current = null;
     unitIdRef.current = "";
+    focRef.current = false;
     setPicked(null);
     setQty("");
     setText("");
     setUnitId("");
+    setFoc(false);
   }
 
   function commitPicked(item: T, n: number, unit: BillLineUnitOption | null) {
     pickedRef.current = null;
-    entry.onCommit(item, n, unit);
+    entry.onCommit(item, n, unit, focRef.current);
     resetEntry();
   }
 
@@ -827,6 +878,19 @@ function EntryRow<T>({
       ) : null}
       <span className="num" />
       <span className="num" />
+      {showFoc ? (
+        <span className="bill-line-cell bill-line-foc-cell">
+          <label className="bill-line-foc-label">
+            <input
+              type="checkbox"
+              className="bill-line-foc-check"
+              checked={foc}
+              aria-label={t("foc")}
+              onChange={(e) => setFoc(e.target.checked)}
+            />
+          </label>
+        </span>
+      ) : null}
       <span />
     </div>
   );
