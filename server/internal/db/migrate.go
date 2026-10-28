@@ -1128,6 +1128,15 @@ CREATE TABLE IF NOT EXISTS user_grants (
 CREATE INDEX IF NOT EXISTS idx_user_grants_user_id ON user_grants(user_id);
 `,
 	},
+	{
+		Name: "029_patient_chart_demographics",
+		SQL: `
+-- Optional chart demographics. Existing rows stay blank via the defaults.
+ALTER TABLE patients ADD COLUMN date_of_birth TEXT NOT NULL DEFAULT '';
+ALTER TABLE patients ADD COLUMN nrc TEXT NOT NULL DEFAULT '';
+ALTER TABLE patients ADD COLUMN father_mother_name TEXT NOT NULL DEFAULT '';
+`,
+	},
 }
 
 // Migrate applies pending migrations inside a transaction per migration.

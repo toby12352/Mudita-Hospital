@@ -50,7 +50,13 @@ func TestPatientChartAPI(t *testing.T) {
 	w = doJSON(h, http.MethodPost, "/api/patients", adminTok, `{"name":"Bad Age","age_years":-1}`)
 	mustCode(t, w, http.StatusBadRequest)
 
-	body := `{"name":"Daw Hla","phone":"091111222","age_years":40,"gender":"F","notes":"first"}`
+	w = doJSON(h, http.MethodPost, "/api/patients", adminTok, `{"name":"Bad DOB","date_of_birth":"not-a-date"}`)
+	mustCode(t, w, http.StatusBadRequest)
+
+	w = doJSON(h, http.MethodPost, "/api/patients", adminTok, `{"name":"Bad DOB","date_of_birth":"2024-02-30"}`)
+	mustCode(t, w, http.StatusBadRequest)
+
+	body := `{"name":"Daw Hla","phone":"091111222","age_years":40,"gender":"F","date_of_birth":"1985-03-15","nrc":"13/dagana(n)123456","father_mother_name":"U Hla","notes":"first"}`
 	w = doJSON(h, http.MethodPost, "/api/patients", adminTok, body)
 	mustCode(t, w, http.StatusCreated)
 	first := decodePatient(t, w)
@@ -59,6 +65,9 @@ func TestPatientChartAPI(t *testing.T) {
 	}
 	if first.AgeYears == nil || *first.AgeYears != 40 || first.Gender != "F" || first.UpdatedAt == "" {
 		t.Fatalf("created fields %+v", first)
+	}
+	if first.DateOfBirth != "1985-03-15" || first.NRC != "13/dagana(n)123456" || first.FatherMotherName != "U Hla" {
+		t.Fatalf("created demographics %+v", first)
 	}
 
 	w = doJSON(h, http.MethodPost, "/api/patients", adminTok, body)
@@ -75,6 +84,13 @@ func TestPatientChartAPI(t *testing.T) {
 		t.Fatalf("phone search %d: %+v", len(found), found)
 	}
 
+	w = doJSON(h, http.MethodGet, "/api/patients?q=dagana(n)123456", adminTok, "")
+	mustCode(t, w, http.StatusOK)
+	byNRC := decodePatientList(t, w)
+	if !patientListHas(byNRC, first.ID) {
+		t.Fatalf("nrc search missed %d: %+v", first.ID, byNRC)
+	}
+
 	w = doJSON(h, http.MethodGet, "/api/patients?q="+strconv.FormatInt(first.ID, 10), adminTok, "")
 	mustCode(t, w, http.StatusOK)
 	byID := decodePatientList(t, w)
@@ -89,6 +105,21 @@ func TestPatientChartAPI(t *testing.T) {
 	if updated.Notes != "ward note" || updated.ID != first.ID {
 		t.Fatalf("update %+v", updated)
 	}
+	if updated.DateOfBirth != "1985-03-15" || updated.NRC != "13/dagana(n)123456" || updated.FatherMotherName != "U Hla" {
+		t.Fatalf("omitted demographics wiped %+v", updated)
+	}
+
+	w = doJSON(h, http.MethodPut, "/api/patients/"+strconv.FormatInt(first.ID, 10), adminTok,
+		`{"name":"Daw Hla","phone":"091111222","age_years":40,"gender":"F","date_of_birth":"","nrc":"","father_mother_name":"","notes":"ward note"}`)
+	mustCode(t, w, http.StatusOK)
+	cleared := decodePatient(t, w)
+	if cleared.DateOfBirth != "" || cleared.NRC != "" || cleared.FatherMotherName != "" {
+		t.Fatalf("clear demographics %+v", cleared)
+	}
+
+	w = doJSON(h, http.MethodPut, "/api/patients/"+strconv.FormatInt(first.ID, 10), adminTok,
+		`{"name":"Daw Hla","phone":"091111222","age_years":40,"gender":"F","date_of_birth":"1985-03-15","nrc":"13/dagana(n)123456","father_mother_name":"U Hla","notes":"ward note"}`)
+	mustCode(t, w, http.StatusOK)
 
 	w = doJSON(h, http.MethodGet, "/api/patients/"+strconv.FormatInt(first.ID, 10), adminTok, "")
 	mustCode(t, w, http.StatusOK)
@@ -130,7 +161,7 @@ func TestPatientChartAPI(t *testing.T) {
 	if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM audit_logs WHERE entity = 'patient' AND action = 'update'`).Scan(&updates); err != nil {
 		t.Fatal(err)
 	}
-	if creates != 2 || updates != 1 {
+	if creates != 2 || updates != 3 {
 		t.Fatalf("audit create=%d update=%d", creates, updates)
 	}
 

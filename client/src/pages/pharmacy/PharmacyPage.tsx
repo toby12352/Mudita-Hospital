@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useId, useMemo, useState } from "react";
+import { Fragment, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useClinicActions } from "@/app/clinicActions";
 import type { PharmacyScreen } from "@/app/types";
 import {
@@ -48,6 +48,7 @@ export function PharmacyPage({
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [selectedDetail, setSelectedDetail] = useState<PharmacyItem | null>(null);
   const [editing, setEditing] = useState<PharmacyItem | null>(null);
+  const detailPaneRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [listEpoch, setListEpoch] = useState(0);
   const [detailEpoch, setDetailEpoch] = useState(0);
@@ -388,94 +389,100 @@ export function PharmacyPage({
         </div>
       </div>
 
-      <div className="drug-setup-detail-pane">
-        {mode === "history" ? (
-          <PharmacyMovementsTab />
-        ) : creating && pharmacyUpdate ? (
-          <>
-            <h3 className="drug-setup-title" style={{ fontSize: "1.1rem" }}>
-              {t("createNewItemTitle")}
-            </h3>
-            <PharmacyItemForm
-              key={createKey}
-              editing={null}
-              existingCodes={list.map((i) => i.code)}
-              onSaved={(item) => void onCreateSaved(item)}
-              onCancel={closeCreate}
-            />
-          </>
-        ) : (
-          <>
-            <h3 className="drug-setup-title" style={{ fontSize: "1.1rem" }}>
-              {t("drugInfo")}
-            </h3>
-            {infoItem ? (
-              <>
-                <div className="drug-info-fields">
-                  <div className="drug-info-field">
-                    <span className="drug-info-label">{t("brandName")}</span>
-                    <span className="drug-info-input">{infoItem.name}</span>
-                  </div>
-                  <div className="drug-info-field">
-                    <span className="drug-info-label">{t("dosage")}</span>
-                    <span className="drug-info-input">{infoItem.dosage || "—"}</span>
-                  </div>
-                  <div className="drug-info-field">
-                    <span className="drug-info-label">{t("packingSize")}</span>
-                    <span className="drug-info-input">
-                      {formatPackCompact(packFromItem(infoItem))}
-                    </span>
-                  </div>
-                  <PharmacyItemLots
-                    batches={infoItem.batches}
-                    stockUnit={infoItem.stock_unit || infoItem.pack_l3_unit || ""}
-                    showOnHand
-                    onHand={infoItem.stock_main}
-                  />
-                </div>
-                {(() => {
-                  const pack = packFromItem(infoItem);
-                  const levels = packLevelsFromItemPack(pack);
-                  const buyOuter = restockDraftPrices?.buy ?? infoItem.buy_price_mmk;
-                  const sellSmallest = restockDraftPrices?.sell ?? infoItem.sell_price_mmk;
-                  const slots = packPriceSlots(
-                    levels,
-                    buyOuter,
-                    sellOuterFromSmallest(pack, sellSmallest),
-                  );
-                  return (
-                    <div className="drug-info-price-grid" aria-label={t("pricing")}>
-                      <span />
-                      <span>{t("purPrice")}</span>
-                      <span>{t("salePrice")}</span>
-                      {slots.map((slot) => (
-                        <Fragment key={slot.unit}>
-                          <span>{slot.unit}</span>
-                          <span className="price-buy">{slot.buy_mmk.toLocaleString()}</span>
-                          <span className="price-sell">{slot.sell_mmk.toLocaleString()}</span>
-                        </Fragment>
-                      ))}
+      <div
+        ref={detailPaneRef}
+        className="drug-setup-detail-pane drug-setup-detail-pane--pharmacy"
+      >
+        <div className="drug-setup-detail-body">
+          {mode === "history" ? (
+            <PharmacyMovementsTab />
+          ) : creating && pharmacyUpdate ? (
+            <>
+              <h3 className="drug-setup-title" style={{ fontSize: "1.1rem" }}>
+                {t("createNewItemTitle")}
+              </h3>
+              <PharmacyItemForm
+                key={createKey}
+                editing={null}
+                existingCodes={list.map((i) => i.code)}
+                onSaved={(item) => void onCreateSaved(item)}
+                onCancel={closeCreate}
+              />
+            </>
+          ) : (
+            <>
+              <h3 className="drug-setup-title" style={{ fontSize: "1.1rem" }}>
+                {t("drugInfo")}
+              </h3>
+              {infoItem ? (
+                <>
+                  <div className="drug-info-fields">
+                    <div className="drug-info-field">
+                      <span className="drug-info-label">{t("brandName")}</span>
+                      <span className="drug-info-input">{infoItem.name}</span>
                     </div>
-                  );
-                })()}
-                <PharmacyItemsTab
-                  onEdit={() => void openEdit(infoItem)}
-                  onDelete={pharmacyDelete ? openDeleteConfirm : undefined}
-                  deleteBusy={deleteBusy}
-                  selectedId={infoItem.id}
-                  embedDetail
-                  onRestockPrices={setRestockDraftPrices}
-                  onChanged={() => {
-                    setListEpoch((n) => n + 1);
-                    setDetailEpoch((n) => n + 1);
-                  }}
-                />
-              </>
-            ) : (
-              <p className="hint">{t("noItemsYet")}</p>
-            )}
-          </>
-        )}
+                    <div className="drug-info-field">
+                      <span className="drug-info-label">{t("dosage")}</span>
+                      <span className="drug-info-input">{infoItem.dosage || "—"}</span>
+                    </div>
+                    <div className="drug-info-field">
+                      <span className="drug-info-label">{t("packingSize")}</span>
+                      <span className="drug-info-input">
+                        {formatPackCompact(packFromItem(infoItem))}
+                      </span>
+                    </div>
+                    <PharmacyItemLots
+                      batches={infoItem.batches}
+                      stockUnit={infoItem.stock_unit || infoItem.pack_l3_unit || ""}
+                      showOnHand
+                      onHand={infoItem.stock_main}
+                    />
+                  </div>
+                  {(() => {
+                    const pack = packFromItem(infoItem);
+                    const levels = packLevelsFromItemPack(pack);
+                    const buyOuter = restockDraftPrices?.buy ?? infoItem.buy_price_mmk;
+                    const sellSmallest = restockDraftPrices?.sell ?? infoItem.sell_price_mmk;
+                    const slots = packPriceSlots(
+                      levels,
+                      buyOuter,
+                      sellOuterFromSmallest(pack, sellSmallest),
+                    );
+                    return (
+                      <div className="drug-info-price-grid" aria-label={t("pricing")}>
+                        <span />
+                        <span>{t("purPrice")}</span>
+                        <span>{t("salePrice")}</span>
+                        {slots.map((slot) => (
+                          <Fragment key={slot.unit}>
+                            <span>{slot.unit}</span>
+                            <span className="price-buy">{slot.buy_mmk.toLocaleString()}</span>
+                            <span className="price-sell">{slot.sell_mmk.toLocaleString()}</span>
+                          </Fragment>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                  <PharmacyItemsTab
+                    onEdit={() => void openEdit(infoItem)}
+                    onDelete={pharmacyDelete ? openDeleteConfirm : undefined}
+                    deleteBusy={deleteBusy}
+                    selectedId={infoItem.id}
+                    embedDetail
+                    overlayHostRef={detailPaneRef}
+                    onRestockPrices={setRestockDraftPrices}
+                    onChanged={() => {
+                      setListEpoch((n) => n + 1);
+                      setDetailEpoch((n) => n + 1);
+                    }}
+                  />
+                </>
+              ) : (
+                <p className="hint">{t("noItemsYet")}</p>
+              )}
+            </>
+          )}
+        </div>
       </div>
 
       {deleteConfirm && infoItem ? (

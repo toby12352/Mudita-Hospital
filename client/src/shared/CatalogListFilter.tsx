@@ -38,10 +38,15 @@ export function CatalogDateSortField({
   id,
   value,
   onChange,
+  hideLabel = false,
+  labelledBy,
 }: {
   id: string;
   value: DateSortValue;
   onChange: (value: DateSortValue) => void;
+  /** When true, omit the built-in label (use a sibling label via labelledBy). */
+  hideLabel?: boolean;
+  labelledBy?: string;
 }) {
   const { t } = useI18n();
   const labelId = `${id}-date-sort-label`;
@@ -49,13 +54,16 @@ export function CatalogDateSortField({
     desc: t("sortNewest"),
     asc: t("sortOldest"),
   };
+  const groupLabelledBy = labelledBy ?? (hideLabel ? undefined : labelId);
 
   return (
-    <div className="catalog-filter-field">
-      <span className="drug-info-label" id={labelId}>
-        {t("sortByDate")}
-      </span>
-      <div className="catalog-filter-segment" role="radiogroup" aria-labelledby={labelId}>
+    <div className={`catalog-filter-field${hideLabel ? " catalog-filter-field--control-only" : ""}`}>
+      {hideLabel ? null : (
+        <span className="drug-info-label" id={labelId}>
+          {t("sortByDate")}
+        </span>
+      )}
+      <div className="catalog-filter-segment" role="radiogroup" aria-labelledby={groupLabelledBy}>
         {DATE_SORT_OPTIONS.map((opt) => (
           <label key={opt}>
             <input

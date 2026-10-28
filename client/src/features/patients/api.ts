@@ -8,6 +8,9 @@ export type PatientChart = {
   phone: string;
   age_years: number | null;
   gender: string;
+  date_of_birth: string;
+  nrc: string;
+  father_mother_name: string;
   notes: string;
   updated_at: string;
   open_admission_id?: number | null;
@@ -18,6 +21,9 @@ export type PatientWrite = {
   phone: string;
   age_years: number | null;
   gender: string;
+  date_of_birth: string;
+  nrc: string;
+  father_mother_name: string;
   notes: string;
 };
 

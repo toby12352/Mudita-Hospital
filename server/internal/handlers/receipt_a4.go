@@ -9,12 +9,18 @@ import (
 // a4ReceiptCSS styles OT patient bills for A4 laser/inkjet (B&W).
 func a4ReceiptCSS() string {
 	return `
-@page{size:A4;margin:12mm}
+@page{size:A4;margin:10mm}
 *{box-sizing:border-box}
+html,body{height:100%}
 body{
   margin:0;padding:0;color:#000;background:#fff;
   font-family:Arial,"Noto Sans Myanmar","Segoe UI",sans-serif;
-  font-size:10pt;line-height:1.4;font-variant-numeric:tabular-nums
+  font-size:10pt;line-height:1.4;font-variant-numeric:tabular-nums;
+  display:flex;justify-content:center;align-items:flex-start
+}
+.a4-sheet{
+  width:100%;max-width:180mm;margin:0 auto;padding:8mm;
+  box-sizing:border-box
 }
 .a4-header{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:10px}
 .a4-brand{display:flex;align-items:center;gap:10px;min-width:0}
@@ -53,7 +59,8 @@ body{
 .a4-sign{flex:1;text-align:center;font-size:9.5pt}
 .a4-sign .line{border-top:1px solid #000;margin:36px 8px 6px}
 @media print{
-  body{margin:0}
+  body{margin:0;display:flex;justify-content:center;align-items:flex-start}
+  .a4-sheet{padding:8mm}
 }
 `
 }
@@ -68,8 +75,9 @@ func renderA4ReceiptHTML(hosp *hospitalSettings, bill receiptBill) string {
 	b.WriteString(`</title><style>`)
 	b.WriteString(a4ReceiptCSS())
 	b.WriteString(`</style></head><body>`)
+	b.WriteString(`<div class="a4-sheet">`)
 	writeA4Receipt(&b, hosp, bill)
-	b.WriteString(`</body></html>`)
+	b.WriteString(`</div></body></html>`)
 	return b.String()
 }
 

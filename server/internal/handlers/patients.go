@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"mudita-hospital/server/internal/audit"
 	"mudita-hospital/server/internal/auth"
@@ -21,22 +22,30 @@ type Patients struct {
 }
 
 type patientChart struct {
-	ID              int64  `json:"id"`
-	Name            string `json:"name"`
-	Phone           string `json:"phone"`
-	AgeYears        *int64 `json:"age_years"`
-	Gender          string `json:"gender"`
-	Notes           string `json:"notes"`
-	UpdatedAt       string `json:"updated_at"`
-	OpenAdmissionID *int64 `json:"open_admission_id,omitempty"`
+	ID               int64  `json:"id"`
+	Name             string `json:"name"`
+	Phone            string `json:"phone"`
+	AgeYears         *int64 `json:"age_years"`
+	Gender           string `json:"gender"`
+	DateOfBirth      string `json:"date_of_birth"`
+	NRC              string `json:"nrc"`
+	FatherMotherName string `json:"father_mother_name"`
+	Notes            string `json:"notes"`
+	UpdatedAt        string `json:"updated_at"`
+	OpenAdmissionID  *int64 `json:"open_admission_id,omitempty"`
 }
 
+// Optional chart fields use *string so an older client that omits the key
+// does not wipe stored values on update. A sent empty string clears them.
 type patientWriteRequest struct {
-	Name     string `json:"name"`
-	Phone    string `json:"phone"`
-	AgeYears *int64 `json:"age_years"`
-	Gender   string `json:"gender"`
-	Notes    string `json:"notes"`
+	Name             string  `json:"name"`
+	Phone            string  `json:"phone"`
+	AgeYears         *int64  `json:"age_years"`
+	Gender           string  `json:"gender"`
+	DateOfBirth      *string `json:"date_of_birth"`
+	NRC              *string `json:"nrc"`
+	FatherMotherName *string `json:"father_mother_name"`
+	Notes            string  `json:"notes"`
 }
 
 func (h *Patients) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -149,7 +158,7 @@ func (h *Patients) list(w http.ResponseWriter, r *http.Request) {
 }
 
 func queryPatients(db *sql.DB, q string) (*sql.Rows, error) {
-	const cols = `SELECT p.id, p.name, p.phone, p.age_years, p.gender, p.notes, p.updated_at,
+	const cols = `SELECT p.id, p.name, p.phone, p.age_years, p.gender, p.date_of_birth, p.nrc, p.father_mother_name, p.notes, p.updated_at,
 		(SELECT a.id FROM ipd_admissions a WHERE a.patient_id = p.id AND a.status = 'open' LIMIT 1)
 		FROM patients p`
 	if q == "" {
@@ -158,16 +167,16 @@ func queryPatients(db *sql.DB, q string) (*sql.Rows, error) {
 	like := "%" + q + "%"
 	if id, err := strconv.ParseInt(q, 10, 64); err == nil && id > 0 {
 		return db.Query(cols+`
-			WHERE id = ? OR name LIKE ? COLLATE NOCASE OR phone LIKE ?
+			WHERE id = ? OR name LIKE ? COLLATE NOCASE OR phone LIKE ? OR nrc LIKE ? COLLATE NOCASE
 			ORDER BY name COLLATE NOCASE, id
 			LIMIT ?
-		`, id, like, like, patientSearchLimit)
+		`, id, like, like, like, patientSearchLimit)
 	}
 	return db.Query(cols+`
-		WHERE name LIKE ? COLLATE NOCASE OR phone LIKE ?
+		WHERE name LIKE ? COLLATE NOCASE OR phone LIKE ? OR nrc LIKE ? COLLATE NOCASE
 		ORDER BY name COLLATE NOCASE, id
 		LIMIT ?
-	`, like, like, patientSearchLimit)
+	`, like, like, like, patientSearchLimit)
 }
 
 func (h *Patients) get(w http.ResponseWriter, r *http.Request, path string) {
@@ -193,10 +202,11 @@ func (h *Patients) create(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	dob, nrc, father := optionalChartStrings(req)
 	res, err := h.DB.Exec(`
-		INSERT INTO patients (name, phone, age_years, gender, notes)
-		VALUES (?, ?, ?, ?, ?)
-	`, req.Name, req.Phone, req.AgeYears, req.Gender, req.Notes)
+		INSERT INTO patients (name, phone, age_years, gender, date_of_birth, nrc, father_mother_name, notes)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`, req.Name, req.Phone, req.AgeYears, req.Gender, dob, nrc, father, req.Notes)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "create failed"})
 		return
@@ -227,11 +237,18 @@ func (h *Patients) update(w http.ResponseWriter, r *http.Request, path string) {
 	if !ok {
 		return
 	}
+	dobArg := optionalStringArg(req.DateOfBirth)
+	nrcArg := optionalStringArg(req.NRC)
+	fatherArg := optionalStringArg(req.FatherMotherName)
 	res, err := h.DB.Exec(`
 		UPDATE patients
-		SET name = ?, phone = ?, age_years = ?, gender = ?, notes = ?, updated_at = datetime('now')
+		SET name = ?, phone = ?, age_years = ?, gender = ?,
+			date_of_birth = COALESCE(?, date_of_birth),
+			nrc = COALESCE(?, nrc),
+			father_mother_name = COALESCE(?, father_mother_name),
+			notes = ?, updated_at = datetime('now')
 		WHERE id = ?
-	`, req.Name, req.Phone, req.AgeYears, req.Gender, req.Notes, id)
+	`, req.Name, req.Phone, req.AgeYears, req.Gender, dobArg, nrcArg, fatherArg, req.Notes, id)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "update failed"})
 		return
@@ -345,6 +362,26 @@ func decodePatientWrite(w http.ResponseWriter, r *http.Request) (patientWriteReq
 	req.Phone = strings.TrimSpace(req.Phone)
 	req.Gender = strings.TrimSpace(req.Gender)
 	req.Notes = strings.TrimSpace(req.Notes)
+	if req.DateOfBirth != nil {
+		trimmed := strings.TrimSpace(*req.DateOfBirth)
+		if trimmed == "" {
+			empty := ""
+			req.DateOfBirth = &empty
+		} else if _, err := time.Parse("2006-01-02", trimmed); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "date_of_birth invalid"})
+			return req, false
+		} else {
+			req.DateOfBirth = &trimmed
+		}
+	}
+	if req.NRC != nil {
+		trimmed := strings.TrimSpace(*req.NRC)
+		req.NRC = &trimmed
+	}
+	if req.FatherMotherName != nil {
+		trimmed := strings.TrimSpace(*req.FatherMotherName)
+		req.FatherMotherName = &trimmed
+	}
 	if req.Name == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name required"})
 		return req, false
@@ -356,9 +393,31 @@ func decodePatientWrite(w http.ResponseWriter, r *http.Request) (patientWriteReq
 	return req, true
 }
 
+// optionalChartStrings turns omitted create keys into blank stored values.
+func optionalChartStrings(req patientWriteRequest) (dob, nrc, father string) {
+	if req.DateOfBirth != nil {
+		dob = *req.DateOfBirth
+	}
+	if req.NRC != nil {
+		nrc = *req.NRC
+	}
+	if req.FatherMotherName != nil {
+		father = *req.FatherMotherName
+	}
+	return dob, nrc, father
+}
+
+// optionalStringArg is nil when the write key was omitted (keep stored value).
+func optionalStringArg(v *string) any {
+	if v == nil {
+		return nil
+	}
+	return *v
+}
+
 func loadPatient(db *sql.DB, id int64) (patientChart, error) {
 	row := db.QueryRow(`
-		SELECT p.id, p.name, p.phone, p.age_years, p.gender, p.notes, p.updated_at,
+		SELECT p.id, p.name, p.phone, p.age_years, p.gender, p.date_of_birth, p.nrc, p.father_mother_name, p.notes, p.updated_at,
 			(SELECT a.id FROM ipd_admissions a WHERE a.patient_id = p.id AND a.status = 'open' LIMIT 1)
 		FROM patients p WHERE p.id = ?
 	`, id)
@@ -368,7 +427,11 @@ func loadPatient(db *sql.DB, id int64) (patientChart, error) {
 func scanPatient(s scanner) (patientChart, error) {
 	var p patientChart
 	var age, openAdmission sql.NullInt64
-	err := s.Scan(&p.ID, &p.Name, &p.Phone, &age, &p.Gender, &p.Notes, &p.UpdatedAt, &openAdmission)
+	err := s.Scan(
+		&p.ID, &p.Name, &p.Phone, &age, &p.Gender,
+		&p.DateOfBirth, &p.NRC, &p.FatherMotherName,
+		&p.Notes, &p.UpdatedAt, &openAdmission,
+	)
 	if err != nil {
 		return p, err
 	}

@@ -37,13 +37,15 @@ export function openPrintPreview(html: string, opts: PrintPreviewOptions = {}): 
   const receipt = opts.receipt !== false;
 
   const overlay = document.createElement("div");
-  overlay.className = "print-preview-overlay";
+  overlay.className = "clinic-overlay clinic-overlay--fixed print-preview-overlay";
   overlay.setAttribute("role", "dialog");
   overlay.setAttribute("aria-modal", "true");
   overlay.setAttribute("aria-label", title);
 
   const card = document.createElement("div");
-  card.className = receipt ? "print-preview-card print-preview-card--receipt" : "print-preview-card";
+  card.className = receipt
+    ? "clinic-overlay-panel print-preview-card print-preview-card--receipt"
+    : "clinic-overlay-panel print-preview-card";
 
   const toolbar = document.createElement("div");
   toolbar.className = "print-preview-toolbar";

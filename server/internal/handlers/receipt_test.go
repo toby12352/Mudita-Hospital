@@ -278,8 +278,11 @@ func TestRenderA4ReceiptHTMLLayout(t *testing.T) {
 		},
 	})
 
-	if !strings.Contains(html, `@page{size:A4;margin:12mm}`) {
+	if !strings.Contains(html, `@page{size:A4;margin:10mm}`) {
 		t.Fatalf("expected A4 @page CSS")
+	}
+	if !strings.Contains(html, `class="a4-sheet"`) {
+		t.Fatalf("expected centered a4-sheet wrapper with padding")
 	}
 	if strings.Contains(html, `@page{size:80mm`) {
 		t.Fatalf("A4 receipt must not use thermal page size")

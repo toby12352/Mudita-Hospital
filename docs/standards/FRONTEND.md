@@ -147,17 +147,34 @@ Controls that share a horizontal row share one height and one radius.
 - Bill cart typeahead, Qty, unit select, and the row delete control share one height, padding, and line-height.
 - Dialog close is a 32px target with `--radius-control` and a 16px icon. Not a pill. Alert dialogs use `--radius-dialog` (`10px`), not `28px`.
 
+**Overlays / modals**
+
+One shared recipe for clinic blocking overlays (AlertDialog, Help, print preview, bill/history dialogs, Drug Setup restock). Material/Fluent-style: soft scrim + opaque panel + one elevation shadow. **No** `backdrop-filter`, frosted glass, or acrylic.
+
+| Piece | Token / class | Notes |
+|-------|----------------|-------|
+| Scrim | `--overlay-scrim` | Soft dim (`rgba(26, 31, 46, 0.4)`). Not transparent. |
+| Pad | `--overlay-pad` | `1rem` around the panel |
+| Shadow | `--overlay-shadow` | Single medium elevation (`0 8px 28px …`). Not multi-layer glow chrome. |
+| Shell | `.clinic-overlay` + `--fixed` or `--local` | Flex-centered; fixed = viewport; local = absolute inside a pane (restock) |
+| Panel | `.clinic-overlay-panel` | `--bg-panel`, `--border`, `--radius-dialog`, `--overlay-shadow` |
+
+Keep legacy hook classes alongside the shared ones so existing JS selectors still work (`.alert-dialog-overlay`, `.print-preview-overlay`, `.opd-bill-dialog-overlay`, `.help-overlay`, `.drug-setup-restock-overlay`). Z-index ladder (do not invent new layers): local `5` · help `40` · bill dialog `45` · print `50` · alert `60`.
+
+Dismiss: `DialogCloseButton` on dismissible overlays; Escape; scrim click when light-dismiss (keep exceptions such as purge confirm). Use `--local` only when the overlay must clip to a pane.
+
 **Icons**
 
 - Leading 16px stroke icons via `shared/ActionIcon.tsx` (`currentColor`). Kinds today: `plus`, `search`, `filter`, `history`, `edit`, `trash`, `undo`, `check`, `print`, `transfer`.
+- Panel / detail **title-row dismiss** (close create/edit or a side panel) uses `shared/DialogCloseButton.tsx` — icon cross only, `aria-label` from `t("close")`. Do not use `desk-text-link` Cancel/Close in that corner. Same control as alert and modal headers.
 - Use an icon when the metaphor is obvious before reading the label.
-- Stay **text only** when an icon would crowd or confuse (e.g. Deactivate, Cancel, Restock/View on a crowded detail row).
+- Stay **text only** when an icon would crowd or confuse (e.g. Deactivate, Restock/View on a crowded detail row, form-footer Cancel, bill-rail Cancel F10).
 - Consultation labels do not start with “+”. The plus `ActionIcon` is the only plus. Drop the character from both EN and MY.
 - Cart row delete uses the trash `ActionIcon`, not a text “×”.
 
 **Do not**
 
-- Full pills (`border-radius: 999px`), dark chrome, white primary fills, gradients, glass, heavy shadows.
+- Full pills (`border-radius: 999px`), dark chrome, white primary fills, gradients, glass / `backdrop-filter`, decorative multi-layer or glow shadows (the single shared `--overlay-shadow` is required).
 - New icon packages or Tailwind.
 - Change F-keys, rail order, or layout for style alone.
 - Apply this system to `dashboard/`.

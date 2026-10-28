@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { AlertDialog } from "@/shared/AlertDialog";
+import { DialogCloseButton } from "@/shared/DialogCloseButton";
 import { openCheatSheetPrint } from "@/shared/cheatsheet";
 
 export function HelpOverlay({ onClose, t }: { onClose: () => void; t: (k: string) => string }) {
@@ -7,15 +8,18 @@ export function HelpOverlay({ onClose, t }: { onClose: () => void; t: (k: string
 
   return (
     <>
-      <div className="help-overlay" role="dialog" aria-modal="true" aria-labelledby="help-title">
-        <div className="help-card">
+      <div
+        className="clinic-overlay clinic-overlay--fixed help-overlay"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="help-title"
+      >
+        <div className="clinic-overlay-panel help-card">
           <div className="btn-row help-top">
             <h2 id="help-title" className="section-title">
               {t("helpTitle")}
             </h2>
-            <button type="button" className="btn ghost" onClick={onClose}>
-              {t("close")}
-            </button>
+            <DialogCloseButton onClick={onClose} />
           </div>
           <p className="hint">{t("helpLede")}</p>
           <div className="cheat-preview">

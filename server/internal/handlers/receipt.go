@@ -21,15 +21,15 @@ func thermalReceiptCSS() string {
 body{
   width:72mm;max-width:100%;margin:0 auto;padding:2mm 3mm 4mm;
   font-family:Arial,"Noto Sans Myanmar","Segoe UI",sans-serif;
-  font-size:10pt;font-weight:600;line-height:1.35;color:#000;background:#fff;
+  font-size:8pt;font-weight:600;line-height:1.35;color:#000;background:#fff;
   font-variant-numeric:tabular-nums
 }
 .center{text-align:center}
 .right{text-align:right}
 .bold{font-weight:700}
 .logo{display:block;width:22mm;height:auto;margin:0 auto 3px}
-.hospital{font-size:13pt;font-weight:700;margin:0 0 2px;text-transform:uppercase}
-.addr,.tel{margin:0;font-size:9pt;font-weight:600;word-wrap:break-word}
+.hospital{font-size:10.5pt;font-weight:700;margin:0 0 2px;text-transform:uppercase}
+.addr,.tel{margin:0;font-size:7pt;font-weight:600;word-wrap:break-word}
 .sep{margin:6px 0;border:0;border-top:1px dashed #000}
 .row{display:flex;justify-content:flex-start;gap:6px;margin:1px 0}
 .row .label{flex:0 0 12ch;color:#000}
@@ -43,11 +43,11 @@ body{
 .items .col-name{text-align:left;word-wrap:break-word;overflow-wrap:break-word}
 .items .col-qty{width:10ch;text-align:right;white-space:nowrap}
 .items .col-amt{width:10ch;text-align:right;white-space:nowrap}
-.total-row{display:flex;justify-content:space-between;align-items:baseline;margin:8px 0 4px;font-size:12pt;font-weight:700}
-.money-row{display:flex;justify-content:space-between;align-items:baseline;margin:1px 0;font-size:10.5pt;font-weight:600}
-.money-row.emph{margin-top:4px;font-size:12pt;font-weight:700}
-.status{text-align:center;font-weight:700;margin:8px 0 4px;font-size:11pt}
-.footer{text-align:center;font-size:9pt;font-weight:600;margin-top:8px}
+.total-row{display:flex;justify-content:space-between;align-items:baseline;margin:8px 0 4px;font-size:9.5pt;font-weight:700}
+.money-row{display:flex;justify-content:space-between;align-items:baseline;margin:1px 0;font-size:8.5pt;font-weight:600}
+.money-row.emph{margin-top:4px;font-size:9.5pt;font-weight:700}
+.status{text-align:center;font-weight:700;margin:8px 0 4px;font-size:9pt}
+.footer{text-align:center;font-size:7pt;font-weight:600;margin-top:8px}
 @media print{
   html,body{width:80mm;margin:0;padding:2mm 3mm}
 }

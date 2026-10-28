@@ -190,14 +190,14 @@ export function ExpenseBillListDialog({
 
   return (
     <div
-      className="opd-bill-dialog-overlay"
+      className="clinic-overlay clinic-overlay--fixed opd-bill-dialog-overlay"
       role="presentation"
       onClick={(e) => {
         if (e.target === e.currentTarget && purgeStep === 0) onClose();
       }}
     >
       <div
-        className={`opd-bill-dialog${mode === "history" ? " opd-bill-dialog--history" : ""}`}
+        className={`clinic-overlay-panel opd-bill-dialog${mode === "history" ? " opd-bill-dialog--history" : ""}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="expense-bill-dialog-title"

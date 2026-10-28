@@ -31,6 +31,9 @@
   --radius-control: 5px;
   --radius-panel: 7px;
   --radius-dialog: 10px;
+  --overlay-scrim: rgba(26, 31, 46, 0.4);
+  --overlay-shadow: 0 8px 28px rgba(31, 41, 55, 0.14);
+  --overlay-pad: 1rem;
   --placeholder: #64748b;
   --focus-ring: 0 0 0 3px rgba(37, 99, 235, 0.18);
   --transition-fast: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
@@ -1958,14 +1961,33 @@ body,
   color: var(--danger);
 }
 
-.help-overlay {
-  position: fixed;
+/* Shared clinic overlays — FRONTEND.md Clinic design system → Overlays / modals */
+.clinic-overlay {
   inset: 0;
-  background: rgba(26, 31, 46, 0.45);
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 1rem;
+  padding: var(--overlay-pad);
+  background: var(--overlay-scrim);
+}
+
+.clinic-overlay--fixed {
+  position: fixed;
+}
+
+.clinic-overlay--local {
+  position: absolute;
+}
+
+.clinic-overlay-panel {
+  position: relative;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-dialog);
+  box-shadow: var(--overlay-shadow);
+}
+
+.help-overlay {
   z-index: 40;
 }
 
@@ -1973,11 +1995,7 @@ body,
   width: min(36rem, 100%);
   max-height: min(90vh, 40rem);
   overflow: auto;
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-dialog);
   padding: 1.25rem 1.35rem;
-  box-shadow: 0 4px 16px rgba(31, 41, 55, 0.1);
 }
 
 .help-top {
@@ -2007,14 +2025,7 @@ body,
 
 /* In-app print preview (no window.open ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ required for Tauri WebView2) */
 .print-preview-overlay {
-  position: fixed;
-  inset: 0;
   z-index: 50;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1rem;
-  background: rgba(26, 31, 46, 0.5);
 }
 
 .print-preview-card {
@@ -2022,10 +2033,6 @@ body,
   flex-direction: column;
   width: min(52rem, 100%);
   max-height: min(92vh, 48rem);
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-dialog);
-  box-shadow: 0 4px 16px rgba(31, 41, 55, 0.1);
   overflow: hidden;
 }
 
@@ -3366,27 +3373,16 @@ body,
 }
 
 .alert-dialog-overlay {
-  position: fixed;
-  inset: 0;
   z-index: 60;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1rem;
-  background: rgba(26, 31, 46, 0.35);
 }
 
 .alert-dialog {
-  position: relative;
   width: min(22rem, calc(100% - 2rem));
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 0.85rem;
   padding: 1.75rem 1.5rem 1.25rem;
-  background: var(--bg-panel);
-  border-radius: var(--radius-dialog);
-  box-shadow: 0 18px 48px rgba(31, 41, 55, 0.16);
   text-align: center;
 }
 
@@ -3720,13 +3716,6 @@ body,
 }
 
 .opd-bill-dialog-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(26, 31, 46, 0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1rem;
   z-index: 45;
 }
 
@@ -3737,10 +3726,6 @@ body,
   flex-direction: column;
   gap: 0.65rem;
   padding: 1rem 1.1rem;
-  background: var(--bg-panel);
-  border-radius: var(--radius-dialog);
-  border: 1px solid var(--border);
-  box-shadow: 0 2px 10px rgba(31, 41, 55, 0.08);
 }
 
 .opd-bill-dialog--history {
@@ -3756,6 +3741,71 @@ body,
   min-width: 0;
   margin-bottom: 0.15rem;
   flex: 0 0 auto;
+}
+
+.patient-history-labels {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin: 0.75rem 0 0.35rem;
+}
+
+.patient-history-labels .drug-info-label {
+  margin: 0;
+}
+
+.patient-history-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin: 0 0 1rem;
+}
+
+.patient-history-kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.patient-history-toolbar .catalog-filter-field,
+.patient-history-toolbar .catalog-filter-field--control-only {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 10rem;
+}
+
+.patient-history-attach {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+  margin: 0 0 1rem;
+}
+
+.patient-history-attach .field {
+  flex: 1 1 12rem;
+  margin: 0;
+  min-width: 0;
+}
+
+.patient-history-attach .field input,
+.patient-history-attach .btn.primary {
+  box-sizing: border-box;
+  height: 2.75rem;
+}
+
+.patient-history-attach .btn.primary {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding-top: 0;
+  padding-bottom: 0;
 }
 
 .bill-history-toolbar-row {
@@ -3954,7 +4004,45 @@ body,
   overflow: auto;
 }
 
-.drug-setup-detail-pane > .card-form {
+/* Pharmacy: shell stays fixed so restock overlay covers the visible pane. */
+.drug-setup-detail-pane--pharmacy {
+  position: relative;
+  overflow: hidden;
+}
+
+.drug-setup-detail-pane--pharmacy > .drug-setup-detail-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.drug-setup-restock-overlay {
+  z-index: 5;
+}
+
+.drug-setup-restock-dialog {
+  width: min(42rem, 100%);
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 1rem 1.1rem;
+  padding-top: 2.35rem;
+  overflow: auto;
+}
+
+.drug-setup-restock-dialog > .alert-dialog-close {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  z-index: 1;
+}
+
+.drug-setup-detail-pane > .card-form,
+.drug-setup-detail-body > .card-form {
   border: none;
   background: transparent;
   padding: 0;
@@ -3962,7 +4050,8 @@ body,
   gap: 0.75rem;
 }
 
-.drug-setup-detail-pane > .card-form .form-section + .form-section {
+.drug-setup-detail-pane > .card-form .form-section + .form-section,
+.drug-setup-detail-body > .card-form .form-section + .form-section {
   margin-top: 0.2rem;
   padding-top: 0.75rem;
 }
@@ -3970,7 +4059,11 @@ body,
 .drug-setup-detail-pane > .card-form .field input,
 .drug-setup-detail-pane > .card-form .field select,
 .drug-setup-detail-pane > .card-form .packing-rel-row select,
-.drug-setup-detail-pane > .card-form .packing-rel-row input {
+.drug-setup-detail-pane > .card-form .packing-rel-row input,
+.drug-setup-detail-body > .card-form .field input,
+.drug-setup-detail-body > .card-form .field select,
+.drug-setup-detail-body > .card-form .packing-rel-row select,
+.drug-setup-detail-body > .card-form .packing-rel-row input {
   padding: 0.35rem 0.45rem;
 }
 
@@ -3978,6 +4071,8 @@ body,
    appearance: none lets line-height apply, so Myanmar matches the input beside them. */
 .drug-setup-detail-pane > .card-form .field select,
 .drug-setup-detail-pane > .card-form .packing-rel-row select,
+.drug-setup-detail-body > .card-form .field select,
+.drug-setup-detail-body > .card-form .packing-rel-row select,
 .drug-setup-form-wrap .card-form .field select,
 .drug-setup-form-wrap .card-form .packing-rel-row select,
 .drug-info-qty-unit select {
@@ -3993,6 +4088,8 @@ body,
 
 .drug-setup-detail-pane > .card-form .field select:disabled,
 .drug-setup-detail-pane > .card-form .packing-rel-row select:disabled,
+.drug-setup-detail-body > .card-form .field select:disabled,
+.drug-setup-detail-body > .card-form .packing-rel-row select:disabled,
 .drug-setup-form-wrap .card-form .field select:disabled,
 .drug-setup-form-wrap .card-form .packing-rel-row select:disabled,
 .drug-info-qty-unit select:disabled {
@@ -4001,11 +4098,13 @@ body,
   background-color: #f8fafc;
 }
 
-.drug-setup-detail-pane > .card-form .field.checkbox-field {
+.drug-setup-detail-pane > .card-form .field.checkbox-field,
+.drug-setup-detail-body > .card-form .field.checkbox-field {
   padding-top: 0.35rem;
 }
 
-.drug-setup-detail-pane > .card-form .packing-rel-table {
+.drug-setup-detail-pane > .card-form .packing-rel-table,
+.drug-setup-detail-body > .card-form .packing-rel-table {
   max-width: none;
 }
 
@@ -4174,6 +4273,51 @@ body,
 .drug-info-fields > :not(.drug-info-field) {
   grid-column: 1 / -1;
   min-width: 0;
+}
+
+.drug-info-fields > .drug-info-field + .form-section-title {
+  margin-top: 0.55rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--border);
+}
+
+.patient-info-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+}
+
+.patient-info-sections-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem 1.25rem;
+  margin-top: 0.55rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--border);
+}
+
+.patient-info-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.patient-info-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-top: 0.55rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--border);
+  min-width: 0;
+}
+
+@media (max-width: 40rem) {
+  .patient-info-sections-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 .drug-info-fields > .pharmacy-item-lots {

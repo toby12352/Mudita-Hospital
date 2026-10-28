@@ -208,14 +208,14 @@ export function AlertDialog({
 
   return (
     <div
-      className="alert-dialog-overlay"
+      className="clinic-overlay clinic-overlay--fixed alert-dialog-overlay"
       role="presentation"
       onClick={(e) => {
         if (e.target === e.currentTarget && !busy) onClose();
       }}
     >
       <div
-        className={`alert-dialog${toneClass}${irreversibleClass}`}
+        className={`clinic-overlay-panel alert-dialog${toneClass}${irreversibleClass}`}
         role="alertdialog"
         aria-modal="true"
         aria-labelledby={titleId}
