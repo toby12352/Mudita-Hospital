@@ -80,7 +80,7 @@ func opdGrant(method, path string) string {
 }
 
 func otGrant(method, path string) string {
-	if method == http.MethodDelete && strings.HasPrefix(path, "/bills/") {
+	if method == http.MethodDelete && (strings.HasPrefix(path, "/bills/") || strings.HasPrefix(path, "/cases/")) {
 		return auth.GrantOTDelete
 	}
 	if method == http.MethodPost && strings.HasSuffix(path, "/void") {

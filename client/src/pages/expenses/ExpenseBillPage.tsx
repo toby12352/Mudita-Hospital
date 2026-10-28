@@ -31,6 +31,7 @@ import {
   discountWrite,
   type DiscountUnit,
 } from "@/shared/discount";
+import { revealField } from "@/shared/FieldError";
 import { formatMMK } from "@/shared/format";
 import { useClinicActions } from "@/app/clinicActions";
 import { useI18n } from "@/shared/i18n";
@@ -55,10 +56,15 @@ export function ExpenseBillPage({ portal }: { portal: ExpensePortal }) {
   const { t } = useI18n();
   const { billPurge } = useClinicActions();
   const nameRef = useRef<HTMLInputElement>(null);
+  const okMsgRef = useRef<HTMLParagraphElement>(null);
   const lineSeq = useRef(0);
   const [error, setError] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (okMsg?.trim()) revealField(okMsgRef.current);
+  }, [okMsg]);
   const [dialog, setDialog] = useState<ExpenseBillListDialogMode | null>(null);
   const [confirm, setConfirm] = useState<DeskConfirm | null>(null);
   const [printAfterPay, setPrintAfterPay] = useState<string | null>(null);
@@ -557,7 +563,11 @@ export function ExpenseBillPage({ portal }: { portal: ExpensePortal }) {
             />
           </div>
 
-          {okMsg ? <p className="form-ok">{okMsg}</p> : null}
+          {okMsg ? (
+            <p ref={okMsgRef} className="form-ok" role="status">
+              {okMsg}
+            </p>
+          ) : null}
         </div>
 
         <aside className="opd-bill-rail" aria-label={t("billActions")}>

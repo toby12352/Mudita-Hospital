@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useId, useMemo, useState } from "react";
+import { FormEvent, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   createService,
   deactivateService,
@@ -14,6 +14,8 @@ import { matchesActive, type ActiveFilterValue } from "@/shared/ActiveFilter";
 import { ActionIcon } from "@/shared/ActionIcon";
 import { CatalogFilterButton, CatalogFilterPanel } from "@/shared/CatalogListFilter";
 import { sortByDateAscDesc, type DateSortValue } from "@/shared/DateSort";
+import { fieldKeyForApiError } from "@/shared/errors";
+import { FieldError, revealField } from "@/shared/FieldError";
 import { formatMMK } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
 import { ServiceCategoryField } from "@/shared/ServiceCategoryField";
@@ -39,6 +41,7 @@ export function OpdServicesPage() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [editing, setEditing] = useState<Service | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [codeError, setCodeError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Service | null>(null);
   const [deleteStep, setDeleteStep] = useState<1 | 2>(1);
@@ -51,6 +54,9 @@ export function OpdServicesPage() {
   const [categoryId, setCategoryId] = useState("");
   const [categories, setCategories] = useState<ServiceCategory[]>([]);
   const [categoryFilter, setCategoryFilter] = useState("all");
+  const codeInputRef = useRef<HTMLInputElement>(null);
+  const formErrorRef = useRef<HTMLParagraphElement>(null);
+  const codeErrorId = useId();
 
   async function reload(search = filterQ) {
     const data = await listServices(search.trim());
@@ -167,6 +173,7 @@ export function OpdServicesPage() {
     e.preventDefault();
     setBusy(true);
     setError(null);
+    setCodeError(null);
     try {
       const body = {
         code: code.trim(),
@@ -191,7 +198,14 @@ export function OpdServicesPage() {
       setList(data);
       setSelectedId(saved.id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Save failed");
+      const msg = err instanceof Error ? err.message : "Save failed";
+      if (fieldKeyForApiError(err) === "code") {
+        setCodeError(t("errCodeExists"));
+        window.setTimeout(() => revealField(codeInputRef.current), 0);
+      } else {
+        setError(msg);
+        window.setTimeout(() => revealField(formErrorRef.current), 0);
+      }
     } finally {
       setBusy(false);
     }
@@ -361,9 +375,20 @@ export function OpdServicesPage() {
               onSubmit={(e) => void submit(e)}
             >
               <div className="field-row">
-                <label className="field">
+                <label className={`field${codeError ? " is-invalid" : ""}`}>
                   <span>{t("code")}</span>
-                  <input value={code} onChange={(e) => setCode(e.target.value)} disabled={busy} />
+                  <input
+                    ref={codeInputRef}
+                    value={code}
+                    onChange={(e) => {
+                      setCode(e.target.value);
+                      setCodeError(null);
+                    }}
+                    disabled={busy}
+                    aria-invalid={codeError ? true : undefined}
+                    aria-describedby={codeError ? codeErrorId : undefined}
+                  />
+                  <FieldError id={codeErrorId}>{codeError}</FieldError>
                 </label>
                 <label className="field">
                   <span>{t("priceMmk")}</span>
@@ -392,7 +417,11 @@ export function OpdServicesPage() {
                 onChange={setCategoryId}
                 disabled={busy}
               />
-              {error ? <p className="form-error">{error}</p> : null}
+              {error ? (
+                <p ref={formErrorRef} className="form-error" role="alert">
+                  {error}
+                </p>
+              ) : null}
               <div className="btn-row">
                 <button type="submit" className="btn primary" disabled={busy}>
                   {busy ? t("saving") : editing ? t("updateService") : t("addService")}

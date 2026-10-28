@@ -1,10 +1,12 @@
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useId, useRef, useState } from "react";
 import {
   fetchHospitalSettings,
   saveHospitalSettings,
   type HospitalSettings,
 } from "@/features/settings/masterData";
 import { listInstalledPrinters } from "@/features/settings/printer";
+import { fieldKeyForApiError } from "@/shared/errors";
+import { FieldError, revealField } from "@/shared/FieldError";
 import { useI18n } from "@/shared/i18n";
 import {
   getDefaultPrinter,
@@ -27,7 +29,11 @@ export function HospitalTab() {
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hospitalNameError, setHospitalNameError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const hospitalNameRef = useRef<HTMLInputElement>(null);
+  const formErrorRef = useRef<HTMLParagraphElement>(null);
+  const hospitalNameErrorId = useId();
 
   const [printers, setPrinters] = useState<string[]>([]);
   const [selectedPrinter, setSelectedPrinter] = useState(() => getDefaultPrinter());
@@ -81,6 +87,7 @@ export function HospitalTab() {
     e.preventDefault();
     setBusy(true);
     setError(null);
+    setHospitalNameError(null);
     setSaved(false);
     try {
       const data = await saveHospitalSettings({
@@ -93,7 +100,14 @@ export function HospitalTab() {
       setForm(data);
       setSaved(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Save failed");
+      const msg = err instanceof Error ? err.message : "Save failed";
+      if (fieldKeyForApiError(err) === "hospital_name") {
+        setHospitalNameError(msg);
+        window.setTimeout(() => revealField(hospitalNameRef.current), 0);
+      } else {
+        setError(msg);
+        window.setTimeout(() => revealField(formErrorRef.current), 0);
+      }
     } finally {
       setBusy(false);
     }
@@ -118,14 +132,21 @@ export function HospitalTab() {
       <div className="settings-split">
         <form className="card-form" onSubmit={(e) => void submit(e)}>
           <h2 className="section-title">{t("billHeader")}</h2>
-          <label className="field">
+          <label className={`field${hospitalNameError ? " is-invalid" : ""}`}>
             <span>{t("hospitalName")}</span>
             <input
+              ref={hospitalNameRef}
               value={form.hospital_name}
-              onChange={(e) => setForm({ ...form, hospital_name: e.target.value })}
+              onChange={(e) => {
+                setForm({ ...form, hospital_name: e.target.value });
+                setHospitalNameError(null);
+              }}
               required
               disabled={busy}
+              aria-invalid={hospitalNameError ? true : undefined}
+              aria-describedby={hospitalNameError ? hospitalNameErrorId : undefined}
             />
+            <FieldError id={hospitalNameErrorId}>{hospitalNameError}</FieldError>
           </label>
           <label className="field">
             <span>{t("address")}</span>
@@ -160,7 +181,11 @@ export function HospitalTab() {
               disabled={busy}
             />
           </label>
-          {error ? <p className="form-error">{error}</p> : null}
+          {error ? (
+            <p ref={formErrorRef} className="form-error" role="alert">
+              {error}
+            </p>
+          ) : null}
           {saved ? <p className="form-ok">{t("saved")}</p> : null}
           <button type="submit" className="btn primary" disabled={busy}>
             {busy ? t("saving") : t("saveHospital")}

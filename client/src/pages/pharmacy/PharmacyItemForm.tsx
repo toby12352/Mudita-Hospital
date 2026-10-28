@@ -3,6 +3,7 @@ import {
   FormEvent,
   KeyboardEvent,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -21,6 +22,8 @@ import {
   type SaleUnit,
 } from "@/features/pharmacy/api";
 import { DatePicker } from "@/shared/DatePicker";
+import { fieldKeyForApiError } from "@/shared/errors";
+import { FieldError, revealField } from "@/shared/FieldError";
 import { useI18n } from "@/shared/i18n";
 import { FormSection } from "@/shared/FormSection";
 import { PharmacyItemLots } from "./PharmacyItemLots";
@@ -77,10 +80,13 @@ export function PharmacyItemForm({
   editing,
   onSaved,
   onCancel,
+  existingCodes = [],
 }: {
   editing: PharmacyItem | null;
   onSaved: (item: PharmacyItem) => void;
   onCancel: () => void;
+  /** Codes already on the loaded list (may be search-filtered). Fast-path only. */
+  existingCodes?: string[];
 }) {
   const { t } = useI18n();
   const initial = editing
@@ -94,7 +100,9 @@ export function PharmacyItemForm({
       })
     : { smallest: "Tablet", relations: [] as PackRelation[] };
 
-  const [error, setError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [codeError, setCodeError] = useState<string | null>(null);
+  const [quantityError, setQuantityError] = useState<string | null>(null);
   const [attempted, setAttempted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [code, setCode] = useState(editing?.code ?? "");
@@ -117,6 +125,12 @@ export function PharmacyItemForm({
   const [sellSmallest, setSellSmallest] = useState(editing?.sell_price_mmk ?? 0);
   const [active, setActive] = useState(editing?.active ?? true);
 
+  const codeInputRef = useRef<HTMLInputElement>(null);
+  const codeErrorId = useId();
+  const quantityInputRef = useRef<HTMLInputElement>(null);
+  const formErrorRef = useRef<HTMLParagraphElement>(null);
+  const pricesErrorRef = useRef<HTMLParagraphElement>(null);
+  const packErrorRef = useRef<HTMLParagraphElement>(null);
   const qtyUnitRef = useRef<HTMLSelectElement>(null);
   const qtyUnitRowRef = useRef<HTMLDivElement>(null);
   const quantityRef = useRef("");
@@ -338,38 +352,55 @@ export function PharmacyItemForm({
   async function submit(e: FormEvent) {
     e.preventDefault();
     setAttempted(true);
-    setError(null);
+    setFormError(null);
+    setCodeError(null);
+    setQuantityError(null);
     setQuantityUnitError(null);
 
-    let ok = true;
+    const trimmedCode = code.trim();
+    let codeFailed = false;
+    if (!editing && trimmedCode) {
+      const taken = existingCodes.some(
+        (c) => c.trim().toLowerCase() === trimmedCode.toLowerCase(),
+      );
+      if (taken) {
+        setCodeError(t("errItemCodeExists"));
+        codeFailed = true;
+      }
+    }
+
+    let packingFailed = false;
     if (packingRequired && !packingFilled) {
-      ok = false;
+      packingFailed = true;
     } else if (!pack || !levels || !childMatches) {
-      ok = false;
-    } else if (!editing && (buyOuter <= 0 || sellSmallest <= 0)) {
-      ok = false;
+      packingFailed = true;
+    }
+
+    let pricesFailed = false;
+    if (!editing && !packingFailed && (buyOuter <= 0 || sellSmallest <= 0)) {
+      pricesFailed = true;
     }
 
     let stockQty = 0;
-    if (!editing && pack && ok) {
+    let quantityFailed = false;
+    let quantityUnitFailed = false;
+    if (!editing && pack && !packingFailed && !codeFailed) {
       const entered = parseInitialQty(quantity);
       if (entered == null) {
-        setError(t("fieldNeedsFilled"));
-        ok = false;
+        setQuantityError(t("fieldNeedsFilled"));
+        quantityFailed = true;
       } else if (entered > 0) {
         const units = saleUnitsFromPack(pack, sellSmallest || 0);
         const unitKey = quantityUnitId.trim();
         if (units.length > 0) {
           if (!unitKey) {
             setQuantityUnitError(t("fieldNeedsFilled"));
-            openInitialUnitSelect();
-            ok = false;
+            quantityUnitFailed = true;
           } else {
             const chosen = units.find((u) => u.id.toLowerCase() === unitKey.toLowerCase());
             if (!chosen) {
               setQuantityUnitError(t("fieldNeedsFilled"));
-              openInitialUnitSelect();
-              ok = false;
+              quantityUnitFailed = true;
             } else {
               stockQty = entered * chosen.factor;
             }
@@ -380,12 +411,40 @@ export function PharmacyItemForm({
       }
     }
 
-    if (!ok || !pack || !levels) return;
+    const localFailed =
+      codeFailed || packingFailed || pricesFailed || quantityFailed || quantityUnitFailed;
+    if (localFailed) {
+      window.setTimeout(() => {
+        if (codeFailed) {
+          revealField(codeInputRef.current);
+          return;
+        }
+        if (packingFailed) {
+          revealField(packingRowRefs.current[0] ?? packErrorRef.current);
+          return;
+        }
+        if (quantityFailed) {
+          revealField(quantityInputRef.current);
+          return;
+        }
+        if (quantityUnitFailed) {
+          revealField(qtyUnitRef.current ?? qtyUnitRowRef.current);
+          openInitialUnitSelect();
+          return;
+        }
+        if (pricesFailed) {
+          revealField(pricesErrorRef.current);
+        }
+      }, 0);
+      return;
+    }
+
+    if (!pack || !levels) return;
 
     setBusy(true);
     try {
       const body = {
-        code: code.trim(),
+        code: trimmedCode,
         name: name.trim(),
         dosage: dosage.trim(),
         category: "Other",
@@ -413,7 +472,14 @@ export function PharmacyItemForm({
       }
       onSaved(saved);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      const msg = err instanceof Error ? err.message : String(err);
+      if (fieldKeyForApiError(err) === "code") {
+        setCodeError(t("errItemCodeExists"));
+        window.setTimeout(() => revealField(codeInputRef.current), 0);
+      } else {
+        setFormError(msg);
+        window.setTimeout(() => revealField(formErrorRef.current), 0);
+      }
     } finally {
       setBusy(false);
     }
@@ -439,19 +505,24 @@ export function PharmacyItemForm({
 
   return (
     <form className="card-form" onSubmit={submit}>
-      {error ? <p className="form-error">{error}</p> : null}
-
       <FormSection title={t("identity")} titleId="pharmacy-item-identity">
         <div className="field-row cols-3">
-          <label className="field">
+          <label className={`field${codeError ? " is-invalid" : ""}`}>
             <span>{t("idCode")}</span>
             <input
+              ref={codeInputRef}
               value={code}
-              onChange={(e) => setCode(e.target.value)}
+              onChange={(e) => {
+                setCode(e.target.value);
+                setCodeError(null);
+              }}
               placeholder={t("idCodePlaceholder")}
               required
               disabled={busy || !!editing}
+              aria-invalid={codeError ? true : undefined}
+              aria-describedby={codeError ? codeErrorId : undefined}
             />
+            <FieldError id={codeErrorId}>{codeError}</FieldError>
           </label>
           <label className="field">
             <span>{t("name")}</span>
@@ -594,7 +665,11 @@ export function PharmacyItemForm({
         </div>
 
         {packPreview ? <p className="hint packing-preview">{packPreview}</p> : null}
-        {packError ? <p className="form-error">{packError}</p> : null}
+        {packError ? (
+          <p ref={packErrorRef} className="form-error" role="alert">
+            {packError}
+          </p>
+        ) : null}
 
         {!editing ? (
           <div className="field-row">
@@ -629,15 +704,19 @@ export function PharmacyItemForm({
       {!editing ? (
         <FormSection title={t("initialStock")} titleId="pharmacy-item-initial-stock">
           <p className="hint">{t("initialStockDesc")}</p>
-          <label className="field">
+          <label
+            className={`field${quantityError || quantityUnitError ? " is-invalid" : ""}`}
+          >
             <span>{t("quantityOfUnit")}</span>
             <div className="drug-info-qty-unit" ref={qtyUnitRowRef}>
               <input
+                ref={quantityInputRef}
                 type="number"
                 min={0}
                 value={quantity}
                 onChange={(e) => {
                   setQuantity(e.target.value);
+                  setQuantityError(null);
                   setQuantityUnitError(null);
                 }}
                 onKeyDown={onInitialQtyKeyDown}
@@ -645,6 +724,7 @@ export function PharmacyItemForm({
                 placeholder={t("quantityBoxesPlaceholder")}
                 disabled={busy}
                 aria-label={t("quantityOfUnit")}
+                aria-invalid={quantityError ? true : undefined}
               />
               <select
                 ref={qtyUnitRef}
@@ -665,7 +745,8 @@ export function PharmacyItemForm({
                 ))}
               </select>
             </div>
-            {quantityUnitError ? <p className="form-error">{quantityUnitError}</p> : null}
+            <FieldError>{quantityError}</FieldError>
+            <FieldError>{quantityUnitError}</FieldError>
             {chosenInitialUnit && enteredQty != null && enteredQty > 0 ? (
               <p className="hint">
                 {t("willAdd")} {enteredQty * chosenInitialUnit.factor} {smallestLabel}{" "}
@@ -694,7 +775,11 @@ export function PharmacyItemForm({
         ) : attempted && doneRels.length > 0 && !childMatches ? (
           <p className="hint">{t("packChildMustMatch")}</p>
         ) : null}
-        {pricesError ? <p className="form-error">{pricesError}</p> : null}
+        {pricesError ? (
+          <p ref={pricesErrorRef} className="form-error" role="alert">
+            {pricesError}
+          </p>
+        ) : null}
 
         <label className="field checkbox-field">
           <input
@@ -706,6 +791,12 @@ export function PharmacyItemForm({
           <span>{t("active")}</span>
         </label>
       </FormSection>
+
+      {formError ? (
+        <p ref={formErrorRef} className="form-error" role="alert">
+          {formError}
+        </p>
+      ) : null}
 
       <div className="btn-row">
         <button type="submit" className="btn primary" disabled={busy}>

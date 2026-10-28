@@ -385,9 +385,14 @@ export async function voidOtBill(id: number, reason: string): Promise<OtBill> {
   });
 }
 
-/** Admin-only. Permanently removes a draft or void bill. Keeps the OT case. */
+/** Admin-only. Permanently removes a draft or void bill. Removes the case when it is the last bill. */
 export async function purgeOtBill(id: number): Promise<void> {
   await apiFetch(`/api/ot/bills/${id}`, { method: "DELETE" });
+}
+
+/** Admin-only. Permanently removes an OT case and every draft or void bill on it. */
+export async function purgeOtCase(id: number): Promise<void> {
+  await apiFetch(`/api/ot/cases/${id}`, { method: "DELETE" });
 }
 
 async function printHtml(
@@ -416,7 +421,8 @@ export async function printOtBill(
   return printHtml(`/api/ot/bills/${billId}/print`, {
     title: opts?.title ?? "OT receipt",
     note: opts?.note,
-    receipt: true,
+    // A4 OT payment receipt — wide preview (not 80mm thermal chrome).
+    receipt: false,
     onPrinted: opts?.onPrinted,
   });
 }

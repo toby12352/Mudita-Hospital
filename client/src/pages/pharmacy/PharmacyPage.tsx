@@ -290,6 +290,7 @@ export function PharmacyPage({
         </h2>
         <PharmacyItemForm
           editing={editing}
+          existingCodes={list.map((i) => i.code)}
           onSaved={() => backToItems()}
           onCancel={backToItems}
         />
@@ -398,6 +399,7 @@ export function PharmacyPage({
             <PharmacyItemForm
               key={createKey}
               editing={null}
+              existingCodes={list.map((i) => i.code)}
               onSaved={(item) => void onCreateSaved(item)}
               onCancel={closeCreate}
             />

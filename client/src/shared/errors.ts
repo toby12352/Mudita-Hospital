@@ -1,5 +1,38 @@
 import { t } from "@/shared/i18n";
 
+/** API failure with clerk-facing `message` and the original server `raw` for field targeting. */
+export class ApiError extends Error {
+  readonly raw: string;
+  readonly status: number;
+
+  constructor(message: string, raw: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.raw = raw;
+    this.status = status;
+  }
+}
+
+/**
+ * Map a known server error string to a form field key.
+ * Reads `ApiError.raw` only — never the translated `message`.
+ */
+export function fieldKeyForApiError(err: unknown): string | null {
+  if (!(err instanceof ApiError)) return null;
+  const raw = err.raw.trim().toLowerCase();
+  if (raw === "code already exists") return "code";
+  if (raw === "username already exists") return "username";
+  if (raw === "category name already exists") return "name";
+  if (raw === "name required") return "name";
+  if (raw === "display_name required") return "display_name";
+  if (raw === "hospital_name required") return "hospital_name";
+  if (raw === "patient_id required") return "patient";
+  if (raw === "amount must be > 0") return "amount";
+  if (raw === "description required") return "description";
+  if (raw === "patient already has an open stay") return "form";
+  return null;
+}
+
 /** Turn API / network failure text into a sentence a clerk can act on. Logs the original. */
 export function userMessage(raw: string | null | undefined, status?: number): string {
   const original = (raw ?? "").trim();

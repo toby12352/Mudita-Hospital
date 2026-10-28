@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useId, useMemo, useState } from "react";
+import { FormEvent, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   createDoctor,
   deactivateDoctor,
@@ -12,6 +12,8 @@ import { matchesActive, type ActiveFilterValue } from "@/shared/ActiveFilter";
 import { ActionIcon } from "@/shared/ActionIcon";
 import { CatalogFilterButton, CatalogFilterPanel } from "@/shared/CatalogListFilter";
 import { sortByDateAscDesc, type DateSortValue } from "@/shared/DateSort";
+import { fieldKeyForApiError } from "@/shared/errors";
+import { FieldError, revealField } from "@/shared/FieldError";
 import { formatMMK } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
 import { CatalogDeleteDialog } from "./CatalogDeleteDialog";
@@ -32,7 +34,11 @@ export function OpdDoctorsPage() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [editing, setEditing] = useState<Doctor | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [nameError, setNameError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const nameInputRef = useRef<HTMLInputElement>(null);
+  const formErrorRef = useRef<HTMLParagraphElement>(null);
+  const nameErrorId = useId();
   const [deleteTarget, setDeleteTarget] = useState<Doctor | null>(null);
   const [deleteStep, setDeleteStep] = useState<1 | 2>(1);
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -154,6 +160,7 @@ export function OpdDoctorsPage() {
     e.preventDefault();
     setBusy(true);
     setError(null);
+    setNameError(null);
     try {
       const body = {
         name: name.trim(),
@@ -173,7 +180,14 @@ export function OpdDoctorsPage() {
       setList(data);
       setSelectedId(saved.id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Save failed");
+      const msg = err instanceof Error ? err.message : "Save failed";
+      if (fieldKeyForApiError(err) === "name") {
+        setNameError(msg);
+        window.setTimeout(() => revealField(nameInputRef.current), 0);
+      } else {
+        setError(msg);
+        window.setTimeout(() => revealField(formErrorRef.current), 0);
+      }
     } finally {
       setBusy(false);
     }
@@ -326,9 +340,21 @@ export function OpdDoctorsPage() {
               className="card-form"
               onSubmit={(e) => void submit(e)}
             >
-              <label className="field">
+              <label className={`field${nameError ? " is-invalid" : ""}`}>
                 <span>{t("name")}</span>
-                <input value={name} onChange={(e) => setName(e.target.value)} required disabled={busy} />
+                <input
+                  ref={nameInputRef}
+                  value={name}
+                  onChange={(e) => {
+                    setName(e.target.value);
+                    setNameError(null);
+                  }}
+                  required
+                  disabled={busy}
+                  aria-invalid={nameError ? true : undefined}
+                  aria-describedby={nameError ? nameErrorId : undefined}
+                />
+                <FieldError id={nameErrorId}>{nameError}</FieldError>
               </label>
               <label className="field">
                 <span>{t("specialty")}</span>
@@ -360,7 +386,11 @@ export function OpdDoctorsPage() {
                   />
                 </label>
               </div>
-              {error ? <p className="form-error">{error}</p> : null}
+              {error ? (
+                <p ref={formErrorRef} className="form-error" role="alert">
+                  {error}
+                </p>
+              ) : null}
               <div className="btn-row">
                 <button type="submit" className="btn primary" disabled={busy}>
                   {busy ? t("saving") : editing ? t("updateDoctor") : t("addDoctor")}

@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useId, useRef, useState } from "react";
 import {
   createUser,
   listUsers,
@@ -6,6 +6,8 @@ import {
   type ManagedUser,
 } from "@/features/settings/masterData";
 import { ActionIcon } from "@/shared/ActionIcon";
+import { fieldKeyForApiError } from "@/shared/errors";
+import { FieldError, revealField } from "@/shared/FieldError";
 import { Typeahead } from "@/shared/Typeahead";
 import { useI18n } from "@/shared/i18n";
 
@@ -115,8 +117,12 @@ export function UsersTab() {
   const [q, setQ] = useState("");
   const [list, setList] = useState<ManagedUser[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [usernameError, setUsernameError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const usernameInputRef = useRef<HTMLInputElement>(null);
+  const formErrorRef = useRef<HTMLParagraphElement>(null);
+  const usernameErrorId = useId();
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [password, setPassword] = useState("");
@@ -151,6 +157,8 @@ export function UsersTab() {
     setCells(emptyCells());
     setDashboard(false);
     setPortalWarning(false);
+    setUsernameError(null);
+    setError(null);
   }
 
   function setCell(module: ModuleId, action: ActionId, on: boolean) {
@@ -201,6 +209,7 @@ export function UsersTab() {
     e.preventDefault();
     setBusy(true);
     setError(null);
+    setUsernameError(null);
     const grants = grantsFromCells(cells, dashboard);
     try {
       if (editingId != null) {
@@ -220,7 +229,14 @@ export function UsersTab() {
       clearForm();
       await reload();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Save failed");
+      const msg = err instanceof Error ? err.message : "Save failed";
+      if (fieldKeyForApiError(err) === "username") {
+        setUsernameError(t("errUsernameExists"));
+        window.setTimeout(() => revealField(usernameInputRef.current), 0);
+      } else {
+        setError(msg);
+        window.setTimeout(() => revealField(formErrorRef.current), 0);
+      }
     } finally {
       setBusy(false);
     }
@@ -244,14 +260,21 @@ export function UsersTab() {
       <form className="card-form" onSubmit={(e) => void submit(e)}>
         <h2 className="section-title">{editingId != null ? t("editUserTitle") : t("createUserTitle")}</h2>
         <div className="field-row">
-          <label className="field">
+          <label className={`field${usernameError ? " is-invalid" : ""}`}>
             <span>{t("username")}</span>
             <input
+              ref={usernameInputRef}
               value={username}
-              onChange={(e) => setUsername(e.target.value)}
+              onChange={(e) => {
+                setUsername(e.target.value);
+                setUsernameError(null);
+              }}
               required
               disabled={busy || editingId != null}
+              aria-invalid={usernameError ? true : undefined}
+              aria-describedby={usernameError ? usernameErrorId : undefined}
             />
+            <FieldError id={usernameErrorId}>{usernameError}</FieldError>
           </label>
           <label className="field">
             <span>{t("displayName")}</span>
@@ -336,7 +359,11 @@ export function UsersTab() {
         {portalWarning ? <p className="hint">{t("portalSwitchWarning")}</p> : null}
         <p className="hint">{t("grantHint")}</p>
         <p className="hint">{t("usersHint")}</p>
-        {error ? <p className="form-error">{error}</p> : null}
+        {error ? (
+          <p ref={formErrorRef} className="form-error" role="alert">
+            {error}
+          </p>
+        ) : null}
         <div className="btn-row">
           <button type="submit" className="btn primary" disabled={busy}>
             {busy ? t("saving") : editingId != null ? t("saveUser") : t("createUser")}

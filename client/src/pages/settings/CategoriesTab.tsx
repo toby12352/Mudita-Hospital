@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useId, useRef, useState } from "react";
 import {
   createServiceCategory,
   deleteServiceCategory,
@@ -8,6 +8,8 @@ import {
 } from "@/features/settings/masterData";
 import { ActionIcon } from "@/shared/ActionIcon";
 import { AlertDialog } from "@/shared/AlertDialog";
+import { ApiError, fieldKeyForApiError } from "@/shared/errors";
+import { FieldError, revealField } from "@/shared/FieldError";
 import { Typeahead } from "@/shared/Typeahead";
 import { useI18n } from "@/shared/i18n";
 
@@ -16,10 +18,14 @@ export function CategoriesTab() {
   const [q, setQ] = useState("");
   const [list, setList] = useState<ServiceCategory[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [nameError, setNameError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState<ServiceCategory | null>(null);
   const [name, setName] = useState("");
   const [pendingDelete, setPendingDelete] = useState<ServiceCategory | null>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
+  const formErrorRef = useRef<HTMLParagraphElement>(null);
+  const nameErrorId = useId();
 
   async function reload(search = q) {
     setList(await listServiceCategories(search.trim()));
@@ -43,17 +49,22 @@ export function CategoriesTab() {
   function startCreate() {
     setEditing(null);
     setName("");
+    setNameError(null);
+    setError(null);
   }
 
   function startEdit(c: ServiceCategory) {
     setEditing(c);
     setName(c.name);
+    setNameError(null);
+    setError(null);
   }
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
+    setNameError(null);
     try {
       const body = { name: name.trim() };
       if (editing) {
@@ -64,7 +75,17 @@ export function CategoriesTab() {
       startCreate();
       await reload();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Save failed");
+      const msg = err instanceof Error ? err.message : "Save failed";
+      if (fieldKeyForApiError(err) === "name") {
+        const duplicate =
+          err instanceof ApiError &&
+          err.raw.trim().toLowerCase() === "category name already exists";
+        setNameError(duplicate ? t("errCategoryNameExists") : msg);
+        window.setTimeout(() => revealField(nameInputRef.current), 0);
+      } else {
+        setError(msg);
+        window.setTimeout(() => revealField(formErrorRef.current), 0);
+      }
     } finally {
       setBusy(false);
     }
@@ -94,17 +115,28 @@ export function CategoriesTab() {
         <h2 className="section-title">
           {editing ? `${t("editCategory")} #${editing.id}` : t("addCategory")}
         </h2>
-        <label className="field">
+        <label className={`field${nameError ? " is-invalid" : ""}`}>
           <span>{t("name")}</span>
           <input
+            ref={nameInputRef}
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) => {
+              setName(e.target.value);
+              setNameError(null);
+            }}
             required
             disabled={busy}
             placeholder={t("categoryNamePlaceholder")}
+            aria-invalid={nameError ? true : undefined}
+            aria-describedby={nameError ? nameErrorId : undefined}
           />
+          <FieldError id={nameErrorId}>{nameError}</FieldError>
         </label>
-        {error ? <p className="form-error">{error}</p> : null}
+        {error ? (
+          <p ref={formErrorRef} className="form-error" role="alert">
+            {error}
+          </p>
+        ) : null}
         <div className="btn-row">
           <button type="submit" className="btn primary" disabled={busy}>
             {busy ? t("saving") : editing ? t("updateCategory") : t("addCategory")}

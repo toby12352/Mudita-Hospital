@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { listOtBills, listOtCases, type OtBill, type OtCase } from "@/features/ot/api";
+import { listOtCases, type OtCase } from "@/features/ot/api";
 import { ActionIcon } from "@/shared/ActionIcon";
 import { AlertDialog } from "@/shared/AlertDialog";
 import {
@@ -9,7 +9,6 @@ import {
 } from "@/shared/BillHistoryToolbar";
 import { moneyStatusLabel } from "@/shared/BillPayPrint";
 import { DialogCloseButton } from "@/shared/DialogCloseButton";
-import { formatMMK } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
 
 function formatWhen(iso: string): string {
@@ -22,6 +21,17 @@ function formatWhen(iso: string): string {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+/** Cases the admin Delete dialog may remove (no paid bill; no issued/reconciled). */
+function isPurgeableOtCase(c: OtCase): boolean {
+  if (c.status === "issued" || c.status === "reconciled") return false;
+  if (c.bill_status === "paid") return false;
+  if (c.status === "draft" || c.status === "void") return true;
+  if (c.status === "billed") {
+    return c.bill_status == null || c.bill_status === "draft" || c.bill_status === "void";
+  }
+  return false;
 }
 
 export type OtHistoryModalMode = "history" | "delete" | "purge";
@@ -37,11 +47,10 @@ export function OtHistoryModal({
   onClose: () => void;
   onOpen: (id: number) => void;
   onVoid: (caseRow: OtCase, reason: string) => Promise<void>;
-  onPurge?: (billId: number) => Promise<void>;
+  onPurge?: (caseId: number) => Promise<void>;
 }) {
   const { t } = useI18n();
   const [rows, setRows] = useState<OtCase[]>([]);
-  const [bills, setBills] = useState<OtBill[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [voidReason, setVoidReason] = useState("Voided");
   const [error, setError] = useState<string | null>(null);
@@ -51,13 +60,14 @@ export function OtHistoryModal({
   const [purgeError, setPurgeError] = useState<string | null>(null);
 
   const loadPurgeList = useCallback(async () => {
-    const [drafts, voids] = await Promise.all([
-      listOtBills("", "draft"),
-      listOtBills("", "void"),
-    ]);
-    const byId = new Map<number, OtBill>();
-    for (const b of [...drafts, ...voids]) byId.set(b.id, b);
-    return [...byId.values()].sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+    const list = await listOtCases("", "");
+    return list
+      .filter(isPurgeableOtCase)
+      .sort((a, b) => {
+        const aAt = a.updated_at || a.created_at;
+        const bAt = b.updated_at || b.created_at;
+        return aAt < bAt ? 1 : -1;
+      });
   }, []);
 
   const reload = useCallback(async (query: BillHistoryQuery) => {
@@ -98,13 +108,8 @@ export function OtHistoryModal({
       setLoading(true);
       setError(null);
       try {
-        if (mode === "purge") {
-          const list = await loadPurgeList();
-          if (!cancelled) setBills(list);
-        } else {
-          const list = await listOtCases("", "");
-          if (!cancelled) setRows(list);
-        }
+        const list = mode === "purge" ? await loadPurgeList() : await listOtCases("", "");
+        if (!cancelled) setRows(list);
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Load failed");
       } finally {
@@ -128,12 +133,9 @@ export function OtHistoryModal({
   }, [onClose]);
 
   const selectedCase = rows.find((r) => r.id === selectedId) ?? null;
-  const selectedBill = bills.find((b) => b.id === selectedId) ?? null;
   const canVoid =
     selectedCase != null && selectedCase.ot_bill_id != null && selectedCase.status !== "void";
-  const canPurge =
-    selectedBill != null &&
-    (selectedBill.status === "draft" || selectedBill.status === "void");
+  const canPurge = selectedCase != null && isPurgeableOtCase(selectedCase);
 
   async function handleDelete() {
     if (!selectedCase || !canVoid) return;
@@ -155,7 +157,7 @@ export function OtHistoryModal({
   }
 
   function openPurgeConfirm() {
-    if (!selectedBill || !canPurge || !onPurge) return;
+    if (!selectedCase || !canPurge || !onPurge) return;
     setPurgeError(null);
     setPurgeStep(1);
   }
@@ -167,7 +169,7 @@ export function OtHistoryModal({
   }
 
   async function confirmPurge() {
-    if (!selectedBill || !onPurge) return;
+    if (!selectedCase || !onPurge) return;
     if (purgeStep === 1) {
       setPurgeStep(2);
       setPurgeError(null);
@@ -176,7 +178,7 @@ export function OtHistoryModal({
     setBusy(true);
     setPurgeError(null);
     try {
-      await onPurge(selectedBill.id);
+      await onPurge(selectedCase.id);
       onClose();
     } catch (e) {
       setPurgeError(e instanceof Error ? e.message : "Delete failed");
@@ -200,6 +202,8 @@ export function OtHistoryModal({
       : mode === "purge"
         ? t("billPurge")
         : t("otDeskDeleteTitle");
+
+  const selectMode = mode === "delete" || mode === "purge";
 
   return (
     <div
@@ -235,80 +239,44 @@ export function OtHistoryModal({
 
         {loading ? <p className="hint">{t("loading")}</p> : null}
 
-        {mode === "purge" ? (
-          <ul className="opd-bill-dialog-list">
-            {!loading && bills.length === 0 ? (
-              <li className="empty-row">{t("noBillsYet")}</li>
-            ) : null}
-            {bills.map((b) => {
-              const active = selectedId === b.id;
-              return (
-                <li key={b.id}>
-                  <button
-                    type="button"
-                    className={
-                      active
-                        ? "opd-bill-dialog-row opd-bill-dialog-row--selected"
-                        : "opd-bill-dialog-row"
-                    }
-                    onClick={() => setSelectedId(b.id)}
-                  >
-                    <span className="opd-bill-dialog-row-main">
-                      <span className="row-title">
-                        {b.bill_no} · {b.patient_name}
-                      </span>
-                      <span className="row-sub">
-                        {moneyStatusLabel(b.status, t, b.printed_at, b.collected_cash)} ·{" "}
-                        {formatMMK(b.total_mmk)} {t("mmk")}
-                        {b.case_no ? ` · ${b.case_no}` : ""}
-                        {b.created_at ? ` · ${formatWhen(b.created_at)}` : ""}
-                      </span>
+        <ul className="opd-bill-dialog-list">
+          {!loading && rows.length === 0 ? (
+            <li className="empty-row">{mode === "purge" ? t("noBillsYet") : t("noOtCasesYet")}</li>
+          ) : null}
+          {rows.map((c) => {
+            const active = selectedId === c.id;
+            return (
+              <li key={c.id}>
+                <button
+                  type="button"
+                  className={
+                    selectMode && active
+                      ? "opd-bill-dialog-row opd-bill-dialog-row--selected"
+                      : "opd-bill-dialog-row"
+                  }
+                  onClick={() => handleCaseActivate(c)}
+                >
+                  <span className="opd-bill-dialog-row-main">
+                    <span className="row-title">
+                      {c.case_no} · {c.patient_name}
                     </span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        ) : (
-          <ul className="opd-bill-dialog-list">
-            {!loading && rows.length === 0 ? (
-              <li className="empty-row">{t("noOtCasesYet")}</li>
-            ) : null}
-            {rows.map((c) => {
-              const active = selectedId === c.id;
-              return (
-                <li key={c.id}>
-                  <button
-                    type="button"
-                    className={
-                      mode === "delete" && active
-                        ? "opd-bill-dialog-row opd-bill-dialog-row--selected"
-                        : "opd-bill-dialog-row"
-                    }
-                    onClick={() => handleCaseActivate(c)}
-                  >
-                    <span className="opd-bill-dialog-row-main">
-                      <span className="row-title">
-                        {c.case_no} · {c.patient_name}
-                      </span>
-                      <span className="row-sub">
-                        {moneyStatusLabel(
-                          c.bill_status ?? c.status,
-                          t,
-                          c.bill_printed_at,
-                          c.bill_collected_cash,
-                        )}
-                        {c.procedure_name ? ` · ${c.procedure_name}` : ""}
-                        {c.doctor_name ? ` · ${c.doctor_name}` : ""}
-                        {c.updated_at ? ` · ${formatWhen(c.updated_at)}` : ""}
-                      </span>
+                    <span className="row-sub">
+                      {moneyStatusLabel(
+                        c.bill_status ?? c.status,
+                        t,
+                        c.bill_printed_at,
+                        c.bill_collected_cash,
+                      )}
+                      {c.procedure_name ? ` · ${c.procedure_name}` : ""}
+                      {c.doctor_name ? ` · ${c.doctor_name}` : ""}
+                      {c.updated_at ? ` · ${formatWhen(c.updated_at)}` : ""}
                     </span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
 
         {mode === "delete" ? (
           <div className="opd-bill-dialog-footer">
@@ -350,15 +318,15 @@ export function OtHistoryModal({
         {mode === "history" ? <p className="hint">{t("billHistoryHint")}</p> : null}
       </div>
       <AlertDialog message={error ?? ""} onClose={() => setError(null)} />
-      {purgeStep > 0 && selectedBill ? (
+      {purgeStep > 0 && selectedCase ? (
         <AlertDialog
           tone="warning"
           title={t("delete")}
-          identity={`${selectedBill.bill_no} · ${selectedBill.patient_name}`}
+          identity={`${selectedCase.case_no} · ${selectedCase.patient_name}`}
           message={
             purgeStep === 1
-              ? t("confirmPurgeBill").replace("{bill}", selectedBill.bill_no)
-              : t("confirmPurgeBillFinal").replace("{bill}", selectedBill.bill_no)
+              ? t("confirmPurgeBill").replace("{bill}", selectedCase.case_no)
+              : t("confirmPurgeBillFinal").replace("{bill}", selectedCase.case_no)
           }
           error={purgeError}
           busy={busy}

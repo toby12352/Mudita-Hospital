@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   admitPatient,
   dischargeIpd,
@@ -19,6 +19,8 @@ import type { PatientChart } from "@/features/patients/api";
 import { PatientChartTypeahead } from "@/features/patients/PatientChartTypeahead";
 import { ActionIcon } from "@/shared/ActionIcon";
 import { AlertDialog } from "@/shared/AlertDialog";
+import { fieldKeyForApiError } from "@/shared/errors";
+import { FieldError, revealField } from "@/shared/FieldError";
 import { formatMMK } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
 
@@ -34,11 +36,64 @@ export function IpdPage() {
   const [wardDescription, setWardDescription] = useState("");
   const [wardAmount, setWardAmount] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [patientError, setPatientError] = useState<string | null>(null);
+  const [depositAmountError, setDepositAmountError] = useState<string | null>(null);
+  const [wardDescriptionError, setWardDescriptionError] = useState<string | null>(null);
+  const [wardAmountError, setWardAmountError] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [listStatus, setListStatus] = useState<"open" | "settled">("open");
   const [showCash, setShowCash] = useState(false);
   const [confirmDischarge, setConfirmDischarge] = useState(false);
+  const patientFieldRef = useRef<HTMLDivElement>(null);
+  const depositAmountRef = useRef<HTMLInputElement>(null);
+  const wardDescriptionRef = useRef<HTMLInputElement>(null);
+  const wardAmountRef = useRef<HTMLInputElement>(null);
+  const formErrorRef = useRef<HTMLParagraphElement>(null);
+  const okMsgRef = useRef<HTMLParagraphElement>(null);
+
+  useEffect(() => {
+    if (okMsg?.trim()) revealField(okMsgRef.current);
+  }, [okMsg]);
+
+  function clearFieldErrors() {
+    setPatientError(null);
+    setDepositAmountError(null);
+    setWardDescriptionError(null);
+    setWardAmountError(null);
+  }
+
+  function applyApiError(e: unknown, amountTarget: "deposit" | "ward" = "deposit") {
+    const msg = e instanceof Error ? e.message : t("errGeneric");
+    const key = fieldKeyForApiError(e);
+    if (key === "patient") {
+      setPatientError(msg);
+      window.setTimeout(() => revealField(patientFieldRef.current), 0);
+      return;
+    }
+    if (key === "description") {
+      setWardDescriptionError(msg);
+      window.setTimeout(() => revealField(wardDescriptionRef.current), 0);
+      return;
+    }
+    if (key === "amount") {
+      if (amountTarget === "ward") {
+        setWardAmountError(msg);
+        window.setTimeout(() => revealField(wardAmountRef.current), 0);
+      } else {
+        setDepositAmountError(msg);
+        window.setTimeout(() => revealField(depositAmountRef.current), 0);
+      }
+      return;
+    }
+    if (key === "form") {
+      setError(msg);
+      window.setTimeout(() => revealField(formErrorRef.current ?? patientFieldRef.current), 0);
+      return;
+    }
+    setError(msg);
+    window.setTimeout(() => revealField(formErrorRef.current), 0);
+  }
 
   async function loadStays() {
     setStays(await listIpdAdmissions(listStatus));
@@ -69,17 +124,19 @@ export function IpdPage() {
     setWardDescription("");
     setWardAmount("");
     setError(null);
+    clearFieldErrors();
     setOkMsg(null);
   }
 
   async function openStay(id: number) {
     setBusy(true);
     setError(null);
+    clearFieldErrors();
     setOkMsg(null);
     try {
       showStay(await getIpdAdmission(id));
     } catch (e) {
-      setError(e instanceof Error ? e.message : t("errGeneric"));
+      applyApiError(e);
     } finally {
       setBusy(false);
     }
@@ -87,18 +144,20 @@ export function IpdPage() {
 
   async function admit() {
     if (chartId == null) {
-      setError(t("errIpdPickPatient"));
+      setPatientError(t("errIpdPickPatient"));
+      window.setTimeout(() => revealField(patientFieldRef.current), 0);
       return;
     }
     setBusy(true);
     setError(null);
+    clearFieldErrors();
     setOkMsg(null);
     try {
       const created = await admitPatient(chartId);
       showStay(created);
       await loadStays();
     } catch (e) {
-      setError(e instanceof Error ? e.message : t("errGeneric"));
+      applyApiError(e);
     } finally {
       setBusy(false);
     }
@@ -108,6 +167,7 @@ export function IpdPage() {
     if (!stay) return;
     setBusy(true);
     setError(null);
+    clearFieldErrors();
     setOkMsg(null);
     try {
       const saved = await updateIpdNotes(stay.id, notes);
@@ -115,7 +175,7 @@ export function IpdPage() {
       setOkMsg(t("saved"));
       await loadStays();
     } catch (e) {
-      setError(e instanceof Error ? e.message : t("errGeneric"));
+      applyApiError(e);
     } finally {
       setBusy(false);
     }
@@ -125,11 +185,13 @@ export function IpdPage() {
     if (!stay) return;
     const amount = parseKyat(depositAmount);
     if (amount == null) {
-      setError(t("errIpdAmount"));
+      setDepositAmountError(t("errIpdAmount"));
+      window.setTimeout(() => revealField(depositAmountRef.current), 0);
       return;
     }
     setBusy(true);
     setError(null);
+    clearFieldErrors();
     setOkMsg(null);
     try {
       const saved = await postIpdDeposit(stay.id, amount, depositNote);
@@ -140,7 +202,7 @@ export function IpdPage() {
       setWardAmount("");
       setOkMsg(t("saved"));
     } catch (e) {
-      setError(e instanceof Error ? e.message : t("errGeneric"));
+      applyApiError(e, "deposit");
     } finally {
       setBusy(false);
     }
@@ -151,15 +213,18 @@ export function IpdPage() {
     const description = wardDescription.trim();
     const amount = parseKyat(wardAmount);
     if (!description) {
-      setError(t("errIpdDescription"));
+      setWardDescriptionError(t("errIpdDescription"));
+      window.setTimeout(() => revealField(wardDescriptionRef.current), 0);
       return;
     }
     if (amount == null) {
-      setError(t("errIpdAmount"));
+      setWardAmountError(t("errIpdAmount"));
+      window.setTimeout(() => revealField(wardAmountRef.current), 0);
       return;
     }
     setBusy(true);
     setError(null);
+    clearFieldErrors();
     setOkMsg(null);
     try {
       const saved = await postIpdWardCharge(stay.id, description, amount);
@@ -170,7 +235,7 @@ export function IpdPage() {
       setWardAmount("");
       setOkMsg(t("saved"));
     } catch (e) {
-      setError(e instanceof Error ? e.message : t("errGeneric"));
+      applyApiError(e, "ward");
     } finally {
       setBusy(false);
     }
@@ -187,7 +252,7 @@ export function IpdPage() {
           : line.note.trim() || t("print");
       await printIpdDeposit(stay.id, line.id, title);
     } catch (e) {
-      setError(e instanceof Error ? e.message : t("errGeneric"));
+      applyApiError(e);
     } finally {
       setBusy(false);
     }
@@ -200,7 +265,7 @@ export function IpdPage() {
     try {
       await printIpdStatement(stay.id, t("ipdStatement"));
     } catch (e) {
-      setError(e instanceof Error ? e.message : t("errGeneric"));
+      applyApiError(e);
     } finally {
       setBusy(false);
     }
@@ -210,6 +275,7 @@ export function IpdPage() {
     if (!stay || stay.status !== "open") return;
     setBusy(true);
     setError(null);
+    clearFieldErrors();
     setOkMsg(null);
     try {
       const saved = await dischargeIpd(stay.id);
@@ -223,7 +289,7 @@ export function IpdPage() {
       setOkMsg(t("ipdDischarged"));
       await loadStays();
     } catch (e) {
-      setError(e instanceof Error ? e.message : t("errGeneric"));
+      applyApiError(e);
       setConfirmDischarge(false);
     } finally {
       setBusy(false);
@@ -350,16 +416,22 @@ export function IpdPage() {
             <div className="opd-bill-header">
               <div className="opd-bill-header-col">
                 <span className="opd-bill-label">{t("ipdDeposit")}</span>
-                <label className="opd-bill-field">
+                <label className={`opd-bill-field${depositAmountError ? " is-invalid" : ""}`}>
                   <span className="opd-bill-label">{t("amount")}</span>
                   <input
+                    ref={depositAmountRef}
                     className="opd-bill-input"
                     inputMode="numeric"
                     value={depositAmount}
                     disabled={busy || stay.status !== "open"}
-                    onChange={(e) => setDepositAmount(e.target.value)}
+                    onChange={(e) => {
+                      setDepositAmount(e.target.value);
+                      setDepositAmountError(null);
+                    }}
+                    aria-invalid={depositAmountError ? true : undefined}
                   />
                 </label>
+                <FieldError>{depositAmountError}</FieldError>
                 <label className="opd-bill-field">
                   <span className="opd-bill-label">{t("note")}</span>
                   <input
@@ -372,32 +444,47 @@ export function IpdPage() {
               </div>
               <div className="opd-bill-header-col">
                 <span className="opd-bill-label">{t("ipdWardCharge")}</span>
-                <label className="opd-bill-field">
+                <label className={`opd-bill-field${wardDescriptionError ? " is-invalid" : ""}`}>
                   <span className="opd-bill-label">{t("description")}</span>
                   <input
+                    ref={wardDescriptionRef}
                     className="opd-bill-input"
                     value={wardDescription}
                     disabled={busy || stay.status !== "open"}
-                    onChange={(e) => setWardDescription(e.target.value)}
+                    onChange={(e) => {
+                      setWardDescription(e.target.value);
+                      setWardDescriptionError(null);
+                    }}
+                    aria-invalid={wardDescriptionError ? true : undefined}
                   />
                 </label>
-                <label className="opd-bill-field">
+                <FieldError>{wardDescriptionError}</FieldError>
+                <label className={`opd-bill-field${wardAmountError ? " is-invalid" : ""}`}>
                   <span className="opd-bill-label">{t("amount")}</span>
                   <input
+                    ref={wardAmountRef}
                     className="opd-bill-input"
                     inputMode="numeric"
                     value={wardAmount}
                     disabled={busy || stay.status !== "open"}
-                    onChange={(e) => setWardAmount(e.target.value)}
+                    onChange={(e) => {
+                      setWardAmount(e.target.value);
+                      setWardAmountError(null);
+                    }}
+                    aria-invalid={wardAmountError ? true : undefined}
                   />
                 </label>
+                <FieldError>{wardAmountError}</FieldError>
               </div>
             </div>
             ) : null}
           </>
         ) : (
           <>
-            <div className="opd-bill-field opd-bill-field--typeahead">
+            <div
+              ref={patientFieldRef}
+              className={`opd-bill-field opd-bill-field--typeahead${patientError ? " is-invalid" : ""}`}
+            >
               <span className="opd-bill-label">{t("patient")}</span>
               <PatientChartTypeahead
                 value={patientName}
@@ -405,14 +492,22 @@ export function IpdPage() {
                 onChange={(value) => {
                   setPatientName(value);
                   setChartId(null);
+                  setPatientError(null);
                 }}
                 onPick={(patient: PatientChart) => {
                   setPatientName(patient.name);
                   setChartId(patient.id);
                   setError(null);
+                  setPatientError(null);
                 }}
               />
             </div>
+            <FieldError>{patientError}</FieldError>
+            {error && !stay ? (
+              <p ref={formErrorRef} className="form-error" role="alert">
+                {error}
+              </p>
+            ) : null}
             <ul className="data-list">
               {stays.length === 0 ? (
                 <li className="empty-row">{listStatus === "open" ? t("ipdNoStays") : t("ipdNoSettled")}</li>
@@ -441,8 +536,16 @@ export function IpdPage() {
           </>
         )}
 
-        {error ? <p className="form-error">{error}</p> : null}
-        {okMsg ? <p className="form-ok">{okMsg}</p> : null}
+        {error && stay ? (
+          <p ref={formErrorRef} className="form-error" role="alert">
+            {error}
+          </p>
+        ) : null}
+        {okMsg ? (
+          <p ref={okMsgRef} className="form-ok" role="status">
+            {okMsg}
+          </p>
+        ) : null}
       </div>
 
       <aside className="opd-bill-rail" aria-label={t("ipdStayTitle")}>

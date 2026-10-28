@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useId, useMemo, useState } from "react";
+import { FormEvent, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   attachPatientBill,
   createPatient,
@@ -17,6 +17,8 @@ import { ActionIcon } from "@/shared/ActionIcon";
 import { AlertDialog } from "@/shared/AlertDialog";
 import { CatalogFilterButton, CatalogFilterPanel } from "@/shared/CatalogListFilter";
 import { sortByDateAscDesc, type DateSortValue } from "@/shared/DateSort";
+import { fieldKeyForApiError } from "@/shared/errors";
+import { FieldError, revealField } from "@/shared/FieldError";
 import { formatMMK } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
 
@@ -71,7 +73,11 @@ export function PatientsPage() {
   const [historyReady, setHistoryReady] = useState(false);
   const [billNo, setBillNo] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [nameError, setNameError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const nameInputRef = useRef<HTMLInputElement>(null);
+  const formErrorRef = useRef<HTMLParagraphElement>(null);
+  const nameErrorId = useId();
   const [printingKey, setPrintingKey] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<PatientChart | null>(null);
   const [deleteStep, setDeleteStep] = useState<1 | 2>(1);
@@ -211,6 +217,7 @@ export function PatientsPage() {
     e.preventDefault();
     setBusy(true);
     setError(null);
+    setNameError(null);
     try {
       const body = chartBody(name, phone, age, gender, notes);
       const saved =
@@ -226,7 +233,14 @@ export function PatientsPage() {
       setSelectedId(saved.id);
       setHistory(await fetchPatientHistory(saved.id));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Save failed");
+      const msg = err instanceof Error ? err.message : "Save failed";
+      if (fieldKeyForApiError(err) === "name") {
+        setNameError(msg);
+        window.setTimeout(() => revealField(nameInputRef.current), 0);
+      } else {
+        setError(msg);
+        window.setTimeout(() => revealField(formErrorRef.current), 0);
+      }
     } finally {
       setBusy(false);
     }
@@ -397,9 +411,21 @@ export function PatientsPage() {
               className="card-form"
               onSubmit={(e) => void submit(e)}
             >
-              <label className="field">
+              <label className={`field${nameError ? " is-invalid" : ""}`}>
                 <span>{t("name")}</span>
-                <input value={name} onChange={(e) => setName(e.target.value)} required disabled={busy} />
+                <input
+                  ref={nameInputRef}
+                  value={name}
+                  onChange={(e) => {
+                    setName(e.target.value);
+                    setNameError(null);
+                  }}
+                  required
+                  disabled={busy}
+                  aria-invalid={nameError ? true : undefined}
+                  aria-describedby={nameError ? nameErrorId : undefined}
+                />
+                <FieldError id={nameErrorId}>{nameError}</FieldError>
               </label>
               <div className="field-row">
                 <label className="field">
@@ -436,7 +462,11 @@ export function PatientsPage() {
                   disabled={busy}
                 />
               </label>
-              {error ? <p className="form-error">{error}</p> : null}
+              {error ? (
+                <p ref={formErrorRef} className="form-error" role="alert">
+                  {error}
+                </p>
+              ) : null}
               <div className="btn-row">
                 <button type="submit" className="btn primary" disabled={busy}>
                   {busy ? t("saving") : t("save")}

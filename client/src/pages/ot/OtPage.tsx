@@ -14,7 +14,7 @@ import {
   printOtBill,
   updateOtBill,
   updateOtCase,
-  purgeOtBill,
+  purgeOtCase,
   voidOtBill,
   type OtBill,
   type OtCase,
@@ -52,6 +52,7 @@ import {
   moneyStatusLabel,
 } from "@/shared/BillPayPrint";
 import { userMessage } from "@/shared/errors";
+import { revealField } from "@/shared/FieldError";
 import { formatMMK } from "@/shared/format";
 import { Typeahead } from "@/shared/Typeahead";
 import { useClinicActions } from "@/app/clinicActions";
@@ -107,6 +108,11 @@ export function OtPage() {
   const [dialog, setDialog] = useState<OtHistoryModalMode | null>(null);
   const [confirm, setConfirm] = useState<DeskConfirm | null>(null);
   const [printAfterPay, setPrintAfterPay] = useState<string | null>(null);
+  const okMsgRef = useRef<HTMLParagraphElement>(null);
+
+  useEffect(() => {
+    if (okMsg?.trim()) revealField(okMsgRef.current);
+  }, [okMsg]);
 
   const [caseId, setCaseId] = useState<number | null>(null);
   const [caseNo, setCaseNo] = useState("");
@@ -740,12 +746,10 @@ export function OtPage() {
     }
   }
 
-  async function purgeFromHistory(billId: number) {
-    await purgeOtBill(billId);
-    if (otBillId === billId) {
-      setBill(null);
-      setOtBillId(null);
-      setCaseStatus("draft");
+  async function purgeFromHistory(caseRowId: number) {
+    await purgeOtCase(caseRowId);
+    if (caseId === caseRowId) {
+      resetCaseForm();
     }
     setOkMsg(t("billPurged"));
   }
@@ -1185,7 +1189,11 @@ export function OtPage() {
             />
           </div>
 
-          {okMsg ? <p className="form-ok">{okMsg}</p> : null}
+          {okMsg ? (
+            <p ref={okMsgRef} className="form-ok" role="status">
+              {okMsg}
+            </p>
+          ) : null}
         </div>
 
         <aside className="opd-bill-rail" aria-label={t("billActions")}>

@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"net/http"
@@ -220,6 +221,8 @@ func (h *OT) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.createBillFromCase(w, r, path)
 		case strings.HasPrefix(path, "/cases/") && strings.HasSuffix(path, "/pick-list") && r.Method == http.MethodGet:
 			h.printPickList(w, r, path)
+		case strings.HasPrefix(path, "/cases/") && r.Method == http.MethodDelete:
+			h.purgeCase(w, r, path)
 		case strings.HasPrefix(path, "/cases/") && r.Method == http.MethodGet:
 			h.getCase(w, r, path)
 		case strings.HasPrefix(path, "/cases/") && r.Method == http.MethodPut:
@@ -1132,6 +1135,151 @@ func (h *OT) payBill(w http.ResponseWriter, r *http.Request, path string) {
 	writeJSON(w, http.StatusOK, bill)
 }
 
+var (
+	errOtPurgeNotFound   = errors.New("not found")
+	errOtPurgeCaseStatus = errors.New("only draft, billed, or void cases can be deleted")
+	errOtPurgeBillStatus = errors.New("only draft or void bills can be deleted")
+)
+
+type otPurgeBillSummary struct {
+	ID       int64
+	BillNo   string
+	Status   string
+	TotalMMK int64
+}
+
+type otPurgeVisitResult struct {
+	CaseID int64
+	CaseNo string
+	Bills  []otPurgeBillSummary
+}
+
+// purgeOtVisitTx removes a case and every draft/void bill on it. Paid bills refuse the whole visit.
+func purgeOtVisitTx(tx *sql.Tx, caseID int64) (otPurgeVisitResult, error) {
+	var out otPurgeVisitResult
+	var status, caseNo string
+	err := tx.QueryRow(`SELECT status, case_no FROM ot_cases WHERE id = ?`, caseID).Scan(&status, &caseNo)
+	if err == sql.ErrNoRows {
+		return out, errOtPurgeNotFound
+	}
+	if err != nil {
+		return out, err
+	}
+	switch status {
+	case "draft", "billed", "void":
+	default:
+		return out, errOtPurgeCaseStatus
+	}
+	out.CaseID = caseID
+	out.CaseNo = caseNo
+
+	rows, err := tx.Query(`
+		SELECT id, status, bill_no, total_mmk FROM ot_bills WHERE case_id = ? ORDER BY id
+	`, caseID)
+	if err != nil {
+		return out, err
+	}
+	bills := make([]otPurgeBillSummary, 0)
+	for rows.Next() {
+		var b otPurgeBillSummary
+		if err := rows.Scan(&b.ID, &b.Status, &b.BillNo, &b.TotalMMK); err != nil {
+			rows.Close()
+			return out, err
+		}
+		if b.Status != "draft" && b.Status != "void" {
+			rows.Close()
+			return out, errOtPurgeBillStatus
+		}
+		bills = append(bills, b)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return out, err
+	}
+	rows.Close()
+
+	for _, b := range bills {
+		if err := purgeBillLedgerTx(tx, "ot", b.ID); err != nil {
+			return out, err
+		}
+		res, err := tx.Exec(`DELETE FROM ot_bills WHERE id = ?`, b.ID)
+		if err != nil {
+			return out, err
+		}
+		n, _ := res.RowsAffected()
+		if n == 0 {
+			return out, errOtPurgeNotFound
+		}
+	}
+	res, err := tx.Exec(`DELETE FROM ot_cases WHERE id = ?`, caseID)
+	if err != nil {
+		return out, err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return out, errOtPurgeNotFound
+	}
+	out.Bills = bills
+	return out, nil
+}
+
+func writeOtPurgeErr(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, errOtPurgeNotFound):
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+	case errors.Is(err, errOtPurgeCaseStatus):
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": errOtPurgeCaseStatus.Error()})
+	case errors.Is(err, errOtPurgeBillStatus):
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "only draft or void bills can be deleted"})
+	case errors.Is(err, errLedgerNotBalanced):
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "ledger not balanced"})
+	default:
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "delete failed"})
+	}
+}
+
+func (h *OT) purgeCase(w http.ResponseWriter, r *http.Request, path string) {
+	user, ok := requireAdminUser(w, r)
+	if !ok {
+		return
+	}
+	id, ok := parseID(strings.TrimPrefix(path, "/cases"))
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid id"})
+		return
+	}
+
+	tx, err := h.DB.Begin()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "tx failed"})
+		return
+	}
+	defer tx.Rollback()
+
+	result, err := purgeOtVisitTx(tx, id)
+	if err != nil {
+		writeOtPurgeErr(w, err)
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "commit failed"})
+		return
+	}
+	uid := user.ID
+	for i := range result.Bills {
+		b := result.Bills[i]
+		billID := b.ID
+		audit.WriteAudit(h.DB, &uid, "delete", "ot_bill", &billID, map[string]any{
+			"bill_no": b.BillNo, "was_status": b.Status, "total_mmk": b.TotalMMK, "case_id": result.CaseID,
+		})
+	}
+	caseID := result.CaseID
+	audit.WriteAudit(h.DB, &uid, "delete", "ot_case", &caseID, map[string]any{
+		"case_no": result.CaseNo, "bills": len(result.Bills),
+	})
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
 func (h *OT) purgeBill(w http.ResponseWriter, r *http.Request, path string) {
 	user, ok := requireAdminUser(w, r)
 	if !ok {
@@ -1150,9 +1298,14 @@ func (h *OT) purgeBill(w http.ResponseWriter, r *http.Request, path string) {
 	}
 	defer tx.Rollback()
 
-	var status, billNo string
+	var status, billNo, caseNo string
 	var totalMMK, caseID int64
-	err = tx.QueryRow(`SELECT status, bill_no, total_mmk, case_id FROM ot_bills WHERE id = ?`, id).Scan(&status, &billNo, &totalMMK, &caseID)
+	err = tx.QueryRow(`
+		SELECT b.status, b.bill_no, b.total_mmk, b.case_id, c.case_no
+		FROM ot_bills b
+		JOIN ot_cases c ON c.id = b.case_id
+		WHERE b.id = ?
+	`, id).Scan(&status, &billNo, &totalMMK, &caseID, &caseNo)
 	if err == sql.ErrNoRows {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		return
@@ -1172,13 +1325,6 @@ func (h *OT) purgeBill(w http.ResponseWriter, r *http.Request, path string) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "ledger purge failed"})
 		return
 	}
-	if _, err := tx.Exec(`
-		UPDATE ot_cases SET status = 'draft', ot_bill_id = NULL, updated_at = datetime('now')
-		WHERE id = ? AND ot_bill_id = ?
-	`, caseID, id); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "case unlink failed"})
-		return
-	}
 	res, err := tx.Exec(`DELETE FROM ot_bills WHERE id = ?`, id)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "delete failed"})
@@ -1189,6 +1335,33 @@ func (h *OT) purgeBill(w http.ResponseWriter, r *http.Request, path string) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		return
 	}
+
+	var remaining int
+	if err := tx.QueryRow(`SELECT COUNT(1) FROM ot_bills WHERE case_id = ?`, caseID).Scan(&remaining); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "case check failed"})
+		return
+	}
+	caseDeleted := false
+	if remaining == 0 {
+		cres, err := tx.Exec(`DELETE FROM ot_cases WHERE id = ?`, caseID)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "case delete failed"})
+			return
+		}
+		cn, _ := cres.RowsAffected()
+		if cn == 0 {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+			return
+		}
+		caseDeleted = true
+	} else if _, err := tx.Exec(`
+		UPDATE ot_cases SET status = 'draft', ot_bill_id = NULL, updated_at = datetime('now')
+		WHERE id = ? AND ot_bill_id = ?
+	`, caseID, id); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "case unlink failed"})
+		return
+	}
+
 	if err := tx.Commit(); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "commit failed"})
 		return
@@ -1197,6 +1370,11 @@ func (h *OT) purgeBill(w http.ResponseWriter, r *http.Request, path string) {
 	audit.WriteAudit(h.DB, &uid, "delete", "ot_bill", &id, map[string]any{
 		"bill_no": billNo, "was_status": status, "total_mmk": totalMMK, "case_id": caseID,
 	})
+	if caseDeleted {
+		audit.WriteAudit(h.DB, &uid, "delete", "ot_case", &caseID, map[string]any{
+			"case_no": caseNo, "bills": 1,
+		})
+	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
@@ -2038,8 +2216,8 @@ func renderOtBillHTML(hosp *hospitalSettings, bill otBill, caseItems []otCaseIte
 	if bill.PrintedAt != nil {
 		printedAt = *bill.PrintedAt
 	}
-	return renderThermalReceiptHTML(hosp, receiptBill{
-		Title:          "OT RECEIPT",
+	return renderA4ReceiptHTML(hosp, receiptBill{
+		Title:          "OPERATION THEATRE PAYMENT RECEIPT",
 		BillNo:         bill.BillNo,
 		CaseNo:         bill.CaseNo,
 		Status:         bill.Status,

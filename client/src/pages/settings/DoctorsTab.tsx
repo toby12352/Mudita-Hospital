@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useId, useRef, useState } from "react";
 import {
   createDoctor,
   deactivateDoctor,
@@ -7,6 +7,8 @@ import {
   type Doctor,
 } from "@/features/settings/masterData";
 import { ActionIcon } from "@/shared/ActionIcon";
+import { fieldKeyForApiError } from "@/shared/errors";
+import { FieldError, revealField } from "@/shared/FieldError";
 import { Typeahead } from "@/shared/Typeahead";
 import { useI18n } from "@/shared/i18n";
 export function DoctorsTab() {
@@ -14,10 +16,14 @@ export function DoctorsTab() {
   const [q, setQ] = useState("");
   const [list, setList] = useState<Doctor[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [nameError, setNameError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState<Doctor | null>(null);
   const [name, setName] = useState("");
   const [specialty, setSpecialty] = useState("");
+  const nameInputRef = useRef<HTMLInputElement>(null);
+  const formErrorRef = useRef<HTMLParagraphElement>(null);
+  const nameErrorId = useId();
   const [consult, setConsult] = useState("0");
   const [ot, setOt] = useState("0");
 
@@ -61,6 +67,7 @@ export function DoctorsTab() {
     e.preventDefault();
     setBusy(true);
     setError(null);
+    setNameError(null);
     try {
       const body = {
         name: name.trim(),
@@ -77,7 +84,14 @@ export function DoctorsTab() {
       startCreate();
       await reload();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Save failed");
+      const msg = err instanceof Error ? err.message : "Save failed";
+      if (fieldKeyForApiError(err) === "name") {
+        setNameError(msg);
+        window.setTimeout(() => revealField(nameInputRef.current), 0);
+      } else {
+        setError(msg);
+        window.setTimeout(() => revealField(formErrorRef.current), 0);
+      }
     } finally {
       setBusy(false);
     }
@@ -103,9 +117,21 @@ export function DoctorsTab() {
         <h2 className="section-title">
           {editing ? `${t("editDoctor")} #${editing.id}` : t("addDoctor")}
         </h2>
-        <label className="field">
+        <label className={`field${nameError ? " is-invalid" : ""}`}>
           <span>{t("name")}</span>
-          <input value={name} onChange={(e) => setName(e.target.value)} required disabled={busy} />
+          <input
+            ref={nameInputRef}
+            value={name}
+            onChange={(e) => {
+              setName(e.target.value);
+              setNameError(null);
+            }}
+            required
+            disabled={busy}
+            aria-invalid={nameError ? true : undefined}
+            aria-describedby={nameError ? nameErrorId : undefined}
+          />
+          <FieldError id={nameErrorId}>{nameError}</FieldError>
         </label>
         <label className="field">
           <span>{t("specialty")}</span>
@@ -127,7 +153,11 @@ export function DoctorsTab() {
             <input type="number" min={0} value={ot} onChange={(e) => setOt(e.target.value)} disabled={busy} />
           </label>
         </div>
-        {error ? <p className="form-error">{error}</p> : null}
+        {error ? (
+          <p ref={formErrorRef} className="form-error" role="alert">
+            {error}
+          </p>
+        ) : null}
         <div className="btn-row">
           <button type="submit" className="btn primary" disabled={busy}>
             {busy ? t("saving") : editing ? t("updateDoctor") : t("addDoctor")}

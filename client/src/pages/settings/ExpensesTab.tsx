@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useId, useRef, useState } from "react";
 import {
   createExpenseService,
   deactivateExpenseService,
@@ -9,6 +9,8 @@ import {
 } from "@/features/expenses/api";
 import { CatalogDeleteDialog } from "@/pages/opd/CatalogDeleteDialog";
 import { ActionIcon } from "@/shared/ActionIcon";
+import { fieldKeyForApiError } from "@/shared/errors";
+import { FieldError, revealField } from "@/shared/FieldError";
 import { formatMMK } from "@/shared/format";
 import { Typeahead } from "@/shared/Typeahead";
 import { useI18n } from "@/shared/i18n";
@@ -31,11 +33,15 @@ export function ExpensesTab() {
   const [q, setQ] = useState("");
   const [list, setList] = useState<ExpenseService[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [codeError, setCodeError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState<ExpenseService | null>(null);
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
+  const codeInputRef = useRef<HTMLInputElement>(null);
+  const formErrorRef = useRef<HTMLParagraphElement>(null);
+  const codeErrorId = useId();
   const [deleteTarget, setDeleteTarget] = useState<ExpenseService | null>(null);
   const [deleteStep, setDeleteStep] = useState<1 | 2>(1);
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -79,10 +85,12 @@ export function ExpensesTab() {
     const priceMmk = parseCatalogPrice(price);
     if (priceMmk === "invalid") {
       setError(t("servicePriceInvalid"));
+      window.setTimeout(() => revealField(formErrorRef.current), 0);
       return;
     }
     setBusy(true);
     setError(null);
+    setCodeError(null);
     try {
       const body = {
         code: code.trim(),
@@ -102,7 +110,14 @@ export function ExpensesTab() {
       startCreate();
       await reload();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Save failed");
+      const msg = err instanceof Error ? err.message : "Save failed";
+      if (fieldKeyForApiError(err) === "code") {
+        setCodeError(t("errCodeExists"));
+        window.setTimeout(() => revealField(codeInputRef.current), 0);
+      } else {
+        setError(msg);
+        window.setTimeout(() => revealField(formErrorRef.current), 0);
+      }
     } finally {
       setBusy(false);
     }
@@ -164,9 +179,20 @@ export function ExpensesTab() {
         <h2 className="section-title">
           {editing ? `${t("editExpense")} #${editing.id}` : t("addExpense")}
         </h2>
-        <label className="field">
+        <label className={`field${codeError ? " is-invalid" : ""}`}>
           <span>{t("code")}</span>
-          <input value={code} onChange={(e) => setCode(e.target.value)} disabled={busy} />
+          <input
+            ref={codeInputRef}
+            value={code}
+            onChange={(e) => {
+              setCode(e.target.value);
+              setCodeError(null);
+            }}
+            disabled={busy}
+            aria-invalid={codeError ? true : undefined}
+            aria-describedby={codeError ? codeErrorId : undefined}
+          />
+          <FieldError id={codeErrorId}>{codeError}</FieldError>
         </label>
         <label className="field">
           <span>{t("name")}</span>
@@ -183,7 +209,11 @@ export function ExpensesTab() {
             placeholder={t("none")}
           />
         </label>
-        {error ? <p className="form-error">{error}</p> : null}
+        {error ? (
+          <p ref={formErrorRef} className="form-error" role="alert">
+            {error}
+          </p>
+        ) : null}
         <div className="btn-row">
           <button type="submit" className="btn primary" disabled={busy}>
             {busy ? t("saving") : editing ? t("updateExpense") : t("addExpense")}

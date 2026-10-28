@@ -246,3 +246,115 @@ func TestRenderThermalReceiptHTMLCartColumns(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderA4ReceiptHTMLLayout(t *testing.T) {
+	age := int64(46)
+	hosp := &hospitalSettings{
+		HospitalName: "Mudita Hospital",
+		Address:      "Yangon",
+		Phone:        "09-111",
+		Phone2:       "09-222",
+	}
+	html := renderA4ReceiptHTML(hosp, receiptBill{
+		Title:          "OPERATION THEATRE PAYMENT RECEIPT",
+		BillNo:         "OT-00025",
+		CaseNo:         "OTC-00010",
+		Status:         "paid",
+		PatientName:    "John Doe",
+		PatientPhone:   "091234567",
+		PatientAge:     &age,
+		PatientGender:  "M",
+		DoctorName:     "Dr Tun",
+		ProcedureName:  "Appendectomy",
+		DateLabel:      "2026-10-25 16:30",
+		ShowSettlement: true,
+		TotalMMK:       241000,
+		DiscountMMK:    0,
+		NetMMK:         241000,
+		Lines: []receiptLine{
+			{Description: "Operation Theatre Charges", Qty: 1, LineTotal: 93000},
+			{Description: "Surgeon and Medical Professional Fees", Qty: 1, LineTotal: 105000},
+			{Description: "Consumables and Implants", Qty: 2, Unit: "set", LineTotal: 43000},
+		},
+	})
+
+	if !strings.Contains(html, `@page{size:A4;margin:12mm}`) {
+		t.Fatalf("expected A4 @page CSS")
+	}
+	if strings.Contains(html, `@page{size:80mm`) {
+		t.Fatalf("A4 receipt must not use thermal page size")
+	}
+	for _, want := range []string{
+		"Mudita Hospital",
+		"Yangon",
+		"Tel: 09-111 / 09-222",
+		"OPERATION THEATRE PAYMENT RECEIPT",
+		`a4-meta-heading">Patient`,
+		`a4-meta-heading">Bill`,
+		`>Name:</span><span class="val">John Doe</span>`,
+		`>Age:</span><span class="val">46</span>`,
+		`>Sex:</span><span class="val">M</span>`,
+		`>Phone:</span><span class="val">091234567</span>`,
+		`>Bill No:</span><span class="val">OT-00025</span>`,
+		`>Case No:</span><span class="val">OTC-00010</span>`,
+		`>Doctor:</span><span class="val">Dr Tun</span>`,
+		`>Procedure:</span><span class="val">Appendectomy</span>`,
+		`<th class="col-no">No.</th><th>Description</th><th class="col-qty">Qty</th><th class="col-amt">Amount (MMK)</th>`,
+		`>Operation Theatre Charges</td><td class="col-qty">1</td><td class="col-amt">93,000</td>`,
+		`>Consumables and Implants</td><td class="col-qty">2 set</td><td class="col-amt">43,000</td>`,
+		`>Total</td><td>241,000 MMK</td>`,
+		`>Paid</td><td>241,000 MMK</td>`,
+		`>Remaining Balance</td><td>0 MMK</td>`,
+		`Balance Due: 0 MMK`,
+		`PAID IN FULL — Thank you for your payment.`,
+		`<th>No.</th><th>Payment Date</th><th>Payment Method</th>`,
+		`>Cash</td>`,
+		`Received by`,
+		`Authorized Signature`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("missing %q in A4 HTML", want)
+		}
+	}
+}
+
+func TestRenderA4ReceiptHTMLUnpaidAndVoid(t *testing.T) {
+	hosp := &hospitalSettings{HospitalName: "Mudita Hospital"}
+	printed := renderA4ReceiptHTML(hosp, receiptBill{
+		Title:          "OPERATION THEATRE PAYMENT RECEIPT",
+		BillNo:         "OT-2",
+		Status:         "draft",
+		PrintedAt:      "2026-10-25 10:00",
+		DateLabel:      "2026-10-25 09:00",
+		ShowSettlement: true,
+		TotalMMK:       5000,
+		DiscountMMK:    500,
+		NetMMK:         4500,
+	})
+	for _, want := range []string{
+		`>Paid</td><td>0 MMK</td>`,
+		`>Remaining Balance</td><td>4,500 MMK</td>`,
+		`Balance Due: 4,500 MMK`,
+		`PRINTED — NOT PAID`,
+	} {
+		if !strings.Contains(printed, want) {
+			t.Fatalf("missing %q in printed A4 HTML", want)
+		}
+	}
+	if strings.Contains(printed, `class="a4-pay"`) {
+		t.Fatalf("unpaid A4 receipt must not show payment table")
+	}
+
+	voided := renderA4ReceiptHTML(hosp, receiptBill{
+		Title:      "OPERATION THEATRE PAYMENT RECEIPT",
+		BillNo:     "OT-3",
+		Status:     "void",
+		VoidReason: "Wrong case",
+		DateLabel:  "2026-10-25",
+		TotalMMK:   1000,
+		NetMMK:     1000,
+	})
+	if !strings.Contains(voided, `VOID — Wrong case`) {
+		t.Fatalf("expected void reason on A4 receipt")
+	}
+}

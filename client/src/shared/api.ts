@@ -1,4 +1,4 @@
-import { userMessage } from "@/shared/errors";
+import { ApiError, userMessage } from "@/shared/errors";
 
 export type HealthResponse = {
   status: string;
@@ -82,18 +82,23 @@ export async function fetchHealth(signal?: AbortSignal): Promise<HealthResponse>
   } catch (err) {
     const name = err instanceof Error ? err.name : "";
     if (name === "AbortError") {
-      throw new Error(userMessage("Failed to fetch"));
+      throw new ApiError(userMessage("Failed to fetch"), "Failed to fetch", 0);
     }
-    throw new Error(userMessage(err instanceof Error ? err.message : "Failed to fetch"));
+    throw new ApiError(
+      userMessage(err instanceof Error ? err.message : "Failed to fetch"),
+      err instanceof Error ? err.message : "Failed to fetch",
+      0,
+    );
   }
   const body = (await res.json().catch(() => null)) as HealthResponse | null;
   if (body && typeof body.status === "string" && typeof body.db === "string") {
     return body;
   }
-  throw new Error(userMessage(`Health check failed (${res.status})`, res.status));
+  const raw = `Health check failed (${res.status})`;
+  throw new ApiError(userMessage(raw, res.status), raw, res.status);
 }
 
-/** Authenticated JSON fetch. Throws Error with a plain-language message. */
+/** Authenticated JSON fetch. Throws ApiError with a plain-language message. */
 export async function apiFetch<T = unknown>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   if (!headers.has("Content-Type") && init.body) {
@@ -108,12 +113,13 @@ export async function apiFetch<T = unknown>(path: string, init: RequestInit = {}
   try {
     res = await fetch(`${getApiBase()}${path}`, { ...init, headers });
   } catch (err) {
-    throw new Error(userMessage(err instanceof Error ? err.message : "Failed to fetch"));
+    const raw = err instanceof Error ? err.message : "Failed to fetch";
+    throw new ApiError(userMessage(raw), raw, 0);
   }
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
     const raw = (body as { error?: string }).error || `Request failed (${res.status})`;
-    throw new Error(userMessage(raw, res.status));
+    throw new ApiError(userMessage(raw, res.status), raw, res.status);
   }
   return body as T;
 }

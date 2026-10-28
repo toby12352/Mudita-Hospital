@@ -1342,6 +1342,24 @@ body,
   font-size: 0.92rem;
 }
 
+.field.is-invalid input,
+.field.is-invalid select,
+.field.is-invalid textarea {
+  border-color: var(--danger);
+}
+
+.field.is-invalid input:focus,
+.field.is-invalid select:focus,
+.field.is-invalid textarea:focus {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.18);
+}
+
+.opd-bill-field.is-invalid .opd-bill-input,
+.opd-bill-field.is-invalid .typeahead input {
+  border-color: var(--danger);
+}
+
 .form-ok {
   margin: 0;
   color: var(--ok);

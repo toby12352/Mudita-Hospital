@@ -30,7 +30,7 @@ Print this page (or use **Help → Print cheat sheet** in the app) and laminate 
 2. OT: **Maintenance → Inventory** shows that on-hand. **Return to pharmacy** sends unused qty back. Pharmacy on-hand rises when the return is saved.
 3. OT: **Maintenance → Services** holds OT-only services (name required; code and default price optional).
 4. OT: **Create new bill** → patient, doctor, procedure → items from OT inventory and services from OT Maintenance. Service quantity is 1; type the case price. **Pay cash** → **Print**. Pay deducts inventory qty. Void puts that qty back.
-5. Print the pick list if the ward wants a paper list of the cart. There is no issue or reconcile step.
+5. OT **Print** opens an **A4** payment receipt (plain paper / laser). OPD and Pharmacy still use the **80 mm** thermal roll. Print the pick list if the ward wants a paper list of the cart. There is no issue or reconcile step.
 
 ## 4. Pharmacy
 

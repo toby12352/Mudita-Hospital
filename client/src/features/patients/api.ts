@@ -115,6 +115,7 @@ export async function printPatientHistoryBill(
     `/api/patients/${chartId}/bills/${kind}/${billId}/print`,
     getApiBase,
     getStoredToken,
-    { title, receipt: true },
+    // OT patient bills are A4; OPD/Pharmacy stay thermal (narrow preview).
+    { title, receipt: kind !== "ot" },
   );
 }

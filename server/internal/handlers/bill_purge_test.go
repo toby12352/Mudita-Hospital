@@ -137,40 +137,131 @@ func TestBillPurgeAdminOnly(t *testing.T) {
 	}
 
 	otItem := insertItem(t, sqlDB, "PURGEOT", "OT purge", 10, 400)
-	_ = insertOtBatch(t, sqlDB, otItem, "OT1", "2031-01-01", 5)
+	otCupboard := insertOtBatch(t, sqlDB, otItem, "OT1", "2031-01-01", 5)
+
+	// Unbilled draft: case delete removes the visit; cupboard qty unchanged.
+	w = doJSON(ot, http.MethodPost, "/api/ot/cases", adminTok, fmt.Sprintf(`{
+		"patient_name":"OT Unbilled","items":[{"item_id":%d,"qty_issued":1}]
+	}`, otItem))
+	mustCode(t, w, http.StatusCreated)
+	otUnbilled := decodeOtCase(t, w)
+	w = doJSON(ot, http.MethodDelete, "/api/ot/cases/"+strconv.FormatInt(otUnbilled.ID, 10), opdTok, "")
+	mustCode(t, w, http.StatusForbidden)
+	w = doJSON(ot, http.MethodDelete, "/api/ot/cases/"+strconv.FormatInt(otUnbilled.ID, 10), adminTok, "")
+	mustCode(t, w, http.StatusOK)
+	if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM ot_cases WHERE id = ?`, otUnbilled.ID).Scan(&gone); err != nil {
+		t.Fatal(err)
+	}
+	if gone != 0 {
+		t.Fatal("unbilled ot case still present")
+	}
+	if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM ot_case_items WHERE case_id = ?`, otUnbilled.ID).Scan(&gone); err != nil {
+		t.Fatal(err)
+	}
+	if gone != 0 {
+		t.Fatal("ot case items still present")
+	}
+	if otBatchQty(t, sqlDB, otCupboard) != 5 {
+		t.Fatalf("unbilled purge changed cupboard %d", otBatchQty(t, sqlDB, otCupboard))
+	}
+	w = doJSON(ot, http.MethodDelete, "/api/ot/cases/"+strconv.FormatInt(otUnbilled.ID, 10), adminTok, "")
+	mustCode(t, w, http.StatusNotFound)
+
+	// Draft bill: case delete removes case and bill; cupboard qty unchanged.
 	w = doJSON(ot, http.MethodPost, "/api/ot/cases", adminTok, fmt.Sprintf(`{
 		"patient_name":"OT Draft","items":[{"item_id":%d,"qty_issued":1}]
 	}`, otItem))
 	mustCode(t, w, http.StatusCreated)
-	otCaseRow := decodeOtCase(t, w)
-	w = doJSON(ot, http.MethodPost, fmt.Sprintf("/api/ot/cases/%d/bill", otCaseRow.ID), adminTok, `{}`)
+	otDraftCase := decodeOtCase(t, w)
+	w = doJSON(ot, http.MethodPost, fmt.Sprintf("/api/ot/cases/%d/bill", otDraftCase.ID), adminTok, `{}`)
 	mustCode(t, w, http.StatusCreated)
-	otDraft := decodeOtBill(t, w)
-	w = doJSON(ot, http.MethodDelete, "/api/ot/bills/"+strconv.FormatInt(otDraft.ID, 10), adminTok, "")
+	otDraftBill := decodeOtBill(t, w)
+	w = doJSON(ot, http.MethodDelete, "/api/ot/cases/"+strconv.FormatInt(otDraftCase.ID, 10), adminTok, "")
 	mustCode(t, w, http.StatusOK)
-	var caseStatus string
-	var caseBill sql.NullInt64
-	if err := sqlDB.QueryRow(`SELECT status, ot_bill_id FROM ot_cases WHERE id = ?`, otCaseRow.ID).Scan(&caseStatus, &caseBill); err != nil {
+	if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM ot_cases WHERE id = ?`, otDraftCase.ID).Scan(&gone); err != nil {
 		t.Fatal(err)
 	}
-	if caseStatus != "draft" || caseBill.Valid {
-		t.Fatalf("case after purge status=%s bill=%v", caseStatus, caseBill)
+	if gone != 0 {
+		t.Fatal("draft ot case still present")
 	}
-	if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM ot_cases WHERE id = ?`, otCaseRow.ID).Scan(&gone); err != nil {
+	if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM ot_bills WHERE id = ?`, otDraftBill.ID).Scan(&gone); err != nil {
 		t.Fatal(err)
 	}
-	if gone != 1 {
-		t.Fatal("ot case was deleted")
+	if gone != 0 {
+		t.Fatal("draft ot bill still present")
+	}
+	if otBatchQty(t, sqlDB, otCupboard) != 5 {
+		t.Fatalf("draft purge changed cupboard %d", otBatchQty(t, sqlDB, otCupboard))
 	}
 
-	w = doJSON(ot, http.MethodPost, fmt.Sprintf("/api/ot/cases/%d/bill", otCaseRow.ID), adminTok, `{}`)
+	// Last-bill path: DELETE /bills/{id} on a lone draft also removes the case.
+	w = doJSON(ot, http.MethodPost, "/api/ot/cases", adminTok, fmt.Sprintf(`{
+		"patient_name":"OT Last Bill","items":[{"item_id":%d,"qty_issued":1}]
+	}`, otItem))
+	mustCode(t, w, http.StatusCreated)
+	otLastCase := decodeOtCase(t, w)
+	w = doJSON(ot, http.MethodPost, fmt.Sprintf("/api/ot/cases/%d/bill", otLastCase.ID), adminTok, `{}`)
+	mustCode(t, w, http.StatusCreated)
+	otLastBill := decodeOtBill(t, w)
+	w = doJSON(ot, http.MethodDelete, "/api/ot/bills/"+strconv.FormatInt(otLastBill.ID, 10), adminTok, "")
+	mustCode(t, w, http.StatusOK)
+	if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM ot_bills WHERE id = ?`, otLastBill.ID).Scan(&gone); err != nil {
+		t.Fatal(err)
+	}
+	if gone != 0 {
+		t.Fatal("last-bill path left the bill")
+	}
+	if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM ot_cases WHERE id = ?`, otLastCase.ID).Scan(&gone); err != nil {
+		t.Fatal(err)
+	}
+	if gone != 0 {
+		t.Fatal("last-bill path left the case")
+	}
+	if otBatchQty(t, sqlDB, otCupboard) != 5 {
+		t.Fatalf("last-bill purge changed cupboard %d", otBatchQty(t, sqlDB, otCupboard))
+	}
+
+	// Paid bill: both DELETE paths refuse; stock stays deducted.
+	w = doJSON(ot, http.MethodPost, "/api/ot/cases", adminTok, fmt.Sprintf(`{
+		"patient_name":"OT Paid","items":[{"item_id":%d,"qty_issued":1}]
+	}`, otItem))
+	mustCode(t, w, http.StatusCreated)
+	otPaidCase := decodeOtCase(t, w)
+	w = doJSON(ot, http.MethodPost, fmt.Sprintf("/api/ot/cases/%d/bill", otPaidCase.ID), adminTok, `{}`)
 	mustCode(t, w, http.StatusCreated)
 	otPaidBill := decodeOtBill(t, w)
 	w = doJSON(ot, http.MethodPost, fmt.Sprintf("/api/ot/bills/%d/pay", otPaidBill.ID), adminTok, `{}`)
 	mustCode(t, w, http.StatusOK)
+	if otBatchQty(t, sqlDB, otCupboard) != 4 {
+		t.Fatalf("after pay cupboard %d", otBatchQty(t, sqlDB, otCupboard))
+	}
+	w = doJSON(ot, http.MethodDelete, "/api/ot/bills/"+strconv.FormatInt(otPaidBill.ID, 10), adminTok, "")
+	mustCode(t, w, http.StatusBadRequest)
+	w = doJSON(ot, http.MethodDelete, "/api/ot/cases/"+strconv.FormatInt(otPaidCase.ID, 10), adminTok, "")
+	mustCode(t, w, http.StatusBadRequest)
+	if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM ot_cases WHERE id = ?`, otPaidCase.ID).Scan(&gone); err != nil {
+		t.Fatal(err)
+	}
+	if gone != 1 {
+		t.Fatal("paid ot case was deleted")
+	}
+	if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM ot_bills WHERE id = ?`, otPaidBill.ID).Scan(&gone); err != nil {
+		t.Fatal(err)
+	}
+	if gone != 1 {
+		t.Fatal("paid ot bill was deleted")
+	}
+	if otBatchQty(t, sqlDB, otCupboard) != 4 {
+		t.Fatalf("paid refuse changed cupboard %d", otBatchQty(t, sqlDB, otCupboard))
+	}
+
+	// Pay → void → delete case: visit gone, cupboard restored, SALE+VOID movements kept.
 	w = doJSON(ot, http.MethodPost, fmt.Sprintf("/api/ot/bills/%d/void", otPaidBill.ID), adminTok, `{"reason":"void ot"}`)
 	mustCode(t, w, http.StatusOK)
-	w = doJSON(ot, http.MethodDelete, "/api/ot/bills/"+strconv.FormatInt(otPaidBill.ID, 10), adminTok, "")
+	if otBatchQty(t, sqlDB, otCupboard) != 5 {
+		t.Fatalf("after void cupboard %d", otBatchQty(t, sqlDB, otCupboard))
+	}
+	w = doJSON(ot, http.MethodDelete, "/api/ot/cases/"+strconv.FormatInt(otPaidCase.ID, 10), adminTok, "")
 	mustCode(t, w, http.StatusOK)
 	if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM ot_bills WHERE id = ?`, otPaidBill.ID).Scan(&gone); err != nil {
 		t.Fatal(err)
@@ -178,11 +269,72 @@ func TestBillPurgeAdminOnly(t *testing.T) {
 	if gone != 0 {
 		t.Fatal("voided ot bill still present")
 	}
-	if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM ot_cases WHERE id = ?`, otCaseRow.ID).Scan(&gone); err != nil {
+	if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM ot_cases WHERE id = ?`, otPaidCase.ID).Scan(&gone); err != nil {
 		t.Fatal(err)
 	}
-	if gone != 1 {
-		t.Fatal("ot case missing after void purge")
+	if gone != 0 {
+		t.Fatal("voided ot case still present")
+	}
+	if otBatchQty(t, sqlDB, otCupboard) != 5 {
+		t.Fatalf("void purge changed cupboard %d", otBatchQty(t, sqlDB, otCupboard))
+	}
+	var saleN, voidN int
+	if err := sqlDB.QueryRow(`
+		SELECT
+			COALESCE(SUM(CASE WHEN movement_type = 'SALE' THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN movement_type = 'VOID' THEN 1 ELSE 0 END), 0)
+		FROM ot_stock_movements WHERE item_id = ?
+	`, otItem).Scan(&saleN, &voidN); err != nil {
+		t.Fatal(err)
+	}
+	if saleN < 1 || voidN < 1 {
+		t.Fatalf("expected SALE and VOID movements, got sale=%d void=%d", saleN, voidN)
+	}
+
+	// IPD: charge draft OT → void → delete case; ledger cleared, stay net unchanged.
+	w = doJSON(ot, http.MethodPost, "/api/ot/cases", adminTok, fmt.Sprintf(`{
+		"patient_id":%d,"patient_name":"Daw Stay","items":[{"item_id":%d,"qty_issued":1}]
+	}`, chart.ID, otItem))
+	mustCode(t, w, http.StatusCreated)
+	otIpdCase := decodeOtCase(t, w)
+	w = doJSON(ot, http.MethodPost, fmt.Sprintf("/api/ot/cases/%d/bill", otIpdCase.ID), adminTok, `{}`)
+	mustCode(t, w, http.StatusCreated)
+	otIpdBill := decodeOtBill(t, w)
+	w = doJSON(ot, http.MethodPost, fmt.Sprintf("/api/ot/bills/%d/pay", otIpdBill.ID), adminTok,
+		fmt.Sprintf(`{"admission_id":%d}`, stay.ID))
+	mustCode(t, w, http.StatusOK)
+	w = doJSON(ot, http.MethodPost, fmt.Sprintf("/api/ot/bills/%d/void", otIpdBill.ID), adminTok, `{"reason":"undo ot charge"}`)
+	mustCode(t, w, http.StatusOK)
+	var otLedgerBefore int
+	if err := sqlDB.QueryRow(`
+		SELECT COUNT(1) FROM ipd_ledger WHERE source = 'ot' AND source_id = ?
+	`, otIpdBill.ID).Scan(&otLedgerBefore); err != nil {
+		t.Fatal(err)
+	}
+	if otLedgerBefore < 2 {
+		t.Fatalf("expected ot charge+reversal, got %d", otLedgerBefore)
+	}
+	var otStayNetBefore int64
+	if err := sqlDB.QueryRow(`SELECT COALESCE(SUM(amount_mmk), 0) FROM ipd_ledger WHERE admission_id = ?`, stay.ID).Scan(&otStayNetBefore); err != nil {
+		t.Fatal(err)
+	}
+	w = doJSON(ot, http.MethodDelete, "/api/ot/cases/"+strconv.FormatInt(otIpdCase.ID, 10), adminTok, "")
+	mustCode(t, w, http.StatusOK)
+	var otLedgerAfter int
+	if err := sqlDB.QueryRow(`
+		SELECT COUNT(1) FROM ipd_ledger WHERE source = 'ot' AND source_id = ?
+	`, otIpdBill.ID).Scan(&otLedgerAfter); err != nil {
+		t.Fatal(err)
+	}
+	if otLedgerAfter != 0 {
+		t.Fatalf("ot ledger rows left %d", otLedgerAfter)
+	}
+	var otStayNetAfter int64
+	if err := sqlDB.QueryRow(`SELECT COALESCE(SUM(amount_mmk), 0) FROM ipd_ledger WHERE admission_id = ?`, stay.ID).Scan(&otStayNetAfter); err != nil {
+		t.Fatal(err)
+	}
+	if otStayNetAfter != otStayNetBefore {
+		t.Fatalf("ot stay net %d -> %d", otStayNetBefore, otStayNetAfter)
 	}
 
 	xferItem := insertItem(t, sqlDB, "PURGXFER", "Xfer purge", 10, 50)

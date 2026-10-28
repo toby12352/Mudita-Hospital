@@ -1,4 +1,4 @@
-import type { Ref } from "react";
+import { useEffect, useRef, type Ref } from "react";
 import type { PatientChart } from "@/features/patients/api";
 import { PatientChartTypeahead } from "@/features/patients/PatientChartTypeahead";
 import type { OpdBillLine, OpdDoctor, OpdService } from "@/features/opd/api";
@@ -15,6 +15,7 @@ import {
 } from "@/shared/BillPayPrint";
 import { BillTotals } from "@/shared/BillTotals";
 import { discountKyats, type DiscountUnit } from "@/shared/discount";
+import { revealField } from "@/shared/FieldError";
 import { formatMMK } from "@/shared/format";
 import { Typeahead } from "@/shared/Typeahead";
 import { useI18n } from "@/shared/i18n";
@@ -99,6 +100,11 @@ export function OpdBillForm(props: Props) {
   } = props;
   const { opdCreate, opdDelete } = useClinicActions();
   const writable = isDraft && opdCreate;
+  const okMsgRef = useRef<HTMLParagraphElement>(null);
+
+  useEffect(() => {
+    if (okMsg?.trim()) revealField(okMsgRef.current);
+  }, [okMsg]);
 
   const total = lines.reduce((s, l) => s + l.qty * l.unit_price_mmk, 0);
   const net = Math.max(0, total - discountKyats(total, discountValue, discountUnit));
@@ -325,7 +331,11 @@ export function OpdBillForm(props: Props) {
           />
         </div>
 
-        {okMsg ? <p className="form-ok">{okMsg}</p> : null}
+        {okMsg ? (
+          <p ref={okMsgRef} className="form-ok" role="status">
+            {okMsg}
+          </p>
+        ) : null}
       </div>
 
       <aside className="opd-bill-rail" aria-label={t("billActions")}>

@@ -1,4 +1,4 @@
-import type { Ref } from "react";
+import { useEffect, useRef, type Ref } from "react";
 import type { PatientChart } from "@/features/patients/api";
 import { PatientChartTypeahead } from "@/features/patients/PatientChartTypeahead";
 import type { PharmacyBillLine, PharmacyItem } from "@/features/pharmacy/api";
@@ -22,6 +22,7 @@ import {
 } from "@/shared/BillPayPrint";
 import { BillTotals } from "@/shared/BillTotals";
 import { discountKyats, type DiscountUnit } from "@/shared/discount";
+import { revealField } from "@/shared/FieldError";
 import { formatMMK } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
 
@@ -112,6 +113,11 @@ export function PharmacyBillForm(props: Props) {
   } = props;
   const { pharmacyCreate, pharmacyDelete, billPurge } = useClinicActions();
   const writable = isDraft && pharmacyCreate;
+  const okMsgRef = useRef<HTMLParagraphElement>(null);
+
+  useEffect(() => {
+    if (okMsg?.trim()) revealField(okMsgRef.current);
+  }, [okMsg]);
 
   const isReturn = kind === "return";
   const isTransfer = kind === "transfer";
@@ -336,7 +342,11 @@ export function PharmacyBillForm(props: Props) {
           )}
         </div>
 
-        {okMsg ? <p className="form-ok">{okMsg}</p> : null}
+        {okMsg ? (
+          <p ref={okMsgRef} className="form-ok" role="status">
+            {okMsg}
+          </p>
+        ) : null}
       </div>
 
       <aside className="opd-bill-rail" aria-label={t("billActions")}>

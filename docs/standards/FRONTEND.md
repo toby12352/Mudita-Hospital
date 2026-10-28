@@ -86,7 +86,7 @@ export async function createOpdBill(body: OpdBillWrite): Promise<OpdBill> { /* a
 - Functional components only.
 - Permission checks for nav menus/actions: `hasPermission(permissions, "opd")` (etc.). Server still enforces.
 - Shared widgets (`Typeahead`, `FormSection`) live in `shared/`.
-- Print via existing `openPrintPreview` / server HTML receipts — do not invent a second print path. Preview **Print** always uses `contentWindow.print()` (system print dialog). Receipts are a single slip (OPD / OT / Pharmacy share the server thermal HTML).
+- Print via existing `openPrintPreview` / server HTML receipts — do not invent a second print path. Preview **Print** always uses `contentWindow.print()` (system print dialog). OPD / Pharmacy / Expense use server thermal HTML (`receipt: true`, ~80mm preview). OT patient case bills use server A4 HTML (`receipt: false`, wide preview).
 
 ## Styling
 
