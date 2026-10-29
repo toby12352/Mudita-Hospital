@@ -279,7 +279,7 @@ export function OtStockPage() {
           onReset={resetFilters}
         />
         {error && !selected ? <p className="form-error">{error}</p> : null}
-        <div className="drug-setup-table" role="listbox" aria-label={t("cupboardItems")}>
+        <div className="drug-setup-table" role="listbox" aria-label={t("cupboardItems")} data-guide="ot-cupboard">
           <div className="drug-setup-table-head ot-cupboard-cols">
             <span title={t("code")}>{t("code")}</span>
             <span title={t("drugNameTrade")}>{t("drugNameTrade")}</span>
@@ -515,7 +515,7 @@ function OtReturnFields({
           ))}
         </select>
       </div>
-      <button type="submit" className="btn action" disabled={busy}>
+      <button type="submit" className="btn action" disabled={busy} data-guide="ot-return-pharmacy">
         <ActionIcon name="undo" />
         {t("returnToPharmacy")}
       </button>

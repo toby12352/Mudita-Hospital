@@ -1297,6 +1297,7 @@ export function OtPage() {
               className="opd-bill-rail-btn"
               disabled={busy || !isDraft}
               onClick={() => void saveDraft()}
+              data-guide="bill-save-draft"
             >
               <span className="opd-bill-rail-btn-main">
                 <ActionIcon name="check" />
@@ -1310,6 +1311,7 @@ export function OtPage() {
             className="opd-bill-rail-btn"
             disabled={busy}
             onClick={() => setDialog("history")}
+            data-guide="bill-history"
           >
             <span className="opd-bill-rail-btn-main">
               <ActionIcon name="history" />
@@ -1323,6 +1325,7 @@ export function OtPage() {
               className="opd-bill-rail-btn opd-bill-rail-btn--danger"
               disabled={busy}
               onClick={() => setDialog("delete")}
+              data-guide="bill-void"
             >
               <span className="opd-bill-rail-btn-main">
                 <ActionIcon name="trash" />
@@ -1344,7 +1347,7 @@ export function OtPage() {
               </span>
             </button>
           ) : null}
-          <button type="button" className="opd-bill-rail-btn" disabled={busy} onClick={doCancelForm}>
+          <button type="button" className="opd-bill-rail-btn" disabled={busy} onClick={doCancelForm} data-guide="bill-cancel">
             <span>{t("cancel")}</span>
             <kbd>F10</kbd>
           </button>
@@ -1354,6 +1357,7 @@ export function OtPage() {
             className={`opd-bill-rail-btn${!isDraft ? " opd-bill-rail-btn--accent" : ""}`}
             disabled={busy}
             onClick={doNewBill}
+            data-guide="bill-new"
           >
             <span className="opd-bill-rail-btn-main">
               <ActionIcon name="plus" />

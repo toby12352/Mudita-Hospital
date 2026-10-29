@@ -1288,13 +1288,7 @@ func scanOpdBill(row scannable) (opdBill, error) {
 }
 
 func renderBillHTML(hosp *hospitalSettings, bill opdBill) string {
-	dateLabel := bill.CreatedAt
-	if bill.BilledAt != nil && *bill.BilledAt != "" {
-		dateLabel = *bill.BilledAt
-	}
-	if bill.PaidAt != nil {
-		dateLabel = *bill.PaidAt
-	}
+	dateLabel := receiptDateLabel(bill.CreatedAt, bill.BilledAt, bill.PaidAt)
 	lines := make([]receiptLine, 0, len(bill.Lines)*2)
 	for _, line := range bill.Lines {
 		lines = appendReceiptLine(lines, receiptLine{

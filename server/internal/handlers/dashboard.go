@@ -358,9 +358,14 @@ type dailyReportResponse struct {
 	DeltaIncomeMMK    int64             `json:"delta_income_mmk"`
 	DeltaExpenseMMK   int64             `json:"delta_expense_mmk"`
 	DeltaNetCashMMK   int64             `json:"delta_net_cash_mmk"`
-	IpdCashMMK        int64             `json:"ipd_cash_mmk"`
-	IpdLines          []ipdCashLine     `json:"ipd_lines"`
-	ExpenseLines      []expenseCashLine `json:"expense_lines"`
+	IpdCashMMK           int64             `json:"ipd_cash_mmk"`
+	IpdLines             []ipdCashLine     `json:"ipd_lines"`
+	IpdEarnedMMK         int64             `json:"ipd_earned_mmk"`
+	IpdEarnedLines       []ipdCashLine     `json:"ipd_earned_lines"`
+	IpdOpenStays         []ipdOpenStayRow  `json:"ipd_open_stays"`
+	IpdOwedToPatientsMMK int64             `json:"ipd_owed_to_patients_mmk"`
+	IpdOwedByPatientsMMK int64             `json:"ipd_owed_by_patients_mmk"`
+	ExpenseLines         []expenseCashLine `json:"expense_lines"`
 }
 
 func (h *Dashboard) stock(w http.ResponseWriter, r *http.Request) {
@@ -451,17 +456,33 @@ func (h *Dashboard) dailyReport(w http.ResponseWriter, r *http.Request) {
 		DeltaIncomeMMK:    today.IncomeMMK - prev.IncomeMMK,
 		DeltaExpenseMMK:   today.ExpenseMMK - prev.ExpenseMMK,
 		DeltaNetCashMMK:   today.NetCashMMK - prev.NetCashMMK,
-		IpdCashMMK:        today.IPD.NetMMK,
-		IpdLines:          today.IPD.Lines,
-		ExpenseLines:      today.ExpenseLines,
+		IpdCashMMK:           today.IPD.NetMMK,
+		IpdLines:             today.IPD.Lines,
+		IpdEarnedMMK:         today.IPDEarned.EarnedMMK,
+		IpdEarnedLines:       today.IPDEarned.Lines,
+		IpdOpenStays:         today.OpenStays.Stays,
+		IpdOwedToPatientsMMK: today.OpenStays.OwedToPatientsMMK,
+		IpdOwedByPatientsMMK: today.OpenStays.OwedByPatientsMMK,
+		ExpenseLines:         today.ExpenseLines,
 	})
 }
 
 // dailyReportPrint is the admin HTML for one civil day.
 // Clinic desks stay on GET /api/reports/daily-cash/print, which is role-scoped
 // and does not include IPD or hospital expenses.
+// Optional kind=income|expense|overall (default overall) selects the sheet.
 func (h *Dashboard) dailyReportPrint(w http.ResponseWriter, r *http.Request) {
 	date := reportDate(r)
+	kind := strings.TrimSpace(r.URL.Query().Get("kind"))
+	if kind == "" {
+		kind = "overall"
+	}
+	switch kind {
+	case "income", "expense", "overall":
+	default:
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "kind must be income, expense, or overall"})
+		return
+	}
 	move, err := buildCashMovement(h.DB, date)
 	if err != nil {
 		http.Error(w, "report failed", http.StatusInternalServerError)
@@ -472,7 +493,7 @@ func (h *Dashboard) dailyReportPrint(w http.ResponseWriter, r *http.Request) {
 		hosp = &hospitalSettings{HospitalName: "Mudita Hospital"}
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = w.Write([]byte(renderDashboardDailyHTML(hosp, move)))
+	_, _ = w.Write([]byte(renderDashboardDailyHTML(hosp, move, kind)))
 }
 
 func buildStockHealth(db *sql.DB, slowDays, cogsDays int) (*stockHealthReport, error) {

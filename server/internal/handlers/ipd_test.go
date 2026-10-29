@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 
 	"mudita-hospital/server/internal/auth"
@@ -93,7 +94,7 @@ func TestIPDAdmissions(t *testing.T) {
 	w = doJSON(h, http.MethodPost, "/api/ipd/admissions", ipdTok, `{"patient_id":`+strconv.FormatInt(chart.ID, 10)+`,"notes":" ward "}`)
 	mustCode(t, w, http.StatusCreated)
 	first := decodeAdmission(t, w)
-	if first.AdmissionNo != "IPD-000001" || first.Status != "open" || first.Notes != "ward" || first.Patient.Name != "Daw Stay" {
+	if first.AdmissionNo != "IPD-000001" || first.Status != "open" || first.Notes != "ward" || first.RoomNo != "" || first.Patient.Name != "Daw Stay" {
 		t.Fatalf("admit %+v", first)
 	}
 	if first.Patient.Phone != "091111" || first.Patient.AgeYears == nil || *first.Patient.AgeYears != 44 || first.Patient.Gender != "F" {
@@ -130,10 +131,29 @@ func TestIPDAdmissions(t *testing.T) {
 	if decodeAdmission(t, w).Patient.ID != chart.ID {
 		t.Fatal("get lost the chart")
 	}
-	w = doJSON(h, http.MethodPut, "/api/ipd/admissions/"+strconv.FormatInt(first.ID, 10), ipdTok, `{"notes":" stable "}`)
+	stayPath := "/api/ipd/admissions/" + strconv.FormatInt(first.ID, 10)
+	w = doJSON(h, http.MethodPut, stayPath, ipdTok, `{"notes":" stable "}`)
 	mustCode(t, w, http.StatusOK)
-	if decodeAdmission(t, w).Notes != "stable" || decodeAdmission(t, w).Status != "open" {
-		t.Fatalf("notes %s", w.Body.String())
+	noted := decodeAdmission(t, w)
+	if noted.Notes != "stable" || noted.Status != "open" || noted.RoomNo != "" {
+		t.Fatalf("notes %+v", noted)
+	}
+	w = doJSON(h, http.MethodPut, stayPath, ipdTok, `{"notes":"stable","room_no":" 12-A "}`)
+	mustCode(t, w, http.StatusOK)
+	withRoom := decodeAdmission(t, w)
+	if withRoom.Notes != "stable" || withRoom.RoomNo != "12-A" {
+		t.Fatalf("room %+v", withRoom)
+	}
+	w = doJSON(h, http.MethodPut, stayPath, ipdTok, `{"notes":"still stable"}`)
+	mustCode(t, w, http.StatusOK)
+	kept := decodeAdmission(t, w)
+	if kept.Notes != "still stable" || kept.RoomNo != "12-A" {
+		t.Fatalf("notes-only put cleared room %+v", kept)
+	}
+	w = doJSON(h, http.MethodPut, stayPath, ipdTok, `{"notes":"still stable","room_no":"`+strings.Repeat("r", 33)+`"}`)
+	mustCode(t, w, http.StatusBadRequest)
+	if !strings.Contains(w.Body.String(), "room number too long") {
+		t.Fatalf("long room %s", w.Body.String())
 	}
 
 	w = doJSON(charts, http.MethodGet, "/api/patients/"+strconv.FormatInt(chart.ID, 10)+"/history", patientsTok, "")

@@ -88,6 +88,7 @@ export function CatalogFilterPanel({
   onQueryChange,
   queryPlaceholder,
   searchLabel,
+  searchGuide,
   onSearch,
   active,
   onActiveChange,
@@ -102,6 +103,8 @@ export function CatalogFilterPanel({
   onQueryChange: (value: string) => void;
   queryPlaceholder: string;
   searchLabel: string;
+  /** Set only while this field is the patient-search tour target. */
+  searchGuide?: string;
   onSearch: () => void;
   /** Omit both to hide the active/inactive radios (e.g. patient charts). */
   active?: ActiveFilterValue;
@@ -146,6 +149,7 @@ export function CatalogFilterPanel({
               className="drug-info-input"
               value={query}
               placeholder={queryPlaceholder}
+              data-guide={searchGuide}
               onChange={(e) => onQueryChange(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") onSearch();

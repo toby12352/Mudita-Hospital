@@ -36,6 +36,8 @@ export type PatientHistoryOpd = {
   total_mmk: number;
   created_at: string;
   doctor_name: string;
+  printed_at?: string | null;
+  collected_cash?: number | null;
 };
 
 export type PatientHistoryPharmacy = {
@@ -44,6 +46,8 @@ export type PatientHistoryPharmacy = {
   status: string;
   total_mmk: number;
   created_at: string;
+  printed_at?: string | null;
+  collected_cash?: number | null;
 };
 
 export type PatientHistoryOt = {
@@ -52,6 +56,9 @@ export type PatientHistoryOt = {
   bill_id?: number;
   bill_no: string;
   bill_status: string;
+  bill_total_mmk?: number | null;
+  bill_printed_at?: string | null;
+  bill_collected_cash?: number | null;
   created_at: string;
 };
 

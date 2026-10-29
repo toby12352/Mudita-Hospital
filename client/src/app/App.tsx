@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import brandLogo from "@/assets/logo.png";
 import {
   fetchHealth,
@@ -22,6 +22,13 @@ import { useI18n } from "@/shared/i18n";
 import { applyUiScale, resetUiScale, zoomIn, zoomOut } from "@/shared/uiScale";
 import "@/shared/styles/App.css";
 import { AboutPage } from "@/pages/about/AboutPage";
+import { GuidanceHost } from "@/features/guidance/GuidanceHost";
+import {
+  guideScreenMatches,
+  saleDeskForRole,
+  type GuideDesk,
+  type GuideScreen,
+} from "@/features/guidance/registry";
 import { HomePage } from "@/pages/home/HomePage";
 import { AppNavBar } from "./AppNavBar";
 import { ClinicActionsProvider, clinicActionFlags, shortcutVisible } from "./clinicActions";
@@ -63,6 +70,15 @@ export default function App() {
   const [booting, setBooting] = useState(!!getStoredToken());
   const [view, setView] = useState<View>("home");
   const [navIntent, setNavIntent] = useState<NavIntent>({});
+  const deskRef = useRef<GuideDesk>({ view: "home" });
+  deskRef.current = {
+    view,
+    patientsScreen: navIntent.patientsScreen,
+    pharmacyScreen: navIntent.pharmacyScreen,
+    billingMode: navIntent.billingMode,
+    otMode: navIntent.otMode,
+    opdScreen: navIntent.opdScreen,
+  };
   const [activeSection, setActiveSection] = useState<NavSectionId>("home");
   const [navEpoch, setNavEpoch] = useState(0);
   const [authError, setAuthError] = useState<string | null>(null);
@@ -231,6 +247,19 @@ export default function App() {
     setNavIntent(intent);
     setActiveSection(section);
     setNavEpoch((n) => n + 1);
+  }
+
+  function openGuideScreen(screen: GuideScreen) {
+    const current = deskRef.current;
+    if (guideScreenMatches(current, screen)) return;
+    const target = screen.saleStay ? saleDeskForRole(user?.role ?? "", current) : screen;
+    const intent: NavIntent = {};
+    if (target.view === "patients") intent.patientsScreen = target.patientsScreen ?? "list";
+    if (target.pharmacyScreen) intent.pharmacyScreen = target.pharmacyScreen;
+    if (target.billingMode) intent.billingMode = target.billingMode;
+    if (target.otMode) intent.otMode = target.otMode;
+    if (target.opdScreen) intent.opdScreen = target.opdScreen;
+    navigate(target.view, intent, target.section);
   }
 
   if (needsServerSetup) {
@@ -507,7 +536,30 @@ export default function App() {
         />
       </div>
 
-      {helpOpen ? <HelpOverlay onClose={() => setHelpOpen(false)} t={t} /> : null}
+      {helpOpen ? (
+        <HelpOverlay
+          onClose={() => setHelpOpen(false)}
+          t={t}
+          showBillTour={
+            user.role === "Admin" ||
+            user.role === "OPD" ||
+            user.role === "OT" ||
+            user.role === "Pharmacy" ||
+            user.role === "IPD"
+          }
+          showChargeTour={
+            user.role === "Admin" ||
+            user.role === "OPD" ||
+            user.role === "OT" ||
+            user.role === "Pharmacy"
+          }
+          showPharmacyTour={user.role === "Admin" || user.role === "Pharmacy"}
+          showOtTour={user.role === "Admin" || user.role === "OT"}
+          showPatientTour={user.role === "Admin" || user.role === "Patients"}
+          showIpdTour={user.role === "Admin" || user.role === "IPD"}
+        />
+      ) : null}
+      <GuidanceHost userId={user.id} openScreen={openGuideScreen} />
     </main>
     </ClinicActionsProvider>
   );

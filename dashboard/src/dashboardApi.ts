@@ -81,29 +81,39 @@ export type PharmacyMarginReport = {
 
 export type RangeDays = 7 | 30 | 90;
 
+/** Preset day count, or an inclusive YYYY-MM-DD window. */
+export type DashRange = RangeDays | { from: string; to: string };
+
+function dashRangeQuery(range: DashRange): string {
+  if (typeof range === "number") {
+    return `days=${range}`;
+  }
+  return `from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}`;
+}
+
 export async function fetchDashOverview(date?: string): Promise<DashOverview> {
   const q = date ? `?date=${encodeURIComponent(date)}` : "";
   return apiFetch<DashOverview>(`/api/dashboard/overview${q}`);
 }
 
-export async function fetchTrends(days: RangeDays): Promise<TrendsResponse> {
-  return apiFetch<TrendsResponse>(`/api/dashboard/trends?days=${days}`);
+export async function fetchTrends(range: DashRange): Promise<TrendsResponse> {
+  return apiFetch<TrendsResponse>(`/api/dashboard/trends?${dashRangeQuery(range)}`);
 }
 
 export async function fetchRevenueByDoctor(
-  days: RangeDays,
+  range: DashRange,
 ): Promise<{ from: string; to: string; days: number; rows: DoctorRevenueRow[]; count: number }> {
-  return apiFetch(`/api/dashboard/revenue-by-doctor?days=${days}`);
+  return apiFetch(`/api/dashboard/revenue-by-doctor?${dashRangeQuery(range)}`);
 }
 
 export async function fetchRevenueByService(
-  days: RangeDays,
+  range: DashRange,
 ): Promise<{ from: string; to: string; days: number; rows: ServiceRevenueRow[]; count: number }> {
-  return apiFetch(`/api/dashboard/revenue-by-service?days=${days}`);
+  return apiFetch(`/api/dashboard/revenue-by-service?${dashRangeQuery(range)}`);
 }
 
-export async function fetchPharmacyMargin(days: RangeDays): Promise<PharmacyMarginReport> {
-  return apiFetch<PharmacyMarginReport>(`/api/dashboard/pharmacy-margin?days=${days}`);
+export async function fetchPharmacyMargin(range: DashRange): Promise<PharmacyMarginReport> {
+  return apiFetch<PharmacyMarginReport>(`/api/dashboard/pharmacy-margin?${dashRangeQuery(range)}`);
 }
 
 export type StockLocValue = {
@@ -180,6 +190,12 @@ export type IpdCashLine = {
   created_at: string;
 };
 
+export type IpdOpenStayRow = {
+  admission_no: string;
+  patient: string;
+  balance_mmk: number;
+};
+
 export type ExpenseCashLine = {
   bill_no: string;
   portal: string;
@@ -223,6 +239,11 @@ export type DailyReportResponse = {
   delta_net_cash_mmk: number;
   ipd_cash_mmk: number;
   ipd_lines: IpdCashLine[];
+  ipd_earned_mmk: number;
+  ipd_earned_lines: IpdCashLine[];
+  ipd_open_stays: IpdOpenStayRow[];
+  ipd_owed_to_patients_mmk: number;
+  ipd_owed_by_patients_mmk: number;
   expense_lines: ExpenseCashLine[];
 };
 

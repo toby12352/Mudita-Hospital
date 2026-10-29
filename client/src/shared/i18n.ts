@@ -156,6 +156,104 @@ const en: Dict = {
   clientServerIp: "Client server IP…",
   busy: "Working…",
   done: "Done",
+  guideNext: "Next",
+  guideBack: "Back",
+  guideDone: "Done",
+  guideClose: "Close",
+  guideProgress: "Step {current} of {total}",
+  guideBillButtons: "Bill buttons",
+  guideBillSaveDraftTitle: "Save draft",
+  guideBillSaveDraftBody:
+    "Save draft (မူကြမ်းသိမ်း), F5, keeps the bill editable. It does not take cash and it does not move stock.",
+  guideBillPrintTitle: "Print",
+  guideBillPrintBody:
+    "Print (ပရင့်), F6, can show Printed — Not Paid (ပရင့်ပြီး — မပေးရသေး), and the bill stays editable until Mark Paid (ပေးပြီးမှတ်). Print does not take cash and does not move stock.",
+  guideBillMarkPaidTitle: "Mark Paid",
+  guideBillMarkPaidBody:
+    "Mark Paid (ပေးပြီးမှတ်), F7, takes desk cash and locks the bill so editing stops; a pharmacy sale also deducts MAIN stock, an OT bill also deducts OT inventory quantity, and an expense bill does not move stock. F7 on Return in is Mark returned (ပြန်သွင်းမှတ်), and F7 on Transfer to OT is Transfer (လွှဲမည်) then Confirm transfer (လွှဲခြင်း အတည်ပြု); those are different lessons.",
+  guideBillChargeIpdTitle: "Charge to IPD",
+  guideBillChargeIpdBody:
+    "Charge to IPD (IPD သို့ တင်) has no function key, and the subtitle is Not desk cash (ကောင်တာငွေ မဟုတ်). It shows only on a draft OPD, OT, or pharmacy sale when the chosen chart has an open stay; a typed name, an expense bill, Return in, and Transfer to OT do not show it, and F7 does not charge the stay.",
+  guideBillVoidTitle: "Void Bills",
+  guideBillVoidBody:
+    "Void Bills (ဘေလ်ပယ်ဖျက်) is Ctrl+F8 or Cmd+F8 (the footer shows ^F8) and needs a Void reason (ပယ်ဖျက်အကြောင်း); an empty reason is refused with Required to void (ပယ်ဖျက်ရန် လိုအပ်သည်), and the dialog confirm says Delete (ဖျက်ရန်). Void of a paid pharmacy sale or a paid OT bill puts quantity back, and this lesson does not void a bill.",
+  guideBillHistoryTitle: "History",
+  guideBillHistoryBody: "History (မှတ်တမ်း), F9, opens the bill list. It does not take cash, print, or void.",
+  guideBillNewTitle: "New bill",
+  guideBillNewBody:
+    "New bill (ဘေလ်အသစ်), F2, clears the form for another bill, and a saved bill stays in History (မှတ်တမ်း). It does not mark the open bill paid.",
+  guideBillCancelTitle: "Cancel",
+  guideBillCancelBody:
+    "Cancel (မလုပ်တော့), F10, asks to clear this form. It does not take cash and it does not void a saved bill.",
+  guidePatientCreateTitle: "Create",
+  guidePatientCreateBody:
+    "Create New Patient (လူနာအသစ် ဖန်တီးရန်) opens Add new patient (လူနာအသစ် ထည့်ရန်), and Create (ဖန်တီးမည်) saves the chart. This lesson does not press Create, and F5 reloads the window.",
+  guidePatientSearchTitle: "Search charts",
+  guidePatientSearchBody:
+    "Search charts (မှတ်တမ်း ရှာရန်), under Filter (စစ်ထုတ်), finds a chart by Name, phone, NRC, or chart number (အမည်၊ ဖုန်း၊ NRC သို့မဟုတ် မှတ်တမ်းနံပါတ်). A Patient name (လူနာအမည် *) typed on a bill is not a chart.",
+  guidePatientAttachTitle: "Attach bill",
+  guidePatientAttachBody:
+    "+Add Bill (+ဘေလ်ထည့်) shows Bill number (ဘေလ်နံပါတ်). Attach bill (ဘေလ် တွဲရန်) sets the chart on one bill that has none yet; totals, status, stock, and cash stay the same. This lesson does not press Attach bill.",
+  guidePatientTransferTitle: "A transfer slip cannot be attached",
+  guidePatientTransferBody:
+    "A number that starts with TO- is refused with A transfer slip cannot be attached (လွှဲစာရွက်ကို တွဲ၍မရပါ။). OPD-, PH-, RT-, and OTB- can be attached only when that bill has no chart yet; That bill is already on a chart (ဤဘေလ်သည် ဇယားတွင် ရှိပြီးပါပြီ။) refuses one that already has a chart, and any other number is not found. This lesson does not press Attach bill.",
+  guideIpdAdmitTitle: "Admit",
+  guideIpdAdmitBody:
+    "A stay is the inpatient account other desks can charge, and Admit (တက်ခွင့်) opens one stay after a Patient (လူနာ) chart is chosen; typing in that box clears the chart, Choose a patient chart first (လူနာမှတ်တမ်းကို အရင်ရွေးပါ။) shows if none is chosen, and a second Admit is refused with This patient already has an open stay (ဤလူနာတွင် ဖွင့်ထားသော တက်ရောက်မှု ရှိပြီးဖြစ်သည်။). Charge to IPD (IPD သို့ တင်) is on OPD Bill (OPD ဘေလ်), OT Bill (OT ဘေလ်), and Pharmacy Bill (ဆေးဆိုင် ဘေလ်); this lesson does not press Admit, and F5 reloads the window.",
+  guideIpdDepositTitle: "Take deposit",
+  guideIpdDepositBody:
+    "Take deposit (အပ်ငွေ လက်ခံ) posts a Deposit (အပ်ငွေ) on this open stay. It is separate from Mark Paid (ပေးပြီးမှတ်) desk cash, and it is separate from a drug; this lesson does not press Take deposit.",
+  guideIpdWardTitle: "Post ward charge",
+  guideIpdWardBody:
+    "Post ward charge (ဝပ်ကြေး တင်) posts a Ward charge (ဝပ်ကြေး) with a Description (ဖော်ပြချက်) and an Amount (ပမာဏ), for room or nursing. It is separate from a drug and from an OPD service, and this lesson does not press Post ward charge.",
+  guideIpdCashLineTitle: "Read the cash line",
+  guideIpdCashLineBody:
+    "Read the subtitle on Discharge (ဆင်းခွင့်ရှင်း) and leave the button unpressed. A positive Patient's Remaining Balance (လူနာ လက်ကျန်ငွေ) shows Refund the remainder (လက်ကျန်ကို ပြန်အမ်း) and would write a refund; a negative balance shows Collect the amount owed (ပေးရန်ကျန်ကို ကောက်) and would write a collection; zero shows No cash. Balance is zero (ငွေမထိ။ လက်ကျန် သုည) and would write no cash line.",
+  guideIpdDischargeTitle: "Discharge",
+  guideIpdDischargeBody:
+    "Discharge (ဆင်းခွင့်ရှင်း) asks Discharge this stay? The cash line is final. (ဤတက်ရောက်မှုကို ဆင်းခွင့်ရှင်းမည်လား။ ငွေစာကြောင်းသည် အပြီးဖြစ်သည်။). After a real discharge, Take deposit (အပ်ငွေ လက်ခံ), Post ward charge (ဝပ်ကြေး တင်), and desk charges are refused with This stay is not open (ဤတက်ရောက်မှုကို မဖွင့်ထားပါ။), and the success line is Discharged. Balance is zero. (ဆင်းပြီး။ လက်ကျန် သုည။). Do not press Discharge on a real stay during this lesson, and do not confirm the dialog.",
+  guidePharmacyPackTitle: "Packing Size",
+  guidePharmacyPackBody:
+    "Packing Size (ထုပ်ပိုးအရွယ်) starts with Smallest Unit (အသေးဆုံးယူနစ်), then rows headed Parent (မိဘ), Packing (ထုပ်ပိုး), and Child Unit (ကလေးယူနစ်). Stock is counted in the smallest unit, a larger unit multiplies, and the last child must match the smallest unit. Do not press F5. Drug Setup (ဆေး စနစ်ထည့်) does not use F5, and F5 reloads the window.",
+  guidePharmacyCreateStockTitle: "Initial stock (optional)",
+  guidePharmacyCreateStockBody:
+    "Initial stock (optional) (ကနဦးစတော့ (ရွေးချယ်)) can be left empty — Skip if you will restock later (နောက်မှ စတော့ဖြည့်မည်ဆိုလျှင် ကျော်ပါ). Quantity (အရေအတွက်) times Unit (ယူနစ်) is what Will add (ထည့်မည်) to In Stock (လက်ကျန်သို့), and that stock is MAIN. Create (ဖန်တီးမည်) saves the item. Do not press Create, and do not press F5.",
+  guidePharmacyEditTitle: "Save",
+  guidePharmacyEditBody:
+    "Edit item (ပစ္စည်းပြင်) locks ID/Code (ID/ကုဒ်) and shows In Stock (လက်ကျန်) with Batch number (အသုတ်နံပါတ်), Qty (အရေအတွက်), and Expiry (သက်တမ်းကုန်) instead of initial stock. Save (သိမ်းမည်) stores the edit. F5 is not Save, and F5 reloads the window. Do not press Save or F5.",
+  guidePharmacyRestockTitle: "Restock",
+  guidePharmacyRestockBody:
+    "Restock (စတော့ဖြည့်) adds Quantity (အရေအတွက်) in a chosen Unit (ယူနစ်) to an item that already exists, and Will add (ထည့်မည်) that count to In Stock (လက်ကျန်သို့), which is MAIN. It does not create a new code. Do not press Restock, and do not press F5.",
+  guidePharmacyMainTitle: "In Stock",
+  guidePharmacyMainBody:
+    "A code Pharmacy Bill (ဆေးဆိုင် ဘေလ်) does not know shows the English words Unknown code and is not created on the bill, so create it here before Restock (စတော့ဖြည့်). The flag low stock (စတော့နည်း) means MAIN In Stock (လက်ကျန်) is at or below Reorder level (ပြန်မှာအဆင့်). Near expiry (သက်တမ်းနီး) is MAIN batches only, not OT on hand (OT လက်ကျန်). Do not press Restock or F5.",
+  guidePharmacyReturnDraftTitle: "Save draft",
+  guidePharmacyReturnDraftBody:
+    "Save draft (မူကြမ်းသိမ်း), F5, keeps the return slip editable. It does not put stock back and it does not refund cash. F7 on this desk is not Mark Paid (ပေးပြီးမှတ်).",
+  guidePharmacyReturnPrintTitle: "Print",
+  guidePharmacyReturnPrintBody:
+    "Print (ပရင့်), F6, prints the slip and leaves it editable. Print does not mark the return, does not put stock back, and does not refund cash.",
+  guidePharmacyReturnMarkTitle: "Mark returned",
+  guidePharmacyReturnMarkBody:
+    "Mark returned (ပြန်သွင်းမှတ်), F7, puts quantity back on MAIN and refunds cash, then locks the slip. The subtitle is Credits stock · refunds cash (စတော့ပြန်ထည့် · ငွေပြန်အမ်း). It is not Return to pharmacy (ဆေးဆိုင်သို့ ပြန်ပို့ရန်) on Inventory (စာရင်း), and it is not Void Bills (ဘေလ်ပယ်ဖျက်). Credit to IPD (IPD သို့ ပြန်ထည့်) can show for an open stay and is not desk cash. This lesson does not press Mark returned or Credit to IPD.",
+  guidePharmacyTransferTitle: "Transfer",
+  guidePharmacyTransferBody:
+    "Transfer (လွှဲမည်), the first F7, saves the slip and waits. The subtitle is Check the lines (စာရင်းစစ်ပါ). It does not move stock and it does not take cash. F6 does nothing, and Print (ပရင့်) is not on this rail. This lesson does not press Transfer.",
+  guidePharmacyTransferConfirmTitle: "Confirm transfer",
+  guidePharmacyTransferConfirmBody:
+    "Confirm transfer (လွှဲခြင်း အတည်ပြု), the second F7, moves saleable MAIN stock into the OT cupboard. The subtitle is Moves stock to OT (OT သို့ စတော့ရောက်သည်). It does not take cash. This lesson does not press Confirm transfer.",
+  guideOtInventoryTitle: "Inventory",
+  guideOtInventoryBody:
+    "Inventory (စာရင်း) is OT on hand (OT လက်ကျန်) after Confirm transfer (လွှဲခြင်း အတည်ပြု). Mark Paid (ပေးပြီးမှတ်) on OT Bill (OT ဘေလ်) deducts this quantity. An empty list says No OT stock yet (OT လက်ကျန် မရှိသေး). This page does not take desk cash, and this lesson does not press F5.",
+  guideOtReturnTitle: "Return to pharmacy",
+  guideOtReturnBody:
+    "Return to pharmacy (ဆေးဆိုင်သို့ ပြန်ပို့ရန်) sends unused quantity from this OT batch back to pharmacy In Stock (လက်ကျန်). It is not Mark returned (ပြန်သွင်းမှတ်) on Return in (ပြန်သွင်း), and it is not Void Bills (ဘေလ်ပယ်ဖျက်). This lesson does not press Return to pharmacy.",
+  guideChargeButtonTitle: "Charge to IPD",
+  guideChargeButtonBody:
+    "Charge to IPD (IPD သို့ တင်) locks this draft onto the chart’s open stay; the subtitle is Not desk cash (ကောင်တာငွေ မဟုတ်), and a typed Patient name (လူနာအမည် *) never shows the button. A pharmacy sale still deducts MAIN stock and an OT bill still deducts OT inventory quantity, and this lesson does not press the button.",
+  guideChargeLeavePaidTitle: "Leave Mark Paid alone",
+  guideChargeLeavePaidBody:
+    "Mark Paid (ပေးပြီးမှတ်), F7, takes desk cash and locks the bill; it does not charge the stay. Charge to IPD (IPD သို့ တင်) is the other button and appears only for a chosen chart with an open stay, so leave Mark Paid unpressed.",
   error: "Error",
 
   // Shared form / list
@@ -247,7 +345,9 @@ const en: Dict = {
   ageYearsShort: "Y",
   remark: "Remark",
   dateTime: "Date/Time",
+  dateAndTime: "Date and Time",
   vouNo: "Vou No",
+  vouchNo: "Vouch No.",
   currency: "Currency",
   kyats: "Kyats",
   opdNo: "OPD No",
@@ -721,6 +821,8 @@ const en: Dict = {
   ipdStayTitle: "Inpatient stay",
   ipdAdmit: "Admit",
   ipdSaveNotes: "Save notes",
+  roomNo: "Room no.",
+  changeRoomNo: "Change room number",
   ipdNoStays: "No open stays.",
   ipdBalanceEmpty: "No balance yet.",
   ipdBalanceHint:
@@ -923,6 +1025,55 @@ const en: Dict = {
   homeHowtoPharm2: "Registration / Maintenance for new stock items, restock, and price edits.",
   homeHowtoVideos: "Training videos",
   homeHowtoVideosSoon: "Training videos coming soon",
+
+  // Help overlay (?). Button words are copied from existing keys.
+  helpHSale: "Sale rail",
+  helpSale1: "OPD Bill, OT Bill, Pharmacy Bill (sale), and Expense bill share this rail.",
+  helpSale2: "Save draft (F5): the bill stays editable. No cash. No stock.",
+  helpSale3:
+    "Print (F6): saves if needed and opens the receipt. Status becomes Printed — Not Paid. Still editable. No cash. No stock.",
+  helpSale4:
+    "Mark Paid (F7): desk cash. Subtitle Final · locks bill. Editing stops. Pharmacy sale deducts MAIN stock. OT Bill deducts inventory quantity. Expense does not move stock.",
+  helpSale5:
+    "Charge to IPD has no function key. F7 does not do this. Subtitle Not desk cash. Shown only when the chosen chart has an open stay. A typed name never shows it. Not on Expense bill or Transfer to OT.",
+  helpSale6:
+    "Void Bills (^F8): Ctrl+F8 or Cmd+F8. Reason required (Required to void). The dialog confirm button is Delete.",
+  helpSale7: "History (F9). Cancel (F10) clears the form. New bill (F2).",
+  helpSale8:
+    "A printed bill can still be edited until Mark Paid or Charge to IPD. After Mark Paid the button shows Paid. A bill charged to a stay shows Charged to IPD.",
+  helpHOpd: "OPD Bill",
+  helpOpd1: "Patient, doctor, then a service or consultation. Medicines are billed on Pharmacy Bill. Receipts use the 80 mm roll.",
+  helpOpd2: "Charge to IPD appears only for a chart with an open stay, and it is not desk cash.",
+  helpHOt: "OT",
+  helpOt1:
+    "Transfer to OT: no cash. F6 does nothing and Print is not on this rail. First F7 is Transfer. Second F7 is Confirm transfer and moves saleable MAIN stock into OT inventory. Batch number and expiry are optional. Void of a confirmed transfer reverses the move.",
+  helpOt2:
+    "Sidebar Maintenance opens Inventory. Quantity appears after Confirm transfer. Return to pharmacy sends unused quantity back. That is not Return in and not Void Bills. The Services tab on the same page holds OT-only services.",
+  helpOt3:
+    "OT Bill uses the sale rail. Mark Paid takes desk cash and deducts inventory quantity. Void of a paid OT bill puts that quantity back. Charge to IPD is on the bill when the chart has an open stay, not on Inventory. Print uses A4.",
+  helpHPharmacy: "Pharmacy",
+  helpPharm1:
+    "Pharmacy Bill (sale) uses the sale rail. Mark Paid takes desk cash and deducts MAIN stock, earliest expiry first. Charge to IPD only for a linked chart with an open stay. Void of a paid sale puts MAIN quantity back.",
+  helpPharm2:
+    "Return in is not the OT inventory return. F5 Save draft. F6 Print: the slip stays editable. F7 Mark returned, subtitle Credits stock · refunds cash, then the slip locks. F2 is New return. Void of a paid return takes that quantity off MAIN again.",
+  helpPharm3:
+    "If that chart has an open stay and at least one charged pharmacy sale, the rail can show Credit to IPD. No function key. It is not Charge to IPD and not desk cash.",
+  helpPharm4:
+    "Maintenance: section Packing Size, first field Smallest Unit. Stock on hand is MAIN. Create an unknown code before restock. Low stock and near expiry are MAIN only. This screen does not save on F5. F5 reloads the window.",
+  helpHPatients: "Patients and IPD",
+  helpPat1:
+    "Patient Charts: a chart is the patient record. A name typed on a bill is not a chart. Typing a name clears the link, so Charge to IPD disappears. Create New Patient is shown only when that account may create charts.",
+  helpPat2:
+    "Attach bill links one bill number that has no chart yet. Totals, status, stock, and cash stay the same. A TO- transfer slip cannot be attached.",
+  helpPat3:
+    "Stays: no function keys on this page. F5 reloads the window. Admit opens one stay per chart. Then Take deposit, Post ward charge, and Save notes. A ward charge is room or nursing, not a drug and not an OPD service. Charge to IPD is not on this page. It is on OPD Bill, OT Bill, and Pharmacy Bill.",
+  helpPat4:
+    "Discharge is final. Positive balance: Refund the remainder. Negative balance: Collect the amount owed. Zero: No cash. Balance is zero. After discharge, deposits, ward charges, and desk charges are refused.",
+  helpHShortcuts: "Shortcuts",
+  helpShortcutHelp: "this help",
+  helpShortcutLang: "language (top bar)",
+  helpShortcutCharge: "Charge to IPD — no function key",
+  helpShortcutF5Reload: "On Stays and on pharmacy Maintenance, F5 reloads the window.",
 };
 
 const my: Dict = {
@@ -1052,6 +1203,104 @@ const my: Dict = {
   clientServerIp: "ကလိုင်းယင့် ဆာဗာ IP…",
   busy: "လုပ်ဆောင်နေသည်…",
   done: "ပြီးပါပြီ",
+  guideNext: "နောက်တစ်ဆင့်",
+  guideBack: "ပြန်",
+  guideDone: "ပြီးပါပြီ",
+  guideClose: "ပိတ်ရန်",
+  guideProgress: "အဆင့် {current} / {total}",
+  guideBillButtons: "ဘေလ်ခလုတ်များ",
+  guideBillSaveDraftTitle: "မူကြမ်းသိမ်း",
+  guideBillSaveDraftBody:
+    "Save draft (မူကြမ်းသိမ်း)၊ F5 သည် ဘေလ်ကို ပြင်နိုင်အောင် ထားသည်။ ငွေမကောက်၊ စတော့လည်း မရွေ့ပါ။",
+  guideBillPrintTitle: "ပရင့်",
+  guideBillPrintBody:
+    "Print (ပရင့်)၊ F6 သည် Printed — Not Paid (ပရင့်ပြီး — မပေးရသေး) ပြနိုင်ပြီး Mark Paid (ပေးပြီးမှတ်) မချင်း ဘေလ်ကို ပြင်နိုင်သေးသည်။ ပရင့်သည် ငွေမကောက်၊ စတော့လည်း မရွေ့ပါ။",
+  guideBillMarkPaidTitle: "ပေးပြီးမှတ်",
+  guideBillMarkPaidBody:
+    "Mark Paid (ပေးပြီးမှတ်)၊ F7 သည် ကောင်တာငွေကောက်ပြီး ဘေလ်ကို ပိတ်သဖြင့် ပြင်၍မရတော့ပါ — ဆေးဆိုင်အရောင်းသည် MAIN စတော့လျှော့ပြီး၊ OT ဘေလ်သည် OT စာရင်း အရေအတွက်လျှော့ကာ၊ အသုံးစရိတ်ဘေလ်သည် စတော့မရွေ့ပါ။ Return in ၏ F7 သည် Mark returned (ပြန်သွင်းမှတ်) ဖြစ်ပြီး Transfer to OT ၏ F7 သည် Transfer (လွှဲမည်) ပြီးနောက် Confirm transfer (လွှဲခြင်း အတည်ပြု) ဖြစ်သဖြင့် ထိုနှစ်ခုသည် သီးခြားသင်ခန်းစာဖြစ်သည်။",
+  guideBillChargeIpdTitle: "IPD သို့ တင်",
+  guideBillChargeIpdBody:
+    "Charge to IPD (IPD သို့ တင်) တွင် ဖန်ရှင်ကီးမရှိဘဲ ခေါင်းစဉ်ခွဲသည် Not desk cash (ကောင်တာငွေ မဟုတ်) ဖြစ်သည်။ မူကြမ်း OPD၊ OT၊ သို့မဟုတ် ဆေးဆိုင်အရောင်းတွင် ရွေးထားသောမှတ်တမ်း၌ ဖွင့်ထားသော တက်ရောက်မှုရှိမှသာ ပေါ်ပြီး၊ စာရိုက်အမည်၊ အသုံးစရိတ်၊ Return in၊ Transfer to OT တို့တွင် မပေါ်သလို F7 သည်လည်း တက်ရောက်မှုသို့ မတင်ပါ။",
+  guideBillVoidTitle: "ဘေလ်ပယ်ဖျက်",
+  guideBillVoidBody:
+    "Void Bills (ဘေလ်ပယ်ဖျက်) သည် Ctrl+F8 သို့မဟုတ် Cmd+F8 (အောက်ခြေ ^F8) ဖြစ်ပြီး Void reason (ပယ်ဖျက်အကြောင်း) လိုသည်။ ဗလာဖြစ်လျှင် Required to void (ပယ်ဖျက်ရန် လိုအပ်သည်) ဖြင့် ငြင်းပြီး ဒိုင်ယာလော့ခ်အတည်ပြုခလုတ်သည် Delete (ဖျက်ရန်) ဖြစ်ကာ၊ ပေးပြီးဆေးဆိုင်အရောင်း သို့မဟုတ် ပေးပြီး OT ဘေလ်ကို ပယ်ဖျက်လျှင် အရေအတွက်ပြန်တက်သော်လည်း ဤသင်ခန်းစာတွင် ဘေလ်မပယ်ဖျက်ရ။",
+  guideBillHistoryTitle: "မှတ်တမ်း",
+  guideBillHistoryBody: "History (မှတ်တမ်း)၊ F9 သည် ဘေလ်စာရင်းကို ဖွင့်သည်။ ငွေမကောက်၊ မပရင့်၊ မပယ်ဖျက်ပါ။",
+  guideBillNewTitle: "ဘေလ်အသစ်",
+  guideBillNewBody:
+    "New bill (ဘေလ်အသစ်)၊ F2 သည် ဘေလ်အသစ်အတွက် ဖောင်ကို ရှင်းပြီး သိမ်းပြီးသားဘေလ်သည် History (မှတ်တမ်း) တွင် ကျန်သည်။ ဖွင့်ထားသောဘေလ်ကို ပေးပြီးအဖြစ် မမှတ်ပါ။",
+  guideBillCancelTitle: "မလုပ်တော့",
+  guideBillCancelBody:
+    "Cancel (မလုပ်တော့)၊ F10 သည် ဤဖောင်ကို ရှင်းမလားဟု မေးသည်။ ငွေမကောက်ဘဲ သိမ်းပြီးသားဘေလ်ကိုလည်း မပယ်ဖျက်ပါ။",
+  guidePatientCreateTitle: "ဖန်တီးမည်",
+  guidePatientCreateBody:
+    "Create New Patient (လူနာအသစ် ဖန်တီးရန်) သည် Add new patient (လူနာအသစ် ထည့်ရန်) ကို ဖွင့်ပြီး Create (ဖန်တီးမည်) သည် မှတ်တမ်းကို သိမ်းသည်။ ဤသင်ခန်းစာတွင် Create ကို မနှိပ်ရဘဲ F5 သည် ဝင်းဒိုးကို ပြန်ဖွင့်သည်။",
+  guidePatientSearchTitle: "မှတ်တမ်း ရှာရန်",
+  guidePatientSearchBody:
+    "Search charts (မှတ်တမ်း ရှာရန်) သည် Filter (စစ်ထုတ်) အောက်တွင် ရှိပြီး Name, phone, NRC, or chart number (အမည်၊ ဖုန်း၊ NRC သို့မဟုတ် မှတ်တမ်းနံပါတ်) ဖြင့် မှတ်တမ်းကို ရှာသည်။ ဘေလ်ပေါ်တွင် ရိုက်ထားသော Patient name (လူနာအမည် *) သည် မှတ်တမ်းမဟုတ်ပါ။",
+  guidePatientAttachTitle: "ဘေလ် တွဲရန်",
+  guidePatientAttachBody:
+    "+Add Bill (+ဘေလ်ထည့်) သည် Bill number (ဘေလ်နံပါတ်) ကို ပြသည်။ Attach bill (ဘေလ် တွဲရန်) သည် မှတ်တမ်းမရှိသေးသော ဘေလ်တစ်စောင်ပေါ်တွင် မှတ်တမ်းကို တွဲပြီး စုစုပေါင်း၊ အခြေအနေ၊ စတော့၊ ငွေတို့ မပြောင်းပါ။ ဤသင်ခန်းစာတွင် Attach bill ကို မနှိပ်ရ။",
+  guidePatientTransferTitle: "လွှဲစာရွက်ကို တွဲ၍မရပါ။",
+  guidePatientTransferBody:
+    "TO- ဖြင့် စသောနံပါတ်ကို A transfer slip cannot be attached (လွှဲစာရွက်ကို တွဲ၍မရပါ။) ဖြင့် ငြင်းသည်။ OPD-၊ PH-၊ RT-၊ OTB- တို့ကို ထိုဘေလ်၌ မှတ်တမ်းမရှိသေးမှသာ တွဲနိုင်ပြီး ရှိပြီးသားကို That bill is already on a chart (ဤဘေလ်သည် ဇယားတွင် ရှိပြီးပါပြီ။) ဖြင့် ငြင်းကာ အခြားနံပါတ်ကို မတွေ့ပါ။ ဤသင်ခန်းစာတွင် Attach bill ကို မနှိပ်ရ။",
+  guideIpdAdmitTitle: "တက်ခွင့်",
+  guideIpdAdmitBody:
+    "တက်ရောက်မှုသည် အခြားကောင်တာများ တင်နိုင်သော အတွင်းလူနာစာရင်းဖြစ်ပြီး Admit (တက်ခွင့်) သည် Patient (လူနာ) မှတ်တမ်း ရွေးပြီးမှ တက်ရောက်မှုတစ်ခု ဖွင့်သည်။ ထိုအကွက်ထဲ ရိုက်လျှင် မှတ်တမ်းပျောက်ပြီး မရွေးလျှင် Choose a patient chart first (လူနာမှတ်တမ်းကို အရင်ရွေးပါ။) ပြကာ ဒုတိယအကြိမ် Admit ကို This patient already has an open stay (ဤလူနာတွင် ဖွင့်ထားသော တက်ရောက်မှု ရှိပြီးဖြစ်သည်။) ဖြင့် ငြင်းသည်။ Charge to IPD (IPD သို့ တင်) သည် OPD Bill (OPD ဘေလ်)၊ OT Bill (OT ဘေလ်)၊ Pharmacy Bill (ဆေးဆိုင် ဘေလ်) ပေါ်တွင် ရှိပြီး ဤသင်ခန်းစာတွင် Admit ကို မနှိပ်ရဘဲ F5 သည် ဝင်းဒိုးကို ပြန်ဖွင့်သည်။",
+  guideIpdDepositTitle: "အပ်ငွေ လက်ခံ",
+  guideIpdDepositBody:
+    "Take deposit (အပ်ငွေ လက်ခံ) သည် ဤဖွင့်ထားသော တက်ရောက်မှုပေါ်တွင် Deposit (အပ်ငွေ) တင်သည်။ Mark Paid (ပေးပြီးမှတ်) ကောင်တာငွေနှင့်လည်း ဆေးနှင့်လည်း သီးခြားဖြစ်ပြီး ဤသင်ခန်းစာတွင် Take deposit ကို မနှိပ်ရ။",
+  guideIpdWardTitle: "ဝပ်ကြေး တင်",
+  guideIpdWardBody:
+    "Post ward charge (ဝပ်ကြေး တင်) သည် အခန်း သို့မဟုတ် သူနာပြုအတွက် Description (ဖော်ပြချက်) နှင့် Amount (ပမာဏ) ပါသော Ward charge (ဝပ်ကြေး) ကို တင်သည်။ ဆေးနှင့်လည်း OPD ဝန်ဆောင်မှုနှင့်လည်း သီးခြားဖြစ်ပြီး ဤသင်ခန်းစာတွင် Post ward charge ကို မနှိပ်ရ။",
+  guideIpdCashLineTitle: "ငွေစာကြောင်းကို ဖတ်ပါ",
+  guideIpdCashLineBody:
+    "Discharge (ဆင်းခွင့်ရှင်း) ၏ ခေါင်းစဉ်ခွဲကို ဖတ်ပြီး ခလုတ်ကို မနှိပ်ရ။ Patient's Remaining Balance (လူနာ လက်ကျန်ငွေ) အပေါင်းဖြစ်လျှင် Refund the remainder (လက်ကျန်ကို ပြန်အမ်း) ပြပြီး ပြန်အမ်းငွေ ရေးမည်ဖြစ်ကာ၊ အနှုတ်ဖြစ်လျှင် Collect the amount owed (ပေးရန်ကျန်ကို ကောက်) ပြပြီး ကောက်ခံငွေ ရေးမည်ဖြစ်ကာ၊ သုညဖြစ်လျှင် No cash. Balance is zero (ငွေမထိ။ လက်ကျန် သုည) ပြပြီး ငွေစာကြောင်း မရေးပါ။",
+  guideIpdDischargeTitle: "ဆင်းခွင့်ရှင်း",
+  guideIpdDischargeBody:
+    "Discharge (ဆင်းခွင့်ရှင်း) သည် Discharge this stay? The cash line is final. (ဤတက်ရောက်မှုကို ဆင်းခွင့်ရှင်းမည်လား။ ငွေစာကြောင်းသည် အပြီးဖြစ်သည်။) ဟု မေးသည်။ တကယ်ဆင်းပြီးနောက် Take deposit (အပ်ငွေ လက်ခံ)၊ Post ward charge (ဝပ်ကြေး တင်)၊ ကောင်တာတင်ကြေးတို့ကို This stay is not open (ဤတက်ရောက်မှုကို မဖွင့်ထားပါ။) ဖြင့် ငြင်းပြီး အောင်မြင်စာကြောင်းသည် Discharged. Balance is zero. (ဆင်းပြီး။ လက်ကျန် သုည။) ဖြစ်သည်။ ဤသင်ခန်းစာတွင် တကယ်ဖွင့်ထားသော တက်ရောက်မှုကို Discharge မနှိပ်ရဘဲ ဒိုင်ယာလော့ခ်ကိုလည်း အတည်မပြုရ။",
+  guidePharmacyPackTitle: "ထုပ်ပိုးအရွယ်",
+  guidePharmacyPackBody:
+    "Packing Size (ထုပ်ပိုးအရွယ်) သည် Smallest Unit (အသေးဆုံးယူနစ်) ဖြင့် စပြီး အတန်းခေါင်းစီးများသည် Parent (မိဘ)၊ Packing (ထုပ်ပိုး)၊ Child Unit (ကလေးယူနစ်) ဖြစ်သည်။ စတော့ကို အသေးဆုံးယူနစ်ဖြင့် ရေတွက်ပြီး ပိုကြီးသောယူနစ်သည် မြှောက်ကာ နောက်ဆုံးကလေးယူနစ်သည် အသေးဆုံးယူနစ်နှင့် တူရမည်။ F5 ကို မနှိပ်ရ။ Drug Setup (ဆေး စနစ်ထည့်) သည် F5 ကို မသုံးဘဲ F5 သည် ဝင်းဒိုးကို ပြန်ဖွင့်သည်။",
+  guidePharmacyCreateStockTitle: "ကနဦးစတော့ (ရွေးချယ်)",
+  guidePharmacyCreateStockBody:
+    "Initial stock (optional) (ကနဦးစတော့ (ရွေးချယ်)) ကို ဗလာထားနိုင်သည် — Skip if you will restock later (နောက်မှ စတော့ဖြည့်မည်ဆိုလျှင် ကျော်ပါ)။ Quantity (အရေအတွက်) ကို Unit (ယူနစ်) နှင့် မြှောက်ထားသည်မှာ Will add (ထည့်မည်) to In Stock (လက်ကျန်သို့) ဖြစ်ပြီး ထိုစတော့သည် MAIN ဖြစ်သည်။ Create (ဖန်တီးမည်) သည် ပစ္စည်းကို သိမ်းသည်။ Create ကို မနှိပ်ရဘဲ F5 ကိုလည်း မနှိပ်ရ။",
+  guidePharmacyEditTitle: "သိမ်းမည်",
+  guidePharmacyEditBody:
+    "Edit item (ပစ္စည်းပြင်) သည် ID/Code (ID/ကုဒ်) ကို ပိတ်ပြီး ကနဦးစတော့အစား In Stock (လက်ကျန်) နှင့် Batch number (အသုတ်နံပါတ်)၊ Qty (အရေအတွက်)၊ Expiry (သက်တမ်းကုန်) ကို ပြသည်။ Save (သိမ်းမည်) သည် ပြင်ဆင်ချက်ကို သိမ်းသည်။ F5 သည် Save မဟုတ်ဘဲ F5 သည် ဝင်းဒိုးကို ပြန်ဖွင့်သည်။ Save သို့မဟုတ် F5 ကို မနှိပ်ရ။",
+  guidePharmacyRestockTitle: "စတော့ဖြည့်",
+  guidePharmacyRestockBody:
+    "Restock (စတော့ဖြည့်) သည် ရှိပြီးသားပစ္စည်းပေါ်သို့ ရွေးထားသော Unit (ယူနစ်) ဖြင့် Quantity (အရေအတွက်) ထည့်ပြီး Will add (ထည့်မည်) သည် ထိုအရေအတွက်ကို to In Stock (လက်ကျန်သို့) ထည့်သည်။ ထိုလက်ကျန်သည် MAIN ဖြစ်သည်။ ကုဒ်အသစ် မဖန်တီးပါ။ Restock ကို မနှိပ်ရဘဲ F5 ကိုလည်း မနှိပ်ရ။",
+  guidePharmacyMainTitle: "လက်ကျန်",
+  guidePharmacyMainBody:
+    "Pharmacy Bill (ဆေးဆိုင် ဘေလ်) မသိသော ကုဒ်သည် အင်္ဂလိပ်စာ Unknown code ကို ပြပြီး ဘေလ်ပေါ်တွင် မဖန်တီးသဖြင့် Restock (စတော့ဖြည့်) မတိုင်မီ ဤနေရာတွင် ဖန်တီးရသည်။ low stock (စတော့နည်း) အမှတ်အသားဆိုသည်မှာ MAIN In Stock (လက်ကျန်) သည် Reorder level (ပြန်မှာအဆင့်) နှင့် တူသည် သို့မဟုတ် ၎င်းအောက်ရောက်သည်ဟု ဆိုလိုသည်။ Near expiry (သက်တမ်းနီး) သည် MAIN အသုတ်များသာ ဖြစ်ပြီး OT on hand (OT လက်ကျန်) မပါဝင်ပါ။ Restock သို့မဟုတ် F5 ကို မနှိပ်ရ။",
+  guidePharmacyReturnDraftTitle: "မူကြမ်းသိမ်း",
+  guidePharmacyReturnDraftBody:
+    "Save draft (မူကြမ်းသိမ်း)၊ F5 သည် ပြန်သွင်းစာရွက်ကို ပြင်နိုင်အောင် ထားသည်။ စတော့မပြန်ထည့်၊ ငွေလည်း မပြန်အမ်းပါ။ ဤကောင်တာ၏ F7 သည် Mark Paid (ပေးပြီးမှတ်) မဟုတ်ပါ။",
+  guidePharmacyReturnPrintTitle: "ပရင့်",
+  guidePharmacyReturnPrintBody:
+    "Print (ပရင့်)၊ F6 သည် စာရွက်ကို ပရင့်ထုတ်ပြီး ပြင်နိုင်အောင် ထားသည်။ ပရင့်သည် ပြန်သွင်းမှတ်ခြင်း မလုပ်၊ စတော့မပြန်ထည့်၊ ငွေလည်း မပြန်အမ်းပါ။",
+  guidePharmacyReturnMarkTitle: "ပြန်သွင်းမှတ်",
+  guidePharmacyReturnMarkBody:
+    "Mark returned (ပြန်သွင်းမှတ်)၊ F7 သည် အရေအတွက်ကို MAIN ပေါ် ပြန်တင်ပြီး ငွေပြန်အမ်းကာ စာရွက်ကို ပိတ်သည်။ ခေါင်းစဉ်ခွဲသည် Credits stock · refunds cash (စတော့ပြန်ထည့် · ငွေပြန်အမ်း) ဖြစ်သည်။ ၎င်းသည် Inventory (စာရင်း) ပေါ်ရှိ Return to pharmacy (ဆေးဆိုင်သို့ ပြန်ပို့ရန်) မဟုတ်၊ Void Bills (ဘေလ်ပယ်ဖျက်) လည်း မဟုတ်ပါ။ Credit to IPD (IPD သို့ ပြန်ထည့်) သည် ဖွင့်ထားသော တက်ရောက်မှုအတွက် ပေါ်နိုင်ပြီး ကောင်တာငွေ မဟုတ်ပါ။ ဤသင်ခန်းစာတွင် Mark returned သို့မဟုတ် Credit to IPD ကို မနှိပ်ရ။",
+  guidePharmacyTransferTitle: "လွှဲမည်",
+  guidePharmacyTransferBody:
+    "Transfer (လွှဲမည်)၊ ပထမ F7 သည် စာရွက်ကို သိမ်းပြီး စောင့်သည်။ ခေါင်းစဉ်ခွဲသည် Check the lines (စာရင်းစစ်ပါ) ဖြစ်သည်။ စတော့မရွေ့၊ ငွေလည်း မကောက်ပါ။ F6 သည် ဘာမှမလုပ်ဘဲ Print (ပရင့်) သည် ဤဘေးတန်းတွင် မရှိပါ။ ဤသင်ခန်းစာတွင် Transfer ကို မနှိပ်ရ။",
+  guidePharmacyTransferConfirmTitle: "လွှဲခြင်း အတည်ပြု",
+  guidePharmacyTransferConfirmBody:
+    "Confirm transfer (လွှဲခြင်း အတည်ပြု)၊ ဒုတိယ F7 သည် ရောင်းနိုင်သော MAIN စတော့ကို OT ဆေးဗီရိုသို့ ရွှေ့သည်။ ခေါင်းစဉ်ခွဲသည် Moves stock to OT (OT သို့ စတော့ရောက်သည်) ဖြစ်သည်။ ငွေမကောက်ပါ။ ဤသင်ခန်းစာတွင် Confirm transfer ကို မနှိပ်ရ။",
+  guideOtInventoryTitle: "စာရင်း",
+  guideOtInventoryBody:
+    "Inventory (စာရင်း) သည် Confirm transfer (လွှဲခြင်း အတည်ပြု) ပြီးနောက် OT on hand (OT လက်ကျန်) ဖြစ်သည်။ OT Bill (OT ဘေလ်) ပေါ်ရှိ Mark Paid (ပေးပြီးမှတ်) သည် ဤအရေအတွက်ကို လျှော့သည်။ စာရင်းဗလာဖြစ်လျှင် No OT stock yet (OT လက်ကျန် မရှိသေး) ဟု ပြသည်။ ဤစာမျက်နှာသည် ကောင်တာငွေမကောက်ဘဲ ဤသင်ခန်းစာတွင် F5 ကို မနှိပ်ရ။",
+  guideOtReturnTitle: "ဆေးဆိုင်သို့ ပြန်ပို့ရန်",
+  guideOtReturnBody:
+    "Return to pharmacy (ဆေးဆိုင်သို့ ပြန်ပို့ရန်) သည် ဤ OT အသုတ်မှ မသုံးသော အရေအတွက်ကို ဆေးဆိုင် In Stock (လက်ကျန်) သို့ ပြန်ပို့သည်။ ၎င်းသည် Return in (ပြန်သွင်း) ပေါ်ရှိ Mark returned (ပြန်သွင်းမှတ်) မဟုတ်၊ Void Bills (ဘေလ်ပယ်ဖျက်) လည်း မဟုတ်ပါ။ ဤသင်ခန်းစာတွင် Return to pharmacy ကို မနှိပ်ရ။",
+  guideChargeButtonTitle: "IPD သို့ တင်",
+  guideChargeButtonBody:
+    "Charge to IPD (IPD သို့ တင်) သည် ဤမူကြမ်းကို မှတ်တမ်း၏ ဖွင့်ထားသော တက်ရောက်မှုပေါ်သို့ ပိတ်ပြီး ခေါင်းစဉ်ခွဲသည် Not desk cash (ကောင်တာငွေ မဟုတ်) ဖြစ်ကာ စာရိုက်ထားသော Patient name (လူနာအမည် *) သည် ခလုတ်ကို မပြပါ။ ဆေးဆိုင်အရောင်းသည် MAIN စတော့ကို ဆက်လျှော့ပြီး OT ဘေလ်သည် OT စာရင်း အရေအတွက်ကို ဆက်လျှော့သော်လည်း ဤသင်ခန်းစာတွင် မနှိပ်ရ။",
+  guideChargeLeavePaidTitle: "Mark Paid (ပေးပြီးမှတ်) ကို မနှိပ်ရ",
+  guideChargeLeavePaidBody:
+    "Mark Paid (ပေးပြီးမှတ်)၊ F7 သည် ကောင်တာငွေကောက်ပြီး ဘေလ်ကို ပိတ်သော်လည်း တက်ရောက်မှုသို့ မတင်ပါ။ Charge to IPD (IPD သို့ တင်) သည် အခြားခလုတ်ဖြစ်ပြီး ရွေးထားသောမှတ်တမ်း၌ ဖွင့်ထားသော တက်ရောက်မှုရှိမှသာ ပေါ်သဖြင့် Mark Paid ကို မနှိပ်ရ။",
   error: "အမှား",
 
   patientName: "လူနာအမည် *",
@@ -1142,7 +1391,9 @@ const my: Dict = {
   ageYearsShort: "နှစ်",
   remark: "မှတ်ချက်",
   dateTime: "ရက်/အချိန်",
+  dateAndTime: "ရက်နှင့် အချိန်",
   vouNo: "ဘောင်ချာ",
+  vouchNo: "ဘောက်ချာ နံပါတ်",
   currency: "ငွေကြေး",
   kyats: "ကျပ်",
   opdNo: "OPD နံပါတ်",
@@ -1611,6 +1862,8 @@ const my: Dict = {
   ipdStayTitle: "အတွင်းလူနာ တက်ရောက်မှု",
   ipdAdmit: "တက်ခွင့်",
   ipdSaveNotes: "မှတ်ချက်သိမ်း",
+  roomNo: "အခန်းနံပါတ်",
+  changeRoomNo: "အခန်းနံပါတ် ပြောင်းရန်",
   ipdNoStays: "ဖွင့်ထားသော တက်ရောက်မှု မရှိပါ။",
   ipdBalanceEmpty: "လက်ကျန် မရှိသေးပါ။",
   ipdBalanceHint:
@@ -1811,6 +2064,54 @@ const my: Dict = {
   homeHowtoPharm2: "စတော့အသစ်၊ ထပ်သွင်း၊ ဈေးပြင်ရန် မှတ်ပုံတင် / ထိန်းသိမ်းရေး သုံးပါ။",
   homeHowtoVideos: "လေ့ကျင့် ဗီဒီယိုများ",
   homeHowtoVideosSoon: "လေ့ကျင့် ဗီဒီယိုများ မကြာမီ ရပါမည်",
+
+  helpHSale: "ရောင်းဘေလ်",
+  helpSale1: "OPD ဘေလ်၊ OT ဘေလ်၊ ဆေးဆိုင် ဘေလ် (ရောင်း)၊ အသုံးစရိတ် ဘေလ် တို့ ဤခလုတ်တန်းကို မျှသုံးသည်။",
+  helpSale2: "မူကြမ်းသိမ်း (F5) — ဘေလ်ပြင်နိုင်သည်။ ငွေမကောက်။ စတော့မလှုပ်။",
+  helpSale3:
+    "ပရင့် (F6) — လိုအပ်လျှင် သိမ်းပြီး ပြေစာဖွင့်သည်။ အခြေအနေ ပရင့်ပြီး — မပေးရသေး။ ပြင်နိုင်သေးသည်။ ငွေမကောက်။ စတော့မလှုပ်။",
+  helpSale4:
+    "ပေးပြီးမှတ် (F7) — ကောင်တာငွေ။ စာတန်း နောက်ဆုံး · ဘေလ်ပိတ်မည်။ ပြင်၍မရတော့။ ဆေးဆိုင်ရောင်းလျှင် MAIN လျော့သည်။ OT ဘေလ် လျှင် စာရင်း အရေအတွက် လျော့သည်။ အသုံးစရိတ် ဘေလ် သည် စတော့မလှုပ်။",
+  helpSale5:
+    "IPD သို့ တင် တွင် ဖန်ရှင်ခလုတ်မရှိ။ F7 သည် ဤလုပ်ဆောင်ချက် မဟုတ်။ စာတန်း ကောင်တာငွေ မဟုတ်။ ရွေးထားသော မှတ်တမ်းတွင် ဖွင့်ထားသော တက်ရောက်မှု ရှိမှ ပေါ်သည်။ အမည်ရိုက်ရုံဖြင့် မပေါ်။ အသုံးစရိတ် ဘေလ် နှင့် OT သို့ လွှဲ တွင် မရှိ။",
+  helpSale6:
+    "ဘေလ်ပယ်ဖျက် (^F8) — Ctrl+F8 သို့မဟုတ် Cmd+F8။ ပယ်ဖျက်ရန် လိုအပ်သည်။ အတည်ပြုခလုတ်သည် ဖျက်ရန်။",
+  helpSale7: "မှတ်တမ်း (F9)။ မလုပ်တော့ (F10) သည် ဖောင်ကို ရှင်းသည်။ ဘေလ်အသစ် (F2)။",
+  helpSale8:
+    "ပရင့်ထားသော ဘေလ်ကို ပေးပြီးမှတ် သို့မဟုတ် IPD သို့ တင် မချင်း ပြင်နိုင်သေးသည်။ ပေးပြီးမှတ် ပြီးလျှင် ခလုတ်တွင် ပေးပြီး ပေါ်သည်။ တက်ရောက်မှုသို့ တင်ထားသော ဘေလ်တွင် IPD သို့ တင်ပြီး ပေါ်သည်။",
+  helpHOpd: "OPD ဘေလ်",
+  helpOpd1: "လူနာ၊ ဆရာဝန်၊ ထို့နောက် ဝန်ဆောင်မှု သို့မဟုတ် တိုင်ပင်ခ။ ဆေးသည် ဆေးဆိုင် ဘေလ် တွင်။ ပြေစာသည် 80 mm။",
+  helpOpd2: "IPD သို့ တင် သည် ဖွင့်ထားသော တက်ရောက်မှုရှိသော မှတ်တမ်းတွင်သာ ပေါ်သည်။ ကောင်တာငွေ မဟုတ်။",
+  helpHOt: "OT",
+  helpOt1:
+    "OT သို့ လွှဲ — ငွေမကောက်။ F6 မလုပ်။ ပရင့် ခလုတ် ဤတန်းတွင် မရှိ။ ပထမ F7 လွှဲမည်။ ဒုတိယ F7 လွှဲခြင်း အတည်ပြု ပြီး ရောင်းနိုင်သော MAIN ကို OT စာရင်းသို့ ရွှေ့သည်။ အသုတ်နံပါတ်နှင့် သက်တမ်းကုန် မထည့်လည်း ရသည်။ အတည်ပြုပြီးသော လွှဲခြင်းကို ပယ်ဖျက်လျှင် လွှဲခြင်း ပြန်လှန်သည်။",
+  helpOt2:
+    "ဘေးဘား ထိန်းသိမ်းရေး သည် စာရင်း ကို ဖွင့်သည်။ အရေအတွက်သည် လွှဲခြင်း အတည်ပြု ပြီးမှ ပေါ်သည်။ ဆေးဆိုင်သို့ ပြန်ပို့ရန် သည် မသုံးသော အရေအတွက်ကို ပြန်ပို့သည်။ ၎င်းသည် ပြန်သွင်း မဟုတ်၊ ဘေလ်ပယ်ဖျက် မဟုတ်။ ထိုစာမျက်နှာရှိ ဝန်ဆောင်မှုများ တက်ဘ်တွင် OT သီးသန့် ဝန်ဆောင်မှုများ ရှိသည်။",
+  helpOt3:
+    "OT ဘေလ် သည် ရောင်းခလုတ်တန်းကို သုံးသည်။ ပေးပြီးမှတ် လျှင် ကောင်တာငွေကောက်ပြီး စာရင်း အရေအတွက် လျော့သည်။ ပေးပြီးသော OT ဘေလ်ကို ပယ်ဖျက်လျှင် ထိုအရေအတွက် ပြန်တက်သည်။ IPD သို့ တင် သည် ဖွင့်ထားသော တက်ရောက်မှုရှိလျှင် ဘေလ်ပေါ်တွင် ရှိသည်။ စာရင်း စာမျက်နှာတွင် မရှိ။ ပရင့်သည် A4။",
+  helpHPharmacy: "ဆေးဆိုင်",
+  helpPharm1:
+    "ဆေးဆိုင် ဘေလ် (ရောင်း) သည် ရောင်းခလုတ်တန်းကို သုံးသည်။ ပေးပြီးမှတ် လျှင် ကောင်တာငွေကောက်ပြီး MAIN ကို သက်တမ်းအရင်ဆုံးမှ လျှော့သည်။ IPD သို့ တင် သည် ဖွင့်ထားသော တက်ရောက်မှုနှင့် ချိတ်ထားသော မှတ်တမ်းတွင်သာ။ ပေးပြီးသော ရောင်းဘေလ်ကို ပယ်ဖျက်လျှင် MAIN အရေအတွက် ပြန်တက်သည်။",
+  helpPharm2:
+    "ပြန်သွင်း သည် OT စာရင်း ပြန်ပို့ခြင်း မဟုတ်။ F5 မူကြမ်းသိမ်း။ F6 ပရင့် — စလစ်ပြင်နိုင်သေးသည်။ F7 ပြန်သွင်းမှတ်၊ စာတန်း စတော့ပြန်ထည့် · ငွေပြန်အမ်း၊ ထို့နောက် စလစ်ပိတ်သည်။ F2 သည် ပြန်သွင်းအသစ်။ ပေးပြီးသော ပြန်သွင်းကို ပယ်ဖျက်လျှင် ထိုအရေအတွက်ကို MAIN မှ ပြန်နှုတ်သည်။",
+  helpPharm3:
+    "ထိုမှတ်တမ်းတွင် ဖွင့်ထားသော တက်ရောက်မှုနှင့် တင်ထားသော ဆေးဆိုင်ရောင်းဘေလ် အနည်းဆုံးတစ်စောင် ရှိလျှင် IPD သို့ ပြန်ထည့် ပေါ်နိုင်သည်။ ဖန်ရှင်ခလုတ်မရှိ။ ၎င်းသည် IPD သို့ တင် မဟုတ်၊ ကောင်တာငွေ မဟုတ်။",
+  helpPharm4:
+    "ထိန်းသိမ်းရေး — အပိုင်း ထုပ်ပိုးအရွယ်၊ ပထမအကွက် အသေးဆုံးယူနစ်။ လက်ကျန်သည် MAIN။ မသိသော ကုဒ်ကို အရင်ဖန်တီးပါ။ လက်ကျန်နည်းနှင့် သက်တမ်းနီးသည် MAIN သာ။ ဤစာမျက်နှာတွင် F5 ဖြင့် မသိမ်းပါ။ F5 သည် ဝင်းဒိုးပြန်ဖွင့်သည်။",
+  helpHPatients: "လူနာမှတ်တမ်း · တက်ရောက်မှု",
+  helpPat1:
+    "လူနာမှတ်တမ်း — မှတ်တမ်းသည် လူနာ၏ မှတ်တမ်းဖြစ်သည်။ ဘေလ်ပေါ်တွင် ရိုက်ထားသော အမည်သည် မှတ်တမ်းမဟုတ်။ အမည်ရိုက်လျှင် ချိတ်ဆက်မှု ပြတ်ပြီး IPD သို့ တင် ပျောက်သည်။ လူနာအသစ် ဖန်တီးရန် သည် ထိုအကောင့် မှတ်တမ်းဖန်တီးခွင့် ရှိမှ ပေါ်သည်။",
+  helpPat2:
+    "ဘေလ် တွဲရန် သည် မှတ်တမ်းမရှိသေးသော ဘေလ်နံပါတ် တစ်စောင်ကို ချိတ်သည်။ စုစုပေါင်း၊ အခြေအနေ၊ စတော့၊ ငွေ မပြောင်း။ TO- လွှဲစာရွက်ကို တွဲ၍မရပါ။",
+  helpPat3:
+    "တက်ရောက်မှု — ဤစာမျက်နှာတွင် ဖန်ရှင်ခလုတ်မရှိ။ F5 သည် ဝင်းဒိုးပြန်ဖွင့်သည်။ တက်ခွင့် သည် မှတ်တမ်းတစ်ခုလျှင် တစ်ခု။ ထို့နောက် အပ်ငွေ လက်ခံ၊ ဝပ်ကြေး တင်၊ မှတ်ချက်သိမ်း။ ဝပ်ကြေးသည် အခန်း သို့မဟုတ် သူနာပြုခ။ ဆေးမဟုတ်၊ OPD ဝန်ဆောင်မှုမဟုတ်။ IPD သို့ တင် သည် ဤစာမျက်နှာတွင် မဟုတ်။ OPD ဘေလ်၊ OT ဘေလ်၊ ဆေးဆိုင် ဘေလ် တွင် ရှိသည်။",
+  helpPat4:
+    "ဆင်းခွင့်ရှင်း သည် အပြီးဖြစ်သည်။ လက်ကျန်အပေါင်း — လက်ကျန်ကို ပြန်အမ်း။ လက်ကျန်အနုတ် — ပေးရန်ကျန်ကို ကောက်။ သုည — ငွေမထိ။ လက်ကျန် သုည။ ဆင်းပြီးနောက် အပ်ငွေ၊ ဝပ်ကြေး၊ ကောင်တာကြေးတင်ခြင်း ငြင်းသည်။",
+  helpHShortcuts: "အတိုကောက်",
+  helpShortcutHelp: "ဤအကူအညီ",
+  helpShortcutLang: "ဘာသာ (အပေါ်ဘား)",
+  helpShortcutCharge: "IPD သို့ တင် — ဖန်ရှင်ခလုတ်မရှိ",
+  helpShortcutF5Reload: "တက်ရောက်မှု နှင့် ဆေးဆိုင် ထိန်းသိမ်းရေး တွင် F5 သည် ဝင်းဒိုးပြန်ဖွင့်သည်။",
 };
 
 const tables: Record<Locale, Dict> = { en, my };

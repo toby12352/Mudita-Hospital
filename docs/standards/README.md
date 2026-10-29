@@ -19,6 +19,7 @@ Start here when joining the codebase or opening a new Agent chat. Read only the 
 | Route registration | `server/main.go` |
 | Deploy / LAN install | [DEPLOY.md](../DEPLOY.md) |
 | Staff cheat sheet / field FAQ | [docs/README.md](../README.md) |
+| Staff workflow truth and tour scripts | Staff workflow truth is [docs/guidance/WORKFLOWS.md](../guidance/WORKFLOWS.md); tour scripts are [docs/guidance/tours/](../guidance/tours/) |
 | Full API table | [README.md](../../README.md) |
 
 ## Standards index

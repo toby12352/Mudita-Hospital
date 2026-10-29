@@ -23,6 +23,14 @@ export type BillHistorySuggestItem = {
 
 const MONEY_OPTIONS: BillHistoryMoney[] = ["", "paid", "void", "draft", "printed_not_paid"];
 
+/** Clinic PC calendar day (yyyy-mm-dd). Matches the Yangon civil day the API filters on. */
+function localToday(): string {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
+}
+
 const emptyQuery = (): BillHistoryQuery => ({
   q: "",
   money: "",
@@ -30,6 +38,12 @@ const emptyQuery = (): BillHistoryQuery => ({
   to: "",
   sort: "desc",
 });
+
+/** History opens on today. Clearing both dates (Reset) shows every bill. */
+function todayQuery(): BillHistoryQuery {
+  const today = localToday();
+  return { ...emptyQuery(), from: today, to: today };
+}
 
 type Props = {
   searchPlaceholder: string;
@@ -54,8 +68,8 @@ export function BillHistoryToolbar({
   const [queryText, setQueryText] = useState("");
   const [filterOpen, setFilterOpen] = useState(false);
   const [money, setMoney] = useState<BillHistoryMoney>("");
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
+  const [from, setFrom] = useState(localToday);
+  const [to, setTo] = useState(localToday);
   const [sort, setSort] = useState<DateSortValue>("desc");
   const filtersRef = useRef({ money, from, to, sort });
   filtersRef.current = { money, from, to, sort };
@@ -102,7 +116,7 @@ export function BillHistoryToolbar({
   }
 
   useEffect(() => {
-    onSearchRef.current(emptyQuery());
+    onSearchRef.current(todayQuery());
   }, []);
 
   const loadSuggest = useCallback(

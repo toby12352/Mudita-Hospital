@@ -44,7 +44,7 @@ client/src/
     format.ts           # formatMMK
     Typeahead.tsx
     BillLineGrid.tsx  # shared blank-row cart for OPD, OT, and Pharmacy
-                      # grows through 10 committed rows then sticks to the
+                      # grows through 6 committed rows then sticks to the
                       # bottom when one row is appended; quantity edits still
                       # reveal that one row inside the cart pane
     FormSection.tsx
@@ -87,6 +87,7 @@ export async function createOpdBill(body: OpdBillWrite): Promise<OpdBill> { /* a
 - Permission checks for nav menus/actions: `hasPermission(permissions, "opd")` (etc.). Server still enforces.
 - Shared widgets (`Typeahead`, `FormSection`) live in `shared/`.
 - Print via existing `openPrintPreview` / server HTML receipts — do not invent a second print path. Preview **Print** always uses `contentWindow.print()` (system print dialog). OPD / Pharmacy / Expense use server thermal HTML (`receipt: true`, ~80mm preview). OT patient case bills use server A4 HTML (`receipt: false`, wide preview).
+- Quantity and other numeric fields use `input type="number"` (spinner arrows stay); a shared boot listener blocks wheel from changing the value so scroll does not accidentally bump quantities — do not switch those fields to text to work around the wheel.
 
 ## Styling
 
@@ -104,9 +105,9 @@ Scope: **`client/` only**. Reference screens: Drug Setup / OPD maintenance, OT c
 
 | Role | Look | Typical use |
 |------|------|-------------|
-| Primary | Solid accent `#2563EB`, white text | One main commit per context: New, Pay & print while collecting, form Save/Create where that is the submit |
+| Primary | Solid accent `#2563EB`, white text | One main commit per context: New, Mark Paid while collecting, form Save/Create where that is the submit |
 | Secondary / outline | Panel/white fill, light border, dark text | Search, Filter, History, Edit, Cancel, most rail tools |
-| Danger outline | Red text + red border, not a solid red fill | V.Delete, Delete, Deactivate, Restore on lists/rails |
+| Danger outline | Red text + red border, not a solid red fill | Void Bills, Delete, Deactivate, Restore on lists/rails |
 | Soft on | Soft blue fill (`--accent-soft`) | Toggle-open only (Filter / Restock / View) — not a second solid primary |
 
 Solid `.btn.danger` (filled red) is reserved for rare confirm dialogs that already use it (e.g. delete-item confirm). Do not use filled red on list rows or the bill rail.
@@ -115,7 +116,7 @@ Solid `.btn.danger` (filled red) is reserved for rare confirm dialogs that alrea
 
 - Standalone list / maintenance actions (New, Edit, Delete, History): `.btn.action` with optional `.primary`, `.danger`, `.on` in `shared/styles/App.css`. About 12px radius, icon + label. That radius is only for a button that stands in an action group, not for a button sitting in a field row.
 - Form submits that are not toolbar actions stay plain `.btn.primary` / `.btn.ghost`. They hug the label. `.card-form` and `.drug-setup-panel-form` must not stretch them (`align-self: flex-start`, or put them in `.btn-row`).
-- Bill desks: `.opd-bill-rail-btn` with `.opd-bill-rail-btn--accent` and `.opd-bill-rail-btn--danger`. Extend the shared rail — do not invent a second action column. Pay & print stays taller when it has the second line (“Marks paid”). Same padding and radius as the other rail buttons.
+- Bill desks: `.opd-bill-rail-btn` with `.opd-bill-rail-btn--accent` and `.opd-bill-rail-btn--danger`. Extend the shared rail — do not invent a second action column. Mark Paid stays taller when it has the second line (“Final · locks bill”). Same padding and radius as the other rail buttons.
 - Header language buttons use the same padding as `.btn.compact`.
 
 **Surfaces**
@@ -200,7 +201,7 @@ Do not bypass health or auth for convenience in production paths.
 ## Clinic chrome / navigation
 
 - Authenticated clinic desk: light Fluent-style chrome — collapsible left sidebar (`.desk-sidebar`) for portal sections on a white/neutral surface with accent soft fill for the active section, `#F8F9FB` work area, and a bottom status strip (`.desk-status-bar`) with F-key hints, date, `Day (user)`, and copyright (`© {year} Tun Aung Thaung`). Collapsed mode shows icons with hover labels; expanded mode shows icon + page name. Expansion preference is `mudita_sidebar_expanded` in `localStorage`. Pharmacy Maintenance is a single rail item (History opens in the page right panel, same as OPD/OT catalog history); admin portal groups animate under the rail when expanded (flyout when collapsed). Language, help, logout, and Server IP sit on the right of the desk header inside `.desk-main`.
-- Bill screens use the light action column (`.opd-bill-rail`) with Print F7 / Save draft F5 / History F9 / V.Delete ^F8 / Cancel F10 / New bill F2. Accent is class-driven (`.opd-bill-rail-btn--accent` on Pay & print while collecting, New when finished, Transfer when that is the primary step). V.Delete uses `.opd-bill-rail-btn--danger` (outline). List and Drug Setup screens omit the rail. See **Clinic design system** under Styling.
+- Bill screens use the light action column (`.opd-bill-rail`) with F5 Save draft, F6 Print (still editable), F7 Mark Paid, Charge to IPD (no function key), History F9, Void Bills on Ctrl+F8, Cancel F10, and New bill F2. Accent is class-driven (`.opd-bill-rail-btn--accent` on Mark Paid while collecting, New when finished, Transfer when that is the primary step). Void Bills uses `.opd-bill-rail-btn--danger` (outline). List and Drug Setup screens omit the rail. See **Clinic design system** under Styling. The live names are in [WORKFLOWS.md](../guidance/WORKFLOWS.md).
 - Admin uses the same collapsible desk sidebar with Home, portal groups (Patient, IPD, OPD, OT, Pharmacy) that expand to each desk’s pages, Settings, and About. Desk roles land in one portal with that portal’s rail only. Still **no React Router** — `View` + optional `NavIntent` in `app/types.ts`, remount pages with a changing `key` when the same view opens with a different intent.
 - Dashboard signed-in chrome is a left sidebar (logo and the six pages) and a workspace header (page title plus an account menu for name, role, language, server connection, and log out). No clinic status strip. Server setup, login, and change-password use the same canvas and a white card.
 - UI zoom: `mudita_ui_scale` in `localStorage` via `shared/uiScale.ts`; Ctrl/Cmd `+` / `-` / `0` anywhere.

@@ -77,7 +77,7 @@ export function BackupTab() {
   }
 
   return (
-    <div className="settings-split">
+    <div className="settings-split settings-backup">
       <div className="card-form">
         <h2 className="section-title">Database backup</h2>
         <p className="hint">
@@ -95,7 +95,7 @@ export function BackupTab() {
           {busy ? "Working…" : "Backup now"}
         </button>
       </div>
-      <div className="card-form">
+      <div className="card-form settings-backup-restore">
         <h2 className="section-title">Restore</h2>
         <ul className="data-list">
           {list.length === 0 ? <li className="empty-row">No backups yet</li> : null}

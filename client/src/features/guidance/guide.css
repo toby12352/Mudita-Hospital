@@ -1,0 +1,86 @@
+/* Tour popover only. Desk layout is unchanged. No blur.
+   Driver turns pointer events off on the app and covers it with a scrim.
+   The header language control stays clickable so a lesson can change language. */
+
+body:has(.driver-overlay) .lang-switch {
+  position: relative;
+  z-index: 10001;
+  pointer-events: auto;
+}
+
+body:has(.driver-overlay) .lang-switch .btn {
+  pointer-events: auto;
+}
+
+.driver-popover.mudita-guide-popover {
+  font-family: "Noto Sans Myanmar", "Segoe UI Variable", "Segoe UI", "Noto Sans", sans-serif;
+  color: var(--ink);
+  background-color: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-dialog);
+  box-shadow: var(--overlay-shadow);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  max-width: 22rem;
+}
+
+.driver-popover.mudita-guide-popover .driver-popover-title,
+.driver-popover.mudita-guide-popover .driver-popover-description,
+.driver-popover.mudita-guide-popover .driver-popover-progress-text,
+.driver-popover.mudita-guide-popover .driver-popover-footer-btn,
+.driver-popover.mudita-guide-popover .driver-popover-close-btn {
+  font-family: "Noto Sans Myanmar", "Segoe UI Variable", "Segoe UI", "Noto Sans", sans-serif;
+}
+
+.driver-popover.mudita-guide-popover .driver-popover-title {
+  color: var(--ink);
+}
+
+.driver-popover.mudita-guide-popover .driver-popover-description,
+.driver-popover.mudita-guide-popover .driver-popover-progress-text {
+  color: var(--muted);
+}
+
+.driver-popover.mudita-guide-popover .driver-popover-close-btn {
+  color: var(--muted);
+  border-radius: var(--radius-control);
+}
+
+.driver-popover.mudita-guide-popover .driver-popover-close-btn:hover,
+.driver-popover.mudita-guide-popover .driver-popover-close-btn:focus-visible {
+  color: var(--ink);
+}
+
+.driver-popover.mudita-guide-popover .driver-popover-footer-btn {
+  color: var(--ink);
+  background-color: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  box-shadow: none;
+}
+
+.driver-popover.mudita-guide-popover .driver-popover-next-btn,
+.driver-popover.mudita-guide-popover .driver-popover-done-btn {
+  background-color: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+}
+
+.driver-popover.mudita-guide-popover .driver-popover-next-btn:hover,
+.driver-popover.mudita-guide-popover .driver-popover-next-btn:focus-visible,
+.driver-popover.mudita-guide-popover .driver-popover-done-btn:hover,
+.driver-popover.mudita-guide-popover .driver-popover-done-btn:focus-visible {
+  background-color: var(--accent-hover);
+  color: var(--accent-ink);
+}
+
+.driver-popover.mudita-guide-popover .driver-popover-prev-btn:hover,
+.driver-popover.mudita-guide-popover .driver-popover-prev-btn:focus-visible {
+  background-color: var(--accent-soft);
+}
+
+.driver-popover.mudita-guide-popover .driver-popover-footer-btn:focus-visible,
+.driver-popover.mudita-guide-popover .driver-popover-close-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}

@@ -42,22 +42,10 @@ body{
 .a4-items .col-no{width:4ch;text-align:center}
 .a4-items .col-qty{width:12ch;text-align:right;white-space:nowrap}
 .a4-items .col-amt{width:16ch;text-align:right;white-space:nowrap}
-.a4-settle{width:100%;max-width:70mm;margin-left:auto;margin-bottom:10px;border-collapse:collapse}
+.a4-settle{width:100%;max-width:70mm;margin-left:auto;margin-bottom:0;border-collapse:collapse}
 .a4-settle td{padding:3px 0 3px 8px;font-size:10.5pt}
 .a4-settle td:last-child{text-align:right;white-space:nowrap}
 .a4-settle .emph td{font-weight:700;font-size:11.5pt;padding-top:6px;border-top:1px solid #000}
-.a4-pay{width:100%;border-collapse:collapse;margin:0 0 10px}
-.a4-pay th,.a4-pay td{border:1px solid #000;padding:6px 8px}
-.a4-pay th{background:#eee;font-weight:700;text-align:left}
-.a4-pay .right{text-align:right}
-.a4-balance{border:2px solid #000;padding:8px 12px;text-align:center;font-size:12pt;font-weight:700;margin:0 0 8px}
-.a4-status{text-align:center;font-size:12pt;font-weight:700;margin:8px 0 14px}
-.a4-note{margin:0 0 10px;font-size:9.5pt;white-space:pre-wrap}
-.a4-remarks{margin:0 0 18px;font-size:9pt}
-.a4-remarks p{margin:0 0 2px}
-.a4-signs{display:flex;justify-content:space-between;gap:16px;margin-top:28px}
-.a4-sign{flex:1;text-align:center;font-size:9.5pt}
-.a4-sign .line{border-top:1px solid #000;margin:36px 8px 6px}
 @media print{
   body{margin:0;display:flex;justify-content:center;align-items:flex-start}
   .a4-sheet{padding:8mm}
@@ -139,12 +127,6 @@ func writeA4Receipt(b *strings.Builder, hosp *hospitalSettings, bill receiptBill
 	writeA4KV(b, "Procedure", strings.TrimSpace(bill.ProcedureName))
 	b.WriteString(`</div></div>`)
 
-	if note := strings.TrimSpace(bill.Note); note != "" {
-		b.WriteString(`<p class="a4-note"><strong>Note:</strong> `)
-		b.WriteString(html.EscapeString(note))
-		b.WriteString(`</p>`)
-	}
-
 	if len(bill.Lines) > 0 {
 		b.WriteString(`<table class="a4-items"><thead><tr>`)
 		b.WriteString(`<th class="col-no">No.</th><th>Description</th><th class="col-qty">Qty</th><th class="col-amt">Amount (MMK)</th>`)
@@ -189,11 +171,13 @@ func writeA4Receipt(b *strings.Builder, hosp *hospitalSettings, bill receiptBill
 	if bill.ShowSettlement {
 		b.WriteString(`<table class="a4-settle">`)
 		writeA4SettleRow(b, "Total", bill.TotalMMK, false)
-		label := "Discount"
-		if strings.EqualFold(bill.DiscountUnit, "percent") && bill.DiscountValue > 0 {
-			label = fmt.Sprintf("Discount (%d%%)", bill.DiscountValue)
+		if bill.DiscountMMK != 0 {
+			label := "Discount"
+			if strings.EqualFold(bill.DiscountUnit, "percent") && bill.DiscountValue > 0 {
+				label = fmt.Sprintf("Discount (%d%%)", bill.DiscountValue)
+			}
+			writeA4SettleRow(b, label, bill.DiscountMMK, false)
 		}
-		writeA4SettleRow(b, label, bill.DiscountMMK, false)
 		writeA4SettleRow(b, "Paid", paid, false)
 		writeA4SettleRow(b, "Remaining Balance", remain, true)
 		b.WriteString(`</table>`)
@@ -202,54 +186,6 @@ func writeA4Receipt(b *strings.Builder, hosp *hospitalSettings, bill receiptBill
 		writeA4SettleRow(b, "Total", bill.TotalMMK, true)
 		b.WriteString(`</table>`)
 	}
-
-	if strings.EqualFold(bill.Status, "paid") {
-		b.WriteString(`<table class="a4-pay"><thead><tr>`)
-		b.WriteString(`<th>No.</th><th>Payment Date</th><th>Payment Method</th><th class="right">Amount (MMK)</th>`)
-		b.WriteString(`</tr></thead><tbody><tr>`)
-		b.WriteString(`<td>1</td><td>`)
-		b.WriteString(html.EscapeString(bill.DateLabel))
-		b.WriteString(`</td><td>Cash</td><td class="right">`)
-		b.WriteString(formatMMK(paid))
-		b.WriteString(`</td></tr></tbody></table>`)
-	}
-
-	b.WriteString(`<div class="a4-balance">Balance Due: `)
-	b.WriteString(formatMMK(remain))
-	b.WriteString(` MMK</div>`)
-
-	status := strings.ToLower(bill.Status)
-	b.WriteString(`<p class="a4-status">`)
-	switch status {
-	case "paid":
-		b.WriteString(`PAID IN FULL — Thank you for your payment.`)
-	case "void":
-		b.WriteString(`VOID`)
-		if bill.VoidReason != "" {
-			b.WriteString(` — `)
-			b.WriteString(html.EscapeString(bill.VoidReason))
-		}
-	default:
-		if bill.PrintedAt != "" {
-			b.WriteString(`PRINTED — NOT PAID`)
-		} else {
-			b.WriteString(`DRAFT — NOT PAID`)
-		}
-	}
-	b.WriteString(`</p>`)
-
-	b.WriteString(`<div class="a4-remarks">`)
-	b.WriteString(`<p><strong>Remarks</strong></p>`)
-	b.WriteString(`<p>1. This receipt is valid only for the billed OT case.</p>`)
-	b.WriteString(`<p>2. Please keep this copy for your records.</p>`)
-	b.WriteString(`<p>3. Contact the hospital if any amount looks incorrect.</p>`)
-	b.WriteString(`</div>`)
-
-	b.WriteString(`<div class="a4-signs">`)
-	b.WriteString(`<div class="a4-sign"><div class="line"></div>Received by</div>`)
-	b.WriteString(`<div class="a4-sign"><div class="line"></div>Date</div>`)
-	b.WriteString(`<div class="a4-sign"><div class="line"></div>Authorized Signature</div>`)
-	b.WriteString(`</div>`)
 }
 
 func writeA4KV(b *strings.Builder, label, value string) {

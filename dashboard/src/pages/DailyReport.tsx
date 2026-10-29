@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { getApiBase } from "../api";
 import { getStoredToken } from "../auth";
 import { KpiCard } from "../components/kpi/KpiCard";
@@ -6,6 +6,8 @@ import { fetchDailyReport, type DailyReportResponse } from "../dashboardApi";
 import { formatDelta, formatMMK } from "../lib/format";
 import { fetchAndPreviewPrint } from "../print";
 import { todayISO } from "../reports";
+
+type PrintKind = "income" | "expense" | "overall";
 
 type Props = {
   t: (k: string) => string;
@@ -34,7 +36,16 @@ function deltaClass(n: number): string {
 }
 
 function kindLabel(kind: string, t: (k: string) => string): string {
-  if (kind === "deposit" || kind === "collection" || kind === "refund") return t(kind);
+  if (
+    kind === "deposit" ||
+    kind === "collection" ||
+    kind === "refund" ||
+    kind === "ward" ||
+    kind === "charge" ||
+    kind === "reversal"
+  ) {
+    return t(kind);
+  }
   return kind;
 }
 
@@ -60,7 +71,10 @@ export function DailyReportPage({ t }: Props) {
   const [printError, setPrintError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [printing, setPrinting] = useState(false);
+  const [printOpen, setPrintOpen] = useState(false);
   const [epoch, setEpoch] = useState(0);
+  const printMenuRef = useRef<HTMLDivElement>(null);
+  const printMenuId = useId();
 
   useEffect(() => {
     let cancelled = false;
@@ -84,15 +98,39 @@ export function DailyReportPage({ t }: Props) {
     };
   }, [date, epoch, t]);
 
-  async function handlePrint() {
+  useEffect(() => {
+    if (!printOpen) return;
+    function onPointerDown(event: MouseEvent) {
+      if (!printMenuRef.current?.contains(event.target as Node)) {
+        setPrintOpen(false);
+      }
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setPrintOpen(false);
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [printOpen]);
+
+  async function handlePrint(kind: PrintKind) {
+    setPrintOpen(false);
     setPrintError(null);
     setPrinting(true);
+    const titles: Record<PrintKind, string> = {
+      income: t("printIncomeReport"),
+      expense: t("printExpenseReport"),
+      overall: t("printOverallDailyReport"),
+    };
     try {
       await fetchAndPreviewPrint(
-        `/api/dashboard/daily-report/print?date=${encodeURIComponent(date)}`,
+        `/api/dashboard/daily-report/print?date=${encodeURIComponent(date)}&kind=${kind}`,
         getApiBase,
         getStoredToken,
-        { title: t("dailyReport"), receipt: false },
+        { title: titles[kind], receipt: false },
       );
     } catch (err) {
       setPrintError(err instanceof Error ? err.message : t("error"));
@@ -135,14 +173,48 @@ export function DailyReportPage({ t }: Props) {
           <button type="button" className="btn ghost" onClick={() => setEpoch((n) => n + 1)}>
             {t("refresh")}
           </button>
-          <button
-            type="button"
-            className="btn primary"
-            onClick={() => void handlePrint()}
-            disabled={printing || loading}
-          >
-            {printing ? t("busy") : t("print")}
-          </button>
+          <div className="print-menu" ref={printMenuRef}>
+            <button
+              type="button"
+              className="btn primary"
+              aria-haspopup="menu"
+              aria-expanded={printOpen}
+              aria-controls={printMenuId}
+              aria-label={t("printMenu")}
+              onClick={() => setPrintOpen((open) => !open)}
+              disabled={printing || loading}
+            >
+              {printing ? t("busy") : t("print")}
+            </button>
+            {printOpen ? (
+              <div className="print-menu-dropdown" id={printMenuId} role="menu" aria-label={t("printMenu")}>
+                <button
+                  type="button"
+                  className="print-menu-item"
+                  role="menuitem"
+                  onClick={() => void handlePrint("income")}
+                >
+                  {t("printIncomeReport")}
+                </button>
+                <button
+                  type="button"
+                  className="print-menu-item"
+                  role="menuitem"
+                  onClick={() => void handlePrint("expense")}
+                >
+                  {t("printExpenseReport")}
+                </button>
+                <button
+                  type="button"
+                  className="print-menu-item"
+                  role="menuitem"
+                  onClick={() => void handlePrint("overall")}
+                >
+                  {t("printOverallDailyReport")}
+                </button>
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
 
@@ -288,8 +360,46 @@ export function DailyReportPage({ t }: Props) {
 
           <section className="panel">
             <h3>
+              {t("ipdGains")} — {data.date}
+            </h3>
+            <p className="muted">
+              {t("ipdGainsHint")} · {formatMMK(data.ipd_earned_mmk ?? 0)} {t("mmk")}
+            </p>
+            {(data.ipd_earned_lines ?? []).length ? (
+              <div className="table-scroll">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>{t("kind")}</th>
+                      <th>{t("admission")}</th>
+                      <th>{t("patient")}</th>
+                      <th className="num">{t("mmk")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(data.ipd_earned_lines ?? []).map((line, i) => (
+                      <tr key={`earn-${line.kind}-${line.admission_no}-${line.created_at}-${i}`}>
+                        <td>{kindLabel(line.kind, t)}</td>
+                        <td>{line.admission_no}</td>
+                        <td>{line.patient}</td>
+                        <td className="num">{formatDelta(-(line.amount_mmk ?? 0))}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="empty-state">{t("noIpdGains")}</p>
+            )}
+          </section>
+
+          <section className="panel">
+            <h3>
               {t("ipdLines")} — {data.date}
             </h3>
+            <p className="muted">
+              {t("ipdCashHint")} · {formatMMK(data.ipd_cash_mmk ?? 0)} {t("mmk")}
+            </p>
             {(data.ipd_lines ?? []).length ? (
               <div className="table-scroll">
                 <table className="data-table">
@@ -315,6 +425,40 @@ export function DailyReportPage({ t }: Props) {
               </div>
             ) : (
               <p className="empty-state">{t("noIpdLines")}</p>
+            )}
+          </section>
+
+          <section className="panel">
+            <h3>
+              {t("ipdOpenStays")} — {data.date}
+            </h3>
+            <p className="muted">
+              {t("ipdHeldForPatients")} {formatMMK(data.ipd_owed_to_patients_mmk ?? 0)} ·{" "}
+              {t("ipdOwedByPatients")} {formatMMK(data.ipd_owed_by_patients_mmk ?? 0)}
+            </p>
+            {(data.ipd_open_stays ?? []).length ? (
+              <div className="table-scroll">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>{t("admission")}</th>
+                      <th>{t("patient")}</th>
+                      <th className="num">{t("balance")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(data.ipd_open_stays ?? []).map((stay, i) => (
+                      <tr key={`stay-${stay.admission_no}-${i}`}>
+                        <td>{stay.admission_no}</td>
+                        <td>{stay.patient}</td>
+                        <td className="num">{formatDelta(stay.balance_mmk ?? 0)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="empty-state">{t("noIpdOpenStays")}</p>
             )}
           </section>
 

@@ -20,23 +20,25 @@ import {
   CatalogFilterButton,
   CatalogFilterPanel,
 } from "@/shared/CatalogListFilter";
-import { formatUtcAsLocal } from "@/shared/BillDateField";
+import {
+  BillHistoryTable,
+  type BillHistoryTableRow,
+} from "@/shared/BillHistoryTable";
 import { DatePicker, formatDateDisplay } from "@/shared/DatePicker";
 import { sortByDateAscDesc, type DateSortValue } from "@/shared/DateSort";
 import { DialogCloseButton } from "@/shared/DialogCloseButton";
 import { fieldKeyForApiError } from "@/shared/errors";
 import { FieldError, revealField } from "@/shared/FieldError";
-import { formatMMK } from "@/shared/format";
 import { FormSection } from "@/shared/FormSection";
 import { useI18n } from "@/shared/i18n";
 
-type HistoryRow = {
-  key: string;
-  label: string;
+type HistoryRow = BillHistoryTableRow & {
   print?: { kind: PatientHistoryBillKind; billId: number; title: string };
 };
 
 type HistoryKindFilter = "all" | "ipd" | "opd" | "ot" | "pharmacy" | "addBill";
+
+type DetailTab = "info" | "history";
 
 const HISTORY_KIND_OPTIONS: HistoryKindFilter[] = ["all", "ipd", "opd", "ot", "pharmacy"];
 
@@ -91,12 +93,12 @@ export function PatientsPage({
   const [editing, setEditing] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
   const filterPanelId = useId();
-  const historyHeadingId = useId();
   const historyKindsLabelId = useId();
   const historySortLabelId = useId();
   const historySortId = useId();
   const [filterQ, setFilterQ] = useState("");
   const [dateSort, setDateSort] = useState<DateSortValue>("desc");
+  const [detailTab, setDetailTab] = useState<DetailTab>("info");
   const [historyKind, setHistoryKind] = useState<HistoryKindFilter>("all");
   const [historyDateSort, setHistoryDateSort] = useState<DateSortValue>("desc");
   const [list, setList] = useState<PatientChart[]>([]);
@@ -373,7 +375,8 @@ export function PatientsPage({
 
   async function printHistoryRow(row: HistoryRow) {
     if (selectedId == null || !row.print) return;
-    setPrintingKey(row.key);
+    const printKey = row.key ?? String(row.id);
+    setPrintingKey(printKey);
     setError(null);
     try {
       await printPatientHistoryBill(selectedId, row.print.kind, row.print.billId, row.print.title);
@@ -461,6 +464,7 @@ export function PatientsPage({
             onQueryChange={setFilterQ}
             queryPlaceholder={t("patientSearchPlaceholder")}
             searchLabel={t("searchPatients")}
+            searchGuide={filterOpen ? "patient-search" : undefined}
             onSearch={() => runSearch(filterQ)}
             dateSort={dateSort}
             onDateSortChange={setDateSort}
@@ -603,7 +607,12 @@ export function PatientsPage({
                 </p>
               ) : null}
               <div className="btn-row">
-                <button type="submit" className="btn primary" disabled={busy}>
+                <button
+                  type="submit"
+                  className="btn primary"
+                  disabled={busy}
+                  data-guide={creating && !editing ? "patient-create" : undefined}
+                >
                   {busy ? t("saving") : creating ? t("create") : t("save")}
                 </button>
               </div>
@@ -611,121 +620,141 @@ export function PatientsPage({
           </>
         ) : (
           <>
-            <h3 className="drug-setup-title" style={{ fontSize: "1.1rem" }}>
-              {t("patientInfo")}
-            </h3>
-            {selected ? (
-              <>
-                <div className="patient-info-detail">
-                  <div className="drug-info-fields">
-                    <div className="drug-info-field">
-                      <span className="drug-info-label">{t("chartLabel")}</span>
-                      <span>{selected.id}</span>
-                    </div>
-                  </div>
-
-                  <div className="patient-info-sections-row">
-                    <section className="patient-info-section" aria-labelledby="patient-info-demographics">
-                      <h3 className="form-section-title" id="patient-info-demographics">
-                        {t("patientSectionDemographics")}
-                      </h3>
-                      <div className="drug-info-fields">
-                        <div className="drug-info-field">
-                          <span className="drug-info-label">{t("name")}</span>
-                          <span>{selected.name}</span>
-                        </div>
-                        <div className="drug-info-field">
-                          <span className="drug-info-label">{t("age")}</span>
-                          <span>{selected.age_years != null ? selected.age_years : "—"}</span>
-                        </div>
-                        <div className="drug-info-field">
-                          <span className="drug-info-label">{t("gender")}</span>
-                          <span>{genderLabel(selected.gender)}</span>
-                        </div>
-                        <div className="drug-info-field">
-                          <span className="drug-info-label">{t("dateOfBirth")}</span>
-                          <span>
-                            {selected.date_of_birth
-                              ? formatDateDisplay(selected.date_of_birth) || selected.date_of_birth
-                              : "—"}
-                          </span>
-                        </div>
-                      </div>
-                    </section>
-
-                    <section
-                      className="patient-info-section"
-                      aria-labelledby="patient-info-identity-contact"
-                    >
-                      <h3 className="form-section-title" id="patient-info-identity-contact">
-                        {t("patientSectionIdentityContact")}
-                      </h3>
-                      <div className="drug-info-fields">
-                        <div className="drug-info-field">
-                          <span className="drug-info-label">{t("phone")}</span>
-                          <span>{selected.phone || "—"}</span>
-                        </div>
-                        <div className="drug-info-field">
-                          <span className="drug-info-label">{t("nrc")}</span>
-                          <span>{selected.nrc || "—"}</span>
-                        </div>
-                        <div className="drug-info-field">
-                          <span className="drug-info-label">{t("fatherMotherName")}</span>
-                          <span>{selected.father_mother_name || "—"}</span>
-                        </div>
-                      </div>
-                    </section>
-                  </div>
-
-                  <div className="patient-info-notes">
-                    <h3 className="form-section-title" id="patient-info-notes">
-                      {t("patientSectionNotes")}
-                    </h3>
+            <div className="tabs patient-detail-tabs" role="tablist" aria-label={t("patients")}>
+              <button
+                type="button"
+                role="tab"
+                className={`tab${detailTab === "info" ? " active" : ""}`}
+                aria-selected={detailTab === "info"}
+                onClick={() => setDetailTab("info")}
+              >
+                {t("patientInfo")}
+              </button>
+              <button
+                type="button"
+                role="tab"
+                className={`tab${detailTab === "history" ? " active" : ""}`}
+                aria-selected={detailTab === "history"}
+                onClick={() => setDetailTab("history")}
+              >
+                {t("history")}
+              </button>
+            </div>
+            {detailTab === "info" ? (
+              selected ? (
+                <>
+                  <div className="patient-info-detail">
                     <div className="drug-info-fields">
                       <div className="drug-info-field">
-                        <span className="drug-info-label">{t("notes")}</span>
-                        <span>{selected.notes || "—"}</span>
+                        <span className="drug-info-label">{t("chartLabel")}</span>
+                        <span>{selected.id}</span>
+                      </div>
+                    </div>
+
+                    <div className="patient-info-sections-row">
+                      <section
+                        className="patient-info-section"
+                        aria-labelledby="patient-info-demographics"
+                      >
+                        <h3 className="form-section-title" id="patient-info-demographics">
+                          {t("patientSectionDemographics")}
+                        </h3>
+                        <div className="drug-info-fields">
+                          <div className="drug-info-field">
+                            <span className="drug-info-label">{t("name")}</span>
+                            <span>{selected.name}</span>
+                          </div>
+                          <div className="drug-info-field">
+                            <span className="drug-info-label">{t("age")}</span>
+                            <span>{selected.age_years != null ? selected.age_years : "—"}</span>
+                          </div>
+                          <div className="drug-info-field">
+                            <span className="drug-info-label">{t("gender")}</span>
+                            <span>{genderLabel(selected.gender)}</span>
+                          </div>
+                          <div className="drug-info-field">
+                            <span className="drug-info-label">{t("dateOfBirth")}</span>
+                            <span>
+                              {selected.date_of_birth
+                                ? formatDateDisplay(selected.date_of_birth) ||
+                                  selected.date_of_birth
+                                : "—"}
+                            </span>
+                          </div>
+                        </div>
+                      </section>
+
+                      <section
+                        className="patient-info-section"
+                        aria-labelledby="patient-info-identity-contact"
+                      >
+                        <h3 className="form-section-title" id="patient-info-identity-contact">
+                          {t("patientSectionIdentityContact")}
+                        </h3>
+                        <div className="drug-info-fields">
+                          <div className="drug-info-field">
+                            <span className="drug-info-label">{t("phone")}</span>
+                            <span>{selected.phone || "—"}</span>
+                          </div>
+                          <div className="drug-info-field">
+                            <span className="drug-info-label">{t("nrc")}</span>
+                            <span>{selected.nrc || "—"}</span>
+                          </div>
+                          <div className="drug-info-field">
+                            <span className="drug-info-label">{t("fatherMotherName")}</span>
+                            <span>{selected.father_mother_name || "—"}</span>
+                          </div>
+                        </div>
+                      </section>
+                    </div>
+
+                    <div className="patient-info-notes">
+                      <h3 className="form-section-title" id="patient-info-notes">
+                        {t("patientSectionNotes")}
+                      </h3>
+                      <div className="drug-info-fields">
+                        <div className="drug-info-field">
+                          <span className="drug-info-label">{t("notes")}</span>
+                          <span>{selected.notes || "—"}</span>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-                <div className="btn-row">
-                  {patientsUpdate ? (
-                    <button
-                      type="button"
-                      className="btn action"
-                      disabled={busy}
-                      onClick={() => openEdit(selected)}
-                    >
-                      <ActionIcon name="edit" />
-                      {t("edit")}
-                    </button>
-                  ) : null}
-                  {canDeleteSelected ? (
-                    <button
-                      type="button"
-                      className="btn action danger"
-                      disabled={busy || deleteBusy}
-                      onClick={() => openDeleteConfirm(selected)}
-                    >
-                      <ActionIcon name="trash" />
-                      {t("delete")}
-                    </button>
-                  ) : null}
-                  {patientsDelete && historyReady && !historyIsEmpty(history) ? (
-                    <p className="hint" style={{ margin: 0, alignSelf: "center" }}>
-                      {t("patientDeleteBlocked")}
-                    </p>
-                  ) : null}
-                </div>
-
-                <h3
-                  id={historyHeadingId}
-                  className="section-title"
-                  style={{ marginTop: "1rem" }}
-                >
-                  {t("history")}
-                </h3>
+                  <div className="btn-row">
+                    {patientsUpdate ? (
+                      <button
+                        type="button"
+                        className="btn action"
+                        disabled={busy}
+                        onClick={() => openEdit(selected)}
+                      >
+                        <ActionIcon name="edit" />
+                        {t("edit")}
+                      </button>
+                    ) : null}
+                    {canDeleteSelected ? (
+                      <button
+                        type="button"
+                        className="btn action danger"
+                        disabled={busy || deleteBusy}
+                        onClick={() => openDeleteConfirm(selected)}
+                      >
+                        <ActionIcon name="trash" />
+                        {t("delete")}
+                      </button>
+                    ) : null}
+                    {patientsDelete && historyReady && !historyIsEmpty(history) ? (
+                      <p className="hint" style={{ margin: 0, alignSelf: "center" }}>
+                        {t("patientDeleteBlocked")}
+                      </p>
+                    ) : null}
+                  </div>
+                </>
+              ) : (
+                <p className="hint">{t("noPatientsYet")}</p>
+              )
+            ) : selected ? (
+              <>
                 <div className="patient-history-labels">
                   <span className="drug-info-label" id={historyKindsLabelId}>
                     {t("patientsAllBills")}
@@ -802,6 +831,7 @@ export function PatientsPage({
                       type="button"
                       className="btn primary"
                       disabled={busy || billNo.trim() === ""}
+                      data-guide="patient-attach"
                       onClick={() => void attachBill()}
                     >
                       {busy ? t("saving") : t("patientsAttach")}
@@ -812,16 +842,17 @@ export function PatientsPage({
                   <HistoryBlock
                     title={t("ipd")}
                     empty={t("historyNone")}
+                    loading={!historyReady}
                     rows={sortedIpd.map((row, index) => ({
+                      id: index + 1,
                       key: `ipd-${row.admission_no}-${index}`,
-                      label: [
-                        row.admission_no,
-                        row.settled ? t("ipdStatusSettled") : t("ipdStatusOpen"),
-                        `${formatMMK(row.balance_mmk)} ${t("mmk")}`,
-                        formatUtcAsLocal(row.admitted_at),
-                      ]
-                        .filter(Boolean)
-                        .join(" · "),
+                      voucher: row.admission_no,
+                      name: "",
+                      status: row.settled ? "settled" : "open",
+                      statusLabel: row.settled ? t("ipdStatusSettled") : t("ipdStatusOpen"),
+                      statusTone: row.settled ? "paid" : "ipd",
+                      when: row.admitted_at,
+                      priceMmk: row.balance_mmk,
                     }))}
                   />
                 ) : null}
@@ -829,20 +860,21 @@ export function PatientsPage({
                   <HistoryBlock
                     title={t("opd")}
                     empty={t("historyNone")}
+                    loading={!historyReady}
                     printingKey={printingKey}
                     busy={busy}
                     onPrint={(row) => void printHistoryRow(row)}
                     rows={sortedOpd.map((row) => ({
+                      id: row.id,
                       key: `opd-${row.id}`,
-                      label: [
-                        row.bill_no,
-                        row.status,
-                        formatMMK(row.total_mmk),
-                        row.doctor_name,
-                        row.created_at,
-                      ]
-                        .filter(Boolean)
-                        .join(" · "),
+                      voucher: row.bill_no,
+                      name: row.doctor_name || "—",
+                      status: row.status,
+                      printedAt: row.printed_at,
+                      collectedCash: row.collected_cash,
+                      when: row.created_at,
+                      priceMmk: row.total_mmk,
+                      canPrint: true,
                       print: { kind: "opd" as const, billId: row.id, title: row.bill_no },
                     }))}
                   />
@@ -851,48 +883,54 @@ export function PatientsPage({
                   <HistoryBlock
                     title={t("ot")}
                     empty={t("historyNone")}
+                    loading={!historyReady}
                     printingKey={printingKey}
                     busy={busy}
                     onPrint={(row) => void printHistoryRow(row)}
-                    rows={sortedOt.map((row, index) => ({
-                      key: `ot-${row.bill_id ?? row.case_no}-${index}`,
-                      label: [
-                        row.case_no,
-                        row.status,
-                        row.bill_no,
-                        row.bill_status,
-                        row.created_at,
-                      ]
-                        .filter(Boolean)
-                        .join(" · "),
-                      print:
-                        row.bill_id != null && row.bill_id > 0
-                          ? {
-                              kind: "ot" as const,
-                              billId: row.bill_id,
-                              title: row.bill_no || row.case_no,
-                            }
-                          : undefined,
-                    }))}
+                    rows={sortedOt.map((row, index) => {
+                      const billId = row.bill_id != null && row.bill_id > 0 ? row.bill_id : 0;
+                      return {
+                        id: billId > 0 ? billId : -(index + 1),
+                        key: `ot-${row.bill_id ?? row.case_no}-${index}`,
+                        voucher: row.case_no,
+                        name: row.bill_no || "—",
+                        status: row.bill_status || row.status,
+                        printedAt: row.bill_printed_at,
+                        collectedCash: row.bill_collected_cash,
+                        when: row.created_at,
+                        priceMmk: row.bill_total_mmk ?? null,
+                        canPrint: billId > 0,
+                        print:
+                          billId > 0
+                            ? {
+                                kind: "ot" as const,
+                                billId,
+                                title: row.bill_no || row.case_no,
+                              }
+                            : undefined,
+                      };
+                    })}
                   />
                 ) : null}
                 {historyKind === "all" || historyKind === "pharmacy" ? (
                   <HistoryBlock
                     title={t("pharmacy")}
                     empty={t("historyNone")}
+                    loading={!historyReady}
                     printingKey={printingKey}
                     busy={busy}
                     onPrint={(row) => void printHistoryRow(row)}
                     rows={sortedPharmacy.map((row) => ({
+                      id: row.id,
                       key: `pharmacy-${row.id}`,
-                      label: [
-                        row.bill_no,
-                        row.status,
-                        formatMMK(row.total_mmk),
-                        row.created_at,
-                      ]
-                        .filter(Boolean)
-                        .join(" · "),
+                      voucher: row.bill_no,
+                      name: "",
+                      status: row.status,
+                      printedAt: row.printed_at,
+                      collectedCash: row.collected_cash,
+                      when: row.created_at,
+                      priceMmk: row.total_mmk,
+                      canPrint: true,
                       print: {
                         kind: "pharmacy" as const,
                         billId: row.id,
@@ -947,6 +985,7 @@ function HistoryBlock({
   title,
   rows,
   empty,
+  loading,
   printingKey,
   busy,
   onPrint,
@@ -954,36 +993,34 @@ function HistoryBlock({
   title: string;
   rows: HistoryRow[];
   empty: string;
+  loading?: boolean;
   printingKey?: string | null;
   busy?: boolean;
   onPrint?: (row: HistoryRow) => void;
 }) {
-  const { t } = useI18n();
+  const printingRow = printingKey
+    ? rows.find((row) => (row.key ?? String(row.id)) === printingKey)
+    : null;
+
   return (
-    <section>
+    <section className="patient-history-block">
       <h3 className="section-title">{title}</h3>
-      {rows.length === 0 ? (
-        <p className="empty-row">{empty}</p>
-      ) : (
-        <ul className="data-list">
-          {rows.map((row) => (
-            <li key={row.key}>
-              <p className="row-title">{row.label}</p>
-              {row.print && onPrint ? (
-                <button
-                  type="button"
-                  className="btn action"
-                  disabled={busy || printingKey === row.key}
-                  onClick={() => onPrint(row)}
-                >
-                  <ActionIcon name="print" />
-                  {t("print")}
-                </button>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-      )}
+      <BillHistoryTable
+        ariaLabel={title}
+        rows={rows}
+        loading={loading}
+        emptyLabel={empty}
+        busy={busy}
+        printingId={printingRow?.id ?? null}
+        onPrint={
+          onPrint
+            ? (id) => {
+                const row = rows.find((r) => r.id === id && r.print);
+                if (row) onPrint(row);
+              }
+            : undefined
+        }
+      />
     </section>
   );
 }

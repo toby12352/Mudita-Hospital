@@ -577,7 +577,7 @@ export function PharmacyItemForm({
         </div>
       </FormSection>
 
-      <FormSection title={t("packingSize")} titleId="pharmacy-item-packing">
+      <FormSection title={t("packingSize")} titleId="pharmacy-item-packing" guide="pharmacy-pack">
         <label className="field field-compact packing-smallest">
           <span>{t("smallestUnit")}</span>
           <select

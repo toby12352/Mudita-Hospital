@@ -82,6 +82,7 @@ type otCase struct {
 	BillStatus        *string         `json:"bill_status,omitempty"`
 	BillPrintedAt     *string         `json:"bill_printed_at,omitempty"`
 	BillCollectedCash *int            `json:"bill_collected_cash,omitempty"`
+	BillTotalMMK      *int64          `json:"bill_total_mmk,omitempty"`
 	CreatedByUserID   *int64          `json:"created_by_user_id,omitempty"`
 	CreatedAt         string          `json:"created_at"`
 	UpdatedAt         string          `json:"updated_at"`
@@ -436,7 +437,7 @@ func (h *OT) listCases(w http.ResponseWriter, r *http.Request) {
 		SELECT c.id, c.case_no, c.patient_id, c.patient_name, c.patient_phone, c.patient_age_years, c.patient_gender,
 			c.doctor_id, c.doctor_name, c.procedure_name, c.notes, c.status, c.issued_at, c.reconciled_at,
 			c.ot_bill_id, c.created_by_user_id, c.created_at, c.updated_at,
-			c.discount_value, c.discount_unit, b.status, b.printed_at, b.collected_cash
+			c.discount_value, c.discount_unit, b.status, b.printed_at, b.collected_cash, b.total_mmk
 		FROM ot_cases c
 		LEFT JOIN ot_bills b ON b.id = c.ot_bill_id
 	`
@@ -1923,14 +1924,14 @@ func scanOtCase(row scannable) (otCase, error) {
 
 func scanOtCaseWithBill(row scannable) (otCase, error) {
 	var c otCase
-	var patientID, age, doctorID, billID, createdBy sql.NullInt64
+	var patientID, age, doctorID, billID, createdBy, billTotal sql.NullInt64
 	var issuedAt, reconciledAt, billStatus, billPrintedAt sql.NullString
 	var billCollected sql.NullInt64
 	err := row.Scan(
 		&c.ID, &c.CaseNo, &patientID, &c.PatientName, &c.PatientPhone, &age, &c.PatientGender,
 		&doctorID, &c.DoctorName, &c.ProcedureName, &c.Notes, &c.Status, &issuedAt, &reconciledAt,
 		&billID, &createdBy, &c.CreatedAt, &c.UpdatedAt,
-		&c.DiscountValue, &c.DiscountUnit, &billStatus, &billPrintedAt, &billCollected,
+		&c.DiscountValue, &c.DiscountUnit, &billStatus, &billPrintedAt, &billCollected, &billTotal,
 	)
 	if err != nil {
 		return c, err
@@ -1974,6 +1975,10 @@ func scanOtCaseWithBill(row scannable) (otCase, error) {
 	if billCollected.Valid {
 		v := int(billCollected.Int64)
 		c.BillCollectedCash = &v
+	}
+	if billTotal.Valid {
+		v := billTotal.Int64
+		c.BillTotalMMK = &v
 	}
 	return c, nil
 }
@@ -2295,13 +2300,7 @@ th.num,td.num{text-align:right}
 }
 
 func renderOtBillHTML(hosp *hospitalSettings, bill otBill, caseItems []otCaseItem) string {
-	dateLabel := bill.CreatedAt
-	if bill.BilledAt != nil && *bill.BilledAt != "" {
-		dateLabel = *bill.BilledAt
-	}
-	if bill.PaidAt != nil {
-		dateLabel = *bill.PaidAt
-	}
+	dateLabel := receiptDateLabel(bill.CreatedAt, bill.BilledAt, bill.PaidAt)
 	used := map[int]bool{}
 	lines := make([]receiptLine, 0, len(bill.Lines)*2)
 	for _, line := range bill.Lines {

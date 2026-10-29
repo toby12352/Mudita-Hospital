@@ -308,15 +308,22 @@ func TestRenderA4ReceiptHTMLLayout(t *testing.T) {
 		`>Total</td><td>241,000 MMK</td>`,
 		`>Paid</td><td>241,000 MMK</td>`,
 		`>Remaining Balance</td><td>0 MMK</td>`,
-		`Balance Due: 0 MMK`,
-		`PAID IN FULL — Thank you for your payment.`,
-		`<th>No.</th><th>Payment Date</th><th>Payment Method</th>`,
-		`>Cash</td>`,
-		`Received by`,
-		`Authorized Signature`,
 	} {
 		if !strings.Contains(html, want) {
 			t.Fatalf("missing %q in A4 HTML", want)
+		}
+	}
+	for _, omit := range []string{
+		`class="a4-pay"`,
+		`>Discount</td>`,
+		`Balance Due:`,
+		`PAID IN FULL`,
+		`Received by`,
+		`Authorized Signature`,
+		`Remarks`,
+	} {
+		if strings.Contains(html, omit) {
+			t.Fatalf("A4 receipt must not include %q", omit)
 		}
 	}
 }
@@ -335,17 +342,17 @@ func TestRenderA4ReceiptHTMLUnpaidAndVoid(t *testing.T) {
 		NetMMK:         4500,
 	})
 	for _, want := range []string{
+		`>Discount</td><td>500 MMK</td>`,
 		`>Paid</td><td>0 MMK</td>`,
 		`>Remaining Balance</td><td>4,500 MMK</td>`,
-		`Balance Due: 4,500 MMK`,
-		`PRINTED — NOT PAID`,
+		`>Status:</span><span class="val">DRAFT</span>`,
 	} {
 		if !strings.Contains(printed, want) {
 			t.Fatalf("missing %q in printed A4 HTML", want)
 		}
 	}
-	if strings.Contains(printed, `class="a4-pay"`) {
-		t.Fatalf("unpaid A4 receipt must not show payment table")
+	if strings.Contains(printed, `class="a4-pay"`) || strings.Contains(printed, `PRINTED — NOT PAID`) {
+		t.Fatalf("unpaid A4 receipt must end at the balance section")
 	}
 
 	voided := renderA4ReceiptHTML(hosp, receiptBill{
@@ -357,7 +364,10 @@ func TestRenderA4ReceiptHTMLUnpaidAndVoid(t *testing.T) {
 		TotalMMK:   1000,
 		NetMMK:     1000,
 	})
-	if !strings.Contains(voided, `VOID — Wrong case`) {
-		t.Fatalf("expected void reason on A4 receipt")
+	if !strings.Contains(voided, `>Status:</span><span class="val">VOID</span>`) {
+		t.Fatalf("expected void status on A4 receipt")
+	}
+	if strings.Contains(voided, `Wrong case`) || strings.Contains(voided, `Authorized Signature`) {
+		t.Fatalf("void A4 receipt must not include reason or signatures")
 	}
 }

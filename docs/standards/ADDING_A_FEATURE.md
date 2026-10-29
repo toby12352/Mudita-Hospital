@@ -58,7 +58,8 @@ Use this checklist for a **new domain** (e.g. Lab billing) or a substantial exte
 ### 7. Docs
 
 - [ ] Add rows to the API table in root `README.md`
-- [ ] Update staff cheat sheet only if frontline workflow changed (`docs/CHEATSHEET.md`)
+- [ ] If a frontline step or button label changes, update in the same change: `docs/guidance/WORKFLOWS.md`, `docs/CHEATSHEET.md` and `docs/CHEATSHEET.html`, the matching file in `docs/guidance/tours/` if that tour exists, and (once Chat 8 has shipped) the in-app help strings
+- [ ] Write the docs to match the button on screen. Do not change the button in order to match a doc.
 
 ## Minimal “hello domain” order
 

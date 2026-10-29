@@ -44,15 +44,19 @@ func TestCashMovement(t *testing.T) {
 
 	const ipdDay = "2026-03-02"
 	stay := insertStay(t, sqlDB, "IPD-CASH-1")
-	insertLedger(t, sqlDB, stay, "ward", 300, ipdDay+" 03:00:00")
-	insertLedger(t, sqlDB, stay, "charge", 400, ipdDay+" 03:10:00")
+	if _, err := sqlDB.Exec(`UPDATE ipd_admissions SET admitted_at = ? WHERE id = ?`, ipdDay+" 01:00:00", stay); err != nil {
+		t.Fatal(err)
+	}
+	insertLedger(t, sqlDB, stay, "ward", -300, ipdDay+" 03:00:00")
+	insertLedger(t, sqlDB, stay, "charge", -400, ipdDay+" 03:10:00")
 	insertLedger(t, sqlDB, stay, "collection", 1500, ipdDay+" 03:20:00")
 	insertLedger(t, sqlDB, stay, "refund", -200, ipdDay+" 03:30:00")
 	insertOPDCash(t, sqlDB, "OPD-ACCOUNT", 1500, "paid", ipdDay+" 09:00:00", "", 0)
 	insertOPDCash(t, sqlDB, "OPD-ACCOUNT-VOID", 9999, "void", ipdDay+" 09:30:00", ipdDay+" 04:00:00", 0)
 
-	t.Run("ipd collection counts once and refunds reduce income", func(t *testing.T) {
-		move := requireMove(t, sqlDB, ipdDay, 1300, 0, 0, 1300)
+	t.Run("ipd charges are income and drawer cash is not", func(t *testing.T) {
+		// Earned = 300+400. Drawer = 1500-200. Net cash follows the drawer.
+		move := requireMove(t, sqlDB, ipdDay, 700, 0, 0, 1300)
 		if move.Desk.OPDTotal != 0 || len(move.Desk.Lines) != 0 {
 			t.Fatalf("account bill entered desk cash %+v", move.Desk)
 		}
@@ -66,6 +70,16 @@ func TestCashMovement(t *testing.T) {
 		}
 		if move.IPD.CollectionMMK != 1500 || move.IPD.RefundMMK != -200 {
 			t.Fatalf("ipd parts %+v", move.IPD)
+		}
+		if move.IPDEarned.EarnedMMK != 700 || len(move.IPDEarned.Lines) != 2 {
+			t.Fatalf("ipd earned %+v", move.IPDEarned)
+		}
+		if move.OpenStays.OwedToPatientsMMK != 600 || move.OpenStays.OwedByPatientsMMK != 0 || len(move.OpenStays.Stays) != 1 {
+			t.Fatalf("open stays %+v", move.OpenStays)
+		}
+		daily := getDaily(t, dash, adminTok, ipdDay)
+		if daily.Earned != 700 || daily.OwedTo != 600 || daily.OwedBy != 0 || len(daily.EarnedLines) != 2 || len(daily.OpenStays) != 1 {
+			t.Fatalf("daily ipd detail %+v", daily)
 		}
 	})
 
@@ -245,7 +259,8 @@ func TestCashMovement(t *testing.T) {
 	insertExpense(t, sqlDB, "EXP-PRINT", "pharmacy", "Supplies", "paid", 5000, 0, printDay+" 12:00:00", "", "")
 
 	t.Run("admin print shows net and expenses and the clinic print stays desk scoped", func(t *testing.T) {
-		move := requireMove(t, sqlDB, printDay, 7800, -5000, 7000, 800)
+		// Collection is drawer cash only; income stays the desk total.
+		move := requireMove(t, sqlDB, printDay, 7000, -5000, 7000, 800)
 		assertEndpointsMatch(t, dash, adminTok, printDay, move)
 
 		printed := doJSON(dash, http.MethodGet, "/api/dashboard/daily-report/print?date="+printDay, adminTok, "")
@@ -254,12 +269,41 @@ func TestCashMovement(t *testing.T) {
 		if !strings.Contains(body, "Net: "+formatMMK(move.NetCashMMK)+" MMK") {
 			t.Fatalf("admin print missing net %d: %s", move.NetCashMMK, body)
 		}
+		if !strings.Contains(body, "Income: "+formatMMK(move.IncomeMMK)+" MMK") {
+			t.Fatalf("admin print missing income %d: %s", move.IncomeMMK, body)
+		}
+		if !strings.Contains(body, "IPD gains") || !strings.Contains(body, "IPD cash drawer") || !strings.Contains(body, "IPD open stays") {
+			t.Fatalf("admin print missing IPD sections: %s", body)
+		}
 		if !strings.Contains(body, "Expenses: "+formatMMK(move.ExpenseMMK)+" MMK") || !strings.Contains(body, "EXP-PRINT") {
 			t.Fatalf("admin print missing signed expense: %s", body)
 		}
 		if !strings.Contains(body, "IPD-PRINT") || !strings.Contains(body, "OT-PRINT") || !strings.Contains(body, "PH-PRINT") {
 			t.Fatalf("admin print missing cash lines: %s", body)
 		}
+
+		incomePrinted := doJSON(dash, http.MethodGet, "/api/dashboard/daily-report/print?date="+printDay+"&kind=income", adminTok, "")
+		mustCode(t, incomePrinted, http.StatusOK)
+		incomeBody := incomePrinted.Body.String()
+		if !strings.Contains(incomeBody, "Income report") || !strings.Contains(incomeBody, "OT-PRINT") || !strings.Contains(incomeBody, "IPD gains") {
+			t.Fatalf("income print missing sections: %s", incomeBody)
+		}
+		if strings.Contains(incomeBody, "EXP-PRINT") || strings.Contains(incomeBody, "IPD cash drawer") {
+			t.Fatalf("income print leaked expense/drawer: %s", incomeBody)
+		}
+
+		expensePrinted := doJSON(dash, http.MethodGet, "/api/dashboard/daily-report/print?date="+printDay+"&kind=expense", adminTok, "")
+		mustCode(t, expensePrinted, http.StatusOK)
+		expenseBody := expensePrinted.Body.String()
+		if !strings.Contains(expenseBody, "Expense report") || !strings.Contains(expenseBody, "EXP-PRINT") {
+			t.Fatalf("expense print missing expense: %s", expenseBody)
+		}
+		if strings.Contains(expenseBody, "OT-PRINT") || strings.Contains(expenseBody, "IPD gains") {
+			t.Fatalf("expense print leaked income: %s", expenseBody)
+		}
+
+		badKind := doJSON(dash, http.MethodGet, "/api/dashboard/daily-report/print?date="+printDay+"&kind=other", adminTok, "")
+		mustCode(t, badKind, http.StatusBadRequest)
 
 		denied := doJSON(dash, http.MethodGet, "/api/dashboard/daily-report/print?date="+printDay, opdTok, "")
 		mustCode(t, denied, http.StatusForbidden)
@@ -301,21 +345,33 @@ type apiDaily struct {
 	DeltaNet     int64             `json:"delta_net_cash_mmk"`
 	Lines        []cashLine        `json:"lines"`
 	ExpenseLines []expenseCashLine `json:"expense_lines"`
+	Earned       int64             `json:"ipd_earned_mmk"`
+	EarnedLines  []ipdCashLine     `json:"ipd_earned_lines"`
+	OpenStays    []ipdOpenStayRow  `json:"ipd_open_stays"`
+	OwedTo       int64             `json:"ipd_owed_to_patients_mmk"`
+	OwedBy       int64             `json:"ipd_owed_by_patients_mmk"`
 }
 
-func requireMove(t *testing.T, db *sql.DB, date string, income, expense, grand, ipd int64) *cashMovement {
+// requireMove checks income (desk + IPD earned), expense, desk grand, and IPD drawer.
+// net_cash_mmk is desk + drawer + expense, which may differ from income + expense.
+func requireMove(t *testing.T, db *sql.DB, date string, income, expense, grand, ipdDrawer int64) *cashMovement {
 	t.Helper()
 	move, err := buildCashMovement(db, date)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if move.IncomeMMK != income || move.ExpenseMMK != expense || move.NetCashMMK != income+expense {
+	wantNet := grand + ipdDrawer + expense
+	if move.IncomeMMK != income || move.ExpenseMMK != expense || move.NetCashMMK != wantNet {
 		t.Fatalf("%s income %d expense %d net %d, want income %d expense %d net %d",
-			date, move.IncomeMMK, move.ExpenseMMK, move.NetCashMMK, income, expense, income+expense)
+			date, move.IncomeMMK, move.ExpenseMMK, move.NetCashMMK, income, expense, wantNet)
 	}
-	if move.Desk.GrandTotal != grand || move.IPD.NetMMK != ipd || move.IncomeMMK != grand+ipd {
-		t.Fatalf("%s grand %d ipd %d income %d, want grand %d ipd %d",
-			date, move.Desk.GrandTotal, move.IPD.NetMMK, move.IncomeMMK, grand, ipd)
+	if move.Desk.GrandTotal != grand || move.IPD.NetMMK != ipdDrawer {
+		t.Fatalf("%s grand %d ipd drawer %d, want grand %d drawer %d",
+			date, move.Desk.GrandTotal, move.IPD.NetMMK, grand, ipdDrawer)
+	}
+	if move.IncomeMMK != grand+move.IPDEarned.EarnedMMK {
+		t.Fatalf("%s income %d != grand %d + earned %d",
+			date, move.IncomeMMK, grand, move.IPDEarned.EarnedMMK)
 	}
 	return move
 }

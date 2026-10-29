@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>How to install and run the dashboard</title>
+  <style>
+    :root {
+      --ink: #1c1917;
+      --muted: #57534e;
+      --line: #e7e5e4;
+      --teal: #1e4d63;
+      --paper: #f7f5f0;
+    }
+    @page {
+      size: A4;
+      margin: 16mm 15mm 18mm 15mm;
+      @bottom-left {
+        content: "Mudita Hospital  ·  Dashboard";
+        font-family: "Segoe UI", "Myanmar Text", sans-serif;
+        font-size: 9pt;
+        color: #78716c;
+      }
+      @bottom-right {
+        content: counter(page);
+        font-family: "Segoe UI", sans-serif;
+        font-size: 9pt;
+        color: #78716c;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Segoe UI", "Myanmar Text", sans-serif;
+      font-size: 17px;
+      line-height: 1.5;
+      color: var(--ink);
+      max-width: 44rem;
+      margin: 0 auto;
+      padding: 1.25rem 1.4rem 3rem;
+      background: #fff;
+    }
+    nav.lang {
+      position: sticky;
+      top: 0;
+      background: #fff;
+      padding: 0.35rem 0 0.7rem;
+      margin-bottom: 0.2rem;
+      border-bottom: 1px solid var(--line);
+    }
+    nav.lang a {
+      display: inline-block;
+      margin-right: 0.45rem;
+      padding: 0.15rem 0.7rem;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--teal);
+      text-decoration: none;
+    }
+    h1 {
+      font-size: 1.85rem;
+      line-height: 1.25;
+      font-weight: 600;
+      margin: 0.85rem 0 0.75rem;
+      letter-spacing: -0.02em;
+    }
+    h1::before {
+      content: "Mudita Hospital";
+      display: block;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--teal);
+      margin-bottom: 0.35rem;
+    }
+    h1::after {
+      content: "";
+      display: block;
+      width: 3.2rem;
+      height: 3px;
+      background: var(--teal);
+      margin-top: 0.7rem;
+    }
+    h1 + p { color: var(--muted); font-size: 1.05rem; }
+    h2 {
+      font-size: 1.18rem;
+      color: var(--teal);
+      margin: 1.65rem 0 0.4rem;
+      padding-bottom: 0.22rem;
+      border-bottom: 1px solid var(--line);
+      break-after: avoid;
+    }
+    h3 { font-size: 1.02rem; margin: 1.1rem 0 0.3rem; break-after: avoid; }
+    p { margin: 0.4rem 0; }
+    a { color: var(--teal); }
+    ol { list-style: none; padding: 0; margin: 0.35rem 0 0.7rem; counter-reset: step; }
+    ol[start="6"] { counter-reset: step 5; }
+    ol li {
+      position: relative;
+      padding: 0.22rem 0 0.22rem 2.1rem;
+      margin: 0.12rem 0;
+      break-inside: avoid;
+    }
+    ol li::before {
+      counter-increment: step;
+      content: counter(step);
+      position: absolute;
+      left: 0;
+      top: 0.2rem;
+      width: 1.4rem;
+      height: 1.4rem;
+      border-radius: 50%;
+      border: 1.5px solid var(--teal);
+      color: var(--teal);
+      font-size: 0.75rem;
+      font-weight: 700;
+      line-height: 1.35rem;
+      text-align: center;
+    }
+    ul { margin: 0.45rem 0 0.75rem; padding-left: 1.15rem; }
+    ul li { margin: 0.22rem 0; }
+    ul.ok, ul.keep, ul.caution {
+      list-style: none;
+      padding: 0.65rem 0.85rem 0.65rem 1rem;
+      border-radius: 8px;
+      break-inside: avoid;
+    }
+    ul.ok { background: #ecf6f1; border-left: 4px solid #1f7a4d; }
+    ul.keep { background: #eef4f7; border-left: 4px solid var(--teal); }
+    ul.caution { background: #fff6eb; border-left: 4px solid #c2410c; }
+    code {
+      font-family: Consolas, "Cascadia Mono", monospace;
+      font-size: 0.9em;
+      background: var(--paper);
+      padding: 0.05em 0.28em;
+      border-radius: 3px;
+    }
+    pre {
+      background: var(--paper);
+      border: 1px solid #e6e0d4;
+      border-left: 4px solid var(--teal);
+      border-radius: 8px;
+      padding: 0.7rem 0.9rem;
+      overflow-x: auto;
+      break-inside: avoid;
+    }
+    pre code { background: transparent; padding: 0; font-size: 0.92rem; }
+    table { border-collapse: collapse; width: 100%; margin: 0.75rem 0; break-inside: avoid; }
+    th, td { border: 1px solid var(--line); padding: 0.4rem 0.55rem; text-align: left; vertical-align: top; }
+    th { background: #eef4f7; color: var(--teal); }
+    hr { border: 0; border-top: 1px solid var(--line); margin: 2rem 0; }
+    section#my { font-family: "Myanmar Text", "Segoe UI", sans-serif; line-height: 1.75; }
+    @media print {
+      body { font-size: 11pt; line-height: 1.42; max-width: none; padding: 0; }
+      nav.lang, hr { display: none; }
+      section#my { break-before: page; line-height: 1.7; }
+      h1 { font-size: 20pt; }
+      h1 + p { font-size: 11.5pt; }
+      h2 { font-size: 13.5pt; }
+      h3 { font-size: 12pt; }
+      a { color: inherit; text-decoration: none; }
+      pre code { font-size: 10pt; }
+      ul.ok, ul.keep, ul.caution, th {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+    }
+  </style>
+</head>
+<body>
+  <nav class="lang"><a href="#en">English</a><a href="#my">မြန်မာ</a></nav>
+<section id="en">
+<h1>How to install and run the dashboard</h1>
+<p>This program is for the director or the admin person. The window title is <strong>Mudita Dashboard</strong>. The file name is <strong>MuditaDashboard.exe</strong>.</p>
+<p>It shows summaries, money for the day, stock, and hospital lists. Reception and pharmacy keep using <strong>Mudita Hospital</strong> (the clinic program). They do not use this one.</p>
+<p>Install it on the director’s computer. That computer can be the same one that already has the clinic program. Both can be installed together. Installing this program again does not remove hospital records. The records stay on the server computer.</p>
+<p>Finish <a href="server.md">the server guide</a> first. The server computer must be switched on.</p>
+<p>The printable sheet is <a href="dashboard.pdf">dashboard.pdf</a> in this same folder. Double-click it to read or print.</p>
+<hr>
+<h2>1. Copy the dashboard folder onto this computer</h2>
+<p>Do not run the program from the USB stick.</p>
+<ol>
+<li>Plug in the USB stick.</li>
+<li>Open the dashboard folder (the folder that contains <strong>MuditaDashboard.exe</strong>, and sometimes a setup file).</li>
+<li>Click an empty part of the window.</li>
+<li>Hold <strong>Ctrl</strong> and press <strong>A</strong>, so every file lights up.</li>
+<li>Right-click one lit file. Click <strong>Copy</strong>.</li>
+<li>Open <strong>This PC</strong>, then <strong>Windows (C:)</strong> or <strong>Local Disk (C:)</strong>.</li>
+<li>If there is no <strong>Mudita</strong> folder yet: right-click an empty area, click <strong>New</strong>, click <strong>Folder</strong>, type <code>Mudita</code>, press <strong>Enter</strong>.</li>
+<li>Open <strong>Mudita</strong>. Right-click an empty area. Click <strong>Paste</strong>.</li>
+<li>Wait until the copying finishes.</li>
+</ol>
+<h2>2. Install, or open the program</h2>
+<p>Look in the folder you just pasted.</p>
+<p><strong>If you see a setup file</strong> (the name ends with <code>setup.exe</code>, or the name ends with <code>.msi</code>):</p>
+<ol>
+<li>Double-click that setup file. This is the dashboard setup, not the clinic setup. The name includes <strong>Dashboard</strong>.</li>
+<li>If Windows asks <strong>Do you want to allow this app to make changes to your device?</strong>, click <strong>Yes</strong>.</li>
+<li>If a window says <strong>Windows protected your PC</strong>, click <strong>More info</strong>, then <strong>Run anyway</strong>.</li>
+<li>Click <strong>Next</strong>, <strong>Install</strong>, and <strong>Finish</strong> when you see those buttons.</li>
+<li>If the desktop already shows a picture named <strong>Mudita Dashboard</strong>, go to section 4.</li>
+</ol>
+<p><strong>If you do not see a setup file:</strong></p>
+<p>The program is <strong>MuditaDashboard.exe</strong>. Continue with section 3.</p>
+<h2>3. Put a picture on the desktop</h2>
+<ol>
+<li>Open the folder that contains <strong>MuditaDashboard.exe</strong>.</li>
+<li>Right-click <strong>MuditaDashboard.exe</strong>.</li>
+<li>If you see <strong>Show more options</strong>, click that.</li>
+<li>Click <strong>Send to</strong>.</li>
+<li>Click <strong>Desktop (create shortcut)</strong>.</li>
+<li>Close the folder window.</li>
+<li>The main screen now has a picture named <strong>Mudita Dashboard</strong>.</li>
+</ol>
+<p>Deleting that picture does not delete hospital records.</p>
+<h2>4. Connect to the server</h2>
+<ol>
+<li>Double-click the <strong>Mudita Dashboard</strong> picture.</li>
+<li>The first screen title is <strong>Server IP</strong> (မြန်မာ: <strong>ဆာဗာ IP</strong>). You can click <strong>English</strong> or <strong>မြန်မာ</strong> on that screen.</li>
+<li>Use the <strong>same number</strong> the clinic desks use.</li>
+</ol>
+<p><strong>The dashboard is on the same computer as the server</strong></p>
+<p>Click <strong>This PC (127.0.0.1)</strong> (မြန်မာ: <strong>ဤကွန်ပျူတာ (127.0.0.1)</strong>).</p>
+<p><strong>The dashboard is on a different computer</strong></p>
+<ol>
+<li>Click the box under <strong>Server IP or address</strong>.</li>
+<li>Type the Server IP from the paper note. Example: <code>192.168.1.10</code>. Digits and dots only.</li>
+<li>Click <strong>Save &amp; test</strong> (မြန်မာ: <strong>သိမ်းပြီး စစ်ဆေး</strong>).</li>
+</ol>
+<p>You should see words that include <strong>Connected to</strong>. Then the sign-in screen opens. Under the title it says <strong>Offline LAN · Admin only</strong>.</p>
+<h2>5. Sign in</h2>
+<p>Only an Admin name can enter.</p>
+<ol>
+<li><strong>Username:</strong> type <code>admin</code> on a brand-new server, or the admin name the hospital uses now.</li>
+<li><strong>Password:</strong> type <code>admin123</code> only on the first day, before it was changed. After the first sign-in the program asks for a new password. Write the new password on the hospital paper.</li>
+<li>Click <strong>Sign in</strong> (မြန်မာ: <strong>ဝင်ရန်</strong>).</li>
+</ol>
+<p>If the screen says <strong>Mudita Dashboard is for Admin only</strong> (မြန်မာ: <strong>မုဒိတာ ဒက်ရှ်ဘုတ်သည် Admin သာ။ OPD / OT / Pharmacy အတွက် မုဒိတာ ဆေးရုံ အက်ပ်ကို သုံးပါ။</strong>), this name is a reception or pharmacy name. Open <strong>Mudita Hospital</strong> on that desk instead. Sign in to the dashboard with the admin name.</p>
+<h2>6. Change the Server IP later</h2>
+<ol>
+<li>Open <strong>Mudita Dashboard</strong>.</li>
+<li>On the sign-in screen, click <strong>Server IP</strong>.</li>
+<li>After you are signed in, the top of the window shows <strong>Server connected</strong> or <strong>Server offline</strong>. Click <strong>Change server IP</strong> (မြန်မာ: <strong>ဆာဗာ IP ပြောင်း</strong>).</li>
+<li>Type the new number, or click <strong>This PC (127.0.0.1)</strong> when this program is on the server computer.</li>
+<li>Click <strong>Save &amp; test</strong>.</li>
+</ol>
+<h2>7. If it says the server is offline</h2>
+<ol>
+<li>Click <strong>Retry</strong> (မြန်မာ: <strong>ထပ်ကြိုးစား</strong>).</li>
+<li>The server computer must be switched on.</li>
+<li>The number must match the paper note and the clinic desks. If it does not, use section 6.</li>
+<li>On the server computer, Edge should open <code>http://127.0.0.1:8080/api/health</code> and show <code>"status":"ok"</code>. If it does not, follow the server guide.</li>
+</ol>
+<h2>8. Every morning</h2>
+<ol>
+<li>The server computer is already on.</li>
+<li>Double-click <strong>Mudita Dashboard</strong>.</li>
+<li>Sign in with the admin name.</li>
+</ol>
+<p>You do not type the Server IP again unless the number has changed.</p>
+<hr>
+</section>
+<section id="my">
+<h1>ဒက်ရှ်ဘုတ်ကို တပ်ဆင်ပြီး ဖွင့်နည်း</h1>
+<p>ဒီပရိုဂရမ်က ညွှန်ကြားရေးမှူး သို့မဟုတ် အက်ဒမင်အတွက်ပါ။ ပြတင်းပေါက်ခေါင်းစဉ်က <strong>Mudita Dashboard</strong> ပါ။ ဖိုင်နာမည်က <strong>MuditaDashboard.exe</strong> ပါ။</p>
+<p>အနှစ်ချုပ်၊ ဒီနေ့ငွေ၊ ပစ္စည်းစာရင်း၊ ဆေးရုံစာရင်းတွေကို ပြပါတယ်။ ကြိုတင်ကောင်တာနဲ့ ဆေးဆိုင်က <strong>Mudita Hospital</strong> (ဆေးခန်းပရိုဂရမ်) ကို ဆက်သုံးပါတယ်။ ဒီပရိုဂရမ်ကို သူတို့ မသုံးပါ။</p>
+<p>ညွှန်ကြားရေးမှူးကွန်ပျူတာပေါ်မှာ တပ်ပါ။ ဆေးခန်းပရိုဂရမ် ရှိပြီးသား ကွန်ပျူတာမှာလည်း တပ်လို့ ရပါတယ်။ နှစ်ခုလုံး အတူရှိလို့ ရပါတယ်။ ဒီပရိုဂရမ်ကို ပြန်တပ်လို့ ဆေးရုံမှတ်တမ်း မပျက်ပါ။ မှတ်တမ်းက ဆာဗာကွန်ပျူတာပေါ်မှာ ရှိပါတယ်။</p>
+<p><a href="server.md">ဆာဗာလမ်းညွှန်</a> ကို အရင်ပြီးအောင်လုပ်ပါ။ ဆာဗာကွန်ပျူတာကို ဖွင့်ထားရပါမယ်။</p>
+<p>ပုံနှိပ်စာရွက်က ဒီဖိုလ်ဒါထဲက <a href="dashboard.pdf">dashboard.pdf</a> ပါ။ ဖတ်ရန် သို့မဟုတ် ပုံနှိပ်ရန် နှစ်ချက်နှိပ်ပါ။</p>
+<p>Windows ခလုတ်နာမည်တွေကို အင်္ဂလိပ်အတိုင်း နှိပ်ပါ။ ပရိုဂရမ်ထဲက ခလုတ်ကို မျက်နှာပြင်မှာ ပေါ်တဲ့စာအတိုင်း နှိပ်ပါ။</p>
+<hr>
+<h2>1. ဒက်ရှ်ဘုတ်ဖိုလ်ဒါကို ဒီကွန်ပျူတာပေါ် ကူးပါ</h2>
+<p>ပရိုဂရမ်ကို ယူအက်စ်ဘီထဲကနေ မဖွင့်ပါနဲ့။</p>
+<ol>
+<li>ယူအက်စ်ဘီကို တပ်ပါ။</li>
+<li><strong>MuditaDashboard.exe</strong> ပါတဲ့ dashboard ဖိုလ်ဒါကို ဖွင့်ပါ။ တပ်ဆင်ဖိုင်တစ်ခုလည်း ပါနိုင်ပါတယ်။</li>
+<li>ပြတင်းပေါက်ထဲက နေရာလွတ်ကို နှိပ်ပါ။</li>
+<li><strong>Ctrl</strong> ကို ဖိပြီး <strong>A</strong> နှိပ်ပါ။ ဖိုင်အားလုံး လင်းလာပါတယ်။</li>
+<li>လင်းနေတဲ့ဖိုင်တစ်ခုကို ညာဘက်နှိပ်ပါ။ <strong>Copy</strong> နှိပ်ပါ။</li>
+<li><strong>This PC</strong> ကို ဖွင့်ပါ။ <strong>Windows (C:)</strong> သို့မဟုတ် <strong>Local Disk (C:)</strong> ကို ဖွင့်ပါ။</li>
+<li><strong>Mudita</strong> ဖိုလ်ဒါ မရှိသေးရင် နေရာလွတ်ကို ညာဘက်နှိပ်ပါ။ <strong>New</strong>၊ <strong>Folder</strong> နှိပ်ပါ။ <code>Mudita</code> လို့ ရိုက်ပြီး <strong>Enter</strong> နှိပ်ပါ။</li>
+<li><strong>Mudita</strong> ကို ဖွင့်ပါ။ နေရာလွတ်ကို ညာဘက်နှိပ်ပါ။ <strong>Paste</strong> နှိပ်ပါ။</li>
+<li>ကူးပြီးတဲ့အထိ စောင့်ပါ။</li>
+</ol>
+<h2>2. တပ်ဆင်ပါ၊ သို့မဟုတ် ပရိုဂရမ်ကို ဖွင့်ပါ</h2>
+<p>အခုကူးထားတဲ့ဖိုလ်ဒါထဲကို ကြည့်ပါ။</p>
+<p><strong>တပ်ဆင်ဖိုင် မြင်ရင်</strong> (နာမည်က <code>setup.exe</code> နဲ့ ဆုံးတယ်၊ သို့မဟုတ် <code>.msi</code> နဲ့ ဆုံးတယ်)။</p>
+<ol>
+<li>အဲဒီတပ်ဆင်ဖိုင်ကို နှစ်ချက်နှိပ်ပါ။ ဒါက ဒက်ရှ်ဘုတ်တပ်ဆင်ဖိုင်ပါ။ ဆေးခန်းတပ်ဆင်ဖိုင် မဟုတ်ပါ။ နာမည်ထဲမှာ <strong>Dashboard</strong> ပါပါတယ်။</li>
+<li><strong>Do you want to allow this app to make changes to your device?</strong> လို့ မေးရင် <strong>Yes</strong> နှိပ်ပါ။</li>
+<li><strong>Windows protected your PC</strong> လို့ ပေါ်ရင် <strong>More info</strong>၊ ပြီးရင် <strong>Run anyway</strong> နှိပ်ပါ။</li>
+<li><strong>Next</strong>၊ <strong>Install</strong>၊ <strong>Finish</strong> ပေါ်ရင် နှိပ်ပါ။</li>
+<li>ဒက်စ်တော့ပေါ်မှာ <strong>Mudita Dashboard</strong> ပုံ ရှိပြီးသားဆိုရင် အပိုင်း ၄ ကို သွားပါ။</li>
+</ol>
+<p><strong>တပ်ဆင်ဖိုင် မမြင်ရင်</strong></p>
+<p>ပရိုဂရမ်က <strong>MuditaDashboard.exe</strong> ပါ။ အပိုင်း ၃ ကို ဆက်လုပ်ပါ။</p>
+<h2>3. ဒက်စ်တော့ပေါ် ပုံတစ်ခု တင်ပါ</h2>
+<ol>
+<li><strong>MuditaDashboard.exe</strong> ပါတဲ့ဖိုလ်ဒါကို ဖွင့်ပါ။</li>
+<li><strong>MuditaDashboard.exe</strong> ကို ညာဘက်နှိပ်ပါ။</li>
+<li><strong>Show more options</strong> ကို မြင်ရင် နှိပ်ပါ။</li>
+<li><strong>Send to</strong> ကို နှိပ်ပါ။</li>
+<li><strong>Desktop (create shortcut)</strong> ကို နှိပ်ပါ။</li>
+<li>ဖိုလ်ဒါပြတင်းပေါက်ကို ပိတ်ပါ။</li>
+<li>ပင်မမျက်နှာပြင်မှာ <strong>Mudita Dashboard</strong> ပုံ ပေါ်နေပါတယ်။</li>
+</ol>
+<p>အဲဒီပုံကို ဖျက်လို့ ဆေးရုံမှတ်တမ်း မပျက်ပါ။</p>
+<h2>4. ဆာဗာနဲ့ ချိတ်ပါ</h2>
+<ol>
+<li><strong>Mudita Dashboard</strong> ပုံကို နှစ်ချက်နှိပ်ပါ။</li>
+<li>ပထမမျက်နှာပြင်ခေါင်းစဉ်က <strong>Server IP</strong> ပါ (မြန်မာ: <strong>ဆာဗာ IP</strong>)။ အဲဒီမျက်နှာပြင်မှာ <strong>English</strong> သို့မဟုတ် <strong>မြန်မာ</strong> ကို နှိပ်နိုင်ပါတယ်။</li>
+<li>ဆေးခန်းစားပွဲတွေ သုံးတဲ့ <strong>နံပါတ်တူတူ</strong> ကို သုံးပါ။</li>
+</ol>
+<p><strong>ဒက်ရှ်ဘုတ်က ဆာဗာနဲ့ ကွန်ပျူတာတူတူပေါ်မှာ ရှိရင်</strong></p>
+<p><strong>This PC (127.0.0.1)</strong> ကို နှိပ်ပါ (မြန်မာ: <strong>ဤကွန်ပျူတာ (127.0.0.1)</strong>)။</p>
+<p><strong>ဒက်ရှ်ဘုတ်က တခြားကွန်ပျူတာပေါ်မှာ ရှိရင်</strong></p>
+<ol>
+<li><strong>Server IP or address</strong> အောက်က ကွက်ကို နှိပ်ပါ။</li>
+<li>စာရွက်ပေါ်က Server IP ကို ရိုက်ပါ။ ဥပမာ <code>192.168.1.10</code>။ ဂဏန်းနဲ့ အစက်ပဲ ရိုက်ပါ။</li>
+<li><strong>Save &amp; test</strong> ကို နှိပ်ပါ (မြန်မာ: <strong>သိမ်းပြီး စစ်ဆေး</strong>)။</li>
+</ol>
+<p><strong>Connected to</strong> ပါတဲ့ စာကို မြင်ရပါမယ်။ ပြီးရင် ဝင်ရောက်မျက်နှာပြင် ပွင့်လာပါတယ်။ ခေါင်းစဉ်အောက်မှာ <strong>Offline LAN · Admin only</strong> လို့ ပါပါတယ်။</p>
+<h2>5. ဝင်ပါ</h2>
+<p>Admin နာမည်နဲ့ပဲ ဝင်လို့ ရပါတယ်။</p>
+<ol>
+<li><strong>Username:</strong> ဆာဗာအသစ်ဆိုရင် <code>admin</code> လို့ ရိုက်ပါ။ ဆေးရုံက အခုသုံးနေတဲ့ admin နာမည်ရှိရင် အဲဒါကို ရိုက်ပါ။</li>
+<li><strong>Password:</strong> ပထမနေ့၊ မပြောင်းရသေးခင်မှာပဲ <code>admin123</code> လို့ ရိုက်ပါ။ ပထမဆုံးဝင်ပြီးရင် ပရိုဂရမ်က စကားဝှက်အသစ် တောင်းပါတယ်။ စကားဝှက်အသစ်ကို ဆေးရုံစာရွက်ပေါ် ရေးပါ။</li>
+<li><strong>Sign in</strong> ကို နှိပ်ပါ (မြန်မာ: <strong>ဝင်ရန်</strong>)။</li>
+</ol>
+<p><strong>Mudita Dashboard is for Admin only</strong> လို့ ပေါ်ရင် (မြန်မာ: <strong>မုဒိတာ ဒက်ရှ်ဘုတ်သည် Admin သာ။ OPD / OT / Pharmacy အတွက် မုဒိတာ ဆေးရုံ အက်ပ်ကို သုံးပါ။</strong>) ဒီနာမည်က ကြိုတင်ကောင်တာ သို့မဟုတ် ဆေးဆိုင်နာမည်ပါ။ အဲဒီစားပွဲမှာ <strong>Mudita Hospital</strong> ကို ဖွင့်ပါ။ ဒက်ရှ်ဘုတ်ကိုတော့ admin နာမည်နဲ့ ဝင်ပါ။</p>
+<h2>6. Server IP ကို နောက်မှ ပြောင်းခြင်း</h2>
+<ol>
+<li><strong>Mudita Dashboard</strong> ကို ဖွင့်ပါ။</li>
+<li>ဝင်ရောက်မျက်နှာပြင်မှာ <strong>Server IP</strong> ကို နှိပ်ပါ။</li>
+<li>ဝင်ပြီးသားဆိုရင် ပြတင်းပေါက်အပေါ်မှာ <strong>Server connected</strong> သို့မဟုတ် <strong>Server offline</strong> ပေါ်ပါတယ်။ <strong>Change server IP</strong> ကို နှိပ်ပါ (မြန်မာ: <strong>ဆာဗာ IP ပြောင်း</strong>)။</li>
+<li>နံပါတ်အသစ်ကို ရိုက်ပါ။ ဒီပရိုဂရမ်က ဆာဗာကွန်ပျူတာပေါ်မှာပဲ ရှိရင် <strong>This PC (127.0.0.1)</strong> ကို နှိပ်ပါ။</li>
+<li><strong>Save &amp; test</strong> ကို နှိပ်ပါ။</li>
+</ol>
+<h2>7. ဆာဗာမရဘူးလို့ ပေါ်ရင်</h2>
+<ol>
+<li><strong>Retry</strong> ကို နှိပ်ပါ (မြန်မာ: <strong>ထပ်ကြိုးစား</strong>)။</li>
+<li>ဆာဗာကွန်ပျူတာကို ဖွင့်ထားရပါမယ်။</li>
+<li>နံပါတ်က စာရွက်နဲ့ ဆေးခန်းစားပွဲတွေနဲ့ တူရပါမယ်။ မတူရင် အပိုင်း ၆ ကို သုံးပါ။</li>
+<li>ဆာဗာကွန်ပျူတာပေါ်က Edge မှာ <code>http://127.0.0.1:8080/api/health</code> ပွင့်ပြီး <code>"status":"ok"</code> ပြရပါမယ်။ မပြရင် ဆာဗာလမ်းညွှန်အတိုင်း လုပ်ပါ။</li>
+</ol>
+<h2>8. မနက်တိုင်း</h2>
+<ol>
+<li>ဆာဗာကွန်ပျူတာ ဖွင့်ပြီးသား ဖြစ်နေပါမယ်။</li>
+<li><strong>Mudita Dashboard</strong> ကို နှစ်ချက်နှိပ်ပါ။</li>
+<li>admin နာမည်နဲ့ ဝင်ပါ။</li>
+</ol>
+<p>နံပါတ် မပြောင်းသေးရင် Server IP ကို ထပ်ရိုက်စရာ မလိုပါ။</p>
+</section>
+</body>
+</html>

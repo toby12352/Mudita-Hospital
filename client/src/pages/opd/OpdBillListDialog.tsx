@@ -7,6 +7,7 @@ import {
   type BillHistoryQuery,
   type BillHistorySuggestItem,
 } from "@/shared/BillHistoryToolbar";
+import { BillHistoryTable } from "@/shared/BillHistoryTable";
 import { DialogCloseButton } from "@/shared/DialogCloseButton";
 import { moneyStatusLabel } from "@/shared/BillPayPrint";
 import { formatMMK } from "@/shared/format";
@@ -204,42 +205,64 @@ export function OpdBillListDialog({ mode, onClose, onOpen, onVoid, onPurge }: Pr
 
         {mode === "purge" ? <p className="hint">{t("billPurgeHint")}</p> : null}
 
-        {loading ? <p className="hint">{t("loading")}</p> : null}
-
-        <ul className="opd-bill-dialog-list">
-          {!loading && bills.length === 0 ? (
-            <li className="empty-row">{t("noBillsYet")}</li>
-          ) : null}
-          {bills.map((b) => {
-            const active = selectedId === b.id;
-            const selectMode = mode === "delete" || mode === "purge";
-            return (
-              <li key={b.id}>
-                <button
-                  type="button"
-                  className={
-                    selectMode && active
-                      ? "opd-bill-dialog-row opd-bill-dialog-row--selected"
-                      : "opd-bill-dialog-row"
-                  }
-                  onClick={() => handleRowActivate(b)}
-                >
-                  <span className="opd-bill-dialog-row-main">
-                    <span className="row-title">
-                      {b.bill_no} · {b.patient_name}
-                    </span>
-                    <span className="row-sub">
-                      {moneyStatusLabel(b.status, t, b.printed_at, b.collected_cash)} ·{" "}
-                      {formatMMK(b.total_mmk)} {t("mmk")}
-                      {b.doctor_name ? ` · ${b.doctor_name}` : ""}
-                      {b.created_at ? ` · ${formatBillWhen(b.created_at)}` : ""}
-                    </span>
-                  </span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+        {mode === "history" ? (
+          <BillHistoryTable
+            loading={loading}
+            emptyLabel={t("noBillsYet")}
+            onActivate={(id) => {
+              onOpen(id);
+              onClose();
+            }}
+            rows={bills.map((b) => ({
+              id: b.id,
+              voucher: b.bill_no,
+              name: b.patient_name,
+              status: b.status,
+              printedAt: b.printed_at,
+              collectedCash: b.collected_cash,
+              when: b.created_at,
+              priceMmk: b.total_mmk,
+            }))}
+          />
+        ) : (
+          <>
+            {loading ? <p className="hint">{t("loading")}</p> : null}
+            <ul className="opd-bill-dialog-list">
+              {!loading && bills.length === 0 ? (
+                <li className="empty-row">{t("noBillsYet")}</li>
+              ) : null}
+              {bills.map((b) => {
+                const active = selectedId === b.id;
+                const selectMode = mode === "delete" || mode === "purge";
+                return (
+                  <li key={b.id}>
+                    <button
+                      type="button"
+                      className={
+                        selectMode && active
+                          ? "opd-bill-dialog-row opd-bill-dialog-row--selected"
+                          : "opd-bill-dialog-row"
+                      }
+                      onClick={() => handleRowActivate(b)}
+                    >
+                      <span className="opd-bill-dialog-row-main">
+                        <span className="row-title">
+                          {b.bill_no} · {b.patient_name}
+                        </span>
+                        <span className="row-sub">
+                          {moneyStatusLabel(b.status, t, b.printed_at, b.collected_cash)} ·{" "}
+                          {formatMMK(b.total_mmk)} {t("mmk")}
+                          {b.doctor_name ? ` · ${b.doctor_name}` : ""}
+                          {b.created_at ? ` · ${formatBillWhen(b.created_at)}` : ""}
+                        </span>
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </>
+        )}
 
         {mode === "delete" ? (
           <div className="opd-bill-dialog-footer">

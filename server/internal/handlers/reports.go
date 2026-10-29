@@ -652,12 +652,16 @@ func renderCashReportHTML(hosp *hospitalSettings, rep *cashReport, sources map[s
 	return b.String()
 }
 
-// renderDashboardDailyHTML is the admin daily print. It follows the clinic
-// cash sheet and adds the three signed totals plus IPD and expense lines.
-// net_cash_mmk is income_mmk + expense_mmk. expense_mmk is already signed.
-func renderDashboardDailyHTML(hosp *hospitalSettings, move *cashMovement) string {
+// renderDashboardDailyHTML is the admin daily print. kind is income, expense,
+// or overall (default). Income is desk bills plus IPD gains. Expense is paid
+// expense lines. Overall keeps desk, IPD gains, drawer, open stays, and expenses.
+// net_cash_mmk is desk + IPD drawer + expense_mmk.
+func renderDashboardDailyHTML(hosp *hospitalSettings, move *cashMovement, kind string) string {
 	if hosp == nil {
 		hosp = &hospitalSettings{HospitalName: "Mudita Hospital"}
+	}
+	if kind == "" {
+		kind = "overall"
 	}
 	desk := move.Desk
 	if desk == nil {
@@ -667,85 +671,195 @@ func renderDashboardDailyHTML(hosp *hospitalSettings, move *cashMovement) string
 	if move.IPD != nil {
 		ipdLines = move.IPD.Lines
 	}
+	var earnedLines []ipdCashLine
+	earnedMMK := int64(0)
+	if move.IPDEarned != nil {
+		earnedLines = move.IPDEarned.Lines
+		earnedMMK = move.IPDEarned.EarnedMMK
+	}
+	var openStays []ipdOpenStayRow
+	owedTo, owedBy := int64(0), int64(0)
+	if move.OpenStays != nil {
+		openStays = move.OpenStays.Stays
+		owedTo = move.OpenStays.OwedToPatientsMMK
+		owedBy = move.OpenStays.OwedByPatientsMMK
+	}
+	showIncome := kind == "income" || kind == "overall"
+	showDrawer := kind == "overall"
+	showExpense := kind == "expense" || kind == "overall"
+
+	title := "Daily cash"
+	heading := "Daily cash report"
+	switch kind {
+	case "income":
+		title = "Income"
+		heading = "Income report"
+	case "expense":
+		title = "Expense"
+		heading = "Expense report"
+	}
+
 	var b strings.Builder
-	b.WriteString("<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>Daily cash ")
+	b.WriteString("<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>")
+	b.WriteString(html.EscapeString(title))
+	b.WriteString(" ")
 	b.WriteString(html.EscapeString(move.Date))
 	b.WriteString("</title><style>")
 	b.WriteString(reportPrintCSS())
-	b.WriteString("</style></head><body><h1>")
+	b.WriteString(dashboardDailyPrintCSS())
+	b.WriteString("</style></head><body><header class=\"sheet-head\">")
+	if src := receiptLogoDataURI(hosp); src != "" {
+		b.WriteString(`<img class="sheet-logo" src="`)
+		b.WriteString(src)
+		b.WriteString(`" alt=""/>`)
+	}
+	b.WriteString(`<div class="sheet-titles"><h1>`)
 	b.WriteString(html.EscapeString(hosp.HospitalName))
-	b.WriteString("</h1><h2>Daily cash report — ")
+	b.WriteString("</h1><h2>")
+	b.WriteString(html.EscapeString(heading))
+	b.WriteString(" — ")
 	b.WriteString(html.EscapeString(move.Date))
-	b.WriteString("</h2><p class=\"summary\">Income: ")
-	b.WriteString(formatMMK(move.IncomeMMK))
-	b.WriteString(" MMK &nbsp;|&nbsp; Expenses: ")
-	b.WriteString(formatMMK(move.ExpenseMMK))
-	b.WriteString(" MMK &nbsp;|&nbsp; <strong>Net: ")
-	b.WriteString(formatMMK(move.NetCashMMK))
-	b.WriteString(" MMK</strong></p>")
-	b.WriteString("<p class=\"summary\"><strong>Desk</strong></p>")
-	b.WriteString("<table><thead><tr><th>Source</th><th>Bill</th><th>Patient</th><th>Doctor</th><th>Paid</th><th class=\"num\">MMK</th></tr></thead><tbody>")
-	for _, line := range desk.Lines {
-		source := line.Source
-		if line.Reversal {
-			source += " Reversal"
+	b.WriteString(`</h2></div></header><p class="summary sheet-totals">`)
+	switch kind {
+	case "income":
+		b.WriteString("<strong>Income: ")
+		b.WriteString(formatMMK(move.IncomeMMK))
+		b.WriteString(" MMK</strong>")
+	case "expense":
+		b.WriteString("<strong>Expenses: ")
+		b.WriteString(formatMMK(move.ExpenseMMK))
+		b.WriteString(" MMK</strong>")
+	default:
+		b.WriteString("Income: ")
+		b.WriteString(formatMMK(move.IncomeMMK))
+		b.WriteString(" MMK &nbsp;|&nbsp; Expenses: ")
+		b.WriteString(formatMMK(move.ExpenseMMK))
+		b.WriteString(" MMK &nbsp;|&nbsp; <strong>Net: ")
+		b.WriteString(formatMMK(move.NetCashMMK))
+		b.WriteString(" MMK</strong>")
+	}
+	b.WriteString("</p>")
+
+	if showIncome {
+		openDailySection(&b, "Desk", "")
+		b.WriteString("<table><thead><tr><th>Source</th><th>Bill</th><th>Patient</th><th>Doctor</th><th>Paid</th><th class=\"num\">MMK</th></tr></thead><tbody>")
+		for _, line := range desk.Lines {
+			source := line.Source
+			if line.Reversal {
+				source += " Reversal"
+			}
+			b.WriteString("<tr><td>")
+			b.WriteString(html.EscapeString(source))
+			b.WriteString("</td><td>")
+			b.WriteString(html.EscapeString(line.BillNo))
+			b.WriteString("</td><td>")
+			b.WriteString(html.EscapeString(line.Patient))
+			b.WriteString("</td><td>")
+			b.WriteString(html.EscapeString(line.Doctor))
+			b.WriteString("</td><td>")
+			b.WriteString(html.EscapeString(line.PaidAt))
+			b.WriteString("</td><td class=\"num\">")
+			b.WriteString(formatMMK(line.TotalMMK))
+			b.WriteString("</td></tr>")
 		}
-		b.WriteString("<tr><td>")
-		b.WriteString(html.EscapeString(source))
-		b.WriteString("</td><td>")
-		b.WriteString(html.EscapeString(line.BillNo))
-		b.WriteString("</td><td>")
-		b.WriteString(html.EscapeString(line.Patient))
-		b.WriteString("</td><td>")
-		b.WriteString(html.EscapeString(line.Doctor))
-		b.WriteString("</td><td>")
-		b.WriteString(html.EscapeString(line.PaidAt))
-		b.WriteString("</td><td class=\"num\">")
-		b.WriteString(formatMMK(line.TotalMMK))
-		b.WriteString("</td></tr>")
+		if len(desk.Lines) == 0 {
+			b.WriteString("<tr><td colspan=\"6\">No paid bills on this date.</td></tr>")
+		}
+		b.WriteString("</tbody></table></section>")
+		openDailySection(&b, "IPD gains", formatMMK(earnedMMK)+" MMK")
+		b.WriteString("<table><thead><tr><th>Kind</th><th>Admission</th><th>Patient</th><th class=\"num\">MMK</th></tr></thead><tbody>")
+		for _, line := range earnedLines {
+			b.WriteString("<tr><td>")
+			b.WriteString(html.EscapeString(line.Kind))
+			b.WriteString("</td><td>")
+			b.WriteString(html.EscapeString(line.AdmissionNo))
+			b.WriteString("</td><td>")
+			b.WriteString(html.EscapeString(line.Patient))
+			b.WriteString("</td><td class=\"num\">")
+			b.WriteString(formatMMK(line.AmountMMK))
+			b.WriteString("</td></tr>")
+		}
+		if len(earnedLines) == 0 {
+			b.WriteString("<tr><td colspan=\"4\">No IPD charges on this date.</td></tr>")
+		}
+		b.WriteString("</tbody></table></section>")
 	}
-	if len(desk.Lines) == 0 {
-		b.WriteString("<tr><td colspan=\"6\">No paid bills on this date.</td></tr>")
+
+	if showDrawer {
+		openDailySection(&b, "IPD cash drawer", "")
+		b.WriteString("<table><thead><tr><th>Kind</th><th>Admission</th><th>Patient</th><th class=\"num\">MMK</th></tr></thead><tbody>")
+		for _, line := range ipdLines {
+			b.WriteString("<tr><td>")
+			b.WriteString(html.EscapeString(line.Kind))
+			b.WriteString("</td><td>")
+			b.WriteString(html.EscapeString(line.AdmissionNo))
+			b.WriteString("</td><td>")
+			b.WriteString(html.EscapeString(line.Patient))
+			b.WriteString("</td><td class=\"num\">")
+			b.WriteString(formatMMK(line.AmountMMK))
+			b.WriteString("</td></tr>")
+		}
+		if len(ipdLines) == 0 {
+			b.WriteString("<tr><td colspan=\"4\">No IPD cash on this date.</td></tr>")
+		}
+		b.WriteString("</tbody></table></section>")
+		openDailySection(&b, "IPD open stays", fmt.Sprintf(
+			"Held for patients: %s MMK  |  Owed by patients: %s MMK",
+			formatMMK(owedTo), formatMMK(owedBy),
+		))
+		b.WriteString("<table><thead><tr><th>Admission</th><th>Patient</th><th class=\"num\">Balance</th></tr></thead><tbody>")
+		for _, stay := range openStays {
+			b.WriteString("<tr><td>")
+			b.WriteString(html.EscapeString(stay.AdmissionNo))
+			b.WriteString("</td><td>")
+			b.WriteString(html.EscapeString(stay.Patient))
+			b.WriteString("</td><td class=\"num\">")
+			b.WriteString(formatMMK(stay.BalanceMMK))
+			b.WriteString("</td></tr>")
+		}
+		if len(openStays) == 0 {
+			b.WriteString("<tr><td colspan=\"3\">No open IPD stays at end of day.</td></tr>")
+		}
+		b.WriteString("</tbody></table></section>")
 	}
-	b.WriteString("</tbody></table>")
-	b.WriteString("<p class=\"summary\"><strong>IPD</strong></p>")
-	b.WriteString("<table><thead><tr><th>Kind</th><th>Admission</th><th>Patient</th><th class=\"num\">MMK</th></tr></thead><tbody>")
-	for _, line := range ipdLines {
-		b.WriteString("<tr><td>")
-		b.WriteString(html.EscapeString(line.Kind))
-		b.WriteString("</td><td>")
-		b.WriteString(html.EscapeString(line.AdmissionNo))
-		b.WriteString("</td><td>")
-		b.WriteString(html.EscapeString(line.Patient))
-		b.WriteString("</td><td class=\"num\">")
-		b.WriteString(formatMMK(line.AmountMMK))
-		b.WriteString("</td></tr>")
+
+	if showExpense {
+		openDailySection(&b, "Expenses", "")
+		b.WriteString("<table><thead><tr><th>Bill</th><th>Portal</th><th>Payee</th><th>Paid</th><th class=\"num\">MMK</th></tr></thead><tbody>")
+		for _, line := range move.ExpenseLines {
+			b.WriteString("<tr><td>")
+			b.WriteString(html.EscapeString(line.BillNo))
+			b.WriteString("</td><td>")
+			b.WriteString(html.EscapeString(line.Portal))
+			b.WriteString("</td><td>")
+			b.WriteString(html.EscapeString(line.Name))
+			b.WriteString("</td><td>")
+			b.WriteString(html.EscapeString(line.PaidAt))
+			b.WriteString("</td><td class=\"num\">")
+			b.WriteString(formatMMK(line.AmountMMK))
+			b.WriteString("</td></tr>")
+		}
+		if len(move.ExpenseLines) == 0 {
+			b.WriteString("<tr><td colspan=\"5\">No paid expenses on this date.</td></tr>")
+		}
+		b.WriteString("</tbody></table></section>")
 	}
-	if len(ipdLines) == 0 {
-		b.WriteString("<tr><td colspan=\"4\">No IPD cash on this date.</td></tr>")
-	}
-	b.WriteString("</tbody></table>")
-	b.WriteString("<p class=\"summary\"><strong>Expenses</strong></p>")
-	b.WriteString("<table><thead><tr><th>Bill</th><th>Portal</th><th>Payee</th><th>Paid</th><th class=\"num\">MMK</th></tr></thead><tbody>")
-	for _, line := range move.ExpenseLines {
-		b.WriteString("<tr><td>")
-		b.WriteString(html.EscapeString(line.BillNo))
-		b.WriteString("</td><td>")
-		b.WriteString(html.EscapeString(line.Portal))
-		b.WriteString("</td><td>")
-		b.WriteString(html.EscapeString(line.Name))
-		b.WriteString("</td><td>")
-		b.WriteString(html.EscapeString(line.PaidAt))
-		b.WriteString("</td><td class=\"num\">")
-		b.WriteString(formatMMK(line.AmountMMK))
-		b.WriteString("</td></tr>")
-	}
-	if len(move.ExpenseLines) == 0 {
-		b.WriteString("<tr><td colspan=\"5\">No paid expenses on this date.</td></tr>")
-	}
-	b.WriteString("</tbody></table>")
+
 	b.WriteString("<p class=\"meta\">Printed from Mudita Hospital</p></body></html>")
 	return b.String()
+}
+
+// openDailySection starts a titled block that stays visually attached to the
+// table that follows it, with a gap above so it does not sit on the previous table.
+func openDailySection(b *strings.Builder, title, note string) {
+	b.WriteString(`<section class="block"><h3>`)
+	b.WriteString(html.EscapeString(title))
+	if strings.TrimSpace(note) != "" {
+		b.WriteString(`<span class="section-note">`)
+		b.WriteString(html.EscapeString(note))
+		b.WriteString(`</span>`)
+	}
+	b.WriteString(`</h3>`)
 }
 
 func renderLowStockHTML(hosp *hospitalSettings, list []lowStockRow) string {
@@ -827,4 +941,20 @@ h1{font-size:18px;margin:0 0 4px}h2{font-size:14px;margin:0 0 12px;font-weight:6
 table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;padding:4px 6px;text-align:left}
 th{background:#f2f2f2}.num{text-align:right}.expired{background:#ffe8e0}
 @media print{body{margin:0}}`
+}
+
+// dashboardDailyPrintCSS is extra layout for the admin daily sheet only.
+// Section titles sit in a band attached to their table, with space above the band.
+func dashboardDailyPrintCSS() string {
+	return `html{background:#fff;color-scheme:light}body{background:#fff}
+.sheet-head{display:flex;align-items:center;gap:14px;margin:0 0 10px;padding-bottom:10px;border-bottom:2px solid #1a1a1a}
+.sheet-logo{width:56px;height:56px;object-fit:contain;flex:0 0 auto}
+.sheet-titles{min-width:0}
+.sheet-titles h1{margin:0;font-size:20px;line-height:1.15}
+.sheet-titles h2{margin:3px 0 0;font-size:13px;font-weight:600;color:#333}
+.sheet-totals{margin:10px 0 0}
+.block{margin:22px 0 0}
+.block h3{box-sizing:border-box;display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:4px 16px;width:100%;margin:0;padding:6px 10px;font-size:13px;font-weight:700;line-height:1.35;background:#e8eef5;color:#111;border:1px solid #b7c3d0;border-bottom:none;border-left:4px solid #1d4e89;page-break-after:avoid;break-after:avoid;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.block h3 .section-note{font-size:12px;font-weight:600;color:#333}
+@media print{.sheet-head,.block h3{-webkit-print-color-adjust:exact;print-color-adjust:exact}}`
 }

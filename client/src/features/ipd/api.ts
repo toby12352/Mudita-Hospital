@@ -28,6 +28,7 @@ export type IpdAdmission = {
   patient_id: number;
   status: string;
   notes: string;
+  room_no: string;
   admitted_at: string;
   discharged_at: string | null;
   created_by_user_id: number | null;
@@ -60,10 +61,10 @@ export async function admitPatient(
   });
 }
 
-export async function updateIpdNotes(id: number, notes: string): Promise<IpdAdmission> {
+export async function updateIpdNotes(id: number, notes: string, roomNo: string): Promise<IpdAdmission> {
   return apiFetch<IpdAdmission>(`/api/ipd/admissions/${id}`, {
     method: "PUT",
-    body: JSON.stringify({ notes }),
+    body: JSON.stringify({ notes, room_no: roomNo }),
   });
 }
 

@@ -238,6 +238,7 @@ export type OtCase = {
   bill_status?: string | null;
   bill_printed_at?: string | null;
   bill_collected_cash?: number | null;
+  bill_total_mmk?: number | null;
   created_at: string;
   updated_at: string;
   items?: OtCaseItem[];

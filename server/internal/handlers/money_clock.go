@@ -31,6 +31,50 @@ func localToday() string {
 	return time.Now().In(yangon).Format("2006-01-02")
 }
 
+// receiptDate12h is the Date line on slips: Yangon civil clock, 12-hour with AM/PM.
+const receiptDate12h = "2006-01-02 3:04 PM"
+
+// formatReceiptCivil prints a Yangon wall-time string as 12-hour AM/PM.
+// Unparseable values are returned unchanged.
+func formatReceiptCivil(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return raw
+	}
+	layouts := []string{
+		"2006-01-02 15:04:05",
+		"2006-01-02 15:04",
+	}
+	for _, layout := range layouts {
+		if t, err := time.ParseInLocation(layout, raw, yangon); err == nil {
+			return t.Format(receiptDate12h)
+		}
+	}
+	return raw
+}
+
+// receiptDateLabel is the Date line on OPD / OT / pharmacy / expense slips.
+// paid_at and billed_at are already Asia/Yangon wall time. created_at is UTC
+// from datetime('now') and must be shown in Yangon so it matches the bill form.
+// Display is always 12-hour with AM/PM when the stamp parses.
+func receiptDateLabel(createdAt string, billedAt, paidAt *string) string {
+	if paidAt != nil && strings.TrimSpace(*paidAt) != "" {
+		return formatReceiptCivil(*paidAt)
+	}
+	if billedAt != nil && strings.TrimSpace(*billedAt) != "" {
+		return formatReceiptCivil(*billedAt)
+	}
+	raw := strings.TrimSpace(createdAt)
+	if raw == "" {
+		return createdAt
+	}
+	t, err := time.ParseInLocation("2006-01-02 15:04:05", raw, time.UTC)
+	if err != nil {
+		return createdAt
+	}
+	return t.In(yangon).Format(receiptDate12h)
+}
+
 // billedAtOverride is an Admin-chosen bill civil time.
 // Yangon goes in billed_at / paid_at; UTC goes in created_at (and IPD admitted_at).
 type billedAtOverride struct {

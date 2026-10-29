@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>How to install and run the clinic program</title>
+  <style>
+    :root {
+      --ink: #1c1917;
+      --muted: #57534e;
+      --line: #e7e5e4;
+      --teal: #1e4d63;
+      --paper: #f7f5f0;
+    }
+    @page {
+      size: A4;
+      margin: 16mm 15mm 18mm 15mm;
+      @bottom-left {
+        content: "Mudita Hospital  ·  Clinic";
+        font-family: "Segoe UI", "Myanmar Text", sans-serif;
+        font-size: 9pt;
+        color: #78716c;
+      }
+      @bottom-right {
+        content: counter(page);
+        font-family: "Segoe UI", sans-serif;
+        font-size: 9pt;
+        color: #78716c;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Segoe UI", "Myanmar Text", sans-serif;
+      font-size: 17px;
+      line-height: 1.5;
+      color: var(--ink);
+      max-width: 44rem;
+      margin: 0 auto;
+      padding: 1.25rem 1.4rem 3rem;
+      background: #fff;
+    }
+    nav.lang {
+      position: sticky;
+      top: 0;
+      background: #fff;
+      padding: 0.35rem 0 0.7rem;
+      margin-bottom: 0.2rem;
+      border-bottom: 1px solid var(--line);
+    }
+    nav.lang a {
+      display: inline-block;
+      margin-right: 0.45rem;
+      padding: 0.15rem 0.7rem;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--teal);
+      text-decoration: none;
+    }
+    h1 {
+      font-size: 1.85rem;
+      line-height: 1.25;
+      font-weight: 600;
+      margin: 0.85rem 0 0.75rem;
+      letter-spacing: -0.02em;
+    }
+    h1::before {
+      content: "Mudita Hospital";
+      display: block;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--teal);
+      margin-bottom: 0.35rem;
+    }
+    h1::after {
+      content: "";
+      display: block;
+      width: 3.2rem;
+      height: 3px;
+      background: var(--teal);
+      margin-top: 0.7rem;
+    }
+    h1 + p { color: var(--muted); font-size: 1.05rem; }
+    h2 {
+      font-size: 1.18rem;
+      color: var(--teal);
+      margin: 1.65rem 0 0.4rem;
+      padding-bottom: 0.22rem;
+      border-bottom: 1px solid var(--line);
+      break-after: avoid;
+    }
+    h3 { font-size: 1.02rem; margin: 1.1rem 0 0.3rem; break-after: avoid; }
+    p { margin: 0.4rem 0; }
+    a { color: var(--teal); }
+    ol { list-style: none; padding: 0; margin: 0.35rem 0 0.7rem; counter-reset: step; }
+    ol[start="6"] { counter-reset: step 5; }
+    ol li {
+      position: relative;
+      padding: 0.22rem 0 0.22rem 2.1rem;
+      margin: 0.12rem 0;
+      break-inside: avoid;
+    }
+    ol li::before {
+      counter-increment: step;
+      content: counter(step);
+      position: absolute;
+      left: 0;
+      top: 0.2rem;
+      width: 1.4rem;
+      height: 1.4rem;
+      border-radius: 50%;
+      border: 1.5px solid var(--teal);
+      color: var(--teal);
+      font-size: 0.75rem;
+      font-weight: 700;
+      line-height: 1.35rem;
+      text-align: center;
+    }
+    ul { margin: 0.45rem 0 0.75rem; padding-left: 1.15rem; }
+    ul li { margin: 0.22rem 0; }
+    ul.ok, ul.keep, ul.caution {
+      list-style: none;
+      padding: 0.65rem 0.85rem 0.65rem 1rem;
+      border-radius: 8px;
+      break-inside: avoid;
+    }
+    ul.ok { background: #ecf6f1; border-left: 4px solid #1f7a4d; }
+    ul.keep { background: #eef4f7; border-left: 4px solid var(--teal); }
+    ul.caution { background: #fff6eb; border-left: 4px solid #c2410c; }
+    code {
+      font-family: Consolas, "Cascadia Mono", monospace;
+      font-size: 0.9em;
+      background: var(--paper);
+      padding: 0.05em 0.28em;
+      border-radius: 3px;
+    }
+    pre {
+      background: var(--paper);
+      border: 1px solid #e6e0d4;
+      border-left: 4px solid var(--teal);
+      border-radius: 8px;
+      padding: 0.7rem 0.9rem;
+      overflow-x: auto;
+      break-inside: avoid;
+    }
+    pre code { background: transparent; padding: 0; font-size: 0.92rem; }
+    table { border-collapse: collapse; width: 100%; margin: 0.75rem 0; break-inside: avoid; }
+    th, td { border: 1px solid var(--line); padding: 0.4rem 0.55rem; text-align: left; vertical-align: top; }
+    th { background: #eef4f7; color: var(--teal); }
+    hr { border: 0; border-top: 1px solid var(--line); margin: 2rem 0; }
+    section#my { font-family: "Myanmar Text", "Segoe UI", sans-serif; line-height: 1.75; }
+    @media print {
+      body { font-size: 11pt; line-height: 1.42; max-width: none; padding: 0; }
+      nav.lang, hr { display: none; }
+      section#my { break-before: page; line-height: 1.7; }
+      h1 { font-size: 20pt; }
+      h1 + p { font-size: 11.5pt; }
+      h2 { font-size: 13.5pt; }
+      h3 { font-size: 12pt; }
+      a { color: inherit; text-decoration: none; }
+      pre code { font-size: 10pt; }
+      ul.ok, ul.keep, ul.caution, th {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+    }
+  </style>
+</head>
+<body>
+  <nav class="lang"><a href="#en">English</a><a href="#my">မြန်မာ</a></nav>
+<section id="en">
+<h1>How to install and run the clinic program</h1>
+<p>This is the program the desk uses all day. The window title is <strong>Mudita Hospital</strong>. The file name is <strong>MuditaHospital.exe</strong>.</p>
+<p>Do this on every desk computer (reception, pharmacy, and any other desk that opens patient or bill screens).</p>
+<p>If the hospital has only one computer, finish <a href="server.md">the server guide</a> on that computer first. Then do this guide on the <strong>same</strong> computer.</p>
+<p>The server computer must be switched on before these steps will connect.</p>
+<p>The printable sheet is <a href="client.pdf">client.pdf</a> in this same folder. Double-click it to read or print.</p>
+<hr>
+<h2>1. Copy the clinic folder onto this computer</h2>
+<p>Do not run the program from the USB stick. Unplugging the stick closes the program.</p>
+<ol>
+<li>Plug in the USB stick.</li>
+<li>Open the client folder (the folder that contains <strong>MuditaHospital.exe</strong>, and sometimes a setup file).</li>
+<li>Click an empty part of the window.</li>
+<li>Hold <strong>Ctrl</strong> and press <strong>A</strong>, so every file lights up.</li>
+<li>Right-click one lit file. Click <strong>Copy</strong>.</li>
+<li>Open <strong>This PC</strong>, then <strong>Windows (C:)</strong> or <strong>Local Disk (C:)</strong>.</li>
+<li>Right-click an empty area. Click <strong>New</strong>, then <strong>Folder</strong>.</li>
+<li>Type <code>Mudita</code> and press <strong>Enter</strong>. If a <strong>Mudita</strong> folder is already there, open that folder instead of making a second one.</li>
+<li>Open <strong>Mudita</strong>. Right-click an empty area. Click <strong>Paste</strong>.</li>
+<li>Wait until the copying finishes.</li>
+</ol>
+<h2>2. Install, or open the program</h2>
+<p>Look in the <strong>Mudita</strong> folder you just pasted.</p>
+<p><strong>If you see a setup file</strong> (the name ends with <code>setup.exe</code>, or the name ends with <code>.msi</code>):</p>
+<ol>
+<li>Double-click that setup file.</li>
+<li>If Windows asks <strong>Do you want to allow this app to make changes to your device?</strong>, click <strong>Yes</strong>.</li>
+<li>If a window says <strong>Windows protected your PC</strong>, click <strong>More info</strong>, then <strong>Run anyway</strong>.</li>
+<li>Click <strong>Next</strong>, <strong>Install</strong>, and <strong>Finish</strong> when you see those buttons. You may not see every one of them.</li>
+<li>Look at the desktop (the main screen with pictures). If a picture named <strong>Mudita Hospital</strong> is already there, go to section 4. You can skip section 3.</li>
+</ol>
+<p><strong>If you do not see a setup file:</strong></p>
+<p>The program is <strong>MuditaHospital.exe</strong>. Go to section 3, then open it from the desktop picture.</p>
+<h2>3. Put a picture on the desktop</h2>
+<p>Do this so the desk does not have to hunt for the folder every morning.</p>
+<ol>
+<li>Open the <strong>Mudita</strong> folder.</li>
+<li>Find <strong>MuditaHospital.exe</strong> (the picture may say <strong>Mudita Hospital</strong>).</li>
+<li>Right-click it.</li>
+<li>If you see <strong>Show more options</strong>, click that.</li>
+<li>Click <strong>Send to</strong>.</li>
+<li>Click <strong>Desktop (create shortcut)</strong>.</li>
+<li>Close the folder window.</li>
+<li>Look at the main screen. A new picture says <strong>Mudita Hospital</strong>. That picture is the program.</li>
+</ol>
+<p>A shortcut is only a picture that opens the real program. Deleting the picture on the desktop does not delete the hospital records. The records stay on the server computer.</p>
+<h2>4. Connect to the server</h2>
+<ol>
+<li>Double-click the <strong>Mudita Hospital</strong> picture on the desktop.</li>
+<li>The first screen title is <strong>Server IP</strong> (မြန်မာစာမျက်နှာဆိုရင် <strong>ဆာဗာ IP</strong>). The line under it says to enter the hospital server address. Port 8080 is added for you. You only type the number.</li>
+<li>On that same screen you can click <strong>English</strong> or <strong>မြန်မာ</strong>.</li>
+</ol>
+<p><strong>This clinic program is on the same computer as the server</strong></p>
+<p>Click <strong>This PC (127.0.0.1)</strong>. In Myanmar that button reads <strong>ဤကွန်ပျူတာ (127.0.0.1)</strong>. Do not type a number.</p>
+<p><strong>This clinic program is on a different computer</strong></p>
+<ol>
+<li>Click the empty box under <strong>Server IP or address</strong> (မြန်မာ: <strong>ဆာဗာ IP သို့မဟုတ် လိပ်စာ</strong>).</li>
+<li>Type the Server IP from the paper note beside the server computer. Example: <code>192.168.1.10</code>. Type the digits and the dots only. Do not type <code>http://</code>. Do not type <code>:8080</code>.</li>
+<li>Click <strong>Save &amp; test</strong> (မြန်မာ: <strong>သိမ်းပြီး စစ်ဆေး</strong>).</li>
+</ol>
+<p>You should see green words that include <strong>Connected to</strong>. Then the sign-in screen opens.</p>
+<p>If red words appear, the number is wrong, the server computer is off, or the cable is unplugged. Check those three things. Then click <strong>Save &amp; test</strong> again.</p>
+<p>A button named <strong>Save anyway</strong> can appear after an error. Use it only when the number on the paper is certainly right and the server computer is on. Otherwise fix the number and click <strong>Save &amp; test</strong> again.</p>
+<h2>5. Sign in</h2>
+<p>The screen title is <strong>Sign in</strong> (မြန်မာ: <strong>ဝင်ရန်</strong>).</p>
+<ol>
+<li>Click <strong>Username</strong> (မြန်မာ: <strong>အသုံးပြုသူအမည်</strong>). Type the name the hospital gave you.</li>
+<li>Click <strong>Password</strong> (မြန်မာ: <strong>စကားဝှက်</strong>). Type the password.</li>
+<li>Click <strong>Sign in</strong>.</li>
+</ol>
+<p>On a <strong>brand-new</strong> server, before anyone has changed passwords:</p>
+<table><thead><tr>
+<th>Name you type</th>
+<th>Password you type</th>
+<th>Who it is for</th>
+</tr></thead><tbody>
+<tr>
+<td><code>admin</code></td>
+<td><code>admin123</code></td>
+<td>The person who manages the hospital program</td>
+</tr>
+<tr>
+<td><code>reception</code></td>
+<td><code>reception123</code></td>
+<td>Reception</td>
+</tr>
+<tr>
+<td><code>pharmacy</code></td>
+<td><code>pharmacy123</code></td>
+<td>Pharmacy</td>
+</tr>
+</tbody></table>
+<p>The program then asks for a new password. Choose one the desk will remember, and write it on paper kept with the hospital. After that, the old password <code>admin123</code> (and the others in the table) no longer work.</p>
+<p>If the hospital already changed the passwords, use the new ones. The table above is only for the first day.</p>
+<h2>6. Change the Server IP later</h2>
+<p>The number is remembered. You only do this when the server computer’s number changes, or when the first number was typed wrong.</p>
+<ol>
+<li>Open <strong>Mudita Hospital</strong>.</li>
+<li>Click <strong>Server IP</strong> (မြန်မာ: <strong>ဆာဗာ IP</strong>). It sits at the top of the window. On the sign-in screen it is near the language buttons. After you are signed in it is near <strong>Help</strong> and <strong>Log out</strong>.</li>
+<li>If you see <strong>Change server IP</strong> (မြန်မာ: <strong>ဆာဗာ IP ပြောင်း</strong>), click it.</li>
+<li>Type the new number, or click <strong>This PC (127.0.0.1)</strong> when the program is on the server computer itself.</li>
+<li>Click <strong>Save &amp; test</strong>.</li>
+</ol>
+<h2>7. If it says the server is offline</h2>
+<p>The button shows <strong>Server offline</strong> (မြန်မာ: <strong>ဆာဗာ မရရှိ</strong>). A green <strong>Server connected</strong> (မြန်မာ: <strong>ဆာဗာ ချိတ်ဆက်ပြီး</strong>) means this desk is fine.</p>
+<ol>
+<li>Click <strong>Server IP</strong>, then <strong>Retry</strong> (မြန်မာ: <strong>ထပ်ကြိုးစား</strong>).</li>
+<li>Look at the server computer. It must be switched on. Its screen can be locked. The computer itself must be running.</li>
+<li>Check the cable at both ends, or check that both computers are on the same Wi-Fi. A cable is the steadier choice for billing.</li>
+<li>Compare the number on this screen with the paper note. If they differ, use section 6.</li>
+<li>On the server computer, open Edge and visit <code>http://127.0.0.1:8080/api/health</code>. The page should include <code>"status":"ok"</code>. If that page does not open, the server program is not running. Use the server guide, section 11 (switch the server computer on) or section 7 (the blue window showed an error).</li>
+</ol>
+<h2>8. Every morning</h2>
+<ol>
+<li>Switch the server computer on first, and leave it on.</li>
+<li>On this desk, double-click the <strong>Mudita Hospital</strong> picture.</li>
+<li>Sign in.</li>
+</ol>
+<p>You do not type the Server IP again unless the number has changed.</p>
+<hr>
+</section>
+<section id="my">
+<h1>ဆေးခန်းပရိုဂရမ်ကို တပ်ဆင်ပြီး ဖွင့်နည်း</h1>
+<p>ဒါက စားပွဲမှာ တစ်နေ့လုံး သုံးတဲ့ပရိုဂရမ်ပါ။ ပြတင်းပေါက်ခေါင်းစဉ်က <strong>Mudita Hospital</strong> ပါ။ ဖိုင်နာမည်က <strong>MuditaHospital.exe</strong> ပါ။</p>
+<p>လူနာမျက်နှာပြင် သို့မဟုတ် ဘေလ်မျက်နှာပြင် ဖွင့်မည့် စားပွဲတိုင်းမှာ လုပ်ပါ (ကြိုတင်ကောင်တာ၊ ဆေးဆိုင်၊ အခြားစားပွဲ)။</p>
+<p>ဆေးရုံမှာ ကွန်ပျူတာတစ်လုံးပဲ ရှိရင် အဲဒီကွန်ပျူတာပေါ်မှာ <a href="server.md">ဆာဗာလမ်းညွှန်</a> ကို အရင်ပြီးအောင်လုပ်ပါ။ ပြီးမှ <strong>ဒီကွန်ပျူတာမှာပဲ</strong> ဒီလမ်းညွှန်ကို လုပ်ပါ။</p>
+<p>ဒီအဆင့်တွေ ချိတ်နိုင်ဖို့ ဆာဗာကွန်ပျူတာကို အရင်ဖွင့်ထားရပါမယ်။</p>
+<p>ပုံနှိပ်စာရွက်က ဒီဖိုလ်ဒါထဲက <a href="client.pdf">client.pdf</a> ပါ။ ဖတ်ရန် သို့မဟုတ် ပုံနှိပ်ရန် နှစ်ချက်နှိပ်ပါ။</p>
+<p>Windows ခလုတ်နာမည်တွေ (<strong>Copy</strong>၊ <strong>Paste</strong>၊ <strong>Yes</strong>၊ <strong>Next</strong>) ကို အင်္ဂလိပ်အတိုင်း နှိပ်ပါ။ ပရိုဂရမ်ထဲက ခလုတ်ကိုတော့ မျက်နှာပြင်မှာ ပေါ်တဲ့စာအတိုင်း နှိပ်ပါ။ ပထမဆုံးမျက်နှာပြင်မှာ <strong>English</strong> သို့မဟုတ် <strong>မြန်မာ</strong> ကို ရွေးနိုင်ပါတယ်။</p>
+<hr>
+<h2>1. ဆေးခန်းဖိုလ်ဒါကို ဒီကွန်ပျူတာပေါ် ကူးပါ</h2>
+<p>ပရိုဂရမ်ကို ယူအက်စ်ဘီထဲကနေ မဖွင့်ပါနဲ့။ ယူအက်စ်ဘီဖြုတ်ရင် ပရိုဂရမ် ပိတ်သွားပါတယ်။</p>
+<ol>
+<li>ယူအက်စ်ဘီကို တပ်ပါ။</li>
+<li><strong>MuditaHospital.exe</strong> ပါတဲ့ client ဖိုလ်ဒါကို ဖွင့်ပါ။ တပ်ဆင်ဖိုင်တစ်ခုလည်း ပါနိုင်ပါတယ်။</li>
+<li>ပြတင်းပေါက်ထဲက နေရာလွတ်ကို နှိပ်ပါ။</li>
+<li><strong>Ctrl</strong> ကို ဖိပြီး <strong>A</strong> နှိပ်ပါ။ ဖိုင်အားလုံး လင်းလာပါတယ်။</li>
+<li>လင်းနေတဲ့ဖိုင်တစ်ခုကို ညာဘက်နှိပ်ပါ။ <strong>Copy</strong> နှိပ်ပါ။</li>
+<li><strong>This PC</strong> ကို ဖွင့်ပါ။ <strong>Windows (C:)</strong> သို့မဟုတ် <strong>Local Disk (C:)</strong> ကို ဖွင့်ပါ။</li>
+<li>နေရာလွတ်ကို ညာဘက်နှိပ်ပါ။ <strong>New</strong>၊ ပြီးရင် <strong>Folder</strong> နှိပ်ပါ။</li>
+<li><code>Mudita</code> လို့ ရိုက်ပြီး <strong>Enter</strong> နှိပ်ပါ။ <strong>Mudita</strong> ဖိုလ်ဒါ ရှိပြီးသားဆိုရင် အသစ်မလုပ်ဘဲ အဲဒီဖိုလ်ဒါကို ဖွင့်ပါ။</li>
+<li><strong>Mudita</strong> ကို ဖွင့်ပါ။ နေရာလွတ်ကို ညာဘက်နှိပ်ပါ။ <strong>Paste</strong> နှိပ်ပါ။</li>
+<li>ကူးပြီးတဲ့အထိ စောင့်ပါ။</li>
+</ol>
+<h2>2. တပ်ဆင်ပါ၊ သို့မဟုတ် ပရိုဂရမ်ကို ဖွင့်ပါ</h2>
+<p>အခုကူးထားတဲ့ <strong>Mudita</strong> ဖိုလ်ဒါထဲကို ကြည့်ပါ။</p>
+<p><strong>တပ်ဆင်ဖိုင် မြင်ရင်</strong> (နာမည်က <code>setup.exe</code> နဲ့ ဆုံးတယ်၊ သို့မဟုတ် <code>.msi</code> နဲ့ ဆုံးတယ်)။</p>
+<ol>
+<li>အဲဒီတပ်ဆင်ဖိုင်ကို နှစ်ချက်နှိပ်ပါ။</li>
+<li><strong>Do you want to allow this app to make changes to your device?</strong> လို့ မေးရင် <strong>Yes</strong> နှိပ်ပါ။</li>
+<li><strong>Windows protected your PC</strong> လို့ ပေါ်ရင် <strong>More info</strong>၊ ပြီးရင် <strong>Run anyway</strong> နှိပ်ပါ။</li>
+<li><strong>Next</strong>၊ <strong>Install</strong>၊ <strong>Finish</strong> ခလုတ်တွေ ပေါ်ရင် နှိပ်ပါ။ အားလုံး မပေါ်နိုင်ပါ။</li>
+<li>ဒက်စ်တော့ (ပုံတွေရှိတဲ့ ပင်မမျက်နှာပြင်) ကို ကြည့်ပါ။ <strong>Mudita Hospital</strong> ပုံ ရှိပြီးသားဆိုရင် အပိုင်း ၄ ကို သွားပါ။ အပိုင်း ၃ ကို ကျော်နိုင်ပါတယ်။</li>
+</ol>
+<p><strong>တပ်ဆင်ဖိုင် မမြင်ရင်</strong></p>
+<p>ပရိုဂရမ်က <strong>MuditaHospital.exe</strong> ပါ။ အပိုင်း ၃ ကို လုပ်ပြီး ဒက်စ်တော့ပုံကနေ ဖွင့်ပါ။</p>
+<h2>3. ဒက်စ်တော့ပေါ် ပုံတစ်ခု တင်ပါ</h2>
+<p>မနက်တိုင်း ဖိုလ်ဒါကို လိုက်ရှာစရာ မလိုအောင် ဒီအဆင့်ကို လုပ်ပါ။</p>
+<ol>
+<li><strong>Mudita</strong> ဖိုလ်ဒါကို ဖွင့်ပါ။</li>
+<li><strong>MuditaHospital.exe</strong> ကို ရှာပါ (ပုံအောက်မှာ <strong>Mudita Hospital</strong> လို့ ပါနိုင်ပါတယ်)။</li>
+<li>ညာဘက်နှိပ်ပါ။</li>
+<li><strong>Show more options</strong> ကို မြင်ရင် အဲဒါကို နှိပ်ပါ။</li>
+<li><strong>Send to</strong> ကို နှိပ်ပါ။</li>
+<li><strong>Desktop (create shortcut)</strong> ကို နှိပ်ပါ။ ဒက်စ်တော့ပေါ် ဖွင့်ပုံတစ်ခု လုပ်တဲ့ခလုတ်ပါ။</li>
+<li>ဖိုလ်ဒါပြတင်းပေါက်ကို ပိတ်ပါ။</li>
+<li>ပင်မမျက်နှာပြင်ကို ကြည့်ပါ။ <strong>Mudita Hospital</strong> လို့ ပါတဲ့ ပုံအသစ် ပေါ်နေပါတယ်။ အဲဒီပုံက ပရိုဂရမ်ပါ။</li>
+</ol>
+<p>ရှော့ကတ်ဆိုတာ ပရိုဂရမ်အမှန်ကို ဖွင့်ပေးတဲ့ ပုံတစ်ပုံပါပဲ။ ဒက်စ်တော့ပေါ်က ပုံကို ဖျက်လို့ ဆေးရုံမှတ်တမ်း မပျက်ပါ။ မှတ်တမ်းက ဆာဗာကွန်ပျူတာပေါ်မှာ ရှိပါတယ်။</p>
+<h2>4. ဆာဗာနဲ့ ချိတ်ပါ</h2>
+<ol>
+<li>ဒက်စ်တော့ပေါ်က <strong>Mudita Hospital</strong> ပုံကို နှစ်ချက်နှိပ်ပါ။</li>
+<li>ပထမမျက်နှာပြင်ခေါင်းစဉ်က <strong>Server IP</strong> ပါ။ မြန်မာကို ပြောင်းထားရင် <strong>ဆာဗာ IP</strong> ပါ။ အောက်ကစာက ဆေးရုံဆာဗာလိပ်စာ ထည့်ရန်လို့ ပြပါတယ်။ ပို့တ် 8080 ကို ပရိုဂရမ်က ဖြည့်ပေးပါတယ်။ နံပါတ်ကိုပဲ ရိုက်ပါ။</li>
+<li>အဲဒီမျက်နှာပြင်မှာ <strong>English</strong> သို့မဟုတ် <strong>မြန်မာ</strong> ကို နှိပ်နိုင်ပါတယ်။</li>
+</ol>
+<p><strong>ဆေးခန်းပရိုဂရမ်က ဆာဗာနဲ့ ကွန်ပျူတာတူတူပေါ်မှာ ရှိရင်</strong></p>
+<p><strong>This PC (127.0.0.1)</strong> ကို နှိပ်ပါ။ မြန်မာမှာ အဲဒီခလုတ်က <strong>ဤကွန်ပျူတာ (127.0.0.1)</strong> ပါ။ နံပါတ်ရိုက်စရာ မလိုပါ။</p>
+<p><strong>ဆေးခန်းပရိုဂရမ်က တခြားကွန်ပျူတာပေါ်မှာ ရှိရင်</strong></p>
+<ol>
+<li><strong>Server IP or address</strong> အောက်က ကွက်လပ်ကို နှိပ်ပါ (မြန်မာ: <strong>ဆာဗာ IP သို့မဟုတ် လိပ်စာ</strong>)။</li>
+<li>ဆာဗာကွန်ပျူတာဘေးက စာရွက်ပေါ်က Server IP ကို ရိုက်ပါ။ ဥပမာ <code>192.168.1.10</code>။ ဂဏန်းနဲ့ အစက်ပဲ ရိုက်ပါ။ <code>http://</code> မရိုက်ပါနဲ့။ <code>:8080</code> မရိုက်ပါနဲ့။</li>
+<li><strong>Save &amp; test</strong> ကို နှိပ်ပါ (မြန်မာ: <strong>သိမ်းပြီး စစ်ဆေး</strong>)။</li>
+</ol>
+<p><strong>Connected to</strong> ပါတဲ့ အစိမ်းရောင်စာကို မြင်ရပါမယ်။ ပြီးရင် ဝင်ရောက်တဲ့မျက်နှာပြင် ပွင့်လာပါတယ်။</p>
+<p>အနီရောင်စာ ပေါ်ရင် နံပါတ်မှားတယ်၊ ဆာဗာကွန်ပျူတာ ပိတ်နေတယ်၊ သို့မဟုတ် ကြိုးမတပ်ထားဘူး ဆိုတာပါ။ အဲဒီသုံးခုကို စစ်ပါ။ ပြီးရင် <strong>Save &amp; test</strong> ကို ပြန်နှိပ်ပါ။</p>
+<p>အမှားပေါ်ပြီးမှ <strong>Save anyway</strong> ခလုတ် ပေါ်နိုင်ပါတယ်။ စာရွက်ပေါ်က နံပါတ် မှန်ကြောင်း သေချာပြီး ဆာဗာကွန်ပျူတာ ဖွင့်ထားမှသာ သုံးပါ။ မသေချာရင် နံပါတ်ကို ပြင်ပြီး <strong>Save &amp; test</strong> ကို ပြန်နှိပ်ပါ။</p>
+<h2>5. ဝင်ပါ</h2>
+<p>မျက်နှာပြင်ခေါင်းစဉ်က <strong>Sign in</strong> ပါ (မြန်မာ: <strong>ဝင်ရန်</strong>)။</p>
+<ol>
+<li><strong>Username</strong> ကို နှိပ်ပါ (မြန်မာ: <strong>အသုံးပြုသူအမည်</strong>)။ ဆေးရုံက ပေးထားတဲ့ နာမည်ကို ရိုက်ပါ။</li>
+<li><strong>Password</strong> ကို နှိပ်ပါ (မြန်မာ: <strong>စကားဝှက်</strong>)။ စကားဝှက်ကို ရိုက်ပါ။</li>
+<li><strong>Sign in</strong> ကို နှိပ်ပါ။</li>
+</ol>
+<p>ဆာဗာ <strong>အသစ်</strong> မှာ၊ စကားဝှက်ကို ဘယ်သူမှ မပြောင်းရသေးခင် —</p>
+<table><thead><tr>
+<th>ရိုက်ရမည့်နာမည်</th>
+<th>ရိုက်ရမည့်စကားဝှက်</th>
+<th>ဘယ်သူအတွက်လဲ</th>
+</tr></thead><tbody>
+<tr>
+<td><code>admin</code></td>
+<td><code>admin123</code></td>
+<td>ဆေးရုံပရိုဂရမ်ကို စီမံတဲ့သူ</td>
+</tr>
+<tr>
+<td><code>reception</code></td>
+<td><code>reception123</code></td>
+<td>ကြိုတင်ကောင်တာ</td>
+</tr>
+<tr>
+<td><code>pharmacy</code></td>
+<td><code>pharmacy123</code></td>
+<td>ဆေးဆိုင်</td>
+</tr>
+</tbody></table>
+<p>ပရိုဂရမ်က စကားဝှက်အသစ် တောင်းပါမယ်။ စားပွဲက မှတ်နိုင်တဲ့ စကားဝှက်တစ်ခု ရွေးပြီး ဆေးရုံနဲ့အတူ ထားတဲ့စာရွက်ပေါ် ရေးပါ။ အဲဒီနောက် <code>admin123</code> နဲ့ ဇယားထဲက အခြားစကားဝှက်အဟောင်းတွေ အလုပ်မလုပ်တော့ပါ။</p>
+<p>ဆေးရုံက စကားဝှက်ပြောင်းပြီးသားဆိုရင် အသစ်ကို သုံးပါ။ အပေါ်ကဇယားက ပထမနေ့အတွက်ပါ။</p>
+<h2>6. Server IP ကို နောက်မှ ပြောင်းခြင်း</h2>
+<p>နံပါတ်ကို ပရိုဂရမ်က မှတ်ထားပါတယ်။ ဆာဗာကွန်ပျူတာရဲ့ နံပါတ်ပြောင်းမှ၊ သို့မဟုတ် ပထမနံပါတ် မှားရိုက်မိမှသာ ဒီအဆင့်ကို လုပ်ပါ။</p>
+<ol>
+<li><strong>Mudita Hospital</strong> ကို ဖွင့်ပါ။</li>
+<li><strong>Server IP</strong> ကို နှိပ်ပါ (မြန်မာ: <strong>ဆာဗာ IP</strong>)။ ပြတင်းပေါက်အပေါ်မှာ ရှိပါတယ်။ ဝင်ရောက်မျက်နှာပြင်မှာ ဘာသာစကားခလုတ်တွေအနားမှာ ရှိပါတယ်။ ဝင်ပြီးသားဆိုရင် <strong>Help</strong> နဲ့ <strong>Log out</strong> အနားမှာ ရှိပါတယ်။</li>
+<li><strong>Change server IP</strong> ကို မြင်ရင် နှိပ်ပါ (မြန်မာ: <strong>ဆာဗာ IP ပြောင်း</strong>)။</li>
+<li>နံပါတ်အသစ်ကို ရိုက်ပါ။ ပရိုဂရမ်က ဆာဗာကွန်ပျူတာပေါ်မှာပဲ ရှိရင် <strong>This PC (127.0.0.1)</strong> ကို နှိပ်ပါ။</li>
+<li><strong>Save &amp; test</strong> ကို နှိပ်ပါ။</li>
+</ol>
+<h2>7. ဆာဗာမရဘူးလို့ ပေါ်ရင်</h2>
+<p>ခလုတ်မှာ <strong>Server offline</strong> လို့ ပေါ်ပါတယ် (မြန်မာ: <strong>ဆာဗာ မရရှိ</strong>)။ အစိမ်းရောင် <strong>Server connected</strong> (မြန်မာ: <strong>ဆာဗာ ချိတ်ဆက်ပြီး</strong>) ဆိုရင် ဒီစားပွဲက အဆင်ပြေပါတယ်။</p>
+<ol>
+<li><strong>Server IP</strong> ကို နှိပ်ပါ။ ပြီးရင် <strong>Retry</strong> ကို နှိပ်ပါ (မြန်မာ: <strong>ထပ်ကြိုးစား</strong>)။</li>
+<li>ဆာဗာကွန်ပျူတာကို ကြည့်ပါ။ ဖွင့်ထားရပါမယ်။ မျက်နှာပြင်ကို သော့ခတ်ထားလို့ ရပါတယ်။ ကွန်ပျူတာကိုယ်တိုင်ကတော့ ဖွင့်နေရပါမယ်။</li>
+<li>ကြိုးနှစ်ဖက်လုံးကို စစ်ပါ။ သို့မဟုတ် ကွန်ပျူတာနှစ်လုံး Wi-Fi တူတူပေါ်မှာ ရှိသလား ကြည့်ပါ။ ဘေလ်အတွက် ကြိုးက ပိုတည်ငြိမ်ပါတယ်။</li>
+<li>ဒီမျက်နှာပြင်က နံပါတ်ကို စာရွက်နဲ့ တိုက်ကြည့်ပါ။ မတူရင် အပိုင်း ၆ ကို သုံးပါ။</li>
+<li>ဆာဗာကွန်ပျူတာပေါ်မှာ Edge ကို ဖွင့်ပြီး <code>http://127.0.0.1:8080/api/health</code> ကို သွားပါ။ <code>"status":"ok"</code> ပါရပါမယ်။ အဲဒီစာမျက်နှာ မပွင့်ရင် ဆာဗာပရိုဂရမ် မလုပ်နေပါ။ ဆာဗာလမ်းညွှန် အပိုင်း ၁၁ (ဆာဗာကွန်ပျူတာကို ဖွင့်ပါ) သို့မဟုတ် အပိုင်း ၇ (အပြာပြတင်းပေါက်မှာ အမှားပေါ်ခဲ့ရင်) ကို သုံးပါ။</li>
+</ol>
+<h2>8. မနက်တိုင်း</h2>
+<ol>
+<li>ဆာဗာကွန်ပျူတာကို အရင်ဖွင့်ပါ။ ဖွင့်ထားပါ။</li>
+<li>ဒီစားပွဲမှာ <strong>Mudita Hospital</strong> ပုံကို နှစ်ချက်နှိပ်ပါ။</li>
+<li>ဝင်ပါ။</li>
+</ol>
+<p>နံပါတ် မပြောင်းသေးရင် Server IP ကို ထပ်ရိုက်စရာ မလိုပါ။</p>
+</section>
+</body>
+</html>

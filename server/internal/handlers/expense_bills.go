@@ -647,13 +647,7 @@ func (h *Expenses) printExpenseBill(w http.ResponseWriter, r *http.Request, path
 }
 
 func renderExpenseBillHTML(hosp *hospitalSettings, bill expenseBill) string {
-	dateLabel := bill.CreatedAt
-	if bill.BilledAt != nil && *bill.BilledAt != "" {
-		dateLabel = *bill.BilledAt
-	}
-	if bill.PaidAt != nil {
-		dateLabel = *bill.PaidAt
-	}
+	dateLabel := receiptDateLabel(bill.CreatedAt, bill.BilledAt, bill.PaidAt)
 	lines := make([]receiptLine, 0, len(bill.Lines))
 	for _, line := range bill.Lines {
 		lines = append(lines, receiptLine{

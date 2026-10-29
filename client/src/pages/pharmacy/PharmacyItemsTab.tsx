@@ -698,6 +698,7 @@ export function PharmacyItemsTab({
               className={`btn action${panelMode === "restock" ? " on" : ""}`}
               disabled={busy || selectedId == null}
               onClick={() => selectedId != null && void openRestock(selectedId)}
+              data-guide="pharmacy-restock"
             >
               <ActionIcon name="box" />
               {t("restock")}

@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>How to install and run the server</title>
+  <style>
+    :root {
+      --ink: #1c1917;
+      --muted: #57534e;
+      --line: #e7e5e4;
+      --teal: #1e4d63;
+      --paper: #f7f5f0;
+    }
+    @page {
+      size: A4;
+      margin: 16mm 15mm 18mm 15mm;
+      @bottom-left {
+        content: "Mudita Hospital  ·  Server";
+        font-family: "Segoe UI", "Myanmar Text", sans-serif;
+        font-size: 9pt;
+        color: #78716c;
+      }
+      @bottom-right {
+        content: counter(page);
+        font-family: "Segoe UI", sans-serif;
+        font-size: 9pt;
+        color: #78716c;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Segoe UI", "Myanmar Text", sans-serif;
+      font-size: 17px;
+      line-height: 1.5;
+      color: var(--ink);
+      max-width: 44rem;
+      margin: 0 auto;
+      padding: 1.25rem 1.4rem 3rem;
+      background: #fff;
+    }
+    nav.lang {
+      position: sticky;
+      top: 0;
+      background: #fff;
+      padding: 0.35rem 0 0.7rem;
+      margin-bottom: 0.2rem;
+      border-bottom: 1px solid var(--line);
+    }
+    nav.lang a {
+      display: inline-block;
+      margin-right: 0.45rem;
+      padding: 0.15rem 0.7rem;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--teal);
+      text-decoration: none;
+    }
+    h1 {
+      font-size: 1.85rem;
+      line-height: 1.25;
+      font-weight: 600;
+      margin: 0.85rem 0 0.75rem;
+      letter-spacing: -0.02em;
+    }
+    h1::before {
+      content: "Mudita Hospital";
+      display: block;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--teal);
+      margin-bottom: 0.35rem;
+    }
+    h1::after {
+      content: "";
+      display: block;
+      width: 3.2rem;
+      height: 3px;
+      background: var(--teal);
+      margin-top: 0.7rem;
+    }
+    h1 + p { color: var(--muted); font-size: 1.05rem; }
+    h2 {
+      font-size: 1.18rem;
+      color: var(--teal);
+      margin: 1.65rem 0 0.4rem;
+      padding-bottom: 0.22rem;
+      border-bottom: 1px solid var(--line);
+      break-after: avoid;
+    }
+    h3 { font-size: 1.02rem; margin: 1.1rem 0 0.3rem; break-after: avoid; }
+    p { margin: 0.4rem 0; }
+    a { color: var(--teal); }
+    ol { list-style: none; padding: 0; margin: 0.35rem 0 0.7rem; counter-reset: step; }
+    ol[start="6"] { counter-reset: step 5; }
+    ol li {
+      position: relative;
+      padding: 0.22rem 0 0.22rem 2.1rem;
+      margin: 0.12rem 0;
+      break-inside: avoid;
+    }
+    ol li::before {
+      counter-increment: step;
+      content: counter(step);
+      position: absolute;
+      left: 0;
+      top: 0.2rem;
+      width: 1.4rem;
+      height: 1.4rem;
+      border-radius: 50%;
+      border: 1.5px solid var(--teal);
+      color: var(--teal);
+      font-size: 0.75rem;
+      font-weight: 700;
+      line-height: 1.35rem;
+      text-align: center;
+    }
+    ul { margin: 0.45rem 0 0.75rem; padding-left: 1.15rem; }
+    ul li { margin: 0.22rem 0; }
+    ul.ok, ul.keep, ul.caution {
+      list-style: none;
+      padding: 0.65rem 0.85rem 0.65rem 1rem;
+      border-radius: 8px;
+      break-inside: avoid;
+    }
+    ul.ok { background: #ecf6f1; border-left: 4px solid #1f7a4d; }
+    ul.keep { background: #eef4f7; border-left: 4px solid var(--teal); }
+    ul.caution { background: #fff6eb; border-left: 4px solid #c2410c; }
+    code {
+      font-family: Consolas, "Cascadia Mono", monospace;
+      font-size: 0.9em;
+      background: var(--paper);
+      padding: 0.05em 0.28em;
+      border-radius: 3px;
+    }
+    pre {
+      background: var(--paper);
+      border: 1px solid #e6e0d4;
+      border-left: 4px solid var(--teal);
+      border-radius: 8px;
+      padding: 0.7rem 0.9rem;
+      overflow-x: auto;
+      break-inside: avoid;
+    }
+    pre code { background: transparent; padding: 0; font-size: 0.92rem; }
+    table { border-collapse: collapse; width: 100%; margin: 0.75rem 0; break-inside: avoid; }
+    th, td { border: 1px solid var(--line); padding: 0.4rem 0.55rem; text-align: left; vertical-align: top; }
+    th { background: #eef4f7; color: var(--teal); }
+    hr { border: 0; border-top: 1px solid var(--line); margin: 2rem 0; }
+    section#my { font-family: "Myanmar Text", "Segoe UI", sans-serif; line-height: 1.75; }
+    @media print {
+      body { font-size: 11pt; line-height: 1.42; max-width: none; padding: 0; }
+      nav.lang, hr { display: none; }
+      section#my { break-before: page; line-height: 1.7; }
+      h1 { font-size: 20pt; }
+      h1 + p { font-size: 11.5pt; }
+      h2 { font-size: 13.5pt; }
+      h3 { font-size: 12pt; }
+      a { color: inherit; text-decoration: none; }
+      pre code { font-size: 10pt; }
+      ul.ok, ul.keep, ul.caution, th {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+    }
+  </style>
+</head>
+<body>
+  <nav class="lang"><a href="#en">English</a><a href="#my">မြန်မာ</a></nav>
+<section id="en">
+<h1>How to install and run the server</h1>
+<p>Read this on the <strong>one computer that stays switched on</strong>. Patient records, bills, and pharmacy stock live on this computer only. The other computers show the screens. They do not keep those records.</p>
+<p>Install the server before the clinic program and before the dashboard.</p>
+<p>The printable sheet is <a href="server.pdf">server.pdf</a> in this same folder. Double-click it to read or print.</p>
+<p>You will use the mouse for most steps. One part uses a blue window named <strong>Windows PowerShell</strong>. The title bar must say <strong>Administrator</strong>.</p>
+<hr>
+<h2>1. Copy the server folder onto this computer</h2>
+<p>The USB stick is only for carrying the files. If you start the server from the USB stick and then unplug it, the hospital program stops.</p>
+<ol>
+<li>Plug in the USB stick.</li>
+<li>Open the USB stick. Open the server folder (the folder that contains <code>install-server.ps1</code>).</li>
+<li>Click once on an empty part of that window so that no file is selected.</li>
+<li>Hold the <strong>Ctrl</strong> key and press <strong>A</strong>. Every file lights up. Let go of <strong>Ctrl</strong>.</li>
+<li>Right-click one of the lit files. Click <strong>Copy</strong>.</li>
+<li>Open <strong>This PC</strong>.</li>
+<li>Open <strong>Windows (C:)</strong> or <strong>Local Disk (C:)</strong>.</li>
+<li>Right-click an empty area. Click <strong>New</strong>, then <strong>Folder</strong>.</li>
+<li>Type <code>Mudita</code> and press <strong>Enter</strong>.</li>
+<li>Open the <strong>Mudita</strong> folder.</li>
+<li>Right-click an empty area. Click <strong>Paste</strong>.</li>
+<li>Wait until the copying finishes.</li>
+</ol>
+<p>Leave the USB stick plugged in until you have written the Server IP on paper (section 6).</p>
+<h2>2. Allow the installer file</h2>
+<p>Windows sometimes blocks a file that came from another computer.</p>
+<ol>
+<li>Open <code>C:\Mudita</code> (or wherever you pasted the files).</li>
+<li>Find <code>install-server.ps1</code>.</li>
+<li>Right-click it. Click <strong>Properties</strong>.</li>
+<li>On the <strong>General</strong> tab, at the bottom, look for a tick box named <strong>Unblock</strong>.</li>
+<li>If you see <strong>Unblock</strong>, tick it. Click <strong>OK</strong>.</li>
+<li>If you do not see <strong>Unblock</strong>, click <strong>OK</strong> and continue. The file is already allowed.</li>
+</ol>
+<p>If a blue and yellow window says <strong>Windows protected your PC</strong>, click <strong>More info</strong>, then <strong>Run anyway</strong>.</p>
+<h2>3. Open Windows PowerShell as administrator</h2>
+<ol>
+<li>Click the <strong>Windows</strong> button at the bottom of the screen (the four squares, or the Windows logo).</li>
+<li>Type <code>powershell</code>. Do not press Enter yet.</li>
+<li><strong>Windows PowerShell</strong> appears in the list.</li>
+<li>Right-click <strong>Windows PowerShell</strong>.</li>
+<li>Click <strong>Run as administrator</strong>.</li>
+<li>A window asks <strong>Do you want to allow this app to make changes to your device?</strong> Click <strong>Yes</strong>.</li>
+<li>A blue window opens. The top of that window says <strong>Administrator</strong>.</li>
+</ol>
+<p>Leave this blue window open. You will paste lines into it.</p>
+<h2>4. Go into the server folder</h2>
+<p>The blue window must be looking at the folder you copied.</p>
+<ol>
+<li>Open the <strong>Mudita</strong> folder in the normal folder window, so you can see <code>install-server.ps1</code>.</li>
+<li>Click once in the long white box at the top of that folder window. The whole line turns blue. That line is the folder location.</li>
+<li>Right-click the blue line. Click <strong>Copy</strong>.</li>
+<li>Click inside the blue PowerShell window.</li>
+<li>Type <code>cd</code> then a space, then a quote mark. It looks like this, with nothing after the quote yet:</li>
+</ol>
+<pre><code>cd "
+</code></pre>
+<ol start="6">
+<li>Paste the folder location. Hold <strong>Ctrl</strong> and press <strong>V</strong>. If nothing appears, right-click once inside the blue window.</li>
+<li>Type the closing quote <code>"</code>.</li>
+<li>Press <strong>Enter</strong>.</li>
+</ol>
+<p>The next line in the blue window shows that same folder location. A red message means the quote marks were left off. Type the <code>cd "</code> line again.</p>
+<h2>5. First time on this computer</h2>
+<p>Use this section when this computer has never run Mudita Hospital.</p>
+<p>Click the blue window. Paste the first line, press <strong>Enter</strong>, wait until the cursor comes back, then paste the second line and press <strong>Enter</strong>.</p>
+<pre><code>Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\install-server.ps1
+</code></pre>
+<p>The first line allows this installer to run in this window only. It does not change the rest of the computer.</p>
+<p>The second line installs the server. Wait. Text will scroll. Leave the window open until the scrolling stops.</p>
+<p>You should see <strong>Install complete.</strong> You should also see:</p>
+<ul class="ok">
+<li><strong>Folder:</strong> <code>C:\MuditaHospital\Server</code></li>
+<li><strong>Health:</strong> <code>http://127.0.0.1:8080/api/health</code></li>
+<li>One or more lines that start with <strong>LAN:</strong></li>
+</ul>
+<p>Go to section 6.</p>
+<p>If the text is red, go to section 7. If this computer already had Mudita Hospital, stop and use section 8 instead of running these lines on top of a running server.</p>
+<h2>6. Write down the Server IP</h2>
+<p>On paper, next to this computer, write every line that starts with <strong>LAN:</strong>.</p>
+<p>The Server IP is the number between <code>http://</code> and <code>:8080</code> on that line.</p>
+<p>Example: if the line is <code>http://192.168.1.10:8080/api/health</code>, the Server IP is <code>192.168.1.10</code>.</p>
+<ul>
+<li>Write a number that starts with <code>192.168</code> when you see one.</li>
+<li>If you only see a number that starts with <code>10.</code> or <code>172.</code>, write that number.</li>
+<li><code>127.0.0.1</code> is the <strong>Health</strong> line. Other computers cannot use <code>127.0.0.1</code>. A clinic program on <strong>this same computer</strong> uses the <strong>This PC</strong> button instead of the LAN number. That is in the clinic guide.</li>
+</ul>
+<p>If there is no <strong>LAN</strong> line, the network cable is unplugged or the Wi-Fi is off. Plug in the cable, then run the two lines in section 5 again.</p>
+<p>Check that the server is really running:</p>
+<ol>
+<li>Open <strong>Microsoft Edge</strong> (the blue and green swirl icon).</li>
+<li>Click the long box at the top.</li>
+<li>Type <code>http://127.0.0.1:8080/api/health</code> and press <strong>Enter</strong>.</li>
+<li>The page should include <code>"status":"ok"</code> and <code>"db":"ok"</code>.</li>
+</ol>
+<p>When you see that, you may close the blue window. You do not close it by typing anything. Click the <strong>X</strong> on the blue window.</p>
+<p>The server is now installed. It also starts by itself the next time this computer is switched on. You do not open <code>mudita-api</code> yourself each morning.</p>
+<h2>7. If the blue window shows an error</h2>
+<p>Read the red text and use the matching step. Then run the two lines in section 5 again.</p>
+<p><strong>The file cannot be loaded because running scripts is disabled</strong></p>
+<p>The first line in section 5 was skipped, or the line was pasted into a window that is not Windows PowerShell. Close the window. Repeat sections 3, 4, and 5. The window title must say <strong>Administrator</strong>.</p>
+<p><strong>Not digitally signed</strong>, or <strong>the operation is blocked</strong></p>
+<p>Repeat section 2 (the <strong>Unblock</strong> tick). Then repeat sections 3, 4, and 5.</p>
+<p><strong>Must be running as Administrator</strong>, or <strong>Access is denied</strong></p>
+<p>The blue window was opened without <strong>Run as administrator</strong>. Close it. Repeat section 3, and click <strong>Yes</strong> on the allow-changes window. Then repeat sections 4 and 5.</p>
+<p><strong>mudita-api.exe not found</strong></p>
+<p>The blue window is not in the copied folder. Repeat section 4. You must see <code>install-server.ps1</code> in that folder before you paste the installer line.</p>
+<p><strong>The process cannot access the file</strong> because it is being used by another program</p>
+<p>Mudita is already running on this computer. Use section 8.</p>
+<h2>8. This computer already has Mudita (an update)</h2>
+<p>Use this when <code>C:\MuditaHospital\Server</code> is already there and the hospital already has records.</p>
+<p>The installer replaces the program. It leaves these alone:</p>
+<ul class="keep">
+<li><code>C:\MuditaHospital\Server\data</code> (the records)</li>
+<li><code>C:\MuditaHospital\Server\backups</code></li>
+<li><code>C:\MuditaHospital\Server\config.json</code></li>
+</ul>
+<p>The new program updates the records by itself the first time it starts. You do not copy a database file, and you do not delete one.</p>
+<h3>8.1 Copy the backups to a USB stick first</h3>
+<ol>
+<li>Open <strong>This PC</strong>, then <strong>Windows (C:)</strong>, then <strong>MuditaHospital</strong>, then <strong>Server</strong>.</li>
+<li>Right-click the folder named <strong>backups</strong>. Click <strong>Copy</strong>.</li>
+<li>Open the USB stick. Right-click an empty area. Click <strong>Paste</strong>.</li>
+<li>Wait until the copying finishes. Unplug the USB stick only after that.</li>
+</ol>
+<h3>8.2 Stop the old server, then install again</h3>
+<p>The old program locks its own file. The new file can be copied only after the old program is stopped. Stopping it does not delete the records.</p>
+<p>Repeat sections 2, 3, and 4 so the blue <strong>Administrator</strong> window is in the new folder (the one you just copied from the USB stick).</p>
+<p>Paste one line at a time. Press <strong>Enter</strong> after each line. Wait until the cursor comes back before the next line.</p>
+<pre><code>Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+Stop-ScheduledTask -TaskName "MuditaHospitalAPI"
+Get-Process mudita-api -ErrorAction SilentlyContinue | Stop-Process -Force
+.\install-server.ps1
+</code></pre>
+<p>What each line does:</p>
+<ol>
+<li>Allows the installer in this window only.</li>
+<li>Turns off the job named <strong>MuditaHospitalAPI</strong>. That job is what starts the server when the computer switches on. Turning it off does not delete records.</li>
+<li>Closes the old server program if it is still open.</li>
+<li>Installs the new program into <code>C:\MuditaHospital\Server</code>, then starts the server again.</li>
+</ol>
+<p>A red line that says the task <strong>MuditaHospitalAPI</strong> was not found means this computer does not have the old server. Use section 5 instead.</p>
+<p>When the text says <strong>Install complete</strong>, repeat section 6. Open the clinic program and confirm that old bills are still there.</p>
+<p>The same Server IP still works. Desk computers do not need a new number unless section 9 shows that the number itself changed.</p>
+<h2>9. Find the Server IP again later</h2>
+<p>Use this when the paper note is lost.</p>
+<ol>
+<li>Click the <strong>Windows</strong> button.</li>
+<li>Type <code>settings</code>. Click <strong>Settings</strong>.</li>
+<li>Click <strong>Network &amp; internet</strong>.</li>
+<li>If this computer uses a cable, click <strong>Ethernet</strong>. If it uses Wi-Fi, click <strong>Wi-Fi</strong>, then click the connected network name.</li>
+<li>Find <strong>IPv4 address</strong>. Write that number down. That number is the Server IP.</li>
+</ol>
+<p>Skip a number that is <code>127.0.0.1</code>. Skip a number that starts with <code>169.254</code>. Those are not the Server IP for other computers.</p>
+<p>You can also open Edge and visit <code>http://127.0.0.1:8080/api/health</code> on the server computer. A page with <code>"status":"ok"</code> means the server program is running. That page does not show the number the other computers need. The <strong>IPv4 address</strong> in Settings is that number.</p>
+<h2>10. Keep the same number</h2>
+<p>Other computers save the Server IP. If this computer picks a new number by itself after a restart, every desk will say the server is offline.</p>
+<p>Set the number only when someone who looks after the network has told you it changes, or after the desks have already lost the connection for that reason.</p>
+<ol>
+<li>Follow section 9 until you see <strong>IPv4 address</strong>. Write down the number you already use, and write down <strong>Gateway</strong> if a gateway number is shown.</li>
+<li>Find <strong>IP assignment</strong> (Windows 11) or <strong>IP settings</strong>. Click <strong>Edit</strong>.</li>
+<li>Choose <strong>Manual</strong>. Turn <strong>IPv4</strong> on.</li>
+<li><strong>IP address:</strong> the same number you wrote down. Do not invent a new one.</li>
+<li><strong>Subnet mask:</strong> <code>255.255.255.0</code> (some screens ask for subnet prefix length <code>24</code>, which is the same mask).</li>
+<li><strong>Gateway:</strong> the gateway you wrote down. If you never saw a gateway, leave it empty.</li>
+<li>Click <strong>Save</strong>.</li>
+</ol>
+<p>If this computer then loses the network, go back to the same screen and set IP assignment to <strong>Automatic (DHCP)</strong>.</p>
+<p>On Windows 10 the same settings are often here: <strong>Settings</strong> → <strong>Network &amp; Internet</strong> → <strong>Ethernet</strong> → <strong>Change adapter options</strong> → right-click <strong>Ethernet</strong> → <strong>Properties</strong> → <strong>Internet Protocol Version 4 (TCP/IPv4)</strong> → <strong>Properties</strong> → <strong>Use the following IP address</strong>.</p>
+<h2>11. Every morning</h2>
+<ol>
+<li>Switch this computer on.</li>
+<li>Leave it on for the whole day.</li>
+<li>Do not open PowerShell. The server starts by itself.</li>
+</ol>
+<p>The other desks can work only while this computer is on and connected to the same network.</p>
+<h2>12. Leave these alone</h2>
+<ul class="caution">
+<li>Leave the folder <code>C:\MuditaHospital\Server</code> where it is. The <strong>data</strong> folder inside it is the hospital records.</li>
+<li>Leave <code>uninstall-server.ps1</code> unopened. That file can remove the server. One of its options erases the records.</li>
+<li>Leave other computers’ files out of the <strong>data</strong> folder. Do not replace <code>mudita.db</code> with a file from a laptop.</li>
+</ul>
+<hr>
+</section>
+<section id="my">
+<h1>ဆာဗာကို တပ်ဆင်ပြီး ဖွင့်နည်း</h1>
+<p>ဒီစာကို <strong>အမြဲဖွင့်ထားရမည့် ကွန်ပျူတာတစ်လုံး</strong> ပေါ်မှာ ဖတ်ပါ။ လူနာမှတ်တမ်း၊ ဘေလ်၊ ဆေးဆိုင်ပစ္စည်းစာရင်းတွေဟာ ဒီကွန်ပျူတာထဲမှာပဲ ရှိပါတယ်။ တခြားကွန်ပျူတာတွေက မျက်နှာပြင်ကိုပဲ ပြပါတယ်။ မှတ်တမ်းကို သူတို့ဆီမှာ မသိမ်းပါ။</p>
+<p>ဆေးခန်းပရိုဂရမ်နဲ့ ဒက်ရှ်ဘုတ်ကို မတပ်ဆင်ခင် ဆာဗာကို အရင်လုပ်ပါ။</p>
+<p>ပုံနှိပ်စာရွက်က ဒီဖိုလ်ဒါထဲက <a href="server.pdf">server.pdf</a> ပါ။ ဖတ်ရန် သို့မဟုတ် ပုံနှိပ်ရန် နှစ်ချက်နှိပ်ပါ။</p>
+<p>အများစုကို မောက်စ်နဲ့ လုပ်ပါတယ်။ အပိုင်းတစ်ခုမှာ <strong>Windows PowerShell</strong> လို့ခေါ်တဲ့ အပြာရောင်ပြတင်းပေါက်ကို သုံးပါတယ်။ ပြတင်းပေါက်ခေါင်းစဉ်မှာ <strong>Administrator</strong> လို့ ပါရပါမယ်။</p>
+<p>ကူးထည့်ရမည့် စာကြောင်းတွေကို အင်္ဂလိပ်အတိုင်းပဲ ထားပါ။ ကွန်ပျူတာက အဲဒီစာလုံးတွေကိုပဲ နားလည်ပါတယ်။ ခလုတ်နာမည်တွေဖြစ်တဲ့ <strong>Yes</strong>၊ <strong>Unblock</strong>၊ <strong>Run as administrator</strong> ဟာ အင်္ဂလိပ် Windows မျက်နှာပြင်မှာ အဲဒီအတိုင်း ပေါ်ပါတယ်။</p>
+<hr>
+<h2>1. ဆာဗာဖိုလ်ဒါကို ဒီကွန်ပျူတာပေါ် ကူးပါ</h2>
+<p>ယူအက်စ်ဘီက ဖိုင်သယ်ဖို့ပါ။ ယူအက်စ်ဘီထဲကနေ ဆာဗာကို ဖွင့်ပြီးမှ ယူအက်စ်ဘီကို ပြန်ဖြုတ်ရင် ဆေးရုံပရိုဂရမ် ရပ်သွားပါတယ်။</p>
+<ol>
+<li>ယူအက်စ်ဘီကို တပ်ပါ။</li>
+<li>ယူအက်စ်ဘီကို ဖွင့်ပါ။ <code>install-server.ps1</code> ပါတဲ့ ဆာဗာဖိုလ်ဒါကို ဖွင့်ပါ။</li>
+<li>ဖိုင်တစ်ခုမှ မရွေးမိအောင် ပြတင်းပေါက်ထဲက နေရာလွတ်ကို တစ်ချက်နှိပ်ပါ။</li>
+<li><strong>Ctrl</strong> ခလုတ်ကို ဖိထားပြီး <strong>A</strong> ကို နှိပ်ပါ။ ဖိုင်အားလုံး လင်းလာပါတယ်။ <strong>Ctrl</strong> ကို လွှတ်ပါ။</li>
+<li>လင်းနေတဲ့ဖိုင်တစ်ခုကို ညာဘက်နှိပ်ပါ။ <strong>Copy</strong> ကို နှိပ်ပါ။</li>
+<li><strong>This PC</strong> ကို ဖွင့်ပါ။</li>
+<li><strong>Windows (C:)</strong> သို့မဟုတ် <strong>Local Disk (C:)</strong> ကို ဖွင့်ပါ။</li>
+<li>နေရာလွတ်ကို ညာဘက်နှိပ်ပါ။ <strong>New</strong> ကို နှိပ်ပြီး <strong>Folder</strong> ကို နှိပ်ပါ။</li>
+<li><code>Mudita</code> လို့ ရိုက်ပြီး <strong>Enter</strong> နှိပ်ပါ။</li>
+<li><strong>Mudita</strong> ဖိုလ်ဒါကို ဖွင့်ပါ။</li>
+<li>နေရာလွတ်ကို ညာဘက်နှိပ်ပါ။ <strong>Paste</strong> ကို နှိပ်ပါ။</li>
+<li>ကူးပြီးတဲ့အထိ စောင့်ပါ။</li>
+</ol>
+<p>Server IP ကို စာရွက်ပေါ် ရေးပြီးမှ ယူအက်စ်ဘီကို ဖြုတ်ပါ (အပိုင်း ၆)။</p>
+<h2>2. တပ်ဆင်ဖိုင်ကို ခွင့်ပြုပါ</h2>
+<p>တခြားကွန်ပျူတာက လာတဲ့ဖိုင်ကို Windows က တစ်ခါတစ်ရံ ပိတ်ထားပါတယ်။</p>
+<ol>
+<li><code>C:\Mudita</code> ကို ဖွင့်ပါ (ဖိုင်တွေကို ကူးထားတဲ့နေရာ)။</li>
+<li><code>install-server.ps1</code> ကို ရှာပါ။</li>
+<li>ညာဘက်နှိပ်ပါ။ <strong>Properties</strong> ကို နှိပ်ပါ။</li>
+<li><strong>General</strong> စာမျက်နှာရဲ့ အောက်ဆုံးမှာ <strong>Unblock</strong> အကွက်ကို ရှာပါ။</li>
+<li><strong>Unblock</strong> ကို မြင်ရင် အမှန်ခြစ်ပါ။ <strong>OK</strong> နှိပ်ပါ။</li>
+<li><strong>Unblock</strong> မမြင်ရင် <strong>OK</strong> နှိပ်ပြီး ရှေ့ဆက်ပါ။ ဖိုင်က ခွင့်ပြုပြီးသားပါ။</li>
+</ol>
+<p>အပြာနဲ့ အဝါပြတင်းပေါက်က <strong>Windows protected your PC</strong> လို့ ပြရင် <strong>More info</strong> ကို နှိပ်ပါ။ ပြီးရင် <strong>Run anyway</strong> ကို နှိပ်ပါ။</p>
+<h2>3. Windows PowerShell ကို အက်ဒမင်အဖြစ် ဖွင့်ပါ</h2>
+<ol>
+<li>မျက်နှာပြင်အောက်က <strong>Windows</strong> ခလုတ်ကို နှိပ်ပါ (လေးထောင့်ပုံ၊ သို့မဟုတ် ကီးဘုတ်ပေါ်က Windows ပုံ)။</li>
+<li><code>powershell</code> လို့ ရိုက်ပါ။ <strong>Enter</strong> မနှိပ်ရသေးပါ။</li>
+<li>စာရင်းထဲမှာ <strong>Windows PowerShell</strong> ပေါ်လာပါတယ်။</li>
+<li><strong>Windows PowerShell</strong> ကို ညာဘက်နှိပ်ပါ။</li>
+<li><strong>Run as administrator</strong> ကို နှိပ်ပါ။ ကွန်ပျူတာကို ပြင်ခွင့်နဲ့ ဖွင့်တဲ့ခလုတ်ပါ။</li>
+<li><strong>Do you want to allow this app to make changes to your device?</strong> လို့ မေးရင် <strong>Yes</strong> နှိပ်ပါ။</li>
+<li>အပြာရောင်ပြတင်းပေါက် ပွင့်လာပါတယ်။ အပေါ်ခေါင်းစဉ်မှာ <strong>Administrator</strong> လို့ ပါပါတယ်။</li>
+</ol>
+<p>ဒီအပြာပြတင်းပေါက်ကို ပိတ်မထားပါနဲ့။ စာကြောင်းတွေကို ဒီထဲကို ကူးထည့်ပါမယ်။</p>
+<h2>4. ဆာဗာဖိုလ်ဒါထဲကို ဝင်ပါ</h2>
+<p>အပြာပြတင်းပေါက်ဟာ သင်ကူးထားတဲ့ဖိုလ်ဒါကို ကြည့်နေရပါမယ်။</p>
+<ol>
+<li><code>install-server.ps1</code> မြင်ရအောင် <strong>Mudita</strong> ဖိုလ်ဒါကို ပုံမှန်ဖိုလ်ဒါပြတင်းပေါက်မှာ ဖွင့်ပါ။</li>
+<li>အဲဒီဖိုလ်ဒါပြတင်းပေါက်ရဲ့ အပေါ်က ရှည်လျားတဲ့ အဖြူကွက်ကို တစ်ချက်နှိပ်ပါ။ စာတစ်ကြောင်းလုံး အပြာဖြစ်သွားပါတယ်။ အဲဒါက ဖိုလ်ဒါနေရာပါ။</li>
+<li>အပြာစာကြောင်းကို ညာဘက်နှိပ်ပါ။ <strong>Copy</strong> ကို နှိပ်ပါ။</li>
+<li>အပြာရောင် PowerShell ပြတင်းပေါက်ထဲကို နှိပ်ပါ။</li>
+<li><code>cd</code> ရိုက်ပါ၊ နေရာလွတ်တစ်ချက်၊ ပြီးရင် အဖွင့်မျက်တောင် <code>"</code> ရိုက်ပါ။ မျက်တောင်နောက်မှာ ဘာမှ မပါသေးပါ။ ဒီလို ပုံစံပါ။</li>
+</ol>
+<pre><code>cd "
+</code></pre>
+<ol start="6">
+<li>ဖိုလ်ဒါနေရာကို ကူးထည့်ပါ။ <strong>Ctrl</strong> ကို ဖိပြီး <strong>V</strong> နှိပ်ပါ။ ဘာမှ မပေါ်ရင် အပြာပြတင်းပေါက်ထဲကို ညာဘက်တစ်ချက်နှိပ်ပါ။</li>
+<li>အပိတ်မျက်တောင် <code>"</code> ကို ရိုက်ပါ။</li>
+<li><strong>Enter</strong> နှိပ်ပါ။</li>
+</ol>
+<p>နောက်တစ်ကြောင်းမှာ အဲဒီဖိုလ်ဒါနေရာ ပြန်ပေါ်ရပါမယ်။ အနီရောင်စာပေါ်ရင် မျက်တောင်မပါလို့ပါ။ <code>cd "</code> ကြောင်းကို ပြန်ရိုက်ပါ။</p>
+<h2>5. ဒီကွန်ပျူတာမှာ ပထမဆုံးအကြိမ်</h2>
+<p>ဒီကွန်ပျူတာမှာ Mudita Hospital ကို တစ်ခါမှ မဖွင့်ဖူးရင် ဒီအပိုင်းကို သုံးပါ။</p>
+<p>အပြာပြတင်းပေါက်ကို နှိပ်ပါ။ ပထမစာကြောင်းကို ကူးထည့်ပြီး <strong>Enter</strong> နှိပ်ပါ။ ကာဆာပြန်လာမှ ဒုတိယစာကြောင်းကို ကူးထည့်ပြီး <strong>Enter</strong> နှိပ်ပါ။</p>
+<pre><code>Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\install-server.ps1
+</code></pre>
+<p>ပထမစာကြောင်းက ဒီပြတင်းပေါက်ထဲမှာ တပ်ဆင်ဖိုင်ကို ခွင့်ပြုပါတယ်။ ကွန်ပျူတာတစ်လုံးလုံးကို မပြောင်းပါ။</p>
+<p>ဒုတိယစာကြောင်းက ဆာဗာကို တပ်ဆင်ပါတယ်။ စောင့်ပါ။ စာတွေ တက်လာပါမယ်။ စာတက်တာ ရပ်တဲ့အထိ ပြတင်းပေါက်ကို ပိတ်မထားပါနဲ့။</p>
+<p><strong>Install complete.</strong> လို့ မြင်ရပါမယ်။ နောက်ပြီး ဒီစာကြောင်းတွေလည်း မြင်ရပါမယ်။</p>
+<ul class="ok">
+<li><strong>Folder:</strong> <code>C:\MuditaHospital\Server</code></li>
+<li><strong>Health:</strong> <code>http://127.0.0.1:8080/api/health</code></li>
+<li><strong>LAN:</strong> နဲ့ စတဲ့ စာကြောင်း တစ်ကြောင်း သို့မဟုတ် အများကြီး</li>
+</ul>
+<p>အပိုင်း ၆ ကို ဆက်ပါ။</p>
+<p>စာက အနီရောင်ဖြစ်ရင် အပိုင်း ၇ ကို သွားပါ။ ဒီကွန်ပျူတာမှာ Mudita Hospital ရှိနှင့်ပြီးသားဆိုရင် ဒီစာကြောင်းတွေကို ဖွင့်ထားတဲ့ဆာဗာပေါ် ထပ်မလုပ်ပါနဲ့။ အပိုင်း ၈ ကို သုံးပါ။</p>
+<h2>6. Server IP ကို ရေးမှတ်ပါ</h2>
+<p>ဒီကွန်ပျူတာဘေးက စာရွက်ပေါ်မှာ <strong>LAN:</strong> နဲ့ စတဲ့ စာကြောင်းတိုင်းကို ရေးပါ။</p>
+<p>Server IP က အဲဒီစာကြောင်းမှာ <code>http://</code> နဲ့ <code>:8080</code> ကြားက နံပါတ်ပါ။</p>
+<p>ဥပမာ စာကြောင်းက <code>http://192.168.1.10:8080/api/health</code> ဆိုရင် Server IP က <code>192.168.1.10</code> ပါ။</p>
+<ul>
+<li><code>192.168</code> နဲ့ စတဲ့နံပါတ်ကို မြင်ရင် အဲဒါကို ရေးပါ။</li>
+<li><code>10.</code> သို့မဟုတ် <code>172.</code> နဲ့ စတဲ့နံပါတ်ပဲ မြင်ရင် အဲဒီနံပါတ်ကို ရေးပါ။</li>
+<li><code>127.0.0.1</code> က <strong>Health</strong> စာကြောင်းပါ။ တခြားကွန်ပျူတာတွေက <code>127.0.0.1</code> ကို မသုံးရပါ။ <strong>ဒီကွန်ပျူတာမှာပဲ</strong> ဆေးခန်းပရိုဂရမ် တပ်ရင် LAN နံပါတ်အစား <strong>ဤကွန်ပျူတာ (127.0.0.1)</strong> ခလုတ်ကို နှိပ်ပါတယ်။ အဲဒါက ဆေးခန်းလမ်းညွှန်ထဲမှာ ပါတယ်။</li>
+</ul>
+<p><strong>LAN</strong> စာကြောင်း မပေါ်ရင် ကြိုးမတပ်ရသေးတာ သို့မဟုတ် Wi-Fi ပိတ်နေတာ ဖြစ်နိုင်ပါတယ်။ ကြိုးတပ်ပြီး အပိုင်း ၅ က စာကြောင်းနှစ်ကြောင်းကို ပြန်လုပ်ပါ။</p>
+<p>ဆာဗာ အလုပ်လုပ်နေသလား စစ်ပါ။</p>
+<ol>
+<li><strong>Microsoft Edge</strong> ကို ဖွင့်ပါ (အပြာနဲ့ အစိမ်းရောင် ဝဲလုံးပုံ)။</li>
+<li>အပေါ်က ရှည်လျားတဲ့အကွက်ကို နှိပ်ပါ။</li>
+<li><code>http://127.0.0.1:8080/api/health</code> လို့ ရိုက်ပြီး <strong>Enter</strong> နှိပ်ပါ။</li>
+<li>စာမျက်နှာမှာ <code>"status":"ok"</code> နဲ့ <code>"db":"ok"</code> ပါရပါမယ်။</li>
+</ol>
+<p>အဲဒါကို မြင်ရင် အပြာပြတင်းပေါက်ကို ပိတ်လို့ ရပါပြီ။ စာရိုက်ပြီး ပိတ်စရာ မလိုပါ။ အပြာပြတင်းပေါက်က <strong>X</strong> ကို နှိပ်ပါ။</p>
+<p>ဆာဗာ တပ်ပြီးပါပြီ။ ဒီကွန်ပျူတာကို နောက်တစ်ခါ ဖွင့်ရင် ဆာဗာက သူ့ဖာသာ ပြန်စပါတယ်။ မနက်တိုင်း <code>mudita-api</code> ကို ကိုယ်တိုင် ဖွင့်စရာ မလိုပါ။</p>
+<h2>7. အပြာပြတင်းပေါက်မှာ အမှားပေါ်ရင်</h2>
+<p>အနီရောင်စာကို ဖတ်ပြီး ကိုက်ညီတဲ့အဆင့်ကို လုပ်ပါ။ ပြီးရင် အပိုင်း ၅ က စာကြောင်းနှစ်ကြောင်းကို ပြန်လုပ်ပါ။</p>
+<p><strong>running scripts is disabled</strong> လို့ ပါရင်</p>
+<p>အပိုင်း ၅ ရဲ့ ပထမစာကြောင်းကို ကျော်သွားတာ၊ သို့မဟုတ် Windows PowerShell မဟုတ်တဲ့ ပြတင်းပေါက်ထဲ ကူးထည့်မိတာပါ။ ပြတင်းပေါက်ကို ပိတ်ပါ။ အပိုင်း ၃၊ ၄၊ ၅ ကို ပြန်လုပ်ပါ။ ခေါင်းစဉ်မှာ <strong>Administrator</strong> ပါရပါမယ်။</p>
+<p><strong>Not digitally signed</strong> သို့မဟုတ် <strong>operation is blocked</strong> လို့ ပါရင်</p>
+<p>အပိုင်း ၂ (<strong>Unblock</strong> အမှန်ခြစ်) ကို ပြန်လုပ်ပါ။ ပြီးရင် အပိုင်း ၃၊ ၄၊ ၅ ကို ပြန်လုပ်ပါ။</p>
+<p><strong>Administrator</strong> နဲ့ ဖွင့်ရမယ်လို့ ပါရင်၊ သို့မဟုတ် <strong>Access is denied</strong> လို့ ပါရင်</p>
+<p>အပြာပြတင်းပေါက်ကို <strong>Run as administrator</strong> မပါဘဲ ဖွင့်ထားပါတယ်။ ပိတ်ပါ။ အပိုင်း ၃ ကို ပြန်လုပ်ပြီး ခွင့်ပြုမေးတဲ့ပြတင်းပေါက်မှာ <strong>Yes</strong> နှိပ်ပါ။ ပြီးရင် အပိုင်း ၄ နဲ့ ၅ ကို ပြန်လုပ်ပါ။</p>
+<p><strong>mudita-api.exe not found</strong> လို့ ပါရင်</p>
+<p>အပြာပြတင်းပေါက်က ကူးထားတဲ့ဖိုလ်ဒါထဲမှာ မရှိပါ။ အပိုင်း ၄ ကို ပြန်လုပ်ပါ။ တပ်ဆင်စာကြောင်းကို မကူးခင် အဲဒီဖိုလ်ဒါထဲမှာ <code>install-server.ps1</code> ကို မြင်ရပါမယ်။</p>
+<p>ဖိုင်ကို တခြားပရိုဂရမ်က သုံးနေလို့ <strong>cannot access the file</strong> လို့ ပါရင်</p>
+<p>ဒီကွန်ပျူတာမှာ Mudita ဖွင့်နေပြီးပါပြီ။ အပိုင်း ၈ ကို သုံးပါ။</p>
+<h2>8. ဒီကွန်ပျူတာမှာ Mudita ရှိပြီးသား (အသစ်ပြောင်းခြင်း)</h2>
+<p><code>C:\MuditaHospital\Server</code> ရှိပြီး ဆေးရုံမှတ်တမ်းတွေ ရှိနေရင် ဒီအပိုင်းကို သုံးပါ။</p>
+<p>တပ်ဆင်ဖိုင်က ပရိုဂရမ်ကိုပဲ အစားထိုးပါတယ်။ ဒီအရာတွေကို မထိပါ။</p>
+<ul class="keep">
+<li><code>C:\MuditaHospital\Server\data</code> (မှတ်တမ်းများ)</li>
+<li><code>C:\MuditaHospital\Server\backups</code></li>
+<li><code>C:\MuditaHospital\Server\config.json</code></li>
+</ul>
+<p>ပရိုဂရမ်အသစ်က ပထမဆုံးစတဲ့အခါ မှတ်တမ်းတွေကို သူ့ဖာသာ ပြင်ပါတယ်။ ဒေတာဘေ့စ်ဖိုင်ကို ကူးစရာမလိုပါ။ ဖျက်စရာလည်း မလိုပါ။</p>
+<h3>8.1 အရင်ဆုံး backups ကို ယူအက်စ်ဘီပေါ် ကူးပါ</h3>
+<ol>
+<li><strong>This PC</strong> ကို ဖွင့်ပါ။ <strong>Windows (C:)</strong>၊ <strong>MuditaHospital</strong>၊ <strong>Server</strong> ကို ဆင့်ဖွင့်ပါ။</li>
+<li><strong>backups</strong> ဖိုလ်ဒါကို ညာဘက်နှိပ်ပါ။ <strong>Copy</strong> နှိပ်ပါ။</li>
+<li>ယူအက်စ်ဘီကို ဖွင့်ပါ။ နေရာလွတ်ကို ညာဘက်နှိပ်ပါ။ <strong>Paste</strong> နှိပ်ပါ။</li>
+<li>ကူးပြီးတဲ့အထိ စောင့်ပါ။ ပြီးမှ ယူအက်စ်ဘီကို ဖြုတ်ပါ။</li>
+</ol>
+<h3>8.2 ဆာဗာအဟောင်းကို ရပ်ပြီးမှ ပြန်တပ်ပါ</h3>
+<p>ပရိုဂရမ်အဟောင်းက သူ့ဖိုင်ကို ကိုင်ထားပါတယ်။ ပရိုဂရမ်အဟောင်းကို ရပ်မှ ဖိုင်အသစ်ကို ကူးလို့ ရပါတယ်။ ရပ်လိုက်လို့ မှတ်တမ်းမပျက်ပါ။</p>
+<p>အပြာရောင် <strong>Administrator</strong> ပြတင်းပေါက်ဟာ ယူအက်စ်ဘီက အသစ်ကူးထားတဲ့ဖိုလ်ဒါထဲမှာ ရှိအောင် အပိုင်း ၂၊ ၃၊ ၄ ကို ပြန်လုပ်ပါ။</p>
+<p>တစ်ကြောင်းချင်း ကူးထည့်ပါ။ ကြောင်းတိုင်းနောက် <strong>Enter</strong> နှိပ်ပါ။ ကာဆာပြန်လာမှ နောက်တစ်ကြောင်းကို ကူးပါ။</p>
+<pre><code>Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+Stop-ScheduledTask -TaskName "MuditaHospitalAPI"
+Get-Process mudita-api -ErrorAction SilentlyContinue | Stop-Process -Force
+.\install-server.ps1
+</code></pre>
+<p>စာကြောင်းတစ်ကြောင်းစီက ဘာလုပ်သလဲ။</p>
+<ol>
+<li>ဒီပြတင်းပေါက်ထဲမှာ တပ်ဆင်ဖိုင်ကို ခွင့်ပြုပါတယ်။</li>
+<li><strong>MuditaHospitalAPI</strong> အလုပ်ကို ပိတ်ပါတယ်။ ကွန်ပျူတာဖွင့်တိုင်း ဆာဗာကို စပေးတဲ့အလုပ်ပါ။ ပိတ်လိုက်လို့ မှတ်တမ်းမပျက်ပါ။</li>
+<li>ဆာဗာအဟောင်း ဖွင့်နေသေးရင် ပိတ်ပါတယ်။</li>
+<li>ပရိုဂရမ်အသစ်ကို <code>C:\MuditaHospital\Server</code> ထဲ တပ်ပြီး ဆာဗာကို ပြန်ဖွင့်ပါတယ်။</li>
+</ol>
+<p><strong>MuditaHospitalAPI</strong> အလုပ်ကို ရှာမတွေ့ဘူးလို့ အနီရောင်ပေါ်ရင် ဒီကွန်ပျူတာမှာ ဆာဗာအဟောင်း မရှိပါ။ အပိုင်း ၅ ကို သုံးပါ။</p>
+<p><strong>Install complete</strong> လို့ ပေါ်ရင် အပိုင်း ၆ ကို ပြန်လုပ်ပါ။ ဆေးခန်းပရိုဂရမ်ကို ဖွင့်ပြီး ဘေလ်အဟောင်းတွေ ရှိသေးသလား ကြည့်ပါ။</p>
+<p>Server IP က အရင်အတိုင်း သုံးလို့ ရပါတယ်။ နံပါတ်ကိုယ်တိုင် ပြောင်းသွားမှပဲ (အပိုင်း ၉) စားပွဲကွန်ပျူတာတွေမှာ နံပါတ်အသစ် လိုပါတယ်။</p>
+<h2>9. Server IP ကို နောက်မှ ပြန်ရှာခြင်း</h2>
+<p>စာရွက်ပျောက်ရင် ဒီအပိုင်းကို သုံးပါ။</p>
+<ol>
+<li><strong>Windows</strong> ခလုတ်ကို နှိပ်ပါ။</li>
+<li><code>settings</code> လို့ ရိုက်ပါ။ <strong>Settings</strong> ကို နှိပ်ပါ။</li>
+<li><strong>Network &amp; internet</strong> ကို နှိပ်ပါ။</li>
+<li>ကြိုးသုံးရင် <strong>Ethernet</strong> ကို နှိပ်ပါ။ Wi-Fi သုံးရင် <strong>Wi-Fi</strong> ကို နှိပ်ပြီး ချိတ်ထားတဲ့ ကွန်ရက်နာမည်ကို နှိပ်ပါ။</li>
+<li><strong>IPv4 address</strong> ကို ရှာပါ။ အဲဒီနံပါတ်ကို ရေးမှတ်ပါ။ အဲဒါက Server IP ပါ။</li>
+</ol>
+<p><code>127.0.0.1</code> ကို ကျော်ပါ။ <code>169.254</code> နဲ့ စတဲ့နံပါတ်ကိုလည်း ကျော်ပါ။ အဲဒါတွေက တခြားကွန်ပျူတာအတွက် Server IP မဟုတ်ပါ။</p>
+<p>ဆာဗာကွန်ပျူတာပေါ်က Edge မှာ <code>http://127.0.0.1:8080/api/health</code> ကို ဖွင့်ကြည့်လို့ ရပါတယ်။ <code>"status":"ok"</code> ပါရင် ဆာဗာပရိုဂရမ် အလုပ်လုပ်နေပါတယ်။ အဲဒီစာမျက်နှာက တခြားကွန်ပျူတာတွေ လိုတဲ့နံပါတ်ကို မပြပါ။ Settings ထဲက <strong>IPv4 address</strong> က အဲဒီနံပါတ်ပါ။</p>
+<h2>10. နံပါတ်ကို မပြောင်းအောင် ထားခြင်း</h2>
+<p>တခြားကွန်ပျူတာတွေက Server IP ကို မှတ်ထားပါတယ်။ ဒီကွန်ပျူတာက ပြန်ဖွင့်တိုင်း နံပါတ်အသစ် ယူသွားရင် စားပွဲတိုင်းမှာ ဆာဗာမရဘူးလို့ ပေါ်ပါမယ်။</p>
+<p>ကွန်ရက်ကို ကြည့်တဲ့သူက နံပါတ်ပြောင်းတတ်တယ်လို့ ပြောမှ၊ သို့မဟုတ် ဒီအကြောင်းကြောင့် စားပွဲတွေ ချိတ်လွှတ်ပြီးမှသာ နံပါတ်သတ်မှတ်ပါ။</p>
+<ol>
+<li><strong>IPv4 address</strong> မြင်ရတဲ့အထိ အပိုင်း ၉ ကို လုပ်ပါ။ အခုသုံးနေတဲ့နံပါတ်ကို ရေးပါ။ <strong>Gateway</strong> နံပါတ် ပေါ်ရင် အဲဒါကိုလည်း ရေးပါ။</li>
+<li><strong>IP assignment</strong> (Windows 11) သို့မဟုတ် <strong>IP settings</strong> ကို ရှာပါ။ <strong>Edit</strong> နှိပ်ပါ။</li>
+<li><strong>Manual</strong> ကို ရွေးပါ။ <strong>IPv4</strong> ကို ဖွင့်ပါ။</li>
+<li><strong>IP address:</strong> ရေးမှတ်ထားတဲ့ နံပါတ်အတိုင်း ထည့်ပါ။ နံပါတ်အသစ် မတီပါနဲ့။</li>
+<li><strong>Subnet mask:</strong> <code>255.255.255.0</code> (တစ်ချို့မျက်နှာပြင်က subnet prefix length <code>24</code> ကို မေးပါတယ်။ အဲဒါက အတူတူပါပဲ)။</li>
+<li><strong>Gateway:</strong> ရေးမှတ်ထားတဲ့ gateway။ gateway တစ်ခါမှ မမြင်ရင် ကွက်လပ်ထားပါ။</li>
+<li><strong>Save</strong> နှိပ်ပါ။</li>
+</ol>
+<p>ဒီနောက် ကွန်ရက်ပြတ်သွားရင် အဲဒီမျက်နှာပြင်ကို ပြန်သွားပြီး IP assignment ကို <strong>Automatic (DHCP)</strong> ပြန်ထားပါ။</p>
+<p>Windows 10 မှာ ဒီနေရာမှာ ရှိတတ်ပါတယ်။ <strong>Settings</strong> → <strong>Network &amp; Internet</strong> → <strong>Ethernet</strong> → <strong>Change adapter options</strong> → <strong>Ethernet</strong> ကို ညာဘက်နှိပ် → <strong>Properties</strong> → <strong>Internet Protocol Version 4 (TCP/IPv4)</strong> → <strong>Properties</strong> → <strong>Use the following IP address</strong>။</p>
+<h2>11. မနက်တိုင်း</h2>
+<ol>
+<li>ဒီကွန်ပျူတာကို ဖွင့်ပါ။</li>
+<li>တစ်နေ့လုံး ဖွင့်ထားပါ။</li>
+<li>PowerShell ကို ဖွင့်စရာ မလိုပါ။ ဆာဗာက သူ့ဖာသာ စပါတယ်။</li>
+</ol>
+<p>ဒီကွန်ပျူတာ ဖွင့်ထားပြီး ကွန်ရက်တူတူနဲ့ ချိတ်ထားမှ တခြားစားပွဲတွေ အလုပ်လုပ်နိုင်ပါတယ်။</p>
+<h2>12. ဒီအရာတွေကို မထိပါနဲ့</h2>
+<ul class="caution">
+<li><code>C:\MuditaHospital\Server</code> ဖိုလ်ဒါကို ဒီအတိုင်း ထားပါ။ အထဲက <strong>data</strong> ဖိုလ်ဒါက ဆေးရုံမှတ်တမ်းပါ။</li>
+<li><code>uninstall-server.ps1</code> ကို မဖွင့်ပါနဲ့။ အဲဒီဖိုင်က ဆာဗာကို ဖယ်နိုင်ပါတယ်။ ရွေးချယ်မှုတစ်ခုက မှတ်တမ်းတွေကို ဖျက်ပါတယ်။</li>
+<li>တခြားကွန်ပျူတာက ဖိုင်ကို <strong>data</strong> ဖိုလ်ဒါထဲ မထည့်ပါနဲ့။ လက်တော့ပ်က <code>mudita.db</code> နဲ့ အစားမထိုးပါနဲ့။</li>
+</ul>
+</section>
+</body>
+</html>

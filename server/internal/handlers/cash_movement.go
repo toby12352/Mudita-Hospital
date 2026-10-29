@@ -3,13 +3,16 @@ package handlers
 import "database/sql"
 
 // cashMovement is the one cash-drawer total for an Asia/Yangon civil day.
-// income_mmk is desk grand_total_mmk plus IPD net (deposits, collections, refunds).
+// income_mmk is desk grand_total_mmk plus IPD earned charges (ward, charge, reversal).
+// Deposits, collections, and refunds are drawer cash only; they are not income.
 // expense_mmk is signed: negative means money left the hospital.
-// net_cash_mmk is income_mmk + expense_mmk. Do not subtract expense_mmk again.
+// net_cash_mmk is desk cash + IPD drawer + expense_mmk. Do not use income_mmk here.
 type cashMovement struct {
 	Date         string
 	Desk         *cashReport
 	IPD          *ipdCashReport
+	IPDEarned    *ipdEarnedReport
+	OpenStays    *ipdOpenStayReport
 	ExpenseLines []expenseCashLine
 	IncomeMMK    int64
 	ExpenseMMK   int64
@@ -36,19 +39,30 @@ func buildCashMovement(db *sql.DB, date string) (*cashMovement, error) {
 	if err != nil {
 		return nil, err
 	}
+	earned, err := buildIpdEarned(db, date)
+	if err != nil {
+		return nil, err
+	}
+	openStays, err := buildIpdOpenStays(db, date)
+	if err != nil {
+		return nil, err
+	}
 	expenses, expenseMMK, err := buildExpenseCash(db, date)
 	if err != nil {
 		return nil, err
 	}
-	income := desk.GrandTotal + ipd.NetMMK
+	income := desk.GrandTotal + earned.EarnedMMK
+	drawer := desk.GrandTotal + ipd.NetMMK
 	return &cashMovement{
 		Date:         date,
 		Desk:         desk,
 		IPD:          ipd,
+		IPDEarned:    earned,
+		OpenStays:    openStays,
 		ExpenseLines: expenses,
 		IncomeMMK:    income,
 		ExpenseMMK:   expenseMMK,
-		NetCashMMK:   income + expenseMMK,
+		NetCashMMK:   drawer + expenseMMK,
 	}, nil
 }
 

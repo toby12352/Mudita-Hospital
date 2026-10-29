@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"unicode/utf8"
 
 	"mudita-hospital/server/internal/audit"
 	"mudita-hospital/server/internal/auth"
@@ -32,6 +33,7 @@ type ipdAdmission struct {
 	PatientID       int64           `json:"patient_id"`
 	Status          string          `json:"status"`
 	Notes           string          `json:"notes"`
+	RoomNo          string          `json:"room_no"`
 	AdmittedAt      string          `json:"admitted_at"`
 	DischargedAt    *string         `json:"discharged_at"`
 	CreatedByUserID *int64          `json:"created_by_user_id"`
@@ -49,7 +51,8 @@ type ipdAdmitRequest struct {
 }
 
 type ipdNotesRequest struct {
-	Notes string `json:"notes"`
+	Notes  string  `json:"notes"`
+	RoomNo *string `json:"room_no"`
 }
 
 func (h *IPD) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -279,12 +282,33 @@ func (h *IPD) updateNotes(w http.ResponseWriter, r *http.Request, path string) {
 		return
 	}
 	notes := strings.TrimSpace(req.Notes)
+	var room *string
+	if req.RoomNo != nil {
+		trimmed := strings.TrimSpace(*req.RoomNo)
+		if utf8.RuneCountInString(trimmed) > 32 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "room number too long"})
+			return
+		}
+		room = &trimmed
+	}
 
-	res, err := h.DB.Exec(`
-		UPDATE ipd_admissions
-		SET notes = ?, updated_at = datetime('now')
-		WHERE id = ? AND status = 'open'
-	`, notes, id)
+	var (
+		res sql.Result
+		err error
+	)
+	if room != nil {
+		res, err = h.DB.Exec(`
+			UPDATE ipd_admissions
+			SET notes = ?, room_no = ?, updated_at = datetime('now')
+			WHERE id = ? AND status = 'open'
+		`, notes, *room, id)
+	} else {
+		res, err = h.DB.Exec(`
+			UPDATE ipd_admissions
+			SET notes = ?, updated_at = datetime('now')
+			WHERE id = ? AND status = 'open'
+		`, notes, id)
+	}
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "update failed"})
 		return
@@ -307,9 +331,11 @@ func (h *IPD) updateNotes(w http.ResponseWriter, r *http.Request, path string) {
 
 	if user := middleware.UserFromContext(r.Context()); user != nil {
 		uid := user.ID
-		audit.WriteAudit(h.DB, &uid, "update", "ipd_admission", &id, map[string]any{
-			"notes": notes,
-		})
+		detail := map[string]any{"notes": notes}
+		if room != nil {
+			detail["room_no"] = *room
+		}
+		audit.WriteAudit(h.DB, &uid, "update", "ipd_admission", &id, detail)
 	}
 
 	row, err := loadAdmissionDetail(h.DB, id)
@@ -321,7 +347,7 @@ func (h *IPD) updateNotes(w http.ResponseWriter, r *http.Request, path string) {
 }
 
 const ipdAdmissionCols = `
-	a.id, a.admission_no, a.patient_id, a.status, a.notes, a.admitted_at,
+	a.id, a.admission_no, a.patient_id, a.status, a.notes, a.room_no, a.admitted_at,
 	a.discharged_at, a.created_by_user_id, a.created_at, a.updated_at,
 	p.id, p.name, p.phone, p.age_years, p.gender`
 
@@ -341,7 +367,7 @@ func scanAdmission(s scanner) (ipdAdmission, error) {
 	var createdBy sql.NullInt64
 	var age sql.NullInt64
 	err := s.Scan(
-		&row.ID, &row.AdmissionNo, &row.PatientID, &row.Status, &row.Notes, &row.AdmittedAt,
+		&row.ID, &row.AdmissionNo, &row.PatientID, &row.Status, &row.Notes, &row.RoomNo, &row.AdmittedAt,
 		&discharged, &createdBy, &row.CreatedAt, &row.UpdatedAt,
 		&row.Patient.ID, &row.Patient.Name, &row.Patient.Phone, &age, &row.Patient.Gender,
 	)

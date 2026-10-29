@@ -1,4 +1,6 @@
-/** One-page staff cheat sheet (EN + MY). Printable HTML for laminate. */
+/** One-page staff cheat sheet (EN + MY). Printable HTML for laminate.
+ * Words match docs/CHEATSHEET.md. Both languages stay on this page.
+ */
 
 import { openPrintPreview } from "@/shared/print";
 
@@ -19,91 +21,120 @@ export function cheatSheetHTML(): string {
   .footer { margin-top: 10px; font-size: 10px; color: #555; }
   @media print { .noprint { display: none; } }
 </style></head><body>
-<h1>Mudita Hospital — Staff cheat sheet / ဝန်ထမ်း လမ်းညွှန်</h1>
-<p>Offline LAN · OPD · OT · Pharmacy · Print this page and laminate for the desk.</p>
+<h1>Mudita Hospital — Staff cheat sheet</h1>
+<p>Print this page and laminate it for the OPD, OT, pharmacy, patients, and IPD desks.</p>
 
 <div class="grid">
   <section>
     <h2>1. Sign in / ဝင်ရန်</h2>
     <ul>
-      <li>Open Mudita → enter <strong>Server IP</strong> once (port 8080).</li>
-      <li class="my">မုဒိတာ ဖွင့် → ဆာဗာ IP တစ်ကြိမ်ထည့် (ပို့တ် 8080)။</li>
-      <li>OPD: <span class="kbd">opd</span> · OT: <span class="kbd">ot</span> · Pharmacy: <span class="kbd">pharmacy</span> · Patients: <span class="kbd">patients</span> · IPD: <span class="kbd">ipd</span> · Admin: <span class="kbd">admin</span> (picks one portal).</li>
-      <li>Idle 15 min → auto lock. Language: EN / မြန်မာ (top bar).</li>
-      <li>History shows this desk's bills only.</li>
+      <li>Open Mudita on the clinic PC.</li>
+      <li>First launch: enter <strong>Server IP</strong> (port <span class="kbd">8080</span>), e.g. <span class="kbd">192.168.1.10</span>.</li>
+      <li><strong>Sign in</strong> (ဝင်ရန်). A desk login opens only its own module. Switch language <strong>English</strong> / <strong>မြန်မာ</strong> in the top bar.</li>
+      <li>OPD → <strong>OPD Bill</strong> (OPD ဘေလ်). OT → <strong>OT Bill</strong> (OT ဘေလ်). Pharmacy → <strong>Pharmacy Bill</strong> (ဆေးဆိုင် ဘေလ်).</li>
+      <li>Patients → <strong>Patient Charts</strong> (လူနာမှတ်တမ်း). IPD → <strong>Stays</strong> (တက်ရောက်မှု).</li>
+      <li>Admin → Home, then any module. Settings and training seed are Admin-only.</li>
+      <li>Idle ~15 minutes → auto lock.</li>
+      <li><strong>History</strong> (မှတ်တမ်း, <span class="kbd">F9</span>) lists that desk's bills only. Another desk's cash is not on this screen.</li>
     </ul>
   </section>
   <section>
-    <h2>2. OPD bill (cash) / ပြင်ပဘေလ်</h2>
+    <h2>2. Sale rail / ရောင်းဘေလ်</h2>
     <ul>
-      <li>Home → <strong>OPD</strong> → Bill.</li>
-      <li>Patient name → doctor → add <strong>service</strong> or consultation (no medicines here).</li>
-      <li class="my">လူနာအမည် → ဆရာဝန် → ဝန်ဆောင်မှု / consultation။ ဆေးသည် Pharmacy Billing တွင်။</li>
-      <li><strong>Save draft (F5)</strong> = unpaid bill. <strong>Print (F6)</strong> = save + receipt (Printed — Not Paid; still editable). <strong>Mark Paid (F7)</strong> = collect cash and lock the bill.</li>
-      <li class="my">မူကြမ်းသိမ်း (F5) = မပေးရသေး။ ပရင့် (F6) = သိမ်း + ပြေစာ (ပြင်နိုင်)။ ပေးပြီးမှတ် (F7) = ငွေကောက် + ဘေလ်ပိတ်။</li>
-      <li><strong>History (F9)</strong> · <strong>Void Bills (^F8)</strong> void with reason · <strong>Cancel (F10)</strong> clears form · <strong>New bill (F2)</strong> next patient.</li>
-      <li><strong>Print (F6)</strong> opens the receipt preview; the preview <strong>Print</strong> button opens the Windows print dialog. Set the EPSON roll to <strong>80 mm</strong> in Windows printer preferences.</li>
+      <li><strong>OPD Bill</strong>, <strong>OT Bill</strong>, <strong>Pharmacy Bill</strong> (sale), and <strong>Expense bill</strong> share this rail.</li>
+      <li><span class="kbd">F5</span> <strong>Save draft</strong> · မူကြမ်းသိမ်း — Bill stays editable. No cash. No stock.</li>
+      <li><span class="kbd">F6</span> <strong>Print</strong> · ပရင့် — Saves if needed and opens the receipt. Status <strong>Printed — Not Paid</strong> · ပရင့်ပြီး — မပေးရသေး. Still editable. No cash. No stock.</li>
+      <li><span class="kbd">F7</span> <strong>Mark Paid</strong> · ပေးပြီးမှတ် — Desk cash. Subtitle <strong>Final · locks bill</strong> · နောက်ဆုံး · ဘေလ်ပိတ်မည်. Editing stops. Pharmacy sale deducts MAIN stock. OT Bill deducts inventory quantity. Expense does not move stock.</li>
+      <li><strong>Charge to IPD</strong> · IPD သို့ တင် — Not a function key. F7 does not do this. Subtitle <strong>Not desk cash</strong> · ကောင်တာငွေ မဟုတ်. Shown only when the chosen chart has an open stay. A typed name never shows it. Not on Expense bill or Transfer to OT.</li>
+      <li><span class="kbd">^F8</span> <strong>Void Bills</strong> · ဘေလ်ပယ်ဖျက် — Ctrl+F8 or Cmd+F8. Reason required (<strong>Required to void</strong> · ပယ်ဖျက်ရန် လိုအပ်သည်). The dialog confirm button is <strong>Delete</strong> · ဖျက်ရန်.</li>
+      <li><span class="kbd">F9</span> <strong>History</strong> · မှတ်တမ်း — This desk's bills.</li>
+      <li><span class="kbd">F10</span> <strong>Cancel</strong> · မလုပ်တော့ — Clears the form.</li>
+      <li><span class="kbd">F2</span> <strong>New bill</strong> · ဘေလ်အသစ် — Next bill.</li>
+      <li>A printed bill can still be edited until <strong>Mark Paid</strong> or <strong>Charge to IPD</strong>. After <strong>Mark Paid</strong> the button shows <strong>Paid</strong> · ပေးပြီး. A bill charged to a stay shows <strong>Charged to IPD</strong> · IPD သို့ တင်ပြီး.</li>
+      <li>OPD, pharmacy, and expense receipts use the <strong>80 mm</strong> roll. OT Bill <strong>Print</strong> uses <strong>A4</strong>.</li>
     </ul>
   </section>
   <section>
-    <h2>3. OT cupboard / ခွဲစိတ် ဆေးဗီရို</h2>
+    <h2>3. OPD Bill / OPD ဘေလ်</h2>
     <ul>
-      <li>Pharmacy: <strong>Transfer to OT</strong> → add medicines → <strong>Transfer</strong>, then <strong>Confirm transfer</strong>. Saleable stock moves. Batch number and expiry are optional.</li>
-      <li class="my">ဆေးဆိုင်က OT သို့ လွှဲ တွင် ဆေးထည့်ပြီး အတည်ပြုမှ ဆေးဗီရိုသို့ ရောက်သည်။ အသုတ်နံပါတ် မထည့်လည်း ရသည်။</li>
-      <li>OT cupboard: <strong>Return to pharmacy</strong> for unused qty.</li>
-      <li>New OT bill from cupboard on hand → <strong>Print (F6)</strong> for a receipt you can still edit, or <strong>Mark Paid (F7)</strong> to collect cash and deduct cupboard qty. Void puts paid qty back.</li>
-      <li class="my">ပရင့် (F6) = ပြေစာ (ပြင်နိုင်)။ ပေးပြီးမှတ် (F7) = ငွေကောက် + ဆေးဗီရိုလျှော့။ မသုံးသော အရေအတွက်ကို ဆေးဆိုင်သို့ ပြန်ပို့ပါ။</li>
+      <li>Patient, doctor, then a service or consultation. Medicines are billed on <strong>Pharmacy Bill</strong>.</li>
+      <li>Use the sale rail. <strong>Charge to IPD</strong> appears only for a chart with an open stay, and it still is not desk cash.</li>
     </ul>
   </section>
   <section>
-    <h2>4. Pharmacy Billing / ဆေးဆိုင် ဘေလ်</h2>
+    <h2>4. OT / OT</h2>
     <ul>
-      <li>Home → <strong>Pharmacy Billing</strong> → New bill → add medicines by code.</li>
-      <li>Enter qty in <strong>billing units</strong> (e.g. mL); system converts to stock units.</li>
-      <li><strong>Save draft (F5)</strong> keeps unpaid. <strong>Print (F6)</strong> opens a receipt (still editable). <strong>Mark Paid (F7)</strong> collects cash and deducts stock (FEFO). Void restores stock.</li>
-      <li class="my">မူကြမ်းသိမ်း (F5)။ ပရင့် (F6) = ပြေစာ (ပြင်နိုင်)။ ပေးပြီးမှတ် (F7) = ငွေကောက် + စတော့လျှော့။</li>
+      <li>Pharmacy: <strong>Transfer to OT</strong> (OT သို့ လွှဲ). No cash. F6 does nothing and <strong>Print</strong> is not on this rail. First F7 is <strong>Transfer</strong> (လွှဲမည်). Second F7 is <strong>Confirm transfer</strong> (လွှဲခြင်း အတည်ပြု) and moves saleable MAIN stock into OT inventory. Batch number and expiry are optional. The slip number starts with <span class="kbd">TO-</span>.</li>
+      <li>OT sidebar <strong>Maintenance</strong> (ထိန်းသိမ်းရေး) opens <strong>Inventory</strong> (စာရင်း). Quantity appears after <strong>Confirm transfer</strong>. <strong>Return to pharmacy</strong> (ဆေးဆိုင်သို့ ပြန်ပို့ရန်) sends unused quantity back. That is not <strong>Return in</strong> and not <strong>Void Bills</strong>. The <strong>Services</strong> (ဝန်ဆောင်မှုများ) tab on the same page holds OT-only services.</li>
+      <li><strong>OT Bill</strong> uses the sale rail. <strong>Mark Paid</strong> takes desk cash and deducts inventory quantity. Void of a paid OT bill puts that quantity back. <strong>Charge to IPD</strong> is on the bill when the chart has an open stay, not on <strong>Inventory</strong>.</li>
     </ul>
   </section>
   <section>
-    <h2>4b. Pharmacy Return in / ဆေးပြန်သွင်း</h2>
+    <h2>5. Pharmacy / ဆေးဆိုင်</h2>
     <ul>
-      <li>Pharmacy portal → <strong>Return in</strong> → add returned medicines by code (same form as sales).</li>
-      <li><strong>Print (F6)</strong> opens the slip (still editable). <strong>Mark returned (F7)</strong> puts qty back into MAIN and refunds cash on the day book.</li>
-      <li class="my">ပရင့် (F6) = စလစ် (ပြင်နိုင်)။ ပြန်သွင်းမှတ် (F7) = MAIN စတော့ပြန်ထည့် + နေ့စာအုပ်တွင် ငွေပြန်အမ်း။</li>
+      <li><strong>Pharmacy Bill</strong> (sale): sale rail. <strong>Mark Paid</strong> takes desk cash and deducts MAIN stock, earliest expiry first. <strong>Charge to IPD</strong> only for a linked chart with an open stay. Void of a paid sale puts MAIN quantity back.</li>
+      <li><strong>Return in</strong> (ပြန်သွင်း). This is not the OT inventory return. F5 <strong>Save draft</strong>. F6 <strong>Print</strong> (the slip stays editable). F7 <strong>Mark returned</strong> (ပြန်သွင်းမှတ်), subtitle <strong>Credits stock · refunds cash</strong> · စတော့ပြန်ထည့် · ငွေပြန်အမ်း, then the slip locks. F2 is <strong>New return</strong> (ပြန်သွင်းအသစ်).</li>
+      <li>If that chart has an open stay and at least one charged pharmacy sale, the rail can show <strong>Credit to IPD</strong> (IPD သို့ ပြန်ထည့်). No function key. It is not <strong>Charge to IPD</strong> and not desk cash. Void of a paid return takes that quantity off MAIN again.</li>
+      <li><strong>Transfer to OT</strong>: see section 4. F2 is <strong>New transfer</strong> (လွှဲစာရင်း အသစ်). Void of a confirmed transfer reverses the move.</li>
+      <li>Pharmacy <strong>Maintenance</strong> (ထိန်းသိမ်းရေး): item section <strong>Packing Size</strong> (ထုပ်ပိုးအရွယ်), first field <strong>Smallest Unit</strong> (အသေးဆုံးယူနစ်). Stock on hand is MAIN. Create an unknown code before restock. Low stock and near expiry are MAIN only. This screen does not save on F5. F5 reloads the window.</li>
     </ul>
   </section>
   <section>
-    <h2>5. Pharmacy Stock / ဆေးဆိုင် စတော့</h2>
+    <h2>6. Expense bills / အသုံးစရိတ် ဘေလ်</h2>
     <ul>
-      <li><strong>Pharmacy Stock</strong> → set purchase / stock / billing units + conversion.</li>
-      <li><strong>Restock</strong> in boxes or stock units (cannot restock unknown code).</li>
-      <li class="my">မသိသော ကုဒ်ကို restock မရ — အရင် item ဖန်တီးပါ။</li>
-      <li>Low stock / near expiry are MAIN only. Send stock from <strong>Transfer to OT</strong>.</li>
+      <li>Each desk has <strong>Expense bill</strong> (အသုံးစရိတ် ဘေလ်): OPD, OT, pharmacy, and the IPD portal (next to <strong>Stays</strong>).</li>
+      <li>Same F5 <strong>Save draft</strong>, F6 <strong>Print</strong> (still editable), F7 <strong>Mark Paid</strong> (desk cash, bill locked). No <strong>Charge to IPD</strong>. No stock. Each desk lists only its own expense bills.</li>
     </ul>
   </section>
   <section>
-    <h2>6. Reports / အစီရင်ခံစာ</h2>
+    <h2>7. Patients and IPD / လူနာမှတ်တမ်း · တက်ရောက်မှု</h2>
     <ul>
-      <li><strong>This desk</strong> — history and cash are this portal's paid bills only.</li>
-      <li><strong>Admin dashboard</strong> — combined OPD + OT + pharmacy cash, plus one IPD cash total (deposits, collections, refunds).</li>
-      <li><strong>Charge to IPD</strong> sits beside Mark Paid only when that chart has an open stay. Pay stays cash. A charged bill is not desk cash.</li>
-      <li><strong>IPD discharge</strong> refunds a positive balance, collects a negative balance, or settles zero with no cash line. Then the stay is settled.</li>
-      <li><strong>Patients</strong> — attach one bill number that has no chart. The total does not change. <span class="kbd">TO-</span> slips cannot be attached.</li>
-      <li><strong>Low stock / near expiry</strong> — MAIN pharmacy batches (Pharmacy/Admin).</li>
+      <li><strong>Patient Charts</strong> (လူနာမှတ်တမ်း). A chart is the patient record. A name typed on a bill is not a chart. Typing a name clears the link, so <strong>Charge to IPD</strong> disappears. <strong>Create New Patient</strong> (လူနာအသစ် ဖန်တီးရန်) is shown only when that account may create charts.</li>
+      <li>On the chart, <strong>Attach bill</strong> (ဘေလ် တွဲရန်) links one bill number that has no chart yet. Totals, status, stock, and cash stay the same. A <span class="kbd">TO-</span> transfer slip cannot be attached.</li>
+      <li><strong>Stays</strong> (တက်ရောက်မှု). No function keys on this page. F5 reloads the window. <strong>Admit</strong> (တက်ခွင့်) opens one stay per chart. Then <strong>Take deposit</strong> (အပ်ငွေ လက်ခံ), <strong>Post ward charge</strong> (ဝပ်ကြေး တင်), and <strong>Save notes</strong> (မှတ်ချက်သိမ်း). A ward charge is room or nursing, not a drug and not an OPD service. <strong>Charge to IPD</strong> is not on this page. It is on OPD Bill, OT Bill, and Pharmacy Bill.</li>
+      <li><strong>Discharge</strong> (ဆင်းခွင့်ရှင်း) is final. Positive balance: <strong>Refund the remainder</strong> (လက်ကျန်ကို ပြန်အမ်း). Negative balance: <strong>Collect the amount owed</strong> (ပေးရန်ကျန်ကို ကောက်). Zero: <strong>No cash. Balance is zero</strong> (ငွေမထိ။ လက်ကျန် သုည). After discharge, deposits, ward charges, and desk charges are refused.</li>
+      <li><strong>IPD daily cash</strong> (IPD နေ့စဉ်ငွေ) counts deposits, collections, and refunds. The admin dashboard shows that net as one IPD total.</li>
     </ul>
   </section>
   <section>
-    <h2>7. Daily ops / နေ့စဉ်</h2>
+    <h2>8. Reports / အစီရင်ခံစာ</h2>
     <ul>
-      <li>Morning: check Server connected (green).</li>
-      <li>Admin → Settings → <strong>Backup</strong> (or USB copy weekly — see DEPLOY.md).</li>
-      <li>Training: Settings → Training → Seed / Reset DEMO- data only.</li>
-      <li>Help: click Help tile or press <span class="kbd">?</span>.</li>
+      <li><strong>Daily cash</strong> — That desk. Paid cash bills for that portal only. Charged-to-IPD bills are excluded.</li>
+      <li><strong>IPD daily cash</strong> — IPD. Deposits, collections, and refunds.</li>
+      <li><strong>Combined daily cash</strong> — Admin dashboard. Paid OPD + OT + pharmacy cash, plus one IPD cash total.</li>
+      <li><strong>Low stock</strong> — Pharmacy / Admin. MAIN qty at or below the reorder level.</li>
+      <li><strong>Near expiry</strong> — Pharmacy / Admin. MAIN batches expiring within N days.</li>
+      <li>The admin dashboard is the day book for the whole hospital. A clinic desk does not open another portal's bills.</li>
+    </ul>
+  </section>
+  <section>
+    <h2>9. Daily ops / နေ့စဉ်</h2>
+    <ul>
+      <li>Morning: confirm green <strong>Server connected</strong> (ဆာဗာ ချိတ်ဆက်ပြီး).</li>
+      <li>Admin → Settings → <strong>Backup</strong> (အရန်သိမ်း). Also copy the backup folder to USB weekly — see DEPLOY.md.</li>
+      <li>If the server is offline or a restore is needed: CRASH_RESTORE_CARD.md at the server desk.</li>
+      <li>Training seed is Admin-only. It is not a desk step. It does not create a patient chart or an IPD stay.</li>
     </ul>
   </section>
 </div>
 
-<p class="footer">Mudita Hospital cheat sheet · keep beside cash drawer · do not change Server IP unless IT asks.</p>
+<section>
+  <h2>Myanmar summary / မြန်မာ အကျဉ်း</h2>
+  <ul class="my">
+    <li><strong>ဝင်ရန်</strong> — ဆာဗာ IP → <strong>ဝင်ရန်</strong>။ ဘာသာ <strong>English</strong> / <strong>မြန်မာ</strong>။ မိမိကောင်တာသာ ပွင့်သည်။ ခဏနားလျှင် သော့ကျသည်။ <strong>မှတ်တမ်း</strong> သည် မိမိဘေလ်သာ။</li>
+    <li><strong>ရောင်းဘေလ်</strong> (OPD ဘေလ်၊ OT ဘေလ်၊ ဆေးဆိုင် ဘေလ်၊ အသုံးစရိတ် ဘေလ်) — F5 <strong>မူကြမ်းသိမ်း</strong> (ပြင်နိုင်၊ ငွေမကောက်၊ စတော့မလှုပ်)။ F6 <strong>ပရင့်</strong> (<strong>ပရင့်ပြီး — မပေးရသေး</strong>၊ ပြင်နိုင်သေး၊ ငွေမကောက်)။ F7 <strong>ပေးပြီးမှတ်</strong> (ကောင်တာငွေ၊ <strong>နောက်ဆုံး · ဘေလ်ပိတ်မည်</strong>)။ <strong>IPD သို့ တင်</strong> သည် ဖွင့်ထားသော တက်ရောက်မှုရှိမှ။ စာတန်း <strong>ကောင်တာငွေ မဟုတ်</strong>။ ဖန်ရှင်ခလုတ်မရှိ။ အမည်ရိုက်ရုံဖြင့် မပေါ်။ ^F8 <strong>ဘေလ်ပယ်ဖျက်</strong> (<strong>ပယ်ဖျက်ရန် လိုအပ်သည်</strong>)။ အတည်ပြုခလုတ်သည် <strong>ဖျက်ရန်</strong>။ F9 <strong>မှတ်တမ်း</strong>။ F10 <strong>မလုပ်တော့</strong>။ F2 <strong>ဘေလ်အသစ်</strong>။</li>
+    <li><strong>OPD ဘေလ်</strong> — ဝန်ဆောင်မှု။ ဆေးသည် <strong>ဆေးဆိုင် ဘေလ်</strong> တွင်။ ပြေစာ 80 mm။</li>
+    <li><strong>OT</strong> — <strong>OT သို့ လွှဲ</strong>။ F6 မလုပ်။ ပထမ F7 <strong>လွှဲမည်</strong>၊ ဒုတိယ F7 <strong>လွှဲခြင်း အတည်ပြု</strong>။ ငွေမကောက်။ <strong>ထိန်းသိမ်းရေး</strong> → <strong>စာရင်း</strong>။ မသုံးသော အရေအတွက် <strong>ဆေးဆိုင်သို့ ပြန်ပို့ရန်</strong>။ ၎င်းသည် <strong>ပြန်သွင်း</strong> မဟုတ်၊ <strong>ဘေလ်ပယ်ဖျက်</strong> မဟုတ်။ OT ဘေလ် <strong>ပေးပြီးမှတ်</strong> လျှင် စာရင်းလျော့။ ပရင့်သည် A4။</li>
+    <li><strong>ဆေးဆိုင်</strong> — <strong>ပေးပြီးမှတ်</strong> လျှင် MAIN လျော့။ <strong>ပြန်သွင်း</strong> တွင် F7 <strong>ပြန်သွင်းမှတ်</strong> (<strong>စတော့ပြန်ထည့် · ငွေပြန်အမ်း</strong>)။ <strong>IPD သို့ ပြန်ထည့်</strong> သည် <strong>IPD သို့ တင်</strong> မဟုတ်၊ ကောင်တာငွေ မဟုတ်။ ဆေးပစ္စည်း <strong>ထိန်းသိမ်းရေး</strong> တွင် F5 သည် <strong>မူကြမ်းသိမ်း</strong> မဟုတ် — ဝင်းဒိုးပြန်ဖွင့်သည်။ မသိသော ကုဒ်ကို အရင်ဖန်တီးပါ။ လက်ကျန်နည်းနှင့် သက်တမ်းနီးသည် MAIN သာ။</li>
+    <li><strong>အသုံးစရိတ် ဘေလ်</strong> — F5 <strong>မူကြမ်းသိမ်း</strong>၊ F6 <strong>ပရင့်</strong>၊ F7 <strong>ပေးပြီးမှတ်</strong>။ <strong>IPD သို့ တင်</strong> မရှိ။ စတော့မလှုပ်။</li>
+    <li><strong>လူနာမှတ်တမ်း</strong> — ရိုက်ထားသော အမည်သည် မှတ်တမ်းမဟုတ်။ <strong>ဘေလ် တွဲရန်</strong> တစ်စောင်။ စုစုပေါင်း၊ အခြေအနေ၊ စတော့၊ ငွေ မပြောင်း။ <span class="kbd">TO-</span> တွဲမရ။</li>
+    <li><strong>တက်ရောက်မှု</strong> — F5 မနှိပ်ပါ (ဝင်းဒိုးပြန်ဖွင့်သည်)။ <strong>တက်ခွင့်</strong> တစ်ခု။ <strong>အပ်ငွေ လက်ခံ</strong>၊ <strong>ဝပ်ကြေး တင်</strong>၊ <strong>မှတ်ချက်သိမ်း</strong>။ <strong>IPD သို့ တင်</strong> သည် ဤစာမျက်နှာတွင် မဟုတ်။ <strong>ဆင်းခွင့်ရှင်း</strong> ပြီးလျှင် <strong>လက်ကျန်ကို ပြန်အမ်း</strong> / <strong>ပေးရန်ကျန်ကို ကောက်</strong> / <strong>ငွေမထိ။ လက်ကျန် သုည</strong>။ နောက်မှ အပ်ငွေနှင့် ကြေးတင်ခြင်း ငြင်းသည်။</li>
+    <li><strong>အစီရင်ခံစာ</strong> — ကောင်တာနေ့စဉ်ငွေသည် <strong>ပေးပြီး</strong> ငွေသားဘေလ်။ <strong>IPD သို့ တင်ပြီး</strong> မပါ။ <strong>IPD နေ့စဉ်ငွေ</strong> သည် အပ်ငွေ၊ ကောက်ခံ၊ ပြန်အမ်း။</li>
+    <li><strong>နေ့စဉ်</strong> — မနက် <strong>ဆာဗာ ချိတ်ဆက်ပြီး</strong>။ Admin <strong>အရန်သိမ်း</strong>။ လေ့ကျင့်ဒေတာသည် ကောင်တာအဆင့် မဟုတ်။ <strong>လူနာမှတ်တမ်း</strong> နှင့် <strong>တက်ရောက်မှု</strong> မဖန်တီးပါ။</li>
+  </ul>
+</section>
+
+<p class="footer">Mudita Hospital cheat sheet · laminate for the OPD, OT, pharmacy, patients, and IPD desks.</p>
 </body></html>`;
 }
 

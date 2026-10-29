@@ -1184,6 +1184,13 @@ ALTER TABLE pharmacy_bills ADD COLUMN billed_at TEXT;
 ALTER TABLE expense_bills ADD COLUMN billed_at TEXT;
 `,
 	},
+	{
+		Name: "033_ipd_room_no",
+		SQL: `
+-- Room label on a stay. Existing admissions start blank; staff set it later.
+ALTER TABLE ipd_admissions ADD COLUMN room_no TEXT NOT NULL DEFAULT '';
+`,
+	},
 }
 
 // Migrate applies pending migrations inside a transaction per migration.

@@ -1,6 +1,6 @@
 # Mudita Hospital — Field install FAQ
 
-Take this to the customer site. For step-by-step commands see [DEPLOY.md](./DEPLOY.md). For daily staff use see [CHEATSHEET.md](./CHEATSHEET.md). Risk / continuity (installer & director): [RISK_AND_CONTINUITY.md](./RISK_AND_CONTINUITY.md). Crash laminate: [CRASH_RESTORE_CARD.md](./CRASH_RESTORE_CARD.md).
+Take this to the customer site. For the person at the hospital, the click-by-click sheets are in [setup/](./setup/server.md) (server, clinic, dashboard; English then Myanmar in each file). For step-by-step commands see [DEPLOY.md](./DEPLOY.md). For daily staff use see [CHEATSHEET.md](./CHEATSHEET.md). Risk / continuity (installer & director): [RISK_AND_CONTINUITY.md](./RISK_AND_CONTINUITY.md). Crash laminate: [CRASH_RESTORE_CARD.md](./CRASH_RESTORE_CARD.md).
 
 ---
 

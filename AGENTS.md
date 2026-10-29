@@ -20,6 +20,7 @@ Engineering standards live in **[docs/standards/README.md](docs/standards/README
 |------|------|
 | `.cursor/rules/mudita-core.mdc` | Always |
 | `.cursor/rules/mudita-production.mdc` | Always — live production / upgrade safety |
+| `.cursor/rules/mudita-dev-processes.mdc` | Always — reuse a server, clinic, or dashboard already running in a terminal |
 | `.cursor/rules/mudita-frontend.mdc` | `client/**`, `dashboard/**` |
 | `.cursor/rules/mudita-backend.mdc` | `server/**` |
 | `.cursor/rules/mudita-docs.mdc` | `docs/**` |

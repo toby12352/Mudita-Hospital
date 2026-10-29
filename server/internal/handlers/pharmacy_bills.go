@@ -944,13 +944,7 @@ func (h *Pharmacy) printPharmacyBill(w http.ResponseWriter, r *http.Request, pat
 		hosp = &hospitalSettings{HospitalName: "Mudita Hospital"}
 	}
 
-	dateLabel := bill.CreatedAt
-	if bill.BilledAt != nil && *bill.BilledAt != "" {
-		dateLabel = *bill.BilledAt
-	}
-	if bill.PaidAt != nil {
-		dateLabel = *bill.PaidAt
-	}
+	dateLabel := receiptDateLabel(bill.CreatedAt, bill.BilledAt, bill.PaidAt)
 	lines := make([]receiptLine, 0, len(bill.Lines)*2)
 	for _, line := range bill.Lines {
 		qty, unit, price := pharmacyReceiptQty(line)

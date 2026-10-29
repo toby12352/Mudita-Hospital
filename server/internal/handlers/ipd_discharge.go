@@ -181,6 +181,30 @@ type ipdCashReport struct {
 	Lines         []ipdCashLine `json:"lines"`
 }
 
+// ipdEarnedReport is ward, desk charge, and reversal lines for one Yangon day.
+// Ledger stores charges as negative. EarnedMMK is the opposite of that sum.
+type ipdEarnedReport struct {
+	Date      string        `json:"date"`
+	EarnedMMK int64         `json:"earned_mmk"`
+	Lines     []ipdCashLine `json:"lines"`
+}
+
+// ipdOpenStayRow is one stay still open at the end of a Yangon civil day.
+// BalanceMMK is the ledger sum through that day: positive means the hospital
+// still holds the patient's deposit; negative means the patient owes.
+type ipdOpenStayRow struct {
+	AdmissionNo string `json:"admission_no"`
+	Patient     string `json:"patient"`
+	BalanceMMK  int64  `json:"balance_mmk"`
+}
+
+type ipdOpenStayReport struct {
+	Date              string           `json:"date"`
+	OwedToPatientsMMK int64            `json:"owed_to_patients_mmk"`
+	OwedByPatientsMMK int64            `json:"owed_by_patients_mmk"`
+	Stays             []ipdOpenStayRow `json:"stays"`
+}
+
 func (h *IPD) dailyCash(w http.ResponseWriter, r *http.Request, asHTML bool) {
 	date := reportDate(r)
 	rep, err := buildIpdCash(h.DB, date)
@@ -206,8 +230,8 @@ func (h *IPD) dailyCash(w http.ResponseWriter, r *http.Request, asHTML bool) {
 
 // buildIpdCash sums deposits, collections, and refunds on the Asia/Yangon
 // civil day of ledger created_at. Rows are stored as UTC datetime('now').
-// Ward, charge, and reversal rows are not cash. Desk bills and this IPD net
-// are added together only in buildCashMovement.
+// Ward, charge, and reversal rows are not cash. Drawer cash is not income;
+// earned charges enter income through buildIpdEarned.
 func buildIpdCash(db *sql.DB, date string) (*ipdCashReport, error) {
 	rep := &ipdCashReport{Date: date, Lines: []ipdCashLine{}}
 	start, end, ok := yangonDayUTCRange(date)
@@ -242,6 +266,89 @@ func buildIpdCash(db *sql.DB, date string) (*ipdCashReport, error) {
 		}
 		rep.NetMMK += line.AmountMMK
 		rep.Lines = append(rep.Lines, line)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return rep, nil
+}
+
+// buildIpdEarned sums ward, charge, and reversal lines on the Asia/Yangon
+// civil day. Charges are stored negative; EarnedMMK is the opposite of that sum.
+func buildIpdEarned(db *sql.DB, date string) (*ipdEarnedReport, error) {
+	rep := &ipdEarnedReport{Date: date, Lines: []ipdCashLine{}}
+	start, end, ok := yangonDayUTCRange(date)
+	if !ok {
+		return rep, nil
+	}
+	rows, err := db.Query(`
+		SELECT l.kind, l.amount_mmk, l.note, l.created_at, a.admission_no, p.name
+		FROM ipd_ledger l
+		JOIN ipd_admissions a ON a.id = l.admission_id
+		JOIN patients p ON p.id = a.patient_id
+		WHERE l.kind IN ('ward', 'charge', 'reversal')
+		  AND l.created_at >= ? AND l.created_at < ?
+		ORDER BY l.created_at, l.id
+	`, start, end)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var chargeSum int64
+	for rows.Next() {
+		var line ipdCashLine
+		if err := rows.Scan(&line.Kind, &line.AmountMMK, &line.Note, &line.CreatedAt, &line.AdmissionNo, &line.Patient); err != nil {
+			return nil, err
+		}
+		chargeSum += line.AmountMMK
+		rep.Lines = append(rep.Lines, line)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rep.EarnedMMK = -chargeSum
+	return rep, nil
+}
+
+// buildIpdOpenStays lists stays still open at the end of the Yangon civil day
+// and the ledger balance through that moment.
+func buildIpdOpenStays(db *sql.DB, date string) (*ipdOpenStayReport, error) {
+	rep := &ipdOpenStayReport{Date: date, Stays: []ipdOpenStayRow{}}
+	_, end, ok := yangonDayUTCRange(date)
+	if !ok {
+		return rep, nil
+	}
+	rows, err := db.Query(`
+		SELECT a.admission_no, p.name,
+		       COALESCE((
+		         SELECT SUM(l.amount_mmk) FROM ipd_ledger l
+		         WHERE l.admission_id = a.id AND l.created_at < ?
+		       ), 0)
+		FROM ipd_admissions a
+		JOIN patients p ON p.id = a.patient_id
+		WHERE a.admitted_at < ?
+		  AND (
+		    a.discharged_at IS NULL
+		    OR TRIM(a.discharged_at) = ''
+		    OR a.discharged_at >= ?
+		  )
+		ORDER BY a.admission_no
+	`, end, end, end)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var row ipdOpenStayRow
+		if err := rows.Scan(&row.AdmissionNo, &row.Patient, &row.BalanceMMK); err != nil {
+			return nil, err
+		}
+		if row.BalanceMMK > 0 {
+			rep.OwedToPatientsMMK += row.BalanceMMK
+		} else if row.BalanceMMK < 0 {
+			rep.OwedByPatientsMMK += -row.BalanceMMK
+		}
+		rep.Stays = append(rep.Stays, row)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -582,6 +689,7 @@ func renderIpdStatement(db *sql.DB, hosp *hospitalSettings, row ipdAdmission, da
 	b.WriteString(`</div><div class="a4-meta-col">`)
 	b.WriteString(`<p class="a4-meta-heading">Stay</p>`)
 	writeA4KV(&b, "Admission No", row.AdmissionNo)
+	writeA4KV(&b, "Room no.", strings.TrimSpace(row.RoomNo))
 	writeA4KV(&b, "Date", headerDate)
 	writeA4KV(&b, "Status", strings.ToUpper(strings.TrimSpace(row.Status)))
 	if row.DischargedAt != nil && strings.TrimSpace(*row.DischargedAt) != "" {

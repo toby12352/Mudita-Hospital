@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import {
   Bar,
   BarChart,
@@ -16,13 +16,16 @@ import {
   fetchRevenueByDoctor,
   fetchRevenueByService,
   fetchTrends,
+  type DashRange,
   type DoctorRevenueRow,
   type PharmacyMarginReport,
   type RangeDays,
   type ServiceRevenueRow,
   type TrendPoint,
 } from "../dashboardApi";
+import { DatePicker } from "../components/DatePicker";
 import { formatMMK } from "../lib/format";
+import { todayISO } from "../reports";
 
 type Props = {
   t: (k: string) => string;
@@ -43,8 +46,38 @@ function pct(n: number): string {
   return `${n.toFixed(1)}%`;
 }
 
+function shiftISO(iso: string, deltaDays: number): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  dt.setDate(dt.getDate() + deltaDays);
+  const yy = dt.getFullYear();
+  const mm = String(dt.getMonth() + 1).padStart(2, "0");
+  const dd = String(dt.getDate()).padStart(2, "0");
+  return `${yy}-${mm}-${dd}`;
+}
+
+function presetWindow(days: RangeDays): { from: string; to: string } {
+  const to = todayISO();
+  return { to, from: shiftISO(to, -(days - 1)) };
+}
+
+/** Inclusive window. Matches the server cap: more than 366 days between the dates is too long. */
+function rangeProblem(from: string, to: string): "errDateOrder" | "errRangeTooLong" | null {
+  if (from > to) return "errDateOrder";
+  const [fy, fm, fd] = from.split("-").map(Number);
+  const [ty, tm, td] = to.split("-").map(Number);
+  const diff = Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / 86400000);
+  if (diff > 366) return "errRangeTooLong";
+  return null;
+}
+
 export function RevenuePage({ t }: Props) {
-  const [days, setDays] = useState<RangeDays>(30);
+  const fromId = useId();
+  const toId = useId();
+  const opening = presetWindow(30);
+  const [preset, setPreset] = useState<RangeDays | null>(30);
+  const [from, setFrom] = useState(opening.from);
+  const [to, setTo] = useState(opening.to);
   const [trends, setTrends] = useState<TrendPoint[]>([]);
   const [doctors, setDoctors] = useState<DoctorRevenueRow[]>([]);
   const [services, setServices] = useState<ServiceRevenueRow[]>([]);
@@ -53,17 +86,43 @@ export function RevenuePage({ t }: Props) {
   const [loading, setLoading] = useState(true);
   const [epoch, setEpoch] = useState(0);
 
+  function applyPreset(days: RangeDays) {
+    const window = presetWindow(days);
+    setPreset(days);
+    setFrom(window.from);
+    setTo(window.to);
+  }
+
+  function applyFrom(iso: string) {
+    if (!iso) return;
+    setPreset(null);
+    setFrom(iso);
+  }
+
+  function applyTo(iso: string) {
+    if (!iso) return;
+    setPreset(null);
+    setTo(iso);
+  }
+
   useEffect(() => {
+    const problem = rangeProblem(from, to);
+    if (problem) {
+      setError(t(problem));
+      setLoading(false);
+      return;
+    }
+    const range: DashRange = preset ?? { from, to };
     let cancelled = false;
     (async () => {
       setLoading(true);
       setError(null);
       try {
         const [tr, dr, sv, mg] = await Promise.all([
-          fetchTrends(days),
-          fetchRevenueByDoctor(days),
-          fetchRevenueByService(days),
-          fetchPharmacyMargin(days),
+          fetchTrends(range),
+          fetchRevenueByDoctor(range),
+          fetchRevenueByService(range),
+          fetchPharmacyMargin(range),
         ]);
         if (cancelled) return;
         setTrends(tr.points);
@@ -80,7 +139,7 @@ export function RevenuePage({ t }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [days, epoch, t]);
+  }, [preset, from, to, epoch, t]);
 
   const chartData = trends.map((p) => ({
     ...p,
@@ -89,25 +148,45 @@ export function RevenuePage({ t }: Props) {
 
   const rangeCash = trends.reduce((s, p) => s + p.grand_total_mmk, 0);
   const rangeBills = trends.reduce((s, p) => s + p.bill_count, 0);
+  const tickInterval = chartData.length > 60 ? Math.ceil(chartData.length / 10) : chartData.length > 31 ? 2 : 0;
 
   return (
     <div className="page page-frame">
       <div className="page-header">
         <p className="lede muted">{t("revenueLede")}</p>
         <div className="page-actions">
+          <div className="range-field">
+            <label htmlFor={fromId}>{t("rangeFrom")}</label>
+            <DatePicker id={fromId} value={from} onChange={applyFrom} />
+          </div>
+          <div className="range-field">
+            <label htmlFor={toId}>{t("rangeTo")}</label>
+            <DatePicker id={toId} value={to} onChange={applyTo} />
+          </div>
           <div className="range-toggle" role="group" aria-label={t("dateRange")}>
             {([7, 30] as RangeDays[]).map((d) => (
               <button
                 key={d}
                 type="button"
-                className={`btn ghost${days === d ? " active" : ""}`}
-                onClick={() => setDays(d)}
+                className={`btn ghost${preset === d ? " active" : ""}`}
+                onClick={() => applyPreset(d)}
               >
                 {d === 7 ? t("days7") : t("days30")}
               </button>
             ))}
           </div>
-          <button type="button" className="btn ghost" onClick={() => setEpoch((n) => n + 1)}>
+          <button
+            type="button"
+            className="btn ghost"
+            onClick={() => {
+              if (preset) {
+                const window = presetWindow(preset);
+                setFrom(window.from);
+                setTo(window.to);
+              }
+              setEpoch((n) => n + 1);
+            }}
+          >
             {t("refresh")}
           </button>
         </div>
@@ -145,7 +224,7 @@ export function RevenuePage({ t }: Props) {
             <ResponsiveContainer width="100%" height={280}>
               <BarChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                 <CartesianGrid stroke={GRID} vertical={false} />
-                <XAxis dataKey="label" tick={{ fill: MUTED, fontSize: 11 }} tickLine={false} axisLine={false} />
+                <XAxis dataKey="label" interval={tickInterval} tick={{ fill: MUTED, fontSize: 11 }} tickLine={false} axisLine={false} />
                 <YAxis
                   tick={{ fill: MUTED, fontSize: 11 }}
                   tickLine={false}
@@ -173,7 +252,7 @@ export function RevenuePage({ t }: Props) {
             <ResponsiveContainer width="100%" height={160}>
               <LineChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                 <CartesianGrid stroke={GRID} vertical={false} />
-                <XAxis dataKey="label" tick={{ fill: MUTED, fontSize: 11 }} tickLine={false} axisLine={false} />
+                <XAxis dataKey="label" interval={tickInterval} tick={{ fill: MUTED, fontSize: 11 }} tickLine={false} axisLine={false} />
                 <YAxis hide />
                 <Tooltip
                   formatter={(value) => [`${formatMMK(Number(value))} ${t("mmk")}`, t("cashInRange")]}

@@ -405,6 +405,7 @@ export function PharmacyBillForm(props: Props) {
               className={`opd-bill-rail-btn${isDraft && !awaitingConfirm ? " opd-bill-rail-btn--accent" : ""}`}
               disabled={busy || !isDraft || awaitingConfirm}
               onClick={props.onTransfer}
+              data-guide="pharmacy-transfer"
             >
               <span className="opd-bill-rail-btn-main">
                 <ActionIcon name="transfer" />
@@ -421,6 +422,7 @@ export function PharmacyBillForm(props: Props) {
                 className="opd-bill-rail-btn opd-bill-rail-btn--accent"
                 disabled={busy}
                 onClick={props.onConfirmTransfer}
+                data-guide="pharmacy-transfer-confirm"
               >
                 <span className="opd-bill-rail-btn-main">
                   <ActionIcon name="transfer" />
@@ -483,6 +485,7 @@ export function PharmacyBillForm(props: Props) {
             className="opd-bill-rail-btn"
             disabled={busy || !isDraft}
             onClick={props.onConfirm}
+            data-guide="bill-save-draft"
           >
             <span className="opd-bill-rail-btn-main">
               <ActionIcon name="check" />
@@ -491,7 +494,7 @@ export function PharmacyBillForm(props: Props) {
             <kbd>F5</kbd>
           </button>
         ) : null}
-        <button type="button" className="opd-bill-rail-btn" disabled={busy} onClick={props.onHistory}>
+        <button type="button" className="opd-bill-rail-btn" disabled={busy} onClick={props.onHistory} data-guide="bill-history">
           <span className="opd-bill-rail-btn-main">
             <ActionIcon name="history" />
             <span>{t("history")}</span>
@@ -504,6 +507,7 @@ export function PharmacyBillForm(props: Props) {
             className="opd-bill-rail-btn opd-bill-rail-btn--danger"
             disabled={busy}
             onClick={props.onDelete}
+            data-guide="bill-void"
           >
             <span className="opd-bill-rail-btn-main">
               <ActionIcon name="trash" />
@@ -525,7 +529,7 @@ export function PharmacyBillForm(props: Props) {
             </span>
           </button>
         ) : null}
-        <button type="button" className="opd-bill-rail-btn" disabled={busy} onClick={props.onCancel}>
+        <button type="button" className="opd-bill-rail-btn" disabled={busy} onClick={props.onCancel} data-guide="bill-cancel">
           <span>{t("cancel")}</span>
           <kbd>F10</kbd>
         </button>
@@ -535,6 +539,7 @@ export function PharmacyBillForm(props: Props) {
           className={`opd-bill-rail-btn${!isDraft ? " opd-bill-rail-btn--accent" : ""}`}
           disabled={busy}
           onClick={props.onNewBill}
+          data-guide={isReturn || isTransfer ? undefined : "bill-new"}
         >
           <span className="opd-bill-rail-btn-main">
             <ActionIcon name="plus" />

@@ -11,29 +11,36 @@ import (
 // Do not match patient_name.
 
 type patientHistoryOpd struct {
-	ID         int64  `json:"id"`
-	BillNo     string `json:"bill_no"`
-	Status     string `json:"status"`
-	TotalMMK   int64  `json:"total_mmk"`
-	CreatedAt  string `json:"created_at"`
-	DoctorName string `json:"doctor_name"`
+	ID            int64   `json:"id"`
+	BillNo        string  `json:"bill_no"`
+	Status        string  `json:"status"`
+	TotalMMK      int64   `json:"total_mmk"`
+	CreatedAt     string  `json:"created_at"`
+	DoctorName    string  `json:"doctor_name"`
+	PrintedAt     *string `json:"printed_at,omitempty"`
+	CollectedCash *int    `json:"collected_cash,omitempty"`
 }
 
 type patientHistoryPharmacy struct {
-	ID        int64  `json:"id"`
-	BillNo    string `json:"bill_no"`
-	Status    string `json:"status"`
-	TotalMMK  int64  `json:"total_mmk"`
-	CreatedAt string `json:"created_at"`
+	ID            int64   `json:"id"`
+	BillNo        string  `json:"bill_no"`
+	Status        string  `json:"status"`
+	TotalMMK      int64   `json:"total_mmk"`
+	CreatedAt     string  `json:"created_at"`
+	PrintedAt     *string `json:"printed_at,omitempty"`
+	CollectedCash *int    `json:"collected_cash,omitempty"`
 }
 
 type patientHistoryOT struct {
-	CaseNo     string `json:"case_no"`
-	Status     string `json:"status"`
-	BillID     int64  `json:"bill_id,omitempty"`
-	BillNo     string `json:"bill_no"`
-	BillStatus string `json:"bill_status"`
-	CreatedAt  string `json:"created_at"`
+	CaseNo            string `json:"case_no"`
+	Status            string `json:"status"`
+	BillID            int64  `json:"bill_id,omitempty"`
+	BillNo            string `json:"bill_no"`
+	BillStatus        string `json:"bill_status"`
+	BillTotalMMK      *int64 `json:"bill_total_mmk,omitempty"`
+	BillPrintedAt     *string `json:"bill_printed_at,omitempty"`
+	BillCollectedCash *int   `json:"bill_collected_cash,omitempty"`
+	CreatedAt         string `json:"created_at"`
 }
 
 type patientHistoryIPD struct {
@@ -60,7 +67,7 @@ func (h *Patients) history(w http.ResponseWriter, _ *http.Request, path string) 
 	}
 
 	opdRows, err := h.DB.Query(`
-		SELECT id, bill_no, status, total_mmk, created_at, doctor_name
+		SELECT id, bill_no, status, total_mmk, created_at, doctor_name, printed_at, collected_cash
 		FROM opd_bills
 		WHERE patient_id = ?
 		ORDER BY created_at DESC, id DESC
@@ -73,9 +80,22 @@ func (h *Patients) history(w http.ResponseWriter, _ *http.Request, path string) 
 	opd := make([]patientHistoryOpd, 0)
 	for opdRows.Next() {
 		var row patientHistoryOpd
-		if err := opdRows.Scan(&row.ID, &row.BillNo, &row.Status, &row.TotalMMK, &row.CreatedAt, &row.DoctorName); err != nil {
+		var printedAt sql.NullString
+		var collected sql.NullInt64
+		if err := opdRows.Scan(
+			&row.ID, &row.BillNo, &row.Status, &row.TotalMMK, &row.CreatedAt, &row.DoctorName,
+			&printedAt, &collected,
+		); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "history failed"})
 			return
+		}
+		if printedAt.Valid && strings.TrimSpace(printedAt.String) != "" {
+			v := printedAt.String
+			row.PrintedAt = &v
+		}
+		if collected.Valid {
+			v := int(collected.Int64)
+			row.CollectedCash = &v
 		}
 		opd = append(opd, row)
 	}
@@ -85,7 +105,7 @@ func (h *Patients) history(w http.ResponseWriter, _ *http.Request, path string) 
 	}
 
 	phRows, err := h.DB.Query(`
-		SELECT id, bill_no, status, total_mmk, created_at
+		SELECT id, bill_no, status, total_mmk, created_at, printed_at, collected_cash
 		FROM pharmacy_bills
 		WHERE patient_id = ?
 		  AND bill_no NOT LIKE 'TO-%'
@@ -99,9 +119,22 @@ func (h *Patients) history(w http.ResponseWriter, _ *http.Request, path string) 
 	pharmacy := make([]patientHistoryPharmacy, 0)
 	for phRows.Next() {
 		var row patientHistoryPharmacy
-		if err := phRows.Scan(&row.ID, &row.BillNo, &row.Status, &row.TotalMMK, &row.CreatedAt); err != nil {
+		var printedAt sql.NullString
+		var collected sql.NullInt64
+		if err := phRows.Scan(
+			&row.ID, &row.BillNo, &row.Status, &row.TotalMMK, &row.CreatedAt,
+			&printedAt, &collected,
+		); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "history failed"})
 			return
+		}
+		if printedAt.Valid && strings.TrimSpace(printedAt.String) != "" {
+			v := printedAt.String
+			row.PrintedAt = &v
+		}
+		if collected.Valid {
+			v := int(collected.Int64)
+			row.CollectedCash = &v
 		}
 		pharmacy = append(pharmacy, row)
 	}
@@ -113,6 +146,7 @@ func (h *Patients) history(w http.ResponseWriter, _ *http.Request, path string) 
 	otRows, err := h.DB.Query(`
 		SELECT c.case_no, c.status,
 		       COALESCE(b.id, 0), COALESCE(b.bill_no, ''), COALESCE(b.status, ''),
+		       b.total_mmk, b.printed_at, b.collected_cash,
 		       c.created_at
 		FROM ot_cases c
 		LEFT JOIN ot_bills b ON b.id = c.ot_bill_id
@@ -127,9 +161,27 @@ func (h *Patients) history(w http.ResponseWriter, _ *http.Request, path string) 
 	ot := make([]patientHistoryOT, 0)
 	for otRows.Next() {
 		var row patientHistoryOT
-		if err := otRows.Scan(&row.CaseNo, &row.Status, &row.BillID, &row.BillNo, &row.BillStatus, &row.CreatedAt); err != nil {
+		var billTotal sql.NullInt64
+		var printedAt sql.NullString
+		var collected sql.NullInt64
+		if err := otRows.Scan(
+			&row.CaseNo, &row.Status, &row.BillID, &row.BillNo, &row.BillStatus,
+			&billTotal, &printedAt, &collected, &row.CreatedAt,
+		); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "history failed"})
 			return
+		}
+		if billTotal.Valid {
+			v := billTotal.Int64
+			row.BillTotalMMK = &v
+		}
+		if printedAt.Valid && strings.TrimSpace(printedAt.String) != "" {
+			v := printedAt.String
+			row.BillPrintedAt = &v
+		}
+		if collected.Valid {
+			v := int(collected.Int64)
+			row.BillCollectedCash = &v
 		}
 		ot = append(ot, row)
 	}

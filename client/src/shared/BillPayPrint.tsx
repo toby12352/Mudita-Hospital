@@ -58,6 +58,7 @@ export function BillMarkPaidButton(props: {
       className={`opd-bill-rail-btn${willCollect && !isVoid ? " opd-bill-rail-btn--accent" : ""}`}
       disabled={busy || isVoid || isPaid}
       onClick={onClick}
+      data-guide={collectLabel ? "pharmacy-return-mark" : "bill-mark-paid"}
     >
       <span className="opd-bill-rail-btn-main">
         <ActionIcon name="check" />
@@ -85,7 +86,13 @@ export function BillChargeToIpdButton(props: {
   const { t } = useI18n();
   const { busy, onClick, label, subLabel } = props;
   return (
-    <button type="button" className="opd-bill-rail-btn" disabled={busy} onClick={onClick}>
+    <button
+      type="button"
+      className="opd-bill-rail-btn"
+      disabled={busy}
+      onClick={onClick}
+      data-guide={label ? undefined : "bill-charge-ipd"}
+    >
       <span className="opd-bill-rail-btn-main">
         <ActionIcon name="clipboard" />
         <span className="opd-bill-rail-btn-text">
@@ -112,6 +119,7 @@ export function BillPrintButton(props: {
       className="opd-bill-rail-btn"
       disabled={busy || isVoid}
       onClick={onClick}
+      data-guide="bill-print"
     >
       <span className="opd-bill-rail-btn-main">
         <ActionIcon name="print" />

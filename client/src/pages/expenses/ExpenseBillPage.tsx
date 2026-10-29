@@ -588,6 +588,7 @@ export function ExpenseBillPage({ portal }: { portal: ExpensePortal }) {
             className="opd-bill-rail-btn"
             disabled={busy || !isDraft}
             onClick={() => void doConfirm()}
+            data-guide="bill-save-draft"
           >
             <span className="opd-bill-rail-btn-main">
               <ActionIcon name="check" />
@@ -595,7 +596,7 @@ export function ExpenseBillPage({ portal }: { portal: ExpensePortal }) {
             </span>
             <kbd>F5</kbd>
           </button>
-          <button type="button" className="opd-bill-rail-btn" disabled={busy} onClick={() => setDialog("history")}>
+          <button type="button" className="opd-bill-rail-btn" disabled={busy} onClick={() => setDialog("history")} data-guide="bill-history">
             <span className="opd-bill-rail-btn-main">
               <ActionIcon name="history" />
               <span>{t("history")}</span>
@@ -607,6 +608,7 @@ export function ExpenseBillPage({ portal }: { portal: ExpensePortal }) {
             className="opd-bill-rail-btn opd-bill-rail-btn--danger"
             disabled={busy}
             onClick={() => setDialog("delete")}
+            data-guide="bill-void"
           >
             <span className="opd-bill-rail-btn-main">
               <ActionIcon name="trash" />
@@ -627,7 +629,7 @@ export function ExpenseBillPage({ portal }: { portal: ExpensePortal }) {
               </span>
             </button>
           ) : null}
-          <button type="button" className="opd-bill-rail-btn" disabled={busy} onClick={doCancel}>
+          <button type="button" className="opd-bill-rail-btn" disabled={busy} onClick={doCancel} data-guide="bill-cancel">
             <span>{t("cancel")}</span>
             <kbd>F10</kbd>
           </button>
@@ -636,6 +638,7 @@ export function ExpenseBillPage({ portal }: { portal: ExpensePortal }) {
             className={`opd-bill-rail-btn${!isDraft ? " opd-bill-rail-btn--accent" : ""}`}
             disabled={busy}
             onClick={doNewBill}
+            data-guide="bill-new"
           >
             <span className="opd-bill-rail-btn-main">
               <ActionIcon name="plus" />

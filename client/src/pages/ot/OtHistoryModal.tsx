@@ -7,6 +7,7 @@ import {
   type BillHistoryQuery,
   type BillHistorySuggestItem,
 } from "@/shared/BillHistoryToolbar";
+import { BillHistoryTable } from "@/shared/BillHistoryTable";
 import { moneyStatusLabel } from "@/shared/BillPayPrint";
 import { DialogCloseButton } from "@/shared/DialogCloseButton";
 import { useI18n } from "@/shared/i18n";
@@ -237,46 +238,68 @@ export function OtHistoryModal({
 
         {mode === "purge" ? <p className="hint">{t("billPurgeHint")}</p> : null}
 
-        {loading ? <p className="hint">{t("loading")}</p> : null}
-
-        <ul className="opd-bill-dialog-list">
-          {!loading && rows.length === 0 ? (
-            <li className="empty-row">{mode === "purge" ? t("noBillsYet") : t("noOtCasesYet")}</li>
-          ) : null}
-          {rows.map((c) => {
-            const active = selectedId === c.id;
-            return (
-              <li key={c.id}>
-                <button
-                  type="button"
-                  className={
-                    selectMode && active
-                      ? "opd-bill-dialog-row opd-bill-dialog-row--selected"
-                      : "opd-bill-dialog-row"
-                  }
-                  onClick={() => handleCaseActivate(c)}
-                >
-                  <span className="opd-bill-dialog-row-main">
-                    <span className="row-title">
-                      {c.case_no} · {c.patient_name}
-                    </span>
-                    <span className="row-sub">
-                      {moneyStatusLabel(
-                        c.bill_status ?? c.status,
-                        t,
-                        c.bill_printed_at,
-                        c.bill_collected_cash,
-                      )}
-                      {c.procedure_name ? ` · ${c.procedure_name}` : ""}
-                      {c.doctor_name ? ` · ${c.doctor_name}` : ""}
-                      {c.updated_at ? ` · ${formatWhen(c.updated_at)}` : ""}
-                    </span>
-                  </span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+        {mode === "history" ? (
+          <BillHistoryTable
+            loading={loading}
+            emptyLabel={t("noOtCasesYet")}
+            onActivate={(id) => {
+              onOpen(id);
+              onClose();
+            }}
+            rows={rows.map((c) => ({
+              id: c.id,
+              voucher: c.case_no,
+              name: c.patient_name,
+              status: c.bill_status ?? c.status,
+              printedAt: c.bill_printed_at,
+              collectedCash: c.bill_collected_cash,
+              when: c.updated_at || c.created_at,
+              priceMmk: c.bill_total_mmk ?? null,
+            }))}
+          />
+        ) : (
+          <>
+            {loading ? <p className="hint">{t("loading")}</p> : null}
+            <ul className="opd-bill-dialog-list">
+              {!loading && rows.length === 0 ? (
+                <li className="empty-row">{mode === "purge" ? t("noBillsYet") : t("noOtCasesYet")}</li>
+              ) : null}
+              {rows.map((c) => {
+                const active = selectedId === c.id;
+                return (
+                  <li key={c.id}>
+                    <button
+                      type="button"
+                      className={
+                        selectMode && active
+                          ? "opd-bill-dialog-row opd-bill-dialog-row--selected"
+                          : "opd-bill-dialog-row"
+                      }
+                      onClick={() => handleCaseActivate(c)}
+                    >
+                      <span className="opd-bill-dialog-row-main">
+                        <span className="row-title">
+                          {c.case_no} · {c.patient_name}
+                        </span>
+                        <span className="row-sub">
+                          {moneyStatusLabel(
+                            c.bill_status ?? c.status,
+                            t,
+                            c.bill_printed_at,
+                            c.bill_collected_cash,
+                          )}
+                          {c.procedure_name ? ` · ${c.procedure_name}` : ""}
+                          {c.doctor_name ? ` · ${c.doctor_name}` : ""}
+                          {c.updated_at ? ` · ${formatWhen(c.updated_at)}` : ""}
+                        </span>
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </>
+        )}
 
         {mode === "delete" ? (
           <div className="opd-bill-dialog-footer">

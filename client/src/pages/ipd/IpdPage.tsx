@@ -33,6 +33,8 @@ export function IpdPage() {
   const [stays, setStays] = useState<IpdAdmission[]>([]);
   const [stay, setStay] = useState<IpdAdmission | null>(null);
   const [notes, setNotes] = useState("");
+  const [roomNo, setRoomNo] = useState("");
+  const [roomEditing, setRoomEditing] = useState(false);
   const [patientName, setPatientName] = useState("");
   const [chartId, setChartId] = useState<number | null>(null);
   const [billedAtLocal, setBilledAtLocal] = useState(() => nowDatetimeLocal());
@@ -53,6 +55,7 @@ export function IpdPage() {
   const [confirmDischarge, setConfirmDischarge] = useState(false);
   const [dailyOpen, setDailyOpen] = useState(false);
   const patientFieldRef = useRef<HTMLDivElement>(null);
+  const roomRef = useRef<HTMLInputElement>(null);
   const depositAmountRef = useRef<HTMLInputElement>(null);
   const wardDescriptionRef = useRef<HTMLInputElement>(null);
   const wardAmountRef = useRef<HTMLInputElement>(null);
@@ -128,6 +131,8 @@ export function IpdPage() {
   function showStay(row: IpdAdmission) {
     setStay(row);
     setNotes(row.notes);
+    setRoomNo(row.room_no ?? "");
+    setRoomEditing(false);
     setPatientName("");
     setChartId(null);
     setDepositAmount("");
@@ -185,7 +190,7 @@ export function IpdPage() {
     clearFieldErrors();
     setOkMsg(null);
     try {
-      const saved = await updateIpdNotes(stay.id, notes);
+      const saved = await updateIpdNotes(stay.id, notes, roomNo);
       showStay(saved);
       setOkMsg(t("saved"));
       await loadStays();
@@ -297,6 +302,8 @@ export function IpdPage() {
       setConfirmDischarge(false);
       setStay(saved);
       setNotes(saved.notes);
+      setRoomNo(saved.room_no ?? "");
+      setRoomEditing(false);
       setDepositAmount("");
       setDepositNote("");
       setWardDescription("");
@@ -315,6 +322,8 @@ export function IpdPage() {
     setStay(null);
     setShowCash(false);
     setNotes("");
+    setRoomNo("");
+    setRoomEditing(false);
     setError(null);
     setOkMsg(null);
     void loadStays().catch((e) => setError(e instanceof Error ? e.message : t("errGeneric")));
@@ -333,68 +342,91 @@ export function IpdPage() {
 
         {stay ? (
           <>
-            <div className="opd-bill-header">
-              <div className="opd-bill-header-col">
-                <label className="opd-bill-field">
-                  <span className="opd-bill-label">{t("idName")}</span>
+            <div className="ipd-stay-fields">
+              <label className="opd-bill-field">
+                <span className="opd-bill-label">{t("idName")}</span>
+                <input
+                  className="opd-bill-input"
+                  value={`${stay.patient.id} / ${stay.patient.name}`}
+                  disabled
+                />
+              </label>
+              <label className="opd-bill-field ipd-stay-field-right">
+                <span className="opd-bill-label">{t("admissionNo")}</span>
+                <input className="opd-bill-input" value={stay.admission_no} disabled />
+              </label>
+              <label className="opd-bill-field">
+                <span className="opd-bill-label">{t("phone")}</span>
+                <input className="opd-bill-input" value={stay.patient.phone} disabled />
+              </label>
+              <label className="opd-bill-field ipd-stay-field-right">
+                <span className="opd-bill-label">{t("ipdAdmittedAt")}</span>
+                <input
+                  className="opd-bill-input"
+                  value={formatUtcAsLocal(stay.admitted_at)}
+                  disabled
+                />
+              </label>
+              <label className="opd-bill-field">
+                <span className="opd-bill-label">{t("age")}</span>
+                <input
+                  className="opd-bill-input"
+                  value={stay.patient.age_years != null ? String(stay.patient.age_years) : ""}
+                  disabled
+                />
+              </label>
+              <label className="opd-bill-field ipd-stay-field-right">
+                <span className="opd-bill-label">{t("status")}</span>
+                <input className="opd-bill-input" value={statusLabel(stay.status, t)} disabled />
+              </label>
+              <label className="opd-bill-field">
+                <span className="opd-bill-label">{t("gender")}</span>
+                <input className="opd-bill-input" value={genderLabel(stay.patient.gender, t)} disabled />
+              </label>
+              <div className="opd-bill-field ipd-stay-field-right">
+                <span className="opd-bill-label">{t("roomNo")}</span>
+                <div className="opd-bill-control">
                   <input
+                    ref={roomRef}
                     className="opd-bill-input"
-                    value={`${stay.patient.id} / ${stay.patient.name}`}
-                    disabled
+                    value={roomNo}
+                    maxLength={32}
+                    disabled={busy || stay.status !== "open" || !roomEditing}
+                    aria-label={t("roomNo")}
+                    onChange={(e) => setRoomNo(e.target.value)}
                   />
-                </label>
-                <label className="opd-bill-field">
-                  <span className="opd-bill-label">{t("phone")}</span>
-                  <input className="opd-bill-input" value={stay.patient.phone} disabled />
-                </label>
-                <label className="opd-bill-field">
-                  <span className="opd-bill-label">{t("age")}</span>
-                  <input
-                    className="opd-bill-input"
-                    value={stay.patient.age_years != null ? String(stay.patient.age_years) : ""}
-                    disabled
-                  />
-                </label>
-                <label className="opd-bill-field">
-                  <span className="opd-bill-label">{t("gender")}</span>
-                  <input className="opd-bill-input" value={genderLabel(stay.patient.gender, t)} disabled />
-                </label>
+                  {stay.status === "open" && !roomEditing ? (
+                    <button
+                      type="button"
+                      className="btn action opd-bill-consult"
+                      disabled={busy}
+                      onClick={() => {
+                        setRoomEditing(true);
+                        window.setTimeout(() => roomRef.current?.focus(), 0);
+                      }}
+                    >
+                      {t("changeRoomNo")}
+                    </button>
+                  ) : null}
+                </div>
               </div>
-              <div className="opd-bill-header-col">
-                <label className="opd-bill-field">
-                  <span className="opd-bill-label">{t("admissionNo")}</span>
-                  <input className="opd-bill-input" value={stay.admission_no} disabled />
+              {stay.discharged_at ? (
+                <label className="opd-bill-field ipd-stay-field-right">
+                  <span className="opd-bill-label">{t("ipdDischargedAt")}</span>
+                  <input className="opd-bill-input" value={stay.discharged_at} disabled />
                 </label>
-                <label className="opd-bill-field">
-                  <span className="opd-bill-label">{t("ipdAdmittedAt")}</span>
-                  <input
-                    className="opd-bill-input"
-                    value={formatUtcAsLocal(stay.admitted_at)}
-                    disabled
-                  />
-                </label>
-                <label className="opd-bill-field">
-                  <span className="opd-bill-label">{t("status")}</span>
-                  <input className="opd-bill-input" value={statusLabel(stay.status, t)} disabled />
-                </label>
-                {stay.discharged_at ? (
-                  <label className="opd-bill-field">
-                    <span className="opd-bill-label">{t("ipdDischargedAt")}</span>
-                    <input className="opd-bill-input" value={stay.discharged_at} disabled />
-                  </label>
-                ) : null}
-              </div>
+              ) : null}
+              <label className="ipd-stay-notes">
+                <span className="opd-bill-label">{t("notes")}</span>
+                <textarea
+                  className="opd-bill-input"
+                  rows={4}
+                  value={notes}
+                  disabled={busy || stay.status !== "open"}
+                  onChange={(e) => setNotes(e.target.value)}
+                />
+              </label>
             </div>
-            <label className="opd-bill-field">
-              <span className="opd-bill-label">{t("notes")}</span>
-              <textarea
-                className="opd-bill-input"
-                rows={4}
-                value={notes}
-                disabled={busy || stay.status !== "open"}
-                onChange={(e) => setNotes(e.target.value)}
-              />
-            </label>
             <div className="ipd-stay-summary">
               <p className="ipd-stay-summary-item">
                 <span className="ipd-stay-summary-label">{t("ipdRemainingBalance")}:</span>{" "}
@@ -592,6 +624,7 @@ export function IpdPage() {
                   type="button"
                   className="opd-bill-rail-btn opd-bill-rail-btn--accent"
                   disabled={busy || parseKyat(depositAmount) == null}
+                  data-guide="ipd-take-deposit"
                   onClick={() => void takeDeposit()}
                 >
                   <span className="opd-bill-rail-btn-main">
@@ -603,6 +636,7 @@ export function IpdPage() {
                   type="button"
                   className="opd-bill-rail-btn"
                   disabled={busy || wardDescription.trim() === "" || parseKyat(wardAmount) == null}
+                  data-guide="ipd-ward-charge"
                   onClick={() => void postWard()}
                 >
                   <span className="opd-bill-rail-btn-main">
@@ -625,6 +659,7 @@ export function IpdPage() {
                   type="button"
                   className="opd-bill-rail-btn opd-bill-rail-btn--danger"
                   disabled={busy}
+                  data-guide="ipd-discharge"
                   onClick={() => setConfirmDischarge(true)}
                 >
                   <span className="opd-bill-rail-btn-main">
@@ -664,6 +699,7 @@ export function IpdPage() {
               type="button"
               className="opd-bill-rail-btn opd-bill-rail-btn--accent"
               disabled={busy || chartId == null}
+              data-guide="ipd-admit"
               onClick={() => void admit()}
             >
               <span className="opd-bill-rail-btn-main">

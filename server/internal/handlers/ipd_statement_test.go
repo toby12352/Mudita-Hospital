@@ -29,7 +29,7 @@ func TestIpdStatementDaysAndDaily(t *testing.T) {
 	w = doJSON(ipd, http.MethodPost, "/api/ipd/admissions", token, fmt.Sprintf(`{"patient_id":%d}`, chart.ID))
 	mustCode(t, w, http.StatusCreated)
 	stay := decodeAdmission(t, w)
-	if _, err := sqlDB.Exec(`UPDATE ipd_admissions SET admitted_at = '2026-01-01 01:00:00' WHERE id = ?`, stay.ID); err != nil {
+	if _, err := sqlDB.Exec(`UPDATE ipd_admissions SET admitted_at = '2026-01-01 01:00:00', room_no = '12A' WHERE id = ?`, stay.ID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := sqlDB.Exec(`
@@ -53,6 +53,8 @@ func TestIpdStatementDaysAndDaily(t *testing.T) {
 		"Daw Statement",
 		"091111",
 		stay.AdmissionNo,
+		"Room no.",
+		"12A",
 		`class="a4-day">01 Jan 2026`,
 		`class="a4-day">02 Jan 2026`,
 		"day-one",
@@ -82,6 +84,8 @@ func TestIpdStatementDaysAndDaily(t *testing.T) {
 	jan1 := w.Body.String()
 	for _, want := range []string{
 		"IPD DAILY STATEMENT",
+		"Room no.",
+		"12A",
 		"day-one",
 		"08:30",
 		">Day total</td><td>1,000 MMK</td>",
