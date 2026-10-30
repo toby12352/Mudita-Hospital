@@ -3,11 +3,11 @@
 - Id: pharmacy-return
 - Roles: Admin and Pharmacy. OPD, OT, Patients, and IPD do not open Return in.
 - Depends on: bill-buttons
-- Opens: view `pharmacy_return`, NavIntent `billingMode: "edit"`. Sidebar Return in. Do not open Pharmacy Bill (`pharmacy_billing`), Transfer to OT (`pharmacy_transfer`), Drug Setup (`pharmacy`), or OT Maintenance (`ot` with `otMode: "stock"`).
+- Opens: view `pharmacy_return`, NavIntent `billingMode: "edit"`. Sidebar Return in. Do not open Pharmacy Bill (`pharmacy_billing`), Purchase Bills (`pharmacy_purchase`), Transfer to OT (`pharmacy_transfer`), Drug Setup (`pharmacy`), or OT Maintenance (`ot` with `otMode: "stock"`).
 - Mode: point and explain. Clicks on the highlighted control stay off. This lesson does not tell staff to press Mark returned, Credit to IPD, or Void Bills.
 - Entry: Help, not automatic
 
-Return in is a pharmacy slip. F7 here is Mark returned, not Mark Paid. Stock goes back to MAIN and cash is refunded. This is not the OT cupboard return, and it is not Void Bills.
+Return in is a pharmacy slip. F7 here is Mark returned, not Mark Paid. Stock goes back to MAIN and cash is refunded. This is not Purchase Bills (hospital buying stock), not the OT cupboard return, and not Void Bills.
 
 ## Steps
 

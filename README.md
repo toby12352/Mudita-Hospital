@@ -145,17 +145,28 @@ Open `http://localhost:1420` in a browser.
 | GET | `/api/patients/{id}/history` | Bearer + Admin or Patients (`patients`) — read-only. OPD bills (`id`, …), pharmacy bills except `TO-` (`id`, …), OT cases linked by `patient_id` (`case_no`, `status`, `bill_id` when billed, `bill_no`, `bill_status`, `created_at`), and IPD stays (`admission_no`, `status`, `admitted_at`, `balance_mmk`, `settled`). No name matching |
 | GET | `/api/patients/{id}/bills/{kind}/{billId}/print` | Bearer + Admin or Patients (`patients`) — receipt HTML; `kind` is `opd`, `pharmacy`, or `ot`. Bill must already be on this chart. Does not mark printed, paid, or void. 404 if missing or pharmacy `TO-` |
 | POST | `/api/patients/{id}/attach` | Bearer + Admin or Patients — body `bill_no`. Sets `patient_id` only when it is still null. OT sets `ot_cases.patient_id`. Rejects a bill that already has a chart, and rejects `TO-`. Does not change totals or stock |
-| GET | `/api/ipd/admissions` | Bearer + Admin or IPD (`ipd`) — `?status=open` or `settled`. Each row includes patient name, phone, age, and gender |
+| GET | `/api/ipd/admissions` | Bearer + Admin or IPD (`ipd`) — `?status=open` or `settled`. Each row includes patient name, phone, age, gender, and `yesterday_voucher_status` (`issued`, `paid`, `credit`, or empty) |
 | POST | `/api/ipd/admissions` | Bearer + Admin or IPD — admit an existing chart. Rejects a second open stay. Number `IPD-000001` |
 | GET | `/api/ipd/admissions/{id}` | Bearer + Admin or IPD — one stay, patient demographics, ledger lines, and `balance_mmk` (signed sum) |
 | PUT | `/api/ipd/admissions/{id}` | Bearer + Admin or IPD — notes while the stay is `open` |
 | POST | `/api/ipd/admissions/{id}/deposits` | Bearer + Admin or IPD — open stay only. `amount_mmk` > 0, optional note. One positive ledger row. Audited |
-| POST | `/api/ipd/admissions/{id}/ward-charges` | Bearer + Admin or IPD — open stay only. Description required. `amount_mmk` > 0 is stored negative. No stock and no service catalog |
+| POST | `/api/ipd/admissions/{id}/ward-charges` | Bearer + Admin or IPD — open stay only. Description required. `amount_mmk` > 0 is stored negative. No stock and no service catalog. The stay screen does not show this button; room and nursing are posted with Charge to IPD on an IPD charge bill |
 | GET | `/api/ipd/admissions/{id}/ledger/{lineId}/print` | Bearer + Admin or IPD — HTML deposit receipt, or OPD/OT/Pharmacy bill receipt when the line is a charged (or reversed) desk bill. Does not mark printed. Ward and settlement lines cannot be printed |
-| POST | `/api/ipd/admissions/{id}/discharge` | Bearer + Admin or IPD — open stay only. A positive balance writes `refund` of the opposite amount. A negative balance writes `collection` of the opposite amount. Zero writes no line. Then `status` is `settled`, `discharged_at` is set, and the balance is 0. Later deposits and charges return 409 |
-| GET | `/api/ipd/admissions/{id}/statement` | Bearer + Admin or IPD — HTML statement: deposits, ward lines, desk charges with bill number and desk, refund or collection, and the balance |
+| POST | `/api/ipd/admissions/{id}/discharge` | Bearer + Admin or IPD — open stay only. A positive balance writes `refund` of the opposite amount. A negative balance writes `collection` of the opposite amount. Zero writes no line. Then `status` is `settled`, `discharged_at` is set, and the balance is 0. Vouchers still `issued` become `paid` in that transaction. Vouchers already `credit` stay `credit`. Later deposits and charges return 409 |
+| GET | `/api/ipd/admissions/{id}/statement` | Bearer + Admin or IPD — HTML. No `date`: full-stay final statement, one MMK column, title `IPD FINAL STATEMENT`. `?date=YYYY-MM-DD`: daily sheet titled `IPD DAILY STATEMENT` with columns Deposited Fee, To Pay, and Difference. Opening carry comes from the previous day's stored voucher. Printing does not collect cash |
 | GET | `/api/ipd/daily-cash` | Bearer + Admin or IPD — deposits, collections, and refunds for `?date=YYYY-MM-DD`. Ward lines and desk charges are excluded. Net is `net_mmk` |
 | GET | `/api/ipd/daily-cash/print` | Bearer + Admin or IPD — HTML print of that IPD cash day |
+| POST | `/api/ipd/admissions/{id}/vouchers/{date}/issue` | Bearer + Admin or IPD — Yangon `date` before today. Creates status `issued` if missing. Refuses today and the future (`this day is still open`). If the previous date is still `issued`, sets it to `credit` in the same transaction. Idempotent when already issued. Does not move cash |
+| POST | `/api/ipd/admissions/{id}/vouchers/{date}/pay` | Bearer + Admin or IPD — from `issued` or `credit`, open stay. Closing below zero writes one `collection` for the shortfall and sets `paid`. Closing zero or above sets `paid` with no collection. Audited. Refused after discharge |
+| POST | `/api/ipd/admissions/{id}/vouchers/{date}/credit` | Bearer + Admin or IPD — from `issued` only when closing is below zero. Sets `credit`. No ledger row. Refused when there is nothing to defer |
+| POST | `/api/ipd/admissions/{id}/vouchers/{date}/unpay` | Bearer + Admin or IPD — from `paid` only when no later voucher exists. Deletes that decision's collection when it is still the latest for this voucher. Status returns to `credit` when closing is below zero, otherwise `issued`. Refused when a later sheet or a later collection exists, and after discharge |
+| GET / POST | `/api/ipd/charge-bills` | Bearer + Admin or IPD — numbers `IPB-000001`. GET `?q=&status=` (`draft`, `charged`, `void`, `deleted`); `?money=paid` lists `charged`. POST creates a draft. Lines are free text: `description`, `qty` > 0, `unit_price_mmk` >= 0. Net is `total_mmk - discount_mmk` |
+| GET / PUT | `/api/ipd/charge-bills/{id}` | Bearer + Admin or IPD — PUT is draft only and replaces lines |
+| POST | `/api/ipd/charge-bills/{id}/charge` | Bearer + Admin or IPD — draft whose chart is on an open stay. Status `charged`. Ledger kind `charge`, source `ipd`, amount the negative net. No drawer line. A typed name with no chart is refused |
+| POST | `/api/ipd/charge-bills/{id}/printed` | Bearer + Admin or IPD — stamps `printed_at` on a draft |
+| POST | `/api/ipd/charge-bills/{id}/void` | Bearer + Admin or IPD — reason required. A draft becomes `void`. A `charged` bill writes a reversal only when that bill's Yangon date has no `paid` voucher; a paid day is refused (`day is already paid`) |
+| DELETE | `/api/ipd/charge-bills/{id}` | Bearer + Admin only — permanently removes a `draft` or `void` bill. A `charged` bill is refused |
+| GET | `/api/ipd/charge-bills/{id}/print` | Bearer + Admin or IPD — A4 HTML charge slip (particular, qty, fee). Status line `Charged to IPD` after charge. Not the daily voucher |
 | GET / POST | `/api/pharmacy/items` | Bearer + `pharmacy` |
 | GET / PUT / DELETE | `/api/pharmacy/items/{id}` | Bearer + `pharmacy` |
 | POST | `/api/pharmacy/items/{id}/restock` | Bearer + `pharmacy` |
@@ -171,6 +182,13 @@ Open `http://localhost:1420` in a browser.
 | POST | `/api/pharmacy/bills/{id}/void` | Bearer + `pharmacy` — sale restores; return reverses credit when stock remains; a confirmed transfer moves qty back from the OT cupboard when that qty is still there. A charged bill voids only while the stay is open, and writes a ledger reversal |
 | DELETE | `/api/pharmacy/bills/{id}` | Bearer + Admin only — permanently removes a `draft` or `void` bill (lines and allocs cascade). Stock qty unchanged. Clears `stock_transfers.pharmacy_bill_id`. Paid bills are refused |
 | GET | `/api/pharmacy/bills/{id}/print` | Bearer + `pharmacy` — HTML receipt / return slip |
+| GET / POST | `/api/pharmacy/purchase-bills` | Bearer + `pharmacy` — hospital stock purchases (`PU-######`). Lines take `item_id`, `qty`, pack `unit`, `line_total_mmk` (total paid for that qty), and optional `expiry_date`. Draft only; no desk cash |
+| GET / PUT | `/api/pharmacy/purchase-bills/{id}` | Bearer + `pharmacy` — PUT is draft only and replaces lines |
+| POST | `/api/pharmacy/purchase-bills/{id}/pay` | Bearer + `pharmacy` — Mark purchased: credits MAIN (blank batch; optional expiry), updates catalog `buy_price_mmk` from the unit price (sale price unchanged), and posts on the admin expense report. Not pharmacy desk cash |
+| POST | `/api/pharmacy/purchase-bills/{id}/printed` | Bearer + `pharmacy` — stamps `printed_at` on a draft |
+| POST | `/api/pharmacy/purchase-bills/{id}/void` | Bearer + `pharmacy` — reason required. Paid void removes allocated MAIN qty when that batch still holds it; catalog buy price stays. Expense reverses on the void day |
+| DELETE | `/api/pharmacy/purchase-bills/{id}` | Bearer + Admin only — permanently removes a `draft` or `void` purchase bill |
+| GET | `/api/pharmacy/purchase-bills/{id}/print` | Bearer + `pharmacy` — HTML purchase slip |
 | GET | `/api/opd/catalog/doctors` | Bearer + `opd` |
 | GET | `/api/opd/catalog/services` | Bearer + `opd` |
 | GET | `/api/opd/catalog/items` | Bearer + `opd` |
@@ -181,6 +199,19 @@ Open `http://localhost:1420` in a browser.
 | POST | `/api/opd/bills/{id}/void` | Bearer + `opd` (reason; restores stock if paid). A charged bill voids only while the stay is open, and writes a ledger reversal |
 | DELETE | `/api/opd/bills/{id}` | Bearer + Admin only — permanently removes a `draft` or `void` bill (lines and allocs cascade). Stock qty unchanged. Balanced stay charge+reversal ledger rows are removed. Paid bills are refused |
 | GET | `/api/opd/bills/{id}/print` | Bearer + `opd` (HTML + OS print) |
+| GET | `/api/lab/catalog/doctors` | Bearer + `lab` |
+| GET | `/api/lab/catalog/services` | Bearer + `lab` — active `lab_services` only |
+| GET / POST | `/api/lab/services` | Bearer + `lab` — Lab Maintenance catalog; name and `price_mmk` required; code optional (null when blank). GET `?all=1` includes inactive |
+| GET | `/api/lab/services/history` | Bearer + `lab` |
+| GET / PUT / DELETE | `/api/lab/services/{id}` | Bearer + `lab` — DELETE soft-deactivates |
+| POST | `/api/lab/services/{id}/delete` | Bearer + `lab` — permanent delete |
+| GET / POST | `/api/lab/bills` | Bearer + `lab` — Lab Bill desk; lines are Lab services only |
+| GET / PUT | `/api/lab/bills/{id}` | Bearer + `lab` |
+| POST | `/api/lab/bills/{id}/pay` | Bearer + `lab` — cash when `admission_id` is omitted. Set it to charge an open stay for the same patient |
+| POST | `/api/lab/bills/{id}/printed` | Bearer + `lab` — stamp draft printed |
+| POST | `/api/lab/bills/{id}/void` | Bearer + `lab` (reason). A charged bill voids only while the stay is open, and writes a ledger reversal |
+| DELETE | `/api/lab/bills/{id}` | Bearer + Admin only — permanently removes a `draft` or `void` bill. Paid bills are refused |
+| GET | `/api/lab/bills/{id}/print` | Bearer + `lab` (HTML + OS print) |
 | GET | `/api/ot/stock` | Bearer + `ot` — cupboard on hand |
 | POST | `/api/ot/stock/{id}/return` | Bearer + `ot` — cupboard qty back to MAIN |
 | POST | `/api/ot/stock/{id}/label` | Bearer + `ot` — set batch number and expiry on a cupboard row; qty unchanged |
@@ -194,7 +225,7 @@ Open `http://localhost:1420` in a browser.
 | GET / POST | `/api/expenses/services` | Bearer + Admin (`settings`) — expense catalog; name required; code and `price_mmk` optional (null, not 0). GET `?all=1` includes inactive |
 | GET / PUT / DELETE | `/api/expenses/services/{id}` | Bearer + Admin (`settings`) — DELETE soft-deactivates. Omitted `price_mmk` keeps the stored price; JSON `null` clears it |
 | GET | `/api/expenses/catalog/services` | Bearer + `settings`, `opd`, `ot`, `ipd`, or `pharmacy` — active rows only; `?q=` or `?code=` |
-| GET / POST | `/api/expenses/bills` | Bearer + the desk for `portal` (`opd`, `ot`, `ipd`, `pharmacy`). GET `?portal=&q=&status=` lists that portal only (`q` matches bill no and name). POST creates a draft. Lines copy `code` and name from an active expense service and keep the client's `unit_price_mmk`. `total_mmk` is the line sum before discount; net is `total_mmk - discount_mmk` |
+| GET / POST | `/api/expenses/bills` | Bearer + the desk for `portal` (`opd`, `ot`, `ipd`, `pharmacy`). GET `?portal=&q=&status=` lists that portal only (`q` matches bill no and name). POST creates a draft. Lines take a typed `description`, `qty`, and `unit_price_mmk` (no catalog). A present `ref_id` still copies `code` and name from an active expense service and ignores client `description`. `total_mmk` is the line sum before discount; net is `total_mmk - discount_mmk` |
 | GET / PUT | `/api/expenses/bills/{id}` | Bearer + that bill's desk. PUT is draft only and replaces lines |
 | POST | `/api/expenses/bills/{id}/pay` | Bearer + that bill's desk — draft to paid (`paid_at`, `paid_by_user_id`). No stock movement and no IPD ledger |
 | POST | `/api/expenses/bills/{id}/printed` | Bearer + that bill's desk — sets `printed_at` once on a draft |
@@ -220,7 +251,7 @@ Open `http://localhost:1420` in a browser.
 | GET | `/api/reports/low-stock/print` | Bearer — HTML print |
 | GET | `/api/reports/near-expiry` | Bearer + Pharmacy/Admin — MAIN batches, `?days=90` |
 | GET | `/api/reports/near-expiry/print` | Bearer — HTML print |
-| GET | `/api/dashboard/overview` | Bearer + Admin (`settings`) — `income_mmk` (desk `grand_total_mmk` plus IPD net), signed `expense_mmk`, and `net_cash_mmk` (`income_mmk + expense_mmk`). `grand_total_mmk` stays OPD + OT + pharmacy |
+| GET | `/api/dashboard/overview` | Bearer + Admin (`settings`) — `income_mmk` is desk `grand_total_mmk` plus IPD earned. Before the voucher epoch, earned is ward, charge, and reversal. On and after the epoch, those charges are omitted and earned is deposits + collections + refunds (signed). A missing epoch row keeps the charge rule. `expense_mmk` is signed. `net_cash_mmk` is desk cash + IPD drawer (deposits, collections, refunds) + `expense_mmk`. `grand_total_mmk` stays OPD + OT + pharmacy |
 | GET | `/api/dashboard/daily-report` | Bearer + Admin — that same cash day, the prior day, deltas, desk lines, IPD lines, and expense lines. `?date=YYYY-MM-DD` |
 | GET | `/api/dashboard/daily-report/print` | Bearer + Admin (`settings`) — HTML print of the three signed totals, desk lines, IPD lines, and expense lines. `?date=YYYY-MM-DD` |
 | GET | `/api/demo/status` | Bearer + Admin — `enabled: false` unless training is turned on. Does not write. |
@@ -239,7 +270,7 @@ OPD, OT, and Pharmacy cannot open hospital Settings, manage users, backup, or tr
 
 **OT cupboard:** Pharmacy confirms a Transfer to OT slip (`POST /api/pharmacy/bills/{id}/transfer`). Saleable MAIN qty moves in one transaction. The same batch number and expiry, including blanks, land in `ot_batches`, with a `stock_movements` row, an `ot_stock_movements` row, and one `stock_transfers` row linked to the slip. OT returns qty the other way. A qty the source does not hold is rejected and changes nothing. Void of that slip puts the qty back only when the cupboard still holds it. Migration `011_ot_stock` copies existing `OT_FLOOR` qty into `ot_batches`. Migration `012_ot_bill_stock` returns leftover `OT_RESERVED` qty to `MAIN` and turns open issued or reconciled cases into draft bill documents. Paying an OT bill deducts `ot_batches`. Dashboard stock value counts MAIN and `ot_batches` only. Transfer slips are excluded from pharmacy cash.
 
-**Reports:** Each clinic desk's daily cash is its own collected bills and that desk's void reversals. On the admin dashboard, `grand_total_mmk` is OPD + OT + pharmacy, income adds IPD deposits, collections, and refunds, expenses are signed, and net cash is income plus that signed expense. Low stock and near expiry (pharmacy) are MAIN only. UI language **English / မြန်မာ**. Help or `?` opens shortcuts; **Print cheat sheet** / [`docs/CHEATSHEET.md`](docs/CHEATSHEET.md) for laminate. Admin **Settings → Training** seeds/resets `DEMO-` / `[TRAINING]` data only when the server is started with `MUDITA_ALLOW_TRAINING=1`. A hospital install leaves that off.
+**Reports:** Each clinic desk's daily cash is its own collected bills and that desk's void reversals. On the admin dashboard, `grand_total_mmk` is OPD + OT + pharmacy. IPD income before the voucher epoch is ward, charge, and reversal. On and after that date, IPD income is deposits, collections, and refunds, and an unpaid day is not income. Drawer cash stays deposits, collections, and refunds. Expenses are signed. Net cash is desk cash plus the IPD drawer plus that signed expense. Low stock and near expiry (pharmacy) are MAIN only. UI language **English / မြန်မာ**. Help or `?` opens shortcuts; **Print cheat sheet** / [`docs/CHEATSHEET.md`](docs/CHEATSHEET.md) for laminate. Admin **Settings → Training** seeds/resets `DEMO-` / `[TRAINING]` data only when the server is started with `MUDITA_ALLOW_TRAINING=1`. A hospital install leaves that off.
 
 ## Config
 

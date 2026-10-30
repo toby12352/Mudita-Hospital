@@ -245,6 +245,13 @@ export function RevenuePage({ t }: Props) {
                   name={t("pharmacyCash")}
                   stackId="cash"
                   fill={PHARM}
+                  radius={[0, 0, 0, 0]}
+                />
+                <Bar
+                  dataKey="lab_total_mmk"
+                  name={t("labCash")}
+                  stackId="cash"
+                  fill="#a16207"
                   radius={[3, 3, 0, 0]}
                 />
               </BarChart>

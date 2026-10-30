@@ -11,6 +11,7 @@ const (
 	moneyVoid           = "void"
 	moneyDraft          = "draft"
 	moneyPrintedNotPaid = "printed_not_paid"
+	moneyDeleted        = "deleted"
 )
 
 // appendBillHistoryFilters adds money-status and Yangon civil-day created_at
@@ -71,11 +72,18 @@ func moneyStatusClause(money, statusCol, printedCol, otBillNull string) (string,
 	case moneyDraft:
 		draft := statusCol + " = 'draft' AND " + printedEmpty
 		if otBillNull != "" {
-			return "((" + otBillNull + ") OR (" + draft + "))", true
+			// Soft-deleted visits stay out of Draft even when they have no bill.
+			return "(((" + otBillNull + " AND c.status != 'deleted') OR (" + draft + ")))", true
 		}
 		return "(" + draft + ")", true
 	case moneyPrintedNotPaid:
 		return "(" + statusCol + " = 'draft' AND " + printedSet + ")", true
+	case moneyDeleted:
+		if otBillNull != "" {
+			// OT history rows: deleted case, or a linked deleted bill.
+			return "(" + statusCol + " = 'deleted' OR c.status = 'deleted')", true
+		}
+		return statusCol + " = 'deleted'", true
 	default:
 		return "", false
 	}

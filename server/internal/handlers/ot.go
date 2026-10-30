@@ -1235,7 +1235,7 @@ type otPurgeVisitResult struct {
 	Bills  []otPurgeBillSummary
 }
 
-// purgeOtVisitTx removes a case and every draft/void bill on it. Paid bills refuse the whole visit.
+// purgeOtVisitTx soft-deletes a case and every draft/void bill on it. Paid bills refuse the whole visit.
 func purgeOtVisitTx(tx *sql.Tx, caseID int64) (otPurgeVisitResult, error) {
 	var out otPurgeVisitResult
 	var status, caseNo string
@@ -1267,6 +1267,9 @@ func purgeOtVisitTx(tx *sql.Tx, caseID int64) (otPurgeVisitResult, error) {
 			rows.Close()
 			return out, err
 		}
+		if b.Status == "deleted" {
+			continue
+		}
 		if b.Status != "draft" && b.Status != "void" {
 			rows.Close()
 			return out, errOtPurgeBillStatus
@@ -1283,7 +1286,9 @@ func purgeOtVisitTx(tx *sql.Tx, caseID int64) (otPurgeVisitResult, error) {
 		if err := purgeBillLedgerTx(tx, "ot", b.ID); err != nil {
 			return out, err
 		}
-		res, err := tx.Exec(`DELETE FROM ot_bills WHERE id = ?`, b.ID)
+		res, err := tx.Exec(`
+			UPDATE ot_bills SET status = 'deleted', updated_at = datetime('now') WHERE id = ?
+		`, b.ID)
 		if err != nil {
 			return out, err
 		}
@@ -1292,7 +1297,9 @@ func purgeOtVisitTx(tx *sql.Tx, caseID int64) (otPurgeVisitResult, error) {
 			return out, errOtPurgeNotFound
 		}
 	}
-	res, err := tx.Exec(`DELETE FROM ot_cases WHERE id = ?`, caseID)
+	res, err := tx.Exec(`
+		UPDATE ot_cases SET status = 'deleted', updated_at = datetime('now') WHERE id = ?
+	`, caseID)
 	if err != nil {
 		return out, err
 	}
@@ -1406,7 +1413,9 @@ func (h *OT) purgeBill(w http.ResponseWriter, r *http.Request, path string) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "ledger purge failed"})
 		return
 	}
-	res, err := tx.Exec(`DELETE FROM ot_bills WHERE id = ?`, id)
+	res, err := tx.Exec(`
+		UPDATE ot_bills SET status = 'deleted', updated_at = datetime('now') WHERE id = ?
+	`, id)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "delete failed"})
 		return
@@ -1418,13 +1427,17 @@ func (h *OT) purgeBill(w http.ResponseWriter, r *http.Request, path string) {
 	}
 
 	var remaining int
-	if err := tx.QueryRow(`SELECT COUNT(1) FROM ot_bills WHERE case_id = ?`, caseID).Scan(&remaining); err != nil {
+	if err := tx.QueryRow(`
+		SELECT COUNT(1) FROM ot_bills WHERE case_id = ? AND status != 'deleted'
+	`, caseID).Scan(&remaining); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "case check failed"})
 		return
 	}
 	caseDeleted := false
 	if remaining == 0 {
-		cres, err := tx.Exec(`DELETE FROM ot_cases WHERE id = ?`, caseID)
+		cres, err := tx.Exec(`
+			UPDATE ot_cases SET status = 'deleted', updated_at = datetime('now') WHERE id = ?
+		`, caseID)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "case delete failed"})
 			return
@@ -1449,11 +1462,11 @@ func (h *OT) purgeBill(w http.ResponseWriter, r *http.Request, path string) {
 	}
 	uid := user.ID
 	audit.WriteAudit(h.DB, &uid, "delete", "ot_bill", &id, map[string]any{
-		"bill_no": billNo, "was_status": status, "total_mmk": totalMMK, "case_id": caseID,
+		"bill_no": billNo, "was_status": status, "status": "deleted", "total_mmk": totalMMK, "case_id": caseID,
 	})
 	if caseDeleted {
 		audit.WriteAudit(h.DB, &uid, "delete", "ot_case", &caseID, map[string]any{
-			"case_no": caseNo, "bills": 1,
+			"case_no": caseNo, "bills": 1, "status": "deleted",
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -1495,6 +1508,9 @@ func (h *OT) voidBill(w http.ResponseWriter, r *http.Request, path string) {
 	}
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "load failed"})
+		return
+	}
+	if rejectDeletedBill(w, status) {
 		return
 	}
 	if status == "void" {

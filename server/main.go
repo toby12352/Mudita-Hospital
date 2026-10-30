@@ -74,12 +74,15 @@ func main() {
 	// Patient charts. Admin and Patients write. Desk tokens, including IPD, may search and open one chart.
 	mux.Handle("/api/patients", &handlers.Patients{DB: sqlDB})
 	mux.Handle("/api/patients/", &handlers.Patients{DB: sqlDB})
-	// IPD stays. Admit, notes, deposits, and ward charges. No discharge and no desk-bill charges.
+	// IPD stays, day vouchers, and IPD charge bills. Charge bills post onto the open stay.
+	// They are not desk cash. Ward charges stay on this same handler.
 	mux.Handle("/api/ipd/", &handlers.IPD{DB: sqlDB})
 	// Pharmacy inventory (Admin + Pharmacy)
 	mux.Handle("/api/pharmacy/", &handlers.Pharmacy{DB: sqlDB})
 	// OPD billing (Admin + OPD)
 	mux.Handle("/api/opd/", &handlers.OPD{DB: sqlDB})
+	// Lab billing and service catalog (Admin + lab grants)
+	mux.Handle("/api/lab/", &handlers.Lab{DB: sqlDB})
 	// OT case cart (Admin + OT)
 	mux.Handle("/api/ot/", &handlers.OT{DB: sqlDB})
 	// Expense catalog. Desk tokens may read the active catalog. Writes stay on settings.

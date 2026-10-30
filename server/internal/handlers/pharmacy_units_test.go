@@ -267,6 +267,30 @@ func TestResolveItemPackDuplicateVisibleUnit(t *testing.T) {
 	}
 }
 
+func TestResolveItemPackSameUnitCollapse(t *testing.T) {
+	// Bottle × 1 × Bottle pads to all-Bottle qty-1; collapse leaves one visible unit.
+	l1, l2, l3 := int64(1), int64(1), int64(1)
+	p, err := resolveItemPack(&l1, &l2, &l3, nil, nil, nil, "Bottle", "Bottle", "Bottle", "", "", "")
+	if err != "" {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if packVisibleDepth(p) != 1 {
+		t.Fatalf("depth = %d, want 1", packVisibleDepth(p))
+	}
+	levels := visiblePackLevels(p)
+	if len(levels) != 1 || levels[0].Unit != "Bottle" {
+		t.Fatalf("levels = %+v, want one Bottle", levels)
+	}
+	units := packToItemUnits(p)
+	if units.StockUnit != "Bottle" || units.PurchaseUnit != "Bottle" {
+		t.Fatalf("units = %+v", units)
+	}
+	got, msg := tabletsPerBox(p)
+	if msg != "" || got != 1 {
+		t.Fatalf("tabletsPerBox = %d %q, want 1", got, msg)
+	}
+}
+
 func TestNormalizeRejectsDeepItemWithoutPackDepth(t *testing.T) {
 	sqlDB := openTestDB(t)
 	q := []int64{1, 2, 2, 2, 2, 2}

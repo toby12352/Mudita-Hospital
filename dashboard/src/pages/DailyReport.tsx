@@ -35,6 +35,15 @@ function deltaClass(n: number): string {
   return "delta-val";
 }
 
+// Charge lines are stored negative. Cash lines (deposit, collection, refund)
+// are already signed as income, the same way the epoch rule books them.
+function earnedLineMMK(kind: string, amount: number): number {
+  if (kind === "deposit" || kind === "collection" || kind === "refund") {
+    return amount;
+  }
+  return -amount;
+}
+
 function kindLabel(kind: string, t: (k: string) => string): string {
   if (
     kind === "deposit" ||
@@ -55,6 +64,8 @@ function portalLabel(portal: string, t: (k: string) => string): string {
       return "OPD";
     case "ot":
       return "OT";
+    case "lab":
+      return "Lab";
     case "ipd":
       return "IPD";
     case "pharmacy":
@@ -266,6 +277,11 @@ export function DailyReportPage({ t }: Props) {
               sub={`${formatDelta(data.delta_pharmacy_mmk ?? 0)} · ${data.pharmacy_count ?? 0} ${t("billsShort")}`}
             />
             <KpiCard
+              label={t("labCash")}
+              value={formatMMK(data.lab_total_mmk ?? 0)}
+              sub={`${formatDelta(data.delta_lab_mmk ?? 0)} · ${data.lab_count ?? 0} ${t("billsShort")}`}
+            />
+            <KpiCard
               label={t("voidsToday")}
               value={String(data.voids)}
               sub={t("voidsHint")}
@@ -297,6 +313,10 @@ export function DailyReportPage({ t }: Props) {
               <div>
                 <p className="kpi-label">{t("pharmacyCash")}</p>
                 <p className="delta-val">{formatDelta(data.delta_pharmacy_mmk ?? 0)}</p>
+              </div>
+              <div>
+                <p className="kpi-label">{t("labCash")}</p>
+                <p className="delta-val">{formatDelta(data.delta_lab_mmk ?? 0)}</p>
               </div>
               <div>
                 <p className="kpi-label">{t("totalIncome")}</p>
@@ -382,7 +402,7 @@ export function DailyReportPage({ t }: Props) {
                         <td>{kindLabel(line.kind, t)}</td>
                         <td>{line.admission_no}</td>
                         <td>{line.patient}</td>
-                        <td className="num">{formatDelta(-(line.amount_mmk ?? 0))}</td>
+                        <td className="num">{formatDelta(earnedLineMMK(line.kind, line.amount_mmk ?? 0))}</td>
                       </tr>
                     ))}
                   </tbody>

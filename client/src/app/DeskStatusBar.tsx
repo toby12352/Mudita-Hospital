@@ -45,7 +45,7 @@ export function DeskStatusBar({
 
 export function shortcutsForView(
   view: string,
-  intent: { opdScreen?: string; otMode?: string; pharmacyScreen?: string },
+  intent: { opdScreen?: string; labScreen?: string; otMode?: string; pharmacyScreen?: string },
   t: (k: string) => string,
 ): DeskShortcut[] {
   const billKeys: DeskShortcut[] = [
@@ -84,6 +84,31 @@ export function shortcutsForView(
     ];
   }
 
+  if (view === "pharmacy_purchase") {
+    return [
+      { key: "F2", label: t("newPurchase") },
+      { key: "F5", label: t("saveDraft") },
+      { key: "F6", label: t("print") },
+      { key: "F7", label: t("markPurchased") },
+      { key: "F8", label: t("delete") },
+      { key: "F9", label: t("history") },
+      { key: "F10", label: t("cancel") },
+      { key: "^F8", label: t("vDelete") },
+    ];
+  }
+
+  if (view === "ipd_bill") {
+    return [
+      { key: "F2", label: t("newBill") },
+      { key: "F5", label: t("saveDraft") },
+      { key: "F6", label: t("print") },
+      { key: "F8", label: t("delete") },
+      { key: "F9", label: t("history") },
+      { key: "F10", label: t("cancel") },
+      { key: "^F8", label: t("vDelete") },
+    ];
+  }
+
   if (
     view === "ipd_expense" ||
     view === "pharmacy_expense" ||
@@ -93,7 +118,11 @@ export function shortcutsForView(
     return billKeys;
   }
 
-  if (view === "pharmacy_billing" || (view === "opd" && (intent.opdScreen ?? "bill") === "bill")) {
+  if (
+    view === "pharmacy_billing" ||
+    (view === "opd" && (intent.opdScreen ?? "bill") === "bill") ||
+    (view === "lab" && (intent.labScreen ?? "bill") === "bill")
+  ) {
     return billKeys;
   }
   if (view === "ot" && (intent.otMode ?? "case") === "case") {

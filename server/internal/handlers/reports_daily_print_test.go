@@ -43,28 +43,47 @@ func TestRenderDashboardDailyHTMLLayout(t *testing.T) {
 	hosp, move := sampleDailyMove()
 	body := renderDashboardDailyHTML(hosp, move, "overall")
 	for _, want := range []string{
-		`class="sheet-logo"`,
+		`class="a4-logo"`,
 		"data:image/png;base64,",
 		"Mudita Hospital",
-		"Daily cash report — 2026-10-28",
-		"Income: 270,000 MMK",
-		"Expenses: -5,000 MMK",
-		"Net: 435,000 MMK",
-		"<h3>Desk</h3>",
-		"<h3>IPD gains<span class=\"section-note\">130,000 MMK</span></h3>",
-		"<h3>IPD cash drawer</h3>",
-		"Held for patients: 170,000 MMK",
-		"Owed by patients: 0 MMK",
-		"<h3>Expenses</h3>",
+		"Daily Cash Report",
+		"Expenses Cash Report",
+		"Date: Oct 28, 2026",
+		"<h3>OT</h3>",
+		"<h3>IPD</h3>",
+		"<h3>Pharmacy</h3>",
 		"OTB-000010",
+		"PH-000015",
+		"35,000",
+		"95,000",
 		"EXP-000001",
+		"Total income",
+		"Total expenses",
+		"Difference",
+		"265,000 MMK",
+		`class="daily-page-break"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("daily print missing %q", want)
 		}
 	}
-	if strings.Count(body, `<section class="block">`) != 5 {
-		t.Fatalf("expected 5 titled sections, body snippet: %s", body[:400])
+	for _, hide := range []string{
+		"<h3>Desk</h3>",
+		"IPD gains",
+		"IPD cash drawer",
+		"IPD open stays",
+		"Held for patients",
+		"Net:",
+		"<h3>OPD</h3>",
+		"<h3>Lab</h3>",
+	} {
+		if strings.Contains(body, hide) {
+			t.Fatalf("overall print leaked %q", hide)
+		}
+	}
+	// OT, IPD, Pharmacy income + Pharmacy expense.
+	if strings.Count(body, `<section class="block">`) != 4 {
+		t.Fatalf("expected 4 titled sections, got %d; body snippet: %s", strings.Count(body, `<section class="block">`), body[:400])
 	}
 }
 
@@ -72,10 +91,13 @@ func TestRenderDashboardDailyHTMLIncome(t *testing.T) {
 	hosp, move := sampleDailyMove()
 	body := renderDashboardDailyHTML(hosp, move, "income")
 	for _, want := range []string{
-		"Income report — 2026-10-28",
-		"<strong>Income: 270,000 MMK</strong>",
-		"<h3>Desk</h3>",
-		"<h3>IPD gains",
+		"Income Cash Report",
+		"Date: Oct 28, 2026",
+		"Total income",
+		"270,000 MMK",
+		"<h3>OT</h3>",
+		"<h3>IPD</h3>",
+		"<h3>Pharmacy</h3>",
 		"OTB-000010",
 	} {
 		if !strings.Contains(body, want) {
@@ -86,16 +108,17 @@ func TestRenderDashboardDailyHTMLIncome(t *testing.T) {
 		"Expense report",
 		"IPD cash drawer",
 		"IPD open stays",
-		"<h3>Expenses</h3>",
 		"EXP-000001",
+		"Difference",
 		"Net:",
+		`class="daily-page-break"`,
 	} {
 		if strings.Contains(body, hide) {
 			t.Fatalf("income print leaked %q", hide)
 		}
 	}
-	if strings.Count(body, `<section class="block">`) != 2 {
-		t.Fatalf("expected 2 income sections, got %d", strings.Count(body, `<section class="block">`))
+	if strings.Count(body, `<section class="block">`) != 3 {
+		t.Fatalf("expected 3 income sections, got %d", strings.Count(body, `<section class="block">`))
 	}
 }
 
@@ -103,9 +126,11 @@ func TestRenderDashboardDailyHTMLExpense(t *testing.T) {
 	hosp, move := sampleDailyMove()
 	body := renderDashboardDailyHTML(hosp, move, "expense")
 	for _, want := range []string{
-		"Expense report — 2026-10-28",
-		"<strong>Expenses: -5,000 MMK</strong>",
-		"<h3>Expenses</h3>",
+		"Expenses Cash Report",
+		"Date: Oct 28, 2026",
+		"Total expenses",
+		"-5,000 MMK",
+		"<h3>Pharmacy</h3>",
 		"EXP-000001",
 	} {
 		if !strings.Contains(body, want) {
@@ -115,10 +140,13 @@ func TestRenderDashboardDailyHTMLExpense(t *testing.T) {
 	for _, hide := range []string{
 		"Income report",
 		"<h3>Desk</h3>",
+		"<h3>OT</h3>",
 		"OTB-000010",
 		"IPD gains",
+		"<h3>IPD</h3>",
 		"IPD cash drawer",
 		"IPD open stays",
+		"Difference",
 		"Net:",
 	} {
 		if strings.Contains(body, hide) {
@@ -127,5 +155,26 @@ func TestRenderDashboardDailyHTMLExpense(t *testing.T) {
 	}
 	if strings.Count(body, `<section class="block">`) != 1 {
 		t.Fatalf("expected 1 expense section, got %d", strings.Count(body, `<section class="block">`))
+	}
+}
+
+func TestIPDIncomePrintKeepsCashSign(t *testing.T) {
+	hosp := &hospitalSettings{HospitalName: "Mudita Hospital"}
+	move := &cashMovement{
+		Date:      "2026-04-02",
+		IncomeMMK: 100000,
+		Desk:      &cashReport{},
+		IPDEarned: &ipdEarnedReport{
+			EarnedMMK: 100000,
+			Lines: []ipdCashLine{{
+				Kind: "deposit", AdmissionNo: "IPD-000001", Patient: "Daw Cash", AmountMMK: 100000,
+			}},
+		},
+		IPD:          &ipdCashReport{},
+		ExpenseLines: []expenseCashLine{},
+	}
+	body := renderDashboardDailyHTML(hosp, move, "income")
+	if !strings.Contains(body, "100,000") || strings.Contains(body, "-100,000") {
+		t.Fatalf("deposit should print as income:\n%s", body)
 	}
 }

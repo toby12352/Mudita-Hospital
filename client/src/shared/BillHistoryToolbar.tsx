@@ -5,7 +5,7 @@ import { type DateSortValue } from "@/shared/DateSort";
 import { Typeahead } from "@/shared/Typeahead";
 import { useI18n } from "@/shared/i18n";
 
-export type BillHistoryMoney = "" | "paid" | "void" | "draft" | "printed_not_paid";
+export type BillHistoryMoney = "" | "paid" | "void" | "draft" | "printed_not_paid" | "deleted";
 
 export type BillHistoryQuery = {
   q: string;
@@ -21,7 +21,7 @@ export type BillHistorySuggestItem = {
   name: string;
 };
 
-const MONEY_OPTIONS: BillHistoryMoney[] = ["", "paid", "void", "draft", "printed_not_paid"];
+const MONEY_OPTIONS: BillHistoryMoney[] = ["", "paid", "void", "draft", "printed_not_paid", "deleted"];
 
 /** Clinic PC calendar day (yyyy-mm-dd). Matches the Yangon civil day the API filters on. */
 function localToday(): string {
@@ -138,6 +138,7 @@ export function BillHistoryToolbar({
     void: t("voidStatus"),
     draft: t("draft"),
     printed_not_paid: t("printedNotPaid"),
+    deleted: t("deletedStatus"),
   };
 
   const statusLabelId = `${filterPanelId}-status-label`;

@@ -3,8 +3,11 @@ package handlers
 import "database/sql"
 
 // cashMovement is the one cash-drawer total for an Asia/Yangon civil day.
-// income_mmk is desk grand_total_mmk plus IPD earned charges (ward, charge, reversal).
-// Deposits, collections, and refunds are drawer cash only; they are not income.
+// income_mmk is desk grand_total_mmk plus IPD income from buildIpdEarned.
+// Before the voucher epoch, IPD income is ward, charge, and reversal.
+// On and after the epoch, those charges are omitted and IPD income is
+// deposits + collections + refunds (signed). A missing epoch row keeps the
+// charge rule. Drawer cash is always deposits, collections, and refunds.
 // expense_mmk is signed: negative means money left the hospital.
 // net_cash_mmk is desk cash + IPD drawer + expense_mmk. Do not use income_mmk here.
 type cashMovement struct {
@@ -106,7 +109,47 @@ func buildExpenseCash(db *sql.DB, date string) ([]expenseCashLine, int64, error)
 	if err != nil {
 		return nil, 0, err
 	}
-	return lines, payTotal + voidTotal, nil
+
+	// Pharmacy purchase bills: money out for stock received. Same sign pattern as expense_bills.
+	rows, err = db.Query(`
+		SELECT bill_no, 'pharmacy',
+		       CASE WHEN TRIM(supplier_name) = '' THEN 'Pharmacy purchase' ELSE supplier_name END,
+		       -total_mmk, COALESCE(paid_at, '')
+		FROM pharmacy_purchase_bills
+		WHERE paid_at IS NOT NULL AND TRIM(paid_at) != ''
+		  AND date(paid_at) = date(?)
+		  AND (
+		    status = 'paid'
+		    OR (status = 'void' AND voided_at IS NOT NULL AND TRIM(voided_at) != '')
+		  )
+		ORDER BY paid_at ASC, id ASC
+	`, date)
+	if err != nil {
+		return nil, 0, err
+	}
+	purchasePay, err := scanExpenseRows(rows, &lines, false)
+	if err != nil {
+		return nil, 0, err
+	}
+	rows, err = db.Query(`
+		SELECT bill_no, 'pharmacy',
+		       CASE WHEN TRIM(supplier_name) = '' THEN 'Pharmacy purchase' ELSE supplier_name END,
+		       total_mmk, COALESCE(paid_at, '')
+		FROM pharmacy_purchase_bills
+		WHERE paid_at IS NOT NULL AND TRIM(paid_at) != ''
+		  AND status = 'void'
+		  AND voided_at IS NOT NULL AND TRIM(voided_at) != ''
+		  AND voided_at >= ? AND voided_at < ?
+		ORDER BY voided_at ASC, id ASC
+	`, start, end)
+	if err != nil {
+		return nil, 0, err
+	}
+	purchaseVoid, err := scanExpenseRows(rows, &lines, true)
+	if err != nil {
+		return nil, 0, err
+	}
+	return lines, payTotal + voidTotal + purchasePay + purchaseVoid, nil
 }
 
 func scanExpenseRows(rows *sql.Rows, lines *[]expenseCashLine, reversal bool) (int64, error) {

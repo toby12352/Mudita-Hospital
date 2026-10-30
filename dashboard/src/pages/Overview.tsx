@@ -26,6 +26,7 @@ type Props = {
 const ACCENT = "#1b6bc7";
 const OT_BLUE = "#4a90c8";
 const PHARM = "#1f7a4d";
+const LAB = "#a16207";
 const IPD = "#6b4fa0";
 const NET = "#1c1c1c";
 const MUTED = "#6b7280";
@@ -48,6 +49,7 @@ function CashTrendTooltip({
     [t("opdCash"), formatMMK(row.opd_total_mmk ?? 0)],
     [t("otCash"), formatMMK(row.ot_total_mmk ?? 0)],
     [t("pharmacyCash"), formatMMK(row.pharmacy_total_mmk ?? 0)],
+    [t("labCash"), formatMMK(row.lab_total_mmk ?? 0)],
     [t("ipdCash"), formatMMK(row.ipd_cash_mmk ?? 0)],
     [t("totalExpenses"), formatDelta(row.expense_mmk ?? 0)],
     [t("netCash"), formatDelta(row.net_cash_mmk ?? 0)],
@@ -187,6 +189,11 @@ export function OverviewPage({ t }: Props) {
           sub={overview ? `${overview.pharmacy_count ?? 0} ${t("bill").toLowerCase()}` : undefined}
         />
         <KpiCard
+          label={t("labCash")}
+          value={overview ? formatMMK(overview.lab_total_mmk ?? 0) : "—"}
+          sub={overview ? `${overview.lab_count ?? 0} ${t("bill").toLowerCase()}` : undefined}
+        />
+        <KpiCard
           label={t("ipdCash")}
           value={overview ? formatMMK(overview.ipd_cash_mmk ?? 0) : "—"}
           sub={t("ipdCashHint")}
@@ -283,6 +290,7 @@ export function OverviewPage({ t }: Props) {
                 <Bar dataKey="opd_total_mmk" name={t("opdCash")} stackId="cash" fill={ACCENT} />
                 <Bar dataKey="ot_total_mmk" name={t("otCash")} stackId="cash" fill={OT_BLUE} />
                 <Bar dataKey="pharmacy_total_mmk" name={t("pharmacyCash")} stackId="cash" fill={PHARM} />
+                <Bar dataKey="lab_total_mmk" name={t("labCash")} stackId="cash" fill={LAB} />
                 <Bar
                   dataKey="ipd_cash_mmk"
                   name={t("ipdCash")}

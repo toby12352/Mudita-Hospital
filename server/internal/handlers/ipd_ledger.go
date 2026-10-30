@@ -196,6 +196,10 @@ func (h *IPD) printDeposit(w http.ResponseWriter, r *http.Request, path string) 
 		(&Pharmacy{DB: h.DB}).printPharmacyBill(w, r, printPath)
 	case "ot":
 		(&OT{DB: h.DB}).printBill(w, r, printPath)
+	case "lab":
+		(&Lab{DB: h.DB}).printBill(w, r, printPath)
+	case "ipd":
+		h.writeChargeBillHTML(w, *line.SourceID)
 	default:
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "line cannot be printed"})
 	}
@@ -214,10 +218,14 @@ func loadAdmissionDetail(db *sql.DB, id int64) (ipdAdmission, error) {
 	if len(lines) > 0 {
 		row.Ledger = lines
 	}
-	return row, nil
+	one := []ipdAdmission{row}
+	if err := attachYesterdayVoucherStatus(db, one); err != nil {
+		return row, err
+	}
+	return one[0], nil
 }
 
-func loadLedger(db *sql.DB, admissionID int64) ([]ipdLedgerLine, int64, error) {
+func loadLedger(db sqlQuery, admissionID int64) ([]ipdLedgerLine, int64, error) {
 	rows, err := db.Query(`
 		SELECT id, admission_id, kind, amount_mmk, source, source_id, note, actor_user_id, created_at
 		FROM ipd_ledger

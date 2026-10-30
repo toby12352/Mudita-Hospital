@@ -257,6 +257,43 @@ func TestExpenseBills(t *testing.T) {
 			t.Fatalf("portal %s bill %+v", portal, created)
 		}
 	}
+
+	w = doJSON(exp, http.MethodPost, "/api/expenses/bills", opdTok, `{
+		"portal":"opd",
+		"name":"Custom fuel run",
+		"description":"night shift",
+		"lines":[
+			{"description":"  Diesel jerry can  ","qty":2,"unit_price_mmk":7500},
+			{"description":"Taxi to depot","qty":1,"unit_price_mmk":3000}
+		]
+	}`)
+	mustCode(t, w, http.StatusCreated)
+	free := decodeExpenseBill(t, w)
+	if free.Name != "Custom fuel run" || free.Description != "night shift" || free.TotalMMK != 18000 {
+		t.Fatalf("free-text header %+v", free)
+	}
+	if len(free.Lines) != 2 {
+		t.Fatalf("free-text lines %+v", free.Lines)
+	}
+	if free.Lines[0].RefID != nil || free.Lines[0].Code != "" || free.Lines[0].Description != "Diesel jerry can" || free.Lines[0].Qty != 2 || free.Lines[0].UnitPriceMMK != 7500 || free.Lines[0].LineTotalMMK != 15000 {
+		t.Fatalf("free-text line 0 %+v", free.Lines[0])
+	}
+	if free.Lines[1].RefID != nil || free.Lines[1].Description != "Taxi to depot" || free.Lines[1].LineTotalMMK != 3000 {
+		t.Fatalf("free-text line 1 %+v", free.Lines[1])
+	}
+	w = doJSON(exp, http.MethodPost, "/api/expenses/bills", opdTok, `{
+		"portal":"opd","name":"Blank particular","lines":[{"description":"  ","qty":1,"unit_price_mmk":100}]
+	}`)
+	mustCode(t, w, http.StatusBadRequest)
+	if !strings.Contains(errorText(t, w), "description required") {
+		t.Fatalf("blank particular %s", w.Body.String())
+	}
+	w = doJSON(exp, http.MethodGet, fmt.Sprintf("/api/expenses/bills/%d/print", free.ID), opdTok, "")
+	mustCode(t, w, http.StatusOK)
+	freeHTML := w.Body.String()
+	if !strings.Contains(freeHTML, "Diesel jerry can") || !strings.Contains(freeHTML, "Taxi to depot") {
+		t.Fatalf("free-text receipt missing particulars: %s", freeHTML)
+	}
 }
 
 func postExpenseService(t *testing.T, exp *Expenses, token, body string) expenseService {

@@ -37,6 +37,8 @@ export type IpdAdmission = {
   patient: IpdPatient;
   balance_mmk?: number;
   ledger?: IpdLedgerLine[];
+  /** Yesterday's stored voucher: issued, paid, or credit. Blank when none exists. */
+  yesterday_voucher_status?: string;
 };
 
 export async function listIpdAdmissions(status = "open"): Promise<IpdAdmission[]> {
@@ -112,6 +114,43 @@ export async function fetchIpdStatementHtml(id: number, date: string): Promise<s
   return fetchPrintHtml(`/api/ipd/admissions/${id}/statement${q}`, getApiBase, getStoredToken);
 }
 
+export type IpdDayVoucher = {
+  id: number;
+  admission_id: number;
+  civil_date: string;
+  status: string;
+  closing_mmk: number;
+  collection_ledger_id?: number | null;
+  can_unpay: boolean;
+};
+
+function postIpdDayVoucher(id: number, date: string, action: "issue" | "pay" | "credit" | "unpay"): Promise<IpdDayVoucher> {
+  return apiFetch<IpdDayVoucher>(
+    `/api/ipd/admissions/${id}/vouchers/${encodeURIComponent(date)}/${action}`,
+    { method: "POST" },
+  );
+}
+
+/** Creates the morning sheet for a closed day. Does not collect cash. */
+export function issueIpdDayVoucher(id: number, date: string): Promise<IpdDayVoucher> {
+  return postIpdDayVoucher(id, date, "issue");
+}
+
+/** Collects a လိုငွေ shortfall, or marks a zero / ပိုငွေ day paid. */
+export function payIpdDayVoucher(id: number, date: string): Promise<IpdDayVoucher> {
+  return postIpdDayVoucher(id, date, "pay");
+}
+
+/** Carries လိုငွေ onto the next sheet. No cash line. */
+export function creditIpdDayVoucher(id: number, date: string): Promise<IpdDayVoucher> {
+  return postIpdDayVoucher(id, date, "credit");
+}
+
+/** Removes this decision's collection while the voucher is still the latest one. */
+export function unpayIpdDayVoucher(id: number, date: string): Promise<IpdDayVoucher> {
+  return postIpdDayVoucher(id, date, "unpay");
+}
+
 export type IpdCashLine = {
   kind: string;
   amount_mmk: number;
@@ -141,4 +180,119 @@ export async function printIpdCash(date: string, title: string): Promise<void> {
     getStoredToken,
     { title, receipt: false },
   );
+}
+
+export type IpdChargeBillLine = {
+  id?: number;
+  description: string;
+  qty: number;
+  unit_price_mmk: number;
+  line_total_mmk: number;
+  sort_order?: number;
+};
+
+export type IpdChargeBill = {
+  id: number;
+  bill_no: string;
+  patient_id?: number | null;
+  patient_name: string;
+  patient_phone: string;
+  patient_age_years?: number | null;
+  patient_gender: string;
+  admission_id?: number | null;
+  status: string;
+  total_mmk: number;
+  discount_value: number;
+  discount_unit: string;
+  discount_mmk: number;
+  printed_at?: string | null;
+  void_reason?: string;
+  created_at: string;
+  updated_at: string;
+  lines?: IpdChargeBillLine[];
+};
+
+export type IpdChargeBillWrite = {
+  patient_id: number | null;
+  patient_name: string;
+  patient_phone: string;
+  patient_age_years: number | null;
+  patient_gender: string;
+  discount_value: number;
+  discount_unit: "percent" | "mmk";
+  lines: { description: string; qty: number; unit_price_mmk: number }[];
+};
+
+export async function listIpdChargeBills(
+  q = "",
+  status = "",
+  opts?: { money?: string; from?: string; to?: string; sort?: string },
+): Promise<IpdChargeBill[]> {
+  const params = new URLSearchParams();
+  if (q.trim()) params.set("q", q.trim());
+  if (status) params.set("status", status);
+  if (opts?.money?.trim()) params.set("money", opts.money.trim());
+  if (opts?.from?.trim()) params.set("from", opts.from.trim());
+  if (opts?.to?.trim()) params.set("to", opts.to.trim());
+  if (opts?.sort?.trim()) params.set("sort", opts.sort.trim());
+  const qs = params.toString();
+  const res = await apiFetch<{ bills: IpdChargeBill[] }>(
+    `/api/ipd/charge-bills${qs ? `?${qs}` : ""}`,
+  );
+  return res.bills ?? [];
+}
+
+export async function getIpdChargeBill(id: number): Promise<IpdChargeBill> {
+  return apiFetch<IpdChargeBill>(`/api/ipd/charge-bills/${id}`);
+}
+
+export async function createIpdChargeBill(body: IpdChargeBillWrite): Promise<IpdChargeBill> {
+  return apiFetch<IpdChargeBill>("/api/ipd/charge-bills", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function updateIpdChargeBill(
+  id: number,
+  body: IpdChargeBillWrite,
+): Promise<IpdChargeBill> {
+  return apiFetch<IpdChargeBill>(`/api/ipd/charge-bills/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function chargeIpdChargeBill(id: number): Promise<IpdChargeBill> {
+  return apiFetch<IpdChargeBill>(`/api/ipd/charge-bills/${id}/charge`, {
+    method: "POST",
+    body: "{}",
+  });
+}
+
+export async function markIpdChargeBillPrinted(id: number): Promise<IpdChargeBill> {
+  return apiFetch<IpdChargeBill>(`/api/ipd/charge-bills/${id}/printed`, {
+    method: "POST",
+    body: "{}",
+  });
+}
+
+export async function voidIpdChargeBill(id: number, reason: string): Promise<IpdChargeBill> {
+  return apiFetch<IpdChargeBill>(`/api/ipd/charge-bills/${id}/void`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+}
+
+/** Admin-only. Permanently removes a draft or void bill. */
+export async function purgeIpdChargeBill(id: number): Promise<void> {
+  await apiFetch(`/api/ipd/charge-bills/${id}`, { method: "DELETE" });
+}
+
+/** A4 charge slip. Not the daily voucher. */
+export async function printIpdChargeBill(id: number, title: string): Promise<void> {
+  return fetchAndPreviewPrint(`/api/ipd/charge-bills/${id}/print`, getApiBase, getStoredToken, {
+    title,
+    receipt: false,
+  });
 }

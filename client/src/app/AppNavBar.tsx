@@ -26,6 +26,9 @@ function sectionForView(view: View, intent: NavIntent, fallback: NavSectionId): 
     if (screen === "expense") return "opd_expense";
     return "opd";
   }
+  if (view === "lab") {
+    return (intent.labScreen ?? "bill") === "services" ? "lab_maintenance" : "lab";
+  }
   if (view === "ot") {
     const mode = intent.otMode ?? "case";
     if (mode === "stock") return "ot_stock";
@@ -33,9 +36,11 @@ function sectionForView(view: View, intent: NavIntent, fallback: NavSectionId): 
     return "ot_bill";
   }
   if (view === "pharmacy_expense") return "pharmacy_expense";
+  if (view === "ipd_bill") return "ipd_bill";
   if (view === "ipd_expense") return "ipd_expense";
   if (view === "pharmacy_billing") return "pharmacy";
   if (view === "pharmacy_return") return "pharmacy_return";
+  if (view === "pharmacy_purchase") return "pharmacy_purchase";
   if (view === "pharmacy_transfer") return "pharmacy_transfer";
   if (view === "pharmacy") return "stock";
   if (view === "patients") {
@@ -123,6 +128,27 @@ function otEntries(): NavEntry[] {
   ];
 }
 
+function labEntries(): NavEntry[] {
+  return [
+    {
+      id: "lab",
+      labelKey: "navLabBill",
+      enabled: true,
+      action: {
+        kind: "navigate",
+        view: "lab",
+        intent: { labScreen: "bill", billingMode: "edit" },
+      },
+    },
+    {
+      id: "lab_maintenance",
+      labelKey: "navMaintenance",
+      enabled: true,
+      action: { kind: "navigate", view: "lab", intent: { labScreen: "services" } },
+    },
+  ];
+}
+
 function patientsEntries(canCreate: boolean): NavEntry[] {
   const entries: NavEntry[] = [];
   if (canCreate) {
@@ -159,6 +185,12 @@ function ipdEntries(): NavEntry[] {
       action: { kind: "navigate", view: "ipd", intent: {} },
     },
     {
+      id: "ipd_bill",
+      labelKey: "navIpdBill",
+      enabled: true,
+      action: { kind: "navigate", view: "ipd_bill", intent: {} },
+    },
+    {
       id: "ipd_expense",
       labelKey: "navExpenseBill",
       enabled: true,
@@ -180,12 +212,6 @@ function pharmacyEntries(): NavEntry[] {
       },
     },
     {
-      id: "pharmacy_expense",
-      labelKey: "navExpenseBill",
-      enabled: true,
-      action: { kind: "navigate", view: "pharmacy_expense", intent: {} },
-    },
-    {
       id: "pharmacy_return",
       labelKey: "navReturnIn",
       enabled: true,
@@ -194,6 +220,22 @@ function pharmacyEntries(): NavEntry[] {
         view: "pharmacy_return",
         intent: { billingMode: "edit" },
       },
+    },
+    {
+      id: "pharmacy_purchase",
+      labelKey: "navPurchaseBills",
+      enabled: true,
+      action: {
+        kind: "navigate",
+        view: "pharmacy_purchase",
+        intent: { billingMode: "edit" },
+      },
+    },
+    {
+      id: "pharmacy_expense",
+      labelKey: "navExpenseBill",
+      enabled: true,
+      action: { kind: "navigate", view: "pharmacy_expense", intent: {} },
     },
     {
       id: "pharmacy_transfer",
@@ -224,6 +266,7 @@ function entriesForDesk(portal: PortalId, canCreatePatients: boolean): NavEntry[
   if (portal === "patients") return patientsEntries(canCreatePatients);
   if (portal === "ipd") return ipdEntries();
   if (portal === "pharmacy") return pharmacyEntries();
+  if (portal === "lab") return labEntries();
   return [
     {
       id: "settings",
@@ -255,6 +298,7 @@ function adminEntries(
     { id: "admin_opd", module: "opd", labelKey: "opd", children: opdEntries },
     { id: "admin_ot", module: "ot", labelKey: "ot", children: otEntries },
     { id: "admin_pharmacy", module: "pharmacy", labelKey: "pharmacy", children: pharmacyEntries },
+    { id: "admin_lab", module: "lab", labelKey: "lab", children: labEntries },
   ];
   const entries: NavEntry[] = [
     {
@@ -430,6 +474,7 @@ export function AppNavBar({
               aria-current={isActive ? "page" : undefined}
               disabled={!entry.enabled}
               title={expanded ? label : undefined}
+              data-guide={entry.id === "ipd_bill" ? "ipd-bill" : undefined}
               onClick={() => {
                 if (!entry.enabled) return;
                 if (depth === 0) setOpenIds(new Set());
@@ -627,6 +672,12 @@ const glyphs: Record<NavSectionId, ReactNode> = {
       <path d="M6.5 6.25h3M8 4.75v3" />
     </>
   ),
+  admin_lab: (
+    <>
+      <path d="M6 2.75h4M7 2.75v3.1l-3 5.4a1.3 1.3 0 0 0 1.15 2h5.7a1.3 1.3 0 0 0 1.15-2l-3-5.4v-3.1" />
+      <path d="M5.35 9.25h5.3" />
+    </>
+  ),
   opd: (
     <>
       <rect x="3.25" y="2.75" width="9.5" height="10.5" rx="1.25" />
@@ -635,6 +686,18 @@ const glyphs: Record<NavSectionId, ReactNode> = {
   ),
   opd_expense: expenseGlyph(),
   opd_maintenance: (
+    <>
+      <path d="M3 4.5h10M3 8h10M3 11.5h10" />
+      <path d="M5.5 4.5v.01M5.5 8v.01M5.5 11.5v.01" />
+    </>
+  ),
+  lab: (
+    <>
+      <rect x="3.25" y="2.75" width="9.5" height="10.5" rx="1.25" />
+      <path d="M5.5 5.5h5M5.5 8h5M5.5 10.5h3" />
+    </>
+  ),
+  lab_maintenance: (
     <>
       <path d="M3 4.5h10M3 8h10M3 11.5h10" />
       <path d="M5.5 4.5v.01M5.5 8v.01M5.5 11.5v.01" />
@@ -667,6 +730,13 @@ const glyphs: Record<NavSectionId, ReactNode> = {
       <path d="M4.1 6.2h4.1a4 4 0 1 1 0 5.3" />
     </>
   ),
+  pharmacy_purchase: (
+    <>
+      <path d="M3.25 4.25h9.5v8H3.25z" />
+      <path d="M5.5 7h5M5.5 9.5h3.5" />
+      <path d="M8 2.75v2.5" />
+    </>
+  ),
   pharmacy_transfer: (
     <>
       <path d="M2.75 5.5h7.5M7.5 3.25 10.25 5.5 7.5 7.75" />
@@ -690,6 +760,12 @@ const glyphs: Record<NavSectionId, ReactNode> = {
     <>
       <path d="M3 11.25h10.5M3.5 11.25V8.75h9.5v2.5" />
       <path d="M4.25 8.75V6.5h3.25V8.75" />
+    </>
+  ),
+  ipd_bill: (
+    <>
+      <rect x="3.25" y="2.75" width="9.5" height="10.5" rx="1.25" />
+      <path d="M5.5 5.5h5M5.5 8h5M5.5 10.5h3" />
     </>
   ),
   ipd_expense: expenseGlyph(),

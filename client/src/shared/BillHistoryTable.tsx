@@ -56,7 +56,9 @@ function statusTone(
     if (collectedCash === 0) return "ipd";
     return "paid";
   }
+  if (s === "charged") return "ipd";
   if (s === "void") return "void";
+  if (s === "deleted") return "deleted";
   if (s === "billed") return "billed";
   if (s === "settled") return "paid";
   if (s === "open" || s === "admitted") return "ipd";

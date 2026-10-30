@@ -93,6 +93,8 @@ type dashOverview struct {
 	OTTotalMMK       int64  `json:"ot_total_mmk"`
 	PharmacyCount    int    `json:"pharmacy_count"`
 	PharmacyTotalMMK int64  `json:"pharmacy_total_mmk"`
+	LabCount         int    `json:"lab_count"`
+	LabTotalMMK      int64  `json:"lab_total_mmk"`
 	GrandTotalMMK    int64  `json:"grand_total_mmk"`
 	BillCount        int    `json:"bill_count"`
 	AvgBillMMK       int64  `json:"avg_bill_mmk"`
@@ -111,6 +113,7 @@ type trendPoint struct {
 	OPDTotalMMK      int64  `json:"opd_total_mmk"`
 	OTTotalMMK       int64  `json:"ot_total_mmk"`
 	PharmacyTotalMMK int64  `json:"pharmacy_total_mmk"`
+	LabTotalMMK      int64  `json:"lab_total_mmk"`
 	GrandTotalMMK    int64  `json:"grand_total_mmk"`
 	BillCount        int    `json:"bill_count"`
 	IpdCashMMK       int64  `json:"ipd_cash_mmk"`
@@ -181,7 +184,7 @@ func (h *Dashboard) overview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cash := move.Desk
-	billCount := cash.OPDCount + cash.OTCount + cash.PharmacyCount
+	billCount := cash.OPDCount + cash.OTCount + cash.PharmacyCount + cash.LabCount
 	var avg int64
 	if billCount > 0 {
 		avg = cash.GrandTotal / int64(billCount)
@@ -194,6 +197,8 @@ func (h *Dashboard) overview(w http.ResponseWriter, r *http.Request) {
 		OTTotalMMK:       cash.OTTotal,
 		PharmacyCount:    cash.PharmacyCount,
 		PharmacyTotalMMK: cash.PharmacyTotal,
+		LabCount:         cash.LabCount,
+		LabTotalMMK:      cash.LabTotal,
 		GrandTotalMMK:    cash.GrandTotal,
 		BillCount:        billCount,
 		AvgBillMMK:       avg,
@@ -335,6 +340,8 @@ type dailyReportResponse struct {
 	OTTotalMMK        int64             `json:"ot_total_mmk"`
 	PharmacyCount     int               `json:"pharmacy_count"`
 	PharmacyTotalMMK  int64             `json:"pharmacy_total_mmk"`
+	LabCount          int               `json:"lab_count"`
+	LabTotalMMK       int64             `json:"lab_total_mmk"`
 	GrandTotalMMK     int64             `json:"grand_total_mmk"`
 	BillCount         int               `json:"bill_count"`
 	Voids             int               `json:"voids"`
@@ -342,11 +349,13 @@ type dailyReportResponse struct {
 	PrevOPDTotal      int64             `json:"prev_opd_total_mmk"`
 	PrevOTTotal       int64             `json:"prev_ot_total_mmk"`
 	PrevPharmacyTotal int64             `json:"prev_pharmacy_total_mmk"`
+	PrevLabTotal      int64             `json:"prev_lab_total_mmk"`
 	PrevGrandTotal    int64             `json:"prev_grand_total_mmk"`
 	PrevBillCount     int               `json:"prev_bill_count"`
 	DeltaOPDMMK       int64             `json:"delta_opd_mmk"`
 	DeltaOTMMK        int64             `json:"delta_ot_mmk"`
 	DeltaPharmacyMMK  int64             `json:"delta_pharmacy_mmk"`
+	DeltaLabMMK       int64             `json:"delta_lab_mmk"`
 	DeltaGrandMMK     int64             `json:"delta_grand_mmk"`
 	DeltaBills        int               `json:"delta_bills"`
 	IncomeMMK         int64             `json:"income_mmk"`
@@ -422,8 +431,8 @@ func (h *Dashboard) dailyReport(w http.ResponseWriter, r *http.Request) {
 	}
 	cash := today.Desk
 	prevCash := prev.Desk
-	billCount := cash.OPDCount + cash.OTCount + cash.PharmacyCount
-	prevBills := prevCash.OPDCount + prevCash.OTCount + prevCash.PharmacyCount
+	billCount := cash.OPDCount + cash.OTCount + cash.PharmacyCount + cash.LabCount
+	prevBills := prevCash.OPDCount + prevCash.OTCount + prevCash.PharmacyCount + prevCash.LabCount
 	writeJSON(w, http.StatusOK, dailyReportResponse{
 		Date:              date,
 		Yesterday:         yesterday,
@@ -433,6 +442,8 @@ func (h *Dashboard) dailyReport(w http.ResponseWriter, r *http.Request) {
 		OTTotalMMK:        cash.OTTotal,
 		PharmacyCount:     cash.PharmacyCount,
 		PharmacyTotalMMK:  cash.PharmacyTotal,
+		LabCount:          cash.LabCount,
+		LabTotalMMK:       cash.LabTotal,
 		GrandTotalMMK:     cash.GrandTotal,
 		BillCount:         billCount,
 		Voids:             voids,
@@ -440,11 +451,13 @@ func (h *Dashboard) dailyReport(w http.ResponseWriter, r *http.Request) {
 		PrevOPDTotal:      prevCash.OPDTotal,
 		PrevOTTotal:       prevCash.OTTotal,
 		PrevPharmacyTotal: prevCash.PharmacyTotal,
+		PrevLabTotal:      prevCash.LabTotal,
 		PrevGrandTotal:    prevCash.GrandTotal,
 		PrevBillCount:     prevBills,
 		DeltaOPDMMK:       cash.OPDTotal - prevCash.OPDTotal,
 		DeltaOTMMK:        cash.OTTotal - prevCash.OTTotal,
 		DeltaPharmacyMMK:  cash.PharmacyTotal - prevCash.PharmacyTotal,
+		DeltaLabMMK:       cash.LabTotal - prevCash.LabTotal,
 		DeltaGrandMMK:     cash.GrandTotal - prevCash.GrandTotal,
 		DeltaBills:        billCount - prevBills,
 		IncomeMMK:         today.IncomeMMK,
@@ -802,7 +815,7 @@ type dashError struct{ msg string }
 func (e *dashError) Error() string { return e.msg }
 
 func countVoidsOnDate(db *sql.DB, date string) (int, error) {
-	var opd, ot, pharmacy int
+	var opd, ot, pharmacy, lab int
 	err := db.QueryRow(`
 		SELECT COUNT(*) FROM opd_bills
 		WHERE status = 'void' AND date(COALESCE(voided_at, updated_at, created_at)) = date(?)
@@ -824,7 +837,14 @@ func countVoidsOnDate(db *sql.DB, date string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	return opd + ot + pharmacy, nil
+	err = db.QueryRow(`
+		SELECT COUNT(*) FROM lab_bills
+		WHERE status = 'void' AND date(COALESCE(voided_at, updated_at, created_at)) = date(?)
+	`, date).Scan(&lab)
+	if err != nil {
+		return 0, err
+	}
+	return opd + ot + pharmacy + lab, nil
 }
 
 func buildCashTrends(db *sql.DB, from, to string) ([]trendPoint, error) {
@@ -849,8 +869,9 @@ func buildCashTrends(db *sql.DB, from, to string) ([]trendPoint, error) {
 			OPDTotalMMK:      cash.OPDTotal,
 			OTTotalMMK:       cash.OTTotal,
 			PharmacyTotalMMK: cash.PharmacyTotal,
+			LabTotalMMK:      cash.LabTotal,
 			GrandTotalMMK:    cash.GrandTotal,
-			BillCount:        cash.OPDCount + cash.OTCount + cash.PharmacyCount,
+			BillCount:        cash.OPDCount + cash.OTCount + cash.PharmacyCount + cash.LabCount,
 			IpdCashMMK:       move.IPD.NetMMK,
 			IncomeMMK:        move.IncomeMMK,
 			ExpenseMMK:       move.ExpenseMMK,

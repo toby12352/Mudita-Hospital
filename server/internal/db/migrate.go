@@ -1191,6 +1191,568 @@ ALTER TABLE expense_bills ADD COLUMN billed_at TEXT;
 ALTER TABLE ipd_admissions ADD COLUMN room_no TEXT NOT NULL DEFAULT '';
 `,
 	},
+	{
+		Name: "034_lab",
+		SQL: `
+-- Lab portal: own service catalog and bills. Independent of OPD services and bill_lines.
+-- New tables only. No seed and no change to existing bills, stock, or users.
+CREATE TABLE IF NOT EXISTS lab_services (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  code TEXT UNIQUE COLLATE NOCASE,
+  name TEXT NOT NULL,
+  price_mmk INTEGER NOT NULL DEFAULT 0 CHECK (price_mmk >= 0),
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_lab_services_name ON lab_services(name);
+CREATE INDEX IF NOT EXISTS idx_lab_services_active ON lab_services(active);
+
+CREATE TABLE IF NOT EXISTS lab_bill_number_seq (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  next_num INTEGER NOT NULL DEFAULT 1
+);
+INSERT OR IGNORE INTO lab_bill_number_seq (id, next_num) VALUES (1, 1);
+
+CREATE TABLE IF NOT EXISTS lab_bills (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  bill_no TEXT NOT NULL UNIQUE,
+  patient_id INTEGER REFERENCES patients(id) ON DELETE SET NULL,
+  patient_name TEXT NOT NULL,
+  patient_phone TEXT NOT NULL DEFAULT '',
+  patient_age_years INTEGER,
+  patient_gender TEXT NOT NULL DEFAULT '',
+  doctor_id INTEGER REFERENCES doctors(id) ON DELETE SET NULL,
+  doctor_name TEXT NOT NULL DEFAULT '',
+  description TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'draft'
+    CHECK (status IN ('draft', 'paid', 'void')),
+  total_mmk INTEGER NOT NULL DEFAULT 0 CHECK (total_mmk >= 0),
+  discount_value INTEGER NOT NULL DEFAULT 0,
+  discount_unit TEXT NOT NULL DEFAULT 'percent',
+  discount_mmk INTEGER NOT NULL DEFAULT 0,
+  printed_at TEXT,
+  billed_at TEXT,
+  admission_id INTEGER REFERENCES ipd_admissions(id),
+  collected_cash INTEGER NOT NULL DEFAULT 1,
+  paid_at TEXT,
+  paid_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  voided_at TEXT,
+  voided_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  void_reason TEXT NOT NULL DEFAULT '',
+  created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_lab_bills_status ON lab_bills(status);
+CREATE INDEX IF NOT EXISTS idx_lab_bills_created ON lab_bills(created_at);
+CREATE INDEX IF NOT EXISTS idx_lab_bills_bill_no ON lab_bills(bill_no);
+CREATE INDEX IF NOT EXISTS idx_lab_bills_patient_name ON lab_bills(patient_name);
+
+CREATE TABLE IF NOT EXISTS lab_bill_lines (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  bill_id INTEGER NOT NULL REFERENCES lab_bills(id) ON DELETE CASCADE,
+  line_type TEXT NOT NULL CHECK (line_type IN ('service')),
+  ref_id INTEGER,
+  code TEXT NOT NULL DEFAULT '',
+  description TEXT NOT NULL,
+  qty INTEGER NOT NULL DEFAULT 1 CHECK (qty > 0),
+  unit_price_mmk INTEGER NOT NULL DEFAULT 0 CHECK (unit_price_mmk >= 0),
+  line_total_mmk INTEGER NOT NULL DEFAULT 0 CHECK (line_total_mmk >= 0),
+  foc INTEGER NOT NULL DEFAULT 0 CHECK (foc IN (0, 1)),
+  sort_order INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_lab_bill_lines_bill ON lab_bill_lines(bill_id);
+`,
+	},
+	{
+		Name: "035_pharmacy_purchase_bills",
+		SQL: `
+-- Pharmacy stock purchases. New tables only. Own sequence so PU- does not share PH-/RT-/TO-.
+-- Confirm adds MAIN stock, updates items.buy_price_mmk, and appears on the expense report.
+-- Sale price and existing bills are unchanged.
+CREATE TABLE IF NOT EXISTS pharmacy_purchase_bill_number_seq (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  next_num INTEGER NOT NULL DEFAULT 1
+);
+INSERT OR IGNORE INTO pharmacy_purchase_bill_number_seq (id, next_num) VALUES (1, 1);
+
+CREATE TABLE IF NOT EXISTS pharmacy_purchase_bills (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  bill_no TEXT NOT NULL UNIQUE,
+  supplier_name TEXT NOT NULL DEFAULT '',
+  description TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'draft'
+    CHECK (status IN ('draft', 'paid', 'void')),
+  total_mmk INTEGER NOT NULL DEFAULT 0 CHECK (total_mmk >= 0),
+  printed_at TEXT,
+  paid_at TEXT,
+  paid_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  voided_at TEXT,
+  voided_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  void_reason TEXT NOT NULL DEFAULT '',
+  created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_pharmacy_purchase_bills_status ON pharmacy_purchase_bills(status);
+CREATE INDEX IF NOT EXISTS idx_pharmacy_purchase_bills_created ON pharmacy_purchase_bills(created_at);
+CREATE INDEX IF NOT EXISTS idx_pharmacy_purchase_bills_bill_no ON pharmacy_purchase_bills(bill_no);
+CREATE INDEX IF NOT EXISTS idx_pharmacy_purchase_bills_paid_at ON pharmacy_purchase_bills(paid_at);
+
+CREATE TABLE IF NOT EXISTS pharmacy_purchase_bill_lines (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  bill_id INTEGER NOT NULL REFERENCES pharmacy_purchase_bills(id) ON DELETE CASCADE,
+  item_id INTEGER NOT NULL REFERENCES items(id),
+  code TEXT NOT NULL DEFAULT '',
+  description TEXT NOT NULL,
+  qty INTEGER NOT NULL DEFAULT 1 CHECK (qty > 0),
+  unit TEXT NOT NULL,
+  line_total_mmk INTEGER NOT NULL DEFAULT 0 CHECK (line_total_mmk >= 0),
+  expiry_date TEXT,
+  stock_qty INTEGER NOT NULL DEFAULT 0 CHECK (stock_qty >= 0),
+  stock_unit TEXT NOT NULL DEFAULT 'Piece',
+  sort_order INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_pharmacy_purchase_bill_lines_bill ON pharmacy_purchase_bill_lines(bill_id);
+
+CREATE TABLE IF NOT EXISTS pharmacy_purchase_stock_allocs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  bill_id INTEGER NOT NULL REFERENCES pharmacy_purchase_bills(id) ON DELETE CASCADE,
+  bill_line_id INTEGER NOT NULL REFERENCES pharmacy_purchase_bill_lines(id) ON DELETE CASCADE,
+  item_id INTEGER NOT NULL REFERENCES items(id),
+  batch_id INTEGER NOT NULL REFERENCES item_batches(id),
+  qty INTEGER NOT NULL CHECK (qty > 0)
+);
+
+CREATE INDEX IF NOT EXISTS idx_pharmacy_purchase_stock_allocs_bill ON pharmacy_purchase_stock_allocs(bill_id);
+CREATE INDEX IF NOT EXISTS idx_pharmacy_purchase_stock_allocs_line ON pharmacy_purchase_stock_allocs(bill_line_id);
+`,
+	},
+	{
+		Name:      "036_bill_status_deleted",
+		DisableFK: true,
+		SQL: `
+-- Soft-delete: widen status CHECK to include 'deleted'. Copy every row and id.
+-- No bill amounts, stock quantities, or movements are rewritten.
+
+CREATE TABLE opd_bills_new (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  bill_no TEXT NOT NULL UNIQUE,
+  patient_id INTEGER REFERENCES patients(id) ON DELETE SET NULL,
+  patient_name TEXT NOT NULL,
+  patient_phone TEXT NOT NULL DEFAULT '',
+  patient_age_years INTEGER,
+  patient_gender TEXT NOT NULL DEFAULT '',
+  doctor_id INTEGER REFERENCES doctors(id) ON DELETE SET NULL,
+  doctor_name TEXT NOT NULL DEFAULT '',
+  description TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'draft'
+    CHECK (status IN ('draft', 'paid', 'void', 'deleted')),
+  total_mmk INTEGER NOT NULL DEFAULT 0 CHECK (total_mmk >= 0),
+  paid_at TEXT,
+  paid_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  voided_at TEXT,
+  voided_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  void_reason TEXT NOT NULL DEFAULT '',
+  created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  discount_value INTEGER NOT NULL DEFAULT 0,
+  discount_unit TEXT NOT NULL DEFAULT 'percent',
+  discount_mmk INTEGER NOT NULL DEFAULT 0,
+  printed_at TEXT,
+  admission_id INTEGER REFERENCES ipd_admissions(id),
+  collected_cash INTEGER NOT NULL DEFAULT 1,
+  billed_at TEXT
+);
+INSERT INTO opd_bills_new (
+  id, bill_no, patient_id, patient_name, patient_phone, patient_age_years, patient_gender,
+  doctor_id, doctor_name, description, status, total_mmk,
+  paid_at, paid_by_user_id, voided_at, voided_by_user_id, void_reason,
+  created_by_user_id, created_at, updated_at,
+  discount_value, discount_unit, discount_mmk, printed_at, admission_id, collected_cash, billed_at
+)
+SELECT
+  id, bill_no, patient_id, patient_name, patient_phone, patient_age_years, patient_gender,
+  doctor_id, doctor_name, description, status, total_mmk,
+  paid_at, paid_by_user_id, voided_at, voided_by_user_id, void_reason,
+  created_by_user_id, created_at, updated_at,
+  discount_value, discount_unit, discount_mmk, printed_at, admission_id, collected_cash, billed_at
+FROM opd_bills;
+DROP TABLE opd_bills;
+ALTER TABLE opd_bills_new RENAME TO opd_bills;
+CREATE INDEX IF NOT EXISTS idx_opd_bills_status ON opd_bills(status);
+CREATE INDEX IF NOT EXISTS idx_opd_bills_created ON opd_bills(created_at);
+CREATE INDEX IF NOT EXISTS idx_opd_bills_bill_no ON opd_bills(bill_no);
+CREATE INDEX IF NOT EXISTS idx_opd_bills_patient_name ON opd_bills(patient_name);
+
+CREATE TABLE ot_cases_new (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  case_no TEXT NOT NULL UNIQUE,
+  patient_name TEXT NOT NULL,
+  patient_phone TEXT NOT NULL DEFAULT '',
+  patient_age_years INTEGER,
+  patient_gender TEXT NOT NULL DEFAULT '',
+  doctor_id INTEGER REFERENCES doctors(id) ON DELETE SET NULL,
+  doctor_name TEXT NOT NULL DEFAULT '',
+  procedure_name TEXT NOT NULL DEFAULT '',
+  notes TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'draft'
+    CHECK (status IN ('draft', 'issued', 'reconciled', 'billed', 'void', 'deleted')),
+  issued_at TEXT,
+  issued_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  reconciled_at TEXT,
+  reconciled_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  ot_bill_id INTEGER,
+  created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  legacy_stock_closed INTEGER NOT NULL DEFAULT 0,
+  discount_value INTEGER NOT NULL DEFAULT 0,
+  discount_unit TEXT NOT NULL DEFAULT 'percent',
+  patient_id INTEGER REFERENCES patients(id) ON DELETE SET NULL,
+  billed_at TEXT
+);
+INSERT INTO ot_cases_new (
+  id, case_no, patient_name, patient_phone, patient_age_years, patient_gender,
+  doctor_id, doctor_name, procedure_name, notes, status,
+  issued_at, issued_by_user_id, reconciled_at, reconciled_by_user_id,
+  ot_bill_id, created_by_user_id, created_at, updated_at,
+  legacy_stock_closed, discount_value, discount_unit, patient_id, billed_at
+)
+SELECT
+  id, case_no, patient_name, patient_phone, patient_age_years, patient_gender,
+  doctor_id, doctor_name, procedure_name, notes, status,
+  issued_at, issued_by_user_id, reconciled_at, reconciled_by_user_id,
+  ot_bill_id, created_by_user_id, created_at, updated_at,
+  legacy_stock_closed, discount_value, discount_unit, patient_id, billed_at
+FROM ot_cases;
+DROP TABLE ot_cases;
+ALTER TABLE ot_cases_new RENAME TO ot_cases;
+CREATE INDEX IF NOT EXISTS idx_ot_cases_status ON ot_cases(status);
+CREATE INDEX IF NOT EXISTS idx_ot_cases_created ON ot_cases(created_at);
+CREATE INDEX IF NOT EXISTS idx_ot_cases_case_no ON ot_cases(case_no);
+CREATE INDEX IF NOT EXISTS idx_ot_cases_patient ON ot_cases(patient_name);
+
+CREATE TABLE ot_bills_new (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  bill_no TEXT NOT NULL UNIQUE,
+  case_id INTEGER NOT NULL REFERENCES ot_cases(id),
+  case_no TEXT NOT NULL,
+  patient_name TEXT NOT NULL,
+  patient_phone TEXT NOT NULL DEFAULT '',
+  patient_age_years INTEGER,
+  patient_gender TEXT NOT NULL DEFAULT '',
+  doctor_id INTEGER REFERENCES doctors(id) ON DELETE SET NULL,
+  doctor_name TEXT NOT NULL DEFAULT '',
+  procedure_name TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'draft'
+    CHECK (status IN ('draft', 'paid', 'void', 'deleted')),
+  total_mmk INTEGER NOT NULL DEFAULT 0 CHECK (total_mmk >= 0),
+  paid_at TEXT,
+  paid_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  voided_at TEXT,
+  voided_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  void_reason TEXT NOT NULL DEFAULT '',
+  created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  discount_value INTEGER NOT NULL DEFAULT 0,
+  discount_unit TEXT NOT NULL DEFAULT 'percent',
+  discount_mmk INTEGER NOT NULL DEFAULT 0,
+  printed_at TEXT,
+  admission_id INTEGER REFERENCES ipd_admissions(id),
+  collected_cash INTEGER NOT NULL DEFAULT 1,
+  billed_at TEXT
+);
+INSERT INTO ot_bills_new (
+  id, bill_no, case_id, case_no, patient_name, patient_phone, patient_age_years, patient_gender,
+  doctor_id, doctor_name, procedure_name, status, total_mmk,
+  paid_at, paid_by_user_id, voided_at, voided_by_user_id, void_reason,
+  created_by_user_id, created_at, updated_at,
+  discount_value, discount_unit, discount_mmk, printed_at, admission_id, collected_cash, billed_at
+)
+SELECT
+  id, bill_no, case_id, case_no, patient_name, patient_phone, patient_age_years, patient_gender,
+  doctor_id, doctor_name, procedure_name, status, total_mmk,
+  paid_at, paid_by_user_id, voided_at, voided_by_user_id, void_reason,
+  created_by_user_id, created_at, updated_at,
+  discount_value, discount_unit, discount_mmk, printed_at, admission_id, collected_cash, billed_at
+FROM ot_bills;
+DROP TABLE ot_bills;
+ALTER TABLE ot_bills_new RENAME TO ot_bills;
+CREATE INDEX IF NOT EXISTS idx_ot_bills_status ON ot_bills(status);
+CREATE INDEX IF NOT EXISTS idx_ot_bills_case ON ot_bills(case_id);
+CREATE INDEX IF NOT EXISTS idx_ot_bills_bill_no ON ot_bills(bill_no);
+
+CREATE TABLE pharmacy_bills_new (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  bill_no TEXT NOT NULL UNIQUE,
+  patient_id INTEGER REFERENCES patients(id) ON DELETE SET NULL,
+  patient_name TEXT NOT NULL,
+  patient_phone TEXT NOT NULL DEFAULT '',
+  patient_age_years INTEGER,
+  patient_gender TEXT NOT NULL DEFAULT '',
+  description TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'draft'
+    CHECK (status IN ('draft', 'paid', 'void', 'deleted')),
+  total_mmk INTEGER NOT NULL DEFAULT 0 CHECK (total_mmk >= 0),
+  paid_at TEXT,
+  paid_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  voided_at TEXT,
+  voided_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  void_reason TEXT NOT NULL DEFAULT '',
+  created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  discount_value INTEGER NOT NULL DEFAULT 0,
+  discount_unit TEXT NOT NULL DEFAULT 'percent',
+  discount_mmk INTEGER NOT NULL DEFAULT 0,
+  printed_at TEXT,
+  admission_id INTEGER REFERENCES ipd_admissions(id),
+  collected_cash INTEGER NOT NULL DEFAULT 1,
+  billed_at TEXT
+);
+INSERT INTO pharmacy_bills_new (
+  id, bill_no, patient_id, patient_name, patient_phone, patient_age_years, patient_gender,
+  description, status, total_mmk,
+  paid_at, paid_by_user_id, voided_at, voided_by_user_id, void_reason,
+  created_by_user_id, created_at, updated_at,
+  discount_value, discount_unit, discount_mmk, printed_at, admission_id, collected_cash, billed_at
+)
+SELECT
+  id, bill_no, patient_id, patient_name, patient_phone, patient_age_years, patient_gender,
+  description, status, total_mmk,
+  paid_at, paid_by_user_id, voided_at, voided_by_user_id, void_reason,
+  created_by_user_id, created_at, updated_at,
+  discount_value, discount_unit, discount_mmk, printed_at, admission_id, collected_cash, billed_at
+FROM pharmacy_bills;
+DROP TABLE pharmacy_bills;
+ALTER TABLE pharmacy_bills_new RENAME TO pharmacy_bills;
+CREATE INDEX IF NOT EXISTS idx_pharmacy_bills_status ON pharmacy_bills(status);
+CREATE INDEX IF NOT EXISTS idx_pharmacy_bills_created ON pharmacy_bills(created_at);
+CREATE INDEX IF NOT EXISTS idx_pharmacy_bills_bill_no ON pharmacy_bills(bill_no);
+CREATE INDEX IF NOT EXISTS idx_pharmacy_bills_patient_name ON pharmacy_bills(patient_name);
+
+CREATE TABLE lab_bills_new (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  bill_no TEXT NOT NULL UNIQUE,
+  patient_id INTEGER REFERENCES patients(id) ON DELETE SET NULL,
+  patient_name TEXT NOT NULL,
+  patient_phone TEXT NOT NULL DEFAULT '',
+  patient_age_years INTEGER,
+  patient_gender TEXT NOT NULL DEFAULT '',
+  doctor_id INTEGER REFERENCES doctors(id) ON DELETE SET NULL,
+  doctor_name TEXT NOT NULL DEFAULT '',
+  description TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'draft'
+    CHECK (status IN ('draft', 'paid', 'void', 'deleted')),
+  total_mmk INTEGER NOT NULL DEFAULT 0 CHECK (total_mmk >= 0),
+  discount_value INTEGER NOT NULL DEFAULT 0,
+  discount_unit TEXT NOT NULL DEFAULT 'percent',
+  discount_mmk INTEGER NOT NULL DEFAULT 0,
+  printed_at TEXT,
+  billed_at TEXT,
+  admission_id INTEGER REFERENCES ipd_admissions(id),
+  collected_cash INTEGER NOT NULL DEFAULT 1,
+  paid_at TEXT,
+  paid_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  voided_at TEXT,
+  voided_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  void_reason TEXT NOT NULL DEFAULT '',
+  created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+INSERT INTO lab_bills_new (
+  id, bill_no, patient_id, patient_name, patient_phone, patient_age_years, patient_gender,
+  doctor_id, doctor_name, description, status, total_mmk,
+  discount_value, discount_unit, discount_mmk, printed_at, billed_at, admission_id, collected_cash,
+  paid_at, paid_by_user_id, voided_at, voided_by_user_id, void_reason,
+  created_by_user_id, created_at, updated_at
+)
+SELECT
+  id, bill_no, patient_id, patient_name, patient_phone, patient_age_years, patient_gender,
+  doctor_id, doctor_name, description, status, total_mmk,
+  discount_value, discount_unit, discount_mmk, printed_at, billed_at, admission_id, collected_cash,
+  paid_at, paid_by_user_id, voided_at, voided_by_user_id, void_reason,
+  created_by_user_id, created_at, updated_at
+FROM lab_bills;
+DROP TABLE lab_bills;
+ALTER TABLE lab_bills_new RENAME TO lab_bills;
+CREATE INDEX IF NOT EXISTS idx_lab_bills_status ON lab_bills(status);
+CREATE INDEX IF NOT EXISTS idx_lab_bills_created ON lab_bills(created_at);
+CREATE INDEX IF NOT EXISTS idx_lab_bills_bill_no ON lab_bills(bill_no);
+CREATE INDEX IF NOT EXISTS idx_lab_bills_patient_name ON lab_bills(patient_name);
+
+CREATE TABLE expense_bills_new (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  bill_no TEXT NOT NULL UNIQUE,
+  portal TEXT NOT NULL CHECK (portal IN ('opd', 'ot', 'ipd', 'pharmacy')),
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'paid', 'void', 'deleted')),
+  total_mmk INTEGER NOT NULL DEFAULT 0 CHECK (total_mmk >= 0),
+  discount_value INTEGER NOT NULL DEFAULT 0,
+  discount_unit TEXT NOT NULL DEFAULT 'percent',
+  discount_mmk INTEGER NOT NULL DEFAULT 0,
+  paid_at TEXT,
+  paid_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  printed_at TEXT,
+  voided_at TEXT,
+  voided_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  void_reason TEXT NOT NULL DEFAULT '',
+  created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  billed_at TEXT
+);
+INSERT INTO expense_bills_new (
+  id, bill_no, portal, name, description, status, total_mmk,
+  discount_value, discount_unit, discount_mmk,
+  paid_at, paid_by_user_id, printed_at, voided_at, voided_by_user_id, void_reason,
+  created_by_user_id, created_at, updated_at, billed_at
+)
+SELECT
+  id, bill_no, portal, name, description, status, total_mmk,
+  discount_value, discount_unit, discount_mmk,
+  paid_at, paid_by_user_id, printed_at, voided_at, voided_by_user_id, void_reason,
+  created_by_user_id, created_at, updated_at, billed_at
+FROM expense_bills;
+DROP TABLE expense_bills;
+ALTER TABLE expense_bills_new RENAME TO expense_bills;
+CREATE INDEX IF NOT EXISTS idx_expense_bills_portal_status ON expense_bills(portal, status);
+CREATE INDEX IF NOT EXISTS idx_expense_bills_paid_at ON expense_bills(paid_at);
+
+CREATE TABLE pharmacy_purchase_bills_new (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  bill_no TEXT NOT NULL UNIQUE,
+  supplier_name TEXT NOT NULL DEFAULT '',
+  description TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'draft'
+    CHECK (status IN ('draft', 'paid', 'void', 'deleted')),
+  total_mmk INTEGER NOT NULL DEFAULT 0 CHECK (total_mmk >= 0),
+  printed_at TEXT,
+  paid_at TEXT,
+  paid_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  voided_at TEXT,
+  voided_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  void_reason TEXT NOT NULL DEFAULT '',
+  created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+INSERT INTO pharmacy_purchase_bills_new (
+  id, bill_no, supplier_name, description, status, total_mmk,
+  printed_at, paid_at, paid_by_user_id, voided_at, voided_by_user_id, void_reason,
+  created_by_user_id, created_at, updated_at
+)
+SELECT
+  id, bill_no, supplier_name, description, status, total_mmk,
+  printed_at, paid_at, paid_by_user_id, voided_at, voided_by_user_id, void_reason,
+  created_by_user_id, created_at, updated_at
+FROM pharmacy_purchase_bills;
+DROP TABLE pharmacy_purchase_bills;
+ALTER TABLE pharmacy_purchase_bills_new RENAME TO pharmacy_purchase_bills;
+CREATE INDEX IF NOT EXISTS idx_pharmacy_purchase_bills_status ON pharmacy_purchase_bills(status);
+CREATE INDEX IF NOT EXISTS idx_pharmacy_purchase_bills_created ON pharmacy_purchase_bills(created_at);
+CREATE INDEX IF NOT EXISTS idx_pharmacy_purchase_bills_bill_no ON pharmacy_purchase_bills(bill_no);
+CREATE INDEX IF NOT EXISTS idx_pharmacy_purchase_bills_paid_at ON pharmacy_purchase_bills(paid_at);
+`,
+	},
+	{
+		Name: "037_ipd_day_vouchers",
+		SQL: `
+-- Daily IPD vouchers and the income-rule epoch. New tables only.
+-- Does not alter ipd_ledger, admissions, desk bills, stock, or expense rows.
+-- started_on is the next Asia/Yangon civil date (UTC+6:30) at migrate time.
+CREATE TABLE IF NOT EXISTS ipd_voucher_epoch (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  started_on TEXT NOT NULL
+);
+
+INSERT OR IGNORE INTO ipd_voucher_epoch (id, started_on)
+VALUES (1, date(datetime('now', '+6 hours', '+30 minutes'), '+1 day'));
+
+CREATE TABLE IF NOT EXISTS ipd_day_vouchers (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  admission_id INTEGER NOT NULL REFERENCES ipd_admissions(id),
+  civil_date TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('issued', 'paid', 'credit')),
+  closing_mmk INTEGER NOT NULL DEFAULT 0,
+  collection_ledger_id INTEGER REFERENCES ipd_ledger(id) ON DELETE SET NULL,
+  decided_at TEXT,
+  decided_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (admission_id, civil_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ipd_day_vouchers_admission
+  ON ipd_day_vouchers(admission_id);
+CREATE INDEX IF NOT EXISTS idx_ipd_day_vouchers_date
+  ON ipd_day_vouchers(civil_date);
+`,
+	},
+	{
+		Name: "038_ipd_charge_bills",
+		SQL: `
+-- IPD charge bills: free-text lines charged onto an open stay. New tables only.
+-- Does not alter ipd_ledger, admissions, desk bills, stock, expense bills, or day vouchers.
+-- IPB-###### does not share the IPD- admission sequence.
+-- patient_gender stores sex, matching the other bill tables.
+-- deleted is included so an admin purge can soft-delete, same as migration 036.
+CREATE TABLE IF NOT EXISTS ipd_charge_bill_number_seq (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  next_num INTEGER NOT NULL
+);
+INSERT OR IGNORE INTO ipd_charge_bill_number_seq (id, next_num) VALUES (1, 1);
+
+CREATE TABLE IF NOT EXISTS ipd_charge_bills (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  bill_no TEXT NOT NULL UNIQUE,
+  patient_id INTEGER REFERENCES patients(id) ON DELETE SET NULL,
+  patient_name TEXT NOT NULL,
+  patient_phone TEXT NOT NULL DEFAULT '',
+  patient_age_years INTEGER CHECK (patient_age_years IS NULL OR patient_age_years >= 0),
+  patient_gender TEXT NOT NULL DEFAULT '',
+  admission_id INTEGER REFERENCES ipd_admissions(id),
+  status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'charged', 'void', 'deleted')),
+  total_mmk INTEGER NOT NULL DEFAULT 0 CHECK (total_mmk >= 0),
+  discount_value INTEGER NOT NULL DEFAULT 0,
+  discount_unit TEXT NOT NULL DEFAULT 'percent',
+  discount_mmk INTEGER NOT NULL DEFAULT 0,
+  printed_at TEXT,
+  voided_at TEXT,
+  voided_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  void_reason TEXT NOT NULL DEFAULT '',
+  created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_ipd_charge_bills_status ON ipd_charge_bills(status);
+CREATE INDEX IF NOT EXISTS idx_ipd_charge_bills_patient ON ipd_charge_bills(patient_id);
+CREATE INDEX IF NOT EXISTS idx_ipd_charge_bills_admission ON ipd_charge_bills(admission_id);
+CREATE INDEX IF NOT EXISTS idx_ipd_charge_bills_created ON ipd_charge_bills(created_at);
+
+CREATE TABLE IF NOT EXISTS ipd_charge_bill_lines (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  bill_id INTEGER NOT NULL REFERENCES ipd_charge_bills(id) ON DELETE CASCADE,
+  description TEXT NOT NULL,
+  qty INTEGER NOT NULL DEFAULT 1 CHECK (qty > 0),
+  unit_price_mmk INTEGER NOT NULL DEFAULT 0 CHECK (unit_price_mmk >= 0),
+  line_total_mmk INTEGER NOT NULL DEFAULT 0 CHECK (line_total_mmk >= 0),
+  sort_order INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_ipd_charge_bill_lines_bill ON ipd_charge_bill_lines(bill_id);
+`,
+	},
 }
 
 // Migrate applies pending migrations inside a transaction per migration.

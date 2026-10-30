@@ -36,13 +36,13 @@ type HistoryRow = BillHistoryTableRow & {
   print?: { kind: PatientHistoryBillKind; billId: number; title: string };
 };
 
-type HistoryKindFilter = "all" | "ipd" | "opd" | "ot" | "pharmacy" | "addBill";
+type HistoryKindFilter = "all" | "ipd" | "opd" | "lab" | "ot" | "pharmacy" | "addBill";
 
 type DetailTab = "info" | "history";
 
-const HISTORY_KIND_OPTIONS: HistoryKindFilter[] = ["all", "ipd", "opd", "ot", "pharmacy"];
+const HISTORY_KIND_OPTIONS: HistoryKindFilter[] = ["all", "ipd", "opd", "lab", "ot", "pharmacy"];
 
-const emptyHistory: PatientHistory = { opd: [], pharmacy: [], ot: [], ipd: [] };
+const emptyHistory: PatientHistory = { opd: [], lab: [], pharmacy: [], ot: [], ipd: [] };
 
 function ageValue(raw: string): number | null {
   const trimmed = raw.trim();
@@ -208,6 +208,10 @@ export function PatientsPage({
   const sortedOpd = useMemo(
     () => sortByDateAscDesc(history.opd, historyDateSort, (row) => row.created_at, (row) => row.id),
     [history.opd, historyDateSort],
+  );
+  const sortedLab = useMemo(
+    () => sortByDateAscDesc(history.lab, historyDateSort, (row) => row.created_at, (row) => row.id),
+    [history.lab, historyDateSort],
   );
   const sortedPharmacy = useMemo(
     () =>
@@ -474,7 +478,7 @@ export function PatientsPage({
           <div className="drug-setup-table" role="listbox" aria-label={t("patients")}>
             <div className="drug-setup-table-head opd-master-cols">
               <span title={t("name")}>{t("name")}</span>
-              <span title={t("phone")}>{t("phone")}</span>
+              <span title={t("fatherMotherName")}>{t("fatherMotherName")}</span>
             </div>
             {sortedList.length === 0 ? <p className="empty-row">{t("noPatientsYet")}</p> : null}
             {sortedList.map((p) => (
@@ -495,7 +499,7 @@ export function PatientsPage({
                 }}
               >
                 <span title={p.name}>{p.name}</span>
-                <span title={p.phone || "—"}>{p.phone || "—"}</span>
+                <span title={p.father_mother_name || "—"}>{p.father_mother_name || "—"}</span>
               </div>
             ))}
           </div>
@@ -778,6 +782,8 @@ export function PatientsPage({
                             ? t("ipd")
                             : kind === "opd"
                               ? t("opd")
+                            : kind === "lab"
+                              ? t("lab")
                               : kind === "ot"
                                 ? t("ot")
                                 : t("pharmacy");
@@ -876,6 +882,24 @@ export function PatientsPage({
                       priceMmk: row.total_mmk,
                       canPrint: true,
                       print: { kind: "opd" as const, billId: row.id, title: row.bill_no },
+                    }))}
+                  />
+                ) : null}
+                {historyKind === "all" || historyKind === "lab" ? (
+                  <HistoryBlock
+                    title={t("lab")}
+                    empty={t("historyNone")}
+                    loading={!historyReady}
+                    rows={sortedLab.map((row) => ({
+                      id: row.id,
+                      key: `lab-${row.id}`,
+                      voucher: row.bill_no,
+                      name: row.doctor_name || "—",
+                      status: row.status,
+                      printedAt: row.printed_at,
+                      collectedCash: row.collected_cash,
+                      when: row.created_at,
+                      priceMmk: row.total_mmk,
                     }))}
                   />
                 ) : null}

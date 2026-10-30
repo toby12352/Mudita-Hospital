@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { listOpdBills, type OpdBill } from "@/features/opd/api";
-import { ActionIcon } from "@/shared/ActionIcon";
 import { AlertDialog } from "@/shared/AlertDialog";
+import { BillBtnIcon } from "@/shared/BillBtnIcon";
 import {
   BillHistoryToolbar,
   type BillHistoryQuery,
@@ -12,6 +12,7 @@ import { DialogCloseButton } from "@/shared/DialogCloseButton";
 import { moneyStatusLabel } from "@/shared/BillPayPrint";
 import { formatMMK } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
+import { useActionLock, useDelayedFlag } from "@/shared/useActionLock";
 
 export type OpdBillListDialogMode = "history" | "delete" | "purge";
 
@@ -30,6 +31,8 @@ export function OpdBillListDialog({ mode, onClose, onOpen, onVoid, onPurge }: Pr
   const [voidReason, setVoidReason] = useState("Deleted");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const { tryAcquire, release } = useActionLock();
+  const voidPending = useDelayedFlag(busy);
   const [loading, setLoading] = useState(true);
   const [purgeStep, setPurgeStep] = useState<0 | 1 | 2>(0);
   const [purgeError, setPurgeError] = useState<string | null>(null);
@@ -82,7 +85,10 @@ export function OpdBillListDialog({ mode, onClose, onOpen, onVoid, onPurge }: Pr
       setLoading(true);
       setError(null);
       try {
-        const list = mode === "purge" ? await loadPurgeList() : await listOpdBills("");
+        const list =
+          mode === "purge"
+            ? await loadPurgeList()
+            : (await listOpdBills("")).filter((b) => b.status !== "deleted");
         if (!cancelled) setBills(list);
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Load failed");
@@ -107,7 +113,8 @@ export function OpdBillListDialog({ mode, onClose, onOpen, onVoid, onPurge }: Pr
   }, [onClose]);
 
   const selected = bills.find((b) => b.id === selectedId) ?? null;
-  const canVoid = selected != null && selected.status !== "void";
+  const canVoid =
+    selected != null && selected.status !== "void" && selected.status !== "deleted";
   const canPurge =
     selected != null && (selected.status === "draft" || selected.status === "void");
 
@@ -118,6 +125,7 @@ export function OpdBillListDialog({ mode, onClose, onOpen, onVoid, onPurge }: Pr
       setError(t("voidReasonRequired"));
       return;
     }
+    if (!tryAcquire()) return;
     setBusy(true);
     setError(null);
     try {
@@ -127,6 +135,7 @@ export function OpdBillListDialog({ mode, onClose, onOpen, onVoid, onPurge }: Pr
       setError(e instanceof Error ? e.message : "Delete failed");
     } finally {
       setBusy(false);
+      release();
     }
   }
 
@@ -149,6 +158,7 @@ export function OpdBillListDialog({ mode, onClose, onOpen, onVoid, onPurge }: Pr
       setPurgeError(null);
       return;
     }
+    if (!tryAcquire()) return;
     setBusy(true);
     setPurgeError(null);
     try {
@@ -158,6 +168,7 @@ export function OpdBillListDialog({ mode, onClose, onOpen, onVoid, onPurge }: Pr
       setPurgeError(e instanceof Error ? e.message : "Delete failed");
     } finally {
       setBusy(false);
+      release();
     }
   }
 
@@ -279,10 +290,11 @@ export function OpdBillListDialog({ mode, onClose, onOpen, onVoid, onPurge }: Pr
               type="button"
               className="btn action danger"
               disabled={busy || !canVoid}
+              aria-busy={voidPending || undefined}
               onClick={() => void handleDelete()}
             >
-              <ActionIcon name="trash" />
-              {busy ? "…" : t("delete")}
+              <BillBtnIcon name="trash" pending={voidPending} />
+              {t("delete")}
             </button>
           </div>
         ) : null}
@@ -295,7 +307,7 @@ export function OpdBillListDialog({ mode, onClose, onOpen, onVoid, onPurge }: Pr
               disabled={busy || !canPurge}
               onClick={openPurgeConfirm}
             >
-              <ActionIcon name="trash" />
+              <BillBtnIcon name="trash" />
               {t("delete")}
             </button>
           </div>

@@ -41,11 +41,13 @@ Sidebar labels, from `client/src/app/AppNavBar.tsx`:
 | OT Bill | `navOtBill` | OT Bill | OT ဘေလ် | `ot` | `otMode: "case"` |
 | Pharmacy Bill | `navSales` | Pharmacy Bill | ဆေးဆိုင် ဘေလ် | `pharmacy_billing` | `billingMode: "edit"` |
 | Return in | `navReturnIn` | Return in | ပြန်သွင်း | `pharmacy_return` | `billingMode: "edit"` |
+| Purchase Bills | `navPurchaseBills` | Purchase Bills | ဝယ်ယူမှု ဘေလ် | `pharmacy_purchase` | `billingMode: "edit"` |
 | Transfer to OT | `navTransferToOt` | Transfer to OT | OT သို့ လွှဲ | `pharmacy_transfer` | `billingMode: "edit"` |
 | Expense bill | `navExpenseBill` | Expense bill | အသုံးစရိတ် ဘေလ် | desk’s expense view | see Expense bills |
 | Patient Charts | `navPatients` | Patient Charts | လူနာမှတ်တမ်း | `patients` | `patientsScreen: "list"` |
 | Create New Patient | `navCreatePatient` | Create New Patient | လူနာအသစ် ဖန်တီးရန် | `patients` | `patientsScreen: "create"` |
 | Stays | `navIpd` | Stays | တက်ရောက်မှု | `ipd` | none |
+| IPD Bill | `navIpdBill` | IPD Bill | IPD ဘေလ် | `ipd_bill` | none |
 | Maintenance (pharmacy items) | `navMaintenance` | Maintenance | ထိန်းသိမ်းရေး | `pharmacy` | `pharmacyScreen: "browse"` |
 | Maintenance (OT stock) | `navOtCupboard` | Maintenance | ထိန်းသိမ်းရေး | `ot` | `otMode: "stock"` |
 
@@ -53,7 +55,7 @@ Create New Patient is shown only when that account may create charts.
 
 ## Shared bill rail
 
-Used by OPD Bill, OT Bill, Pharmacy Bill (sale), and Expense bill. Print, Mark Paid, and Charge to IPD are drawn in `client/src/shared/BillPayPrint.tsx`. Save draft, History, Void Bills, Cancel, and New bill are drawn on each desk form.
+Used by OPD Bill, OT Bill, Pharmacy Bill (sale), Expense bill, and IPD Bill. Print and Charge to IPD are drawn in `client/src/shared/BillPayPrint.tsx`. Mark Paid is on the sale and expense rails only. Save draft, History, Void Bills, Cancel, and New bill are drawn on each desk form. IPD Bill has no F7 and no Mark Paid.
 
 On a **sale** (OPD, OT, pharmacy sale, expense):
 
@@ -67,7 +69,7 @@ A printed bill can still be edited because print leaves `status` as `draft` and 
 
 | Control | Key | i18n | English | Myanmar | Drawn in |
 |---|---|---|---|---|---|
-| Save draft | F5 | `saveDraft` | Save draft | မူကြမ်းသိမ်း | `OpdBillForm.tsx`, `OtPage.tsx`, `PharmacyBillForm.tsx`, `ExpenseBillPage.tsx` |
+| Save draft | F5 | `saveDraft` | Save draft | မူကြမ်းသိမ်း | `OpdBillForm.tsx`, `OtPage.tsx`, `PharmacyBillForm.tsx`, `ExpenseBillPage.tsx`, `IpdChargeBillPage.tsx` |
 | Print | F6 | `print` | Print | ပရင့် | `BillPayPrint.tsx` (`BillPrintButton`) |
 | Mark Paid | F7 | `markPaid` | Mark Paid | ပေးပြီးမှတ် | `BillPayPrint.tsx` (`BillMarkPaidButton`) |
 | Mark Paid subtitle | — | `marksPaidFinal` | Final · locks bill | နောက်ဆုံး · ဘေလ်ပိတ်မည် | same button |
@@ -86,13 +88,14 @@ Save draft, Mark Paid, Charge to IPD, and New bill render only when that desk’
 
 ### When Charge to IPD appears
 
-It is not on the IPD screen. It is on OPD Bill, OT Bill, and Pharmacy Bill (sale only). There is no function key. F7 does not charge a stay.
+It is on OPD Bill, OT Bill, and Pharmacy Bill (sale only), and it is the first button on IPD Bill. There is no function key. F7 does not charge a stay. IPD Bill has no Mark Paid.
 
 The button is passed in only when the bill is still a draft **and** the linked chart has an open stay (`useOpenAdmission` in `client/src/features/patients/useOpenAdmission.ts`):
 
 - OPD: `client/src/pages/opd/OpdPage.tsx`
 - OT: `client/src/pages/ot/OtPage.tsx`
 - Pharmacy sale: `client/src/pages/pharmacy/PharmacyBillingPage.tsx`
+- IPD Bill: `client/src/pages/ipd/IpdChargeBillPage.tsx` (`BillChargeToIpdButton` with the `transfer` icon). Hidden when the chart has no open stay. The field then says `ipdAdmitFirst` (“Admit this patient first.” / “ဤလူနာကို အရင် တက်ခွင့်ပေးပါ။”).
 
 Choosing a chart sets the linked chart id. Typing a name clears it (`onPatientName` sets the link to null on OPD, OT, and pharmacy). A typed walk-in name never shows the button. Expense bills and Transfer to OT never show it.
 
@@ -129,6 +132,20 @@ Mark returned puts quantity back on MAIN and refunds cash on the day book, then 
 New is `newReturn` (“New return” / “ပြန်သွင်းအသစ်”), still F2.
 
 If the linked chart has an open stay and that stay has at least one charged pharmacy sale, the rail also shows `creditToIpd` (“Credit to IPD” / “IPD သို့ ပြန်ထည့်”), subtitle `creditToIpdSub` (“Credits the open stay” / “ဖွင့်ထားသော တက်ရောက်မှုသို့”), drawn with `BillChargeToIpdButton` but with those labels. No function key. It is not desk cash. When several charged sales exist, the field `returnAgainstSale` (“Charged sale” / “တင်ထားသော ဘောင်ချာ”) picks which one. Charge to IPD itself is not on Return in.
+
+### Purchase Bills
+
+View `pharmacy_purchase`. Sidebar `navPurchaseBills` (“Purchase Bills” / “ဝယ်ယူမှု ဘေလ်”), directly under Return in. This is how the hospital records buying pharmacy stock. It is not Return in and not the typed Expense bill.
+
+Each line picks a pharmacy item (packing size shown), optional expiry, quantity then unit (same qty-then-unit open pattern as Pharmacy Bill), then the **total paid for that quantity** (`purchasePrice`). Confirm does not change sale price.
+
+| Key | Label on the button |
+|---|---|
+| F5 | `saveDraft` — Save draft / မူကြမ်းသိမ်း |
+| F6 | `print` — Print / ပရင့်. The slip stays editable. |
+| F7 | `markPurchased` — Mark purchased / ဝယ်ပြီးမှတ်. Subtitle `marksPurchased` — “Credits stock · records expense” / “စတော့ထည့် · အသုံးစရိတ်မှတ်” |
+
+Mark purchased adds MAIN qty (blank batch; optional expiry on the line), updates catalog `buy_price_mmk` from the unit price spread across packing, and posts the line-total sum on the admin expense report (portal pharmacy, bill `PU-######`). It does not change pharmacy desk cash. Sale price stays as stored. New is `newPurchase` (“New purchase” / “ဝယ်ယူမှု အသစ်”), F2. Void of a paid purchase removes that MAIN qty when the batch still holds it; the catalog buy price stays; the expense reverses on the void day.
 
 ### Transfer to OT
 
@@ -176,27 +193,43 @@ On an open stay the rail shows:
 | Button | Key | English | Myanmar | Drawn in |
 |---|---|---|---|---|
 | Take deposit | `ipdTakeDeposit` | Take deposit | အပ်ငွေ လက်ခံ | `IpdPage.tsx` |
-| Post ward charge | `ipdPostWard` | Post ward charge | ဝပ်ကြေး တင် | `IpdPage.tsx` |
 | Save notes | `ipdSaveNotes` | Save notes | မှတ်ချက်သိမ်း | `IpdPage.tsx` |
 | Discharge | `ipdDischarge` | Discharge | ဆင်းခွင့်ရှင်း | `IpdPage.tsx` |
+| Print Daily Statement | `ipdPrintDailyStatement` | Print Daily Statement | နေ့စဉ်စာရင်းထုတ် | `IpdPage.tsx` |
+| Print Final Statement | `ipdPrintStatement` | Print Final Statement | နောက်ဆုံးစာရင်းထုတ် | `IpdPage.tsx` |
 
-No F-keys. Post ward charge is a description and an amount (room or nursing). It is not a drug and not an OPD service. Charge to IPD is not on this page. It is on OPD Bill, OT Bill, and Pharmacy Bill.
+No F-keys. Room and nursing are not posted on this page. They are free-text lines on **IPD Bill** (`navIpdBill`, “IPD Bill” / “IPD ဘေလ်”), view `ipd_bill`, `client/src/pages/ipd/IpdChargeBillPage.tsx`. That rail starts with Charge to IPD (transfer icon, subtitle Not desk cash). Then Print (F6), Save draft (F5), History (F9), Void Bills (^F8), Cancel (F10), and New bill (F2). There is no Mark Paid and no F7. F7 does not charge the stay. The charge slip is A4 and is not the daily voucher.
 
-The list rail also has `ipdDailyCash` (“IPD daily cash” / “IPD နေ့စဉ်ငွေ”) and a toggle between `ipdSettledStays` (“Settled stays” / “ရှင်းပြီး တက်ရောက်မှု”) and `ipdOpenStays` (“Open stays” / “ဖွင့်ထား တက်ရောက်မှု”). An open stay can also print `ipdPrintDailyStatement` (“Print Daily Statement” / “နေ့စဉ်စာရင်းထုတ်”) and `ipdPrintStatement` (“Print Final Statement” / “နောက်ဆုံးစာရင်းထုတ်”), and return with `ipdBackToList` (“Stay list” / “တက်ရောက်စာရင်း”).
+Each open stay on the list shows yesterday’s voucher under the name: `ipdYesterday` (“Yesterday” / “မနေ့”) plus Still open, Awaiting, Paid, or Carried.
+
+The list rail also has `ipdDailyCash` (“IPD daily cash” / “IPD နေ့စဉ်ငွေ”) and a toggle between `ipdSettledStays` (“Settled stays” / “ရှင်းပြီး တက်ရောက်မှု”) and `ipdOpenStays` (“Open stays” / “ဖွင့်ထား တက်ရောက်မှု”). An open stay returns with `ipdBackToList` (“Stay list” / “တက်ရောက်စာရင်း”).
+
+### Morning sheet
+
+Print Daily Statement opens `IpdDailyStatementPreview`. When the stay has any ledger line before today, the date starts at yesterday in Yangon. Today can still be picked. The sheet for a past date is issued when the preview opens. Printing does not choose pay or carry.
+
+Beside the date:
+
+| On screen | Key | When |
+|---|---|---|
+| Still open / မပိတ်ရသေး, Awaiting / ဆုံးဖြတ်ရန် ကျန်, Paid / ပေးပြီး, Carried / လိုငွေ လွှဲထား | `ipdVoucherStillOpen`, `ipdVoucherAwaiting`, `ipdVoucherPaid`, `ipdVoucherCarried` | Today or later is Still open. A past sheet is Awaiting (`issued`), Paid, or Carried (`credit`) |
+| Pay this day / ဤနေ့ ပေးမည် | `ipdPayThisDay` | Accent, check icon. Subtitle is `ipdDueAmount` (“လိုငွေ {amount} MMK”) when the close is လိုငွေ. Confirm asks `confirmIpdPayDay` (“Collect {amount} MMK for this day?” / “ဤနေ့အတွက် {amount} MMK ကောက်မည်လား?”). Off for today or later, and when the day is already Paid |
+| Pay later / နောက်မှ ပေးမည် | `ipdPayLater` | Outline. Shown only for လိုငွေ while the status is Awaiting |
+| Mark unpaid / ပေးထားမှု ပြန်ဖြုတ် | `ipdMarkUnpaid` | Shown on Paid only when this voucher can still be undone. If tomorrow’s sheet exists, the API error is shown |
 
 ### Why discharge is final
 
-Discharge asks first (`confirmIpdDischarge`: “Discharge this stay? The cash line is final.” / “ဤတက်ရောက်မှုကို ဆင်းခွင့်ရှင်းမည်လား။ ငွေစာကြောင်းသည် အပြီးဖြစ်သည်။”). The button subtitle is the settlement, from `settlementSub` in `IpdPage.tsx`:
+Discharge asks first. The message is `confirmIpdDischarge` (“The final statement settles the whole stay.” / “နောက်ဆုံးစာရင်းသည် တက်ရောက်မှုတစ်ခုလုံးကို ရှင်းသည်။”). If yesterday is still Awaiting, it also says `confirmIpdDischargeAwaiting` (“Discharge will collect or refund the balance.” / “ဆင်းခွင့်ရှင်းလျှင် လက်ကျန်ကို ကောက်မည် သို့မဟုတ် ပြန်အမ်းမည်။”). The button subtitle is the settlement, from `settlementSub` in `IpdPage.tsx`:
 
 - Positive balance (the hospital owes the patient): `ipdWillRefund` (“Refund the remainder” / “လက်ကျန်ကို ပြန်အမ်း”). The server writes a refund.
 - Negative balance (the patient owes the hospital): `ipdWillCollect` (“Collect the amount owed” / “ပေးရန်ကျန်ကို ကောက်”). The server writes a collection.
 - Zero: `ipdWillZero` (“No cash. Balance is zero” / “ငွေမထိ။ လက်ကျန် သုည”). The server writes no cash line.
 
-`server/internal/handlers/ipd_discharge.go` then sets the stay to settled. Deposits, ward charges, and desk charges after that are refused because the stay is not open. The open-stay buttons are hidden. The success line is `ipdDischarged` (“Discharged. Balance is zero.” / “ဆင်းပြီး။ လက်ကျန် သုည။”).
+`server/internal/handlers/ipd_discharge.go` then sets the stay to settled and marks vouchers that are still `issued` as `paid`. Days already Carried stay Carried. Deposits and further charges after that are refused because the stay is not open. The open-stay buttons are hidden. The success line is `ipdDischarged` (“Discharged. Balance is zero.” / “ဆင်းပြီး။ လက်ကျန် သုည။”).
 
 ## Expense bills
 
-Each desk has an Expense bill (`navExpenseBill`): OPD `opd` with `opdScreen: "expense"`, OT `ot` with `otMode: "expense"`, pharmacy `pharmacy_expense`, IPD `ipd_expense`. The form is `client/src/pages/expenses/ExpenseBillPage.tsx`. It uses the same F5 Save draft, F6 Print (still editable), and F7 Mark Paid (desk cash, bill locked). There is no Charge to IPD and no stock movement.
+Each desk has an Expense bill (`navExpenseBill`): OPD `opd` with `opdScreen: "expense"`, OT `ot` with `otMode: "expense"`, pharmacy `pharmacy_expense`, IPD `ipd_expense` (next to Stays and IPD Bill). The form is `client/src/pages/expenses/ExpenseBillPage.tsx`. It uses the same F5 Save draft, F6 Print (still editable), and F7 Mark Paid (desk cash, bill locked). There is no Charge to IPD and no stock movement. Expense bill is money out. It is not IPD Bill.
 
 ## Training seed
 

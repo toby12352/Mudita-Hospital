@@ -312,12 +312,6 @@ export function itemPackFromRelations(
     }
   }
   const names = [rows[0].parent.trim(), ...rows.map((r) => r.child.trim())];
-  const seen = new Set<string>();
-  for (const n of names) {
-    const key = n.toLowerCase();
-    if (seen.has(key)) return { error: "pack unit names must be unique in the visible chain" };
-    seen.add(key);
-  }
   const slotUnits = new Array<string>(MAX_PACK_DEPTH);
   const slotQtys = new Array<number>(MAX_PACK_DEPTH);
   slotUnits[0] = names[0];
@@ -330,7 +324,7 @@ export function itemPackFromRelations(
     slotUnits[i] = smallest;
     slotQtys[i] = 1;
   }
-  return {
+  const pack: ItemPack = {
     pack_l1_qty: slotQtys[0],
     pack_l1_unit: slotUnits[0],
     pack_l2_qty: slotQtys[1],
@@ -344,6 +338,16 @@ export function itemPackFromRelations(
     pack_l6_qty: slotQtys[5],
     pack_l6_unit: slotUnits[5],
   };
+  // Match server: uniqueness applies to collapsed levels, so qty-1 same-unit
+  // rows (e.g. Bottle × 1 × Bottle) become a single visible unit.
+  const levels = packLevelsFromItemPack(pack);
+  const seen = new Set<string>();
+  for (const n of levels.units) {
+    const key = n.toLowerCase();
+    if (seen.has(key)) return { error: "pack unit names must be unique in the visible chain" };
+    seen.add(key);
+  }
+  return pack;
 }
 
 /** Relations for the packing-size editor, derived from a stored pack. */
@@ -1258,4 +1262,134 @@ export async function printPharmacyBill(
     receipt: true,
     onPrinted: opts?.onPrinted,
   });
+}
+
+export type PharmacyPurchaseBillLine = {
+  id?: number;
+  item_id: number;
+  code: string;
+  description: string;
+  qty: number;
+  unit: string;
+  line_total_mmk: number;
+  expiry_date?: string | null;
+  stock_qty: number;
+  stock_unit: string;
+  sort_order: number;
+};
+
+export type PharmacyPurchaseBill = {
+  id: number;
+  bill_no: string;
+  supplier_name: string;
+  description: string;
+  status: string;
+  total_mmk: number;
+  printed_at?: string | null;
+  paid_at?: string | null;
+  void_reason?: string;
+  created_at: string;
+  updated_at: string;
+  lines?: PharmacyPurchaseBillLine[];
+};
+
+export type PharmacyPurchaseBillWrite = {
+  supplier_name?: string;
+  description?: string;
+  lines: {
+    item_id: number;
+    qty: number;
+    unit: string;
+    line_total_mmk: number;
+    expiry_date?: string;
+  }[];
+};
+
+export async function listPharmacyPurchaseBills(
+  q = "",
+  status = "",
+  opts?: { money?: string; from?: string; to?: string; sort?: string },
+): Promise<PharmacyPurchaseBill[]> {
+  const params = new URLSearchParams();
+  if (q) params.set("q", q);
+  if (status) params.set("status", status);
+  if (opts?.money?.trim()) params.set("money", opts.money.trim());
+  if (opts?.from?.trim()) params.set("from", opts.from.trim());
+  if (opts?.to?.trim()) params.set("to", opts.to.trim());
+  if (opts?.sort?.trim()) params.set("sort", opts.sort.trim());
+  const qs = params.toString() ? `?${params}` : "";
+  const res = await apiFetch<{ bills: PharmacyPurchaseBill[] }>(
+    `/api/pharmacy/purchase-bills${qs}`,
+  );
+  return res.bills;
+}
+
+export async function getPharmacyPurchaseBill(id: number): Promise<PharmacyPurchaseBill> {
+  return apiFetch<PharmacyPurchaseBill>(`/api/pharmacy/purchase-bills/${id}`);
+}
+
+export async function createPharmacyPurchaseBill(
+  body: PharmacyPurchaseBillWrite,
+): Promise<PharmacyPurchaseBill> {
+  return apiFetch<PharmacyPurchaseBill>("/api/pharmacy/purchase-bills", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function updatePharmacyPurchaseBill(
+  id: number,
+  body: PharmacyPurchaseBillWrite,
+): Promise<PharmacyPurchaseBill> {
+  return apiFetch<PharmacyPurchaseBill>(`/api/pharmacy/purchase-bills/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function payPharmacyPurchaseBill(id: number): Promise<PharmacyPurchaseBill> {
+  return apiFetch<PharmacyPurchaseBill>(`/api/pharmacy/purchase-bills/${id}/pay`, {
+    method: "POST",
+    body: "{}",
+  });
+}
+
+export async function markPharmacyPurchaseBillPrinted(
+  id: number,
+): Promise<PharmacyPurchaseBill> {
+  return apiFetch<PharmacyPurchaseBill>(`/api/pharmacy/purchase-bills/${id}/printed`, {
+    method: "POST",
+    body: "{}",
+  });
+}
+
+export async function voidPharmacyPurchaseBill(
+  id: number,
+  reason: string,
+): Promise<PharmacyPurchaseBill> {
+  return apiFetch<PharmacyPurchaseBill>(`/api/pharmacy/purchase-bills/${id}/void`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export async function purgePharmacyPurchaseBill(id: number): Promise<void> {
+  await apiFetch(`/api/pharmacy/purchase-bills/${id}`, { method: "DELETE" });
+}
+
+export async function printPharmacyPurchaseBill(
+  id: number,
+  opts?: { title?: string; note?: string; onPrinted?: () => void | Promise<void> },
+): Promise<void> {
+  return fetchAndPreviewPrint(
+    `/api/pharmacy/purchase-bills/${id}/print`,
+    getApiBase,
+    getStoredToken,
+    {
+      title: opts?.title ?? "Purchase bill",
+      note: opts?.note,
+      receipt: true,
+      onPrinted: opts?.onPrinted,
+    },
+  );
 }

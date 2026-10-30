@@ -18,7 +18,7 @@ export function HelpOverlay({
   t: (k: string) => string;
   /** Admin, OPD, OT, Pharmacy, and IPD. Patients has no bill rail. */
   showBillTour?: boolean;
-  /** Admin, OPD, OT, and Pharmacy. IPD does not show Charge to IPD. */
+  /** Admin, OPD, OT, and Pharmacy. The sale-desk lesson stays off IPD Bill; that button is the stay lesson. */
   showChargeTour?: boolean;
   /** Admin and Pharmacy. IPD does not see Drug Setup, Return in, or Transfer to OT. */
   showPharmacyTour?: boolean;

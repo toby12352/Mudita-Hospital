@@ -64,8 +64,11 @@ type expenseBillWriteRequest struct {
 
 // expenseBillLineInput keeps qty and unit_price_mmk raw so a fractional JSON
 // number is rejected as a non-integer instead of being truncated.
+// Description is used when ref_id is omitted (typed particular). A present
+// ref_id still copies code and name from the expense catalog.
 type expenseBillLineInput struct {
 	RefID        json.RawMessage `json:"ref_id"`
+	Description  string          `json:"description"`
 	Qty          json.RawMessage `json:"qty"`
 	UnitPriceMMK json.RawMessage `json:"unit_price_mmk"`
 }
@@ -84,7 +87,7 @@ func (h *Expenses) listExpenseBills(w http.ResponseWriter, r *http.Request) {
 	}
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	status := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("status")))
-	if status != "" && status != "draft" && status != "paid" && status != "void" {
+	if status != "" && status != "draft" && status != "paid" && status != "void" && status != "deleted" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid status"})
 		return
 	}
@@ -528,7 +531,9 @@ func (h *Expenses) purgeExpenseBill(w http.ResponseWriter, r *http.Request, path
 	if rejectPurgeStatus(w, status) {
 		return
 	}
-	res, err := tx.Exec(`DELETE FROM expense_bills WHERE id = ?`, id)
+	res, err := tx.Exec(`
+		UPDATE expense_bills SET status = 'deleted', updated_at = datetime('now') WHERE id = ?
+	`, id)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "delete failed"})
 		return
@@ -544,7 +549,7 @@ func (h *Expenses) purgeExpenseBill(w http.ResponseWriter, r *http.Request, path
 	}
 	uid := user.ID
 	audit.WriteAudit(h.DB, &uid, "delete", "expense_bill", &id, map[string]any{
-		"bill_no": billNo, "was_status": status, "total_mmk": totalMMK,
+		"bill_no": billNo, "was_status": status, "status": "deleted", "total_mmk": totalMMK,
 	})
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
@@ -586,6 +591,9 @@ func (h *Expenses) voidExpenseBill(w http.ResponseWriter, r *http.Request, path 
 	}
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "load failed"})
+		return
+	}
+	if rejectDeletedBill(w, status) {
 		return
 	}
 	if status == "void" {
@@ -686,8 +694,9 @@ func renderExpenseBillHTML(hosp *hospitalSettings, bill expenseBill) string {
 	})
 }
 
-// expenseBillAmounts copies catalog code and name onto each line and keeps the
-// client's unit price. gross is the pre-discount line sum stored in total_mmk.
+// expenseBillAmounts builds lines from typed particulars or a catalog ref_id
+// and keeps the client's unit price. gross is the pre-discount line sum stored
+// in total_mmk.
 func expenseBillAmounts(q queryRower, req expenseBillWriteRequest) (lines []expenseBillLine, gross, discountMMK int64, discountUnit, errMsg string) {
 	lines, gross, errMsg = normalizeExpenseLines(q, req.Lines)
 	if errMsg != "" {
@@ -707,7 +716,7 @@ func normalizeExpenseLines(q queryRower, in []expenseBillLineInput) ([]expenseBi
 	out := make([]expenseBillLine, 0, len(in))
 	var total int64
 	for i, raw := range in {
-		refID, errMsg := parseExpenseRefID(raw.RefID)
+		refID, hasRef, errMsg := parseOptionalExpenseRefID(raw.RefID)
 		if errMsg != "" {
 			return nil, 0, errMsg
 		}
@@ -719,6 +728,29 @@ func normalizeExpenseLines(q queryRower, in []expenseBillLineInput) ([]expenseBi
 		if errMsg != "" {
 			return nil, 0, errMsg
 		}
+		if qty > 1 && price > math.MaxInt64/qty {
+			return nil, 0, "line total too large"
+		}
+		lineTotal := qty * price
+
+		if !hasRef {
+			desc := strings.TrimSpace(raw.Description)
+			if desc == "" {
+				return nil, 0, "description required"
+			}
+			out = append(out, expenseBillLine{
+				RefID:        nil,
+				Code:         "",
+				Description:  desc,
+				Qty:          qty,
+				UnitPriceMMK: price,
+				LineTotalMMK: lineTotal,
+				SortOrder:    i,
+			})
+			total += lineTotal
+			continue
+		}
+
 		var code sql.NullString
 		var name string
 		var active int
@@ -734,15 +766,11 @@ func normalizeExpenseLines(q queryRower, in []expenseBillLineInput) ([]expenseBi
 		if active != 1 {
 			return nil, 0, "expense service is inactive"
 		}
-		if qty > 1 && price > math.MaxInt64/qty {
-			return nil, 0, "line total too large"
-		}
 		storedCode := ""
 		if code.Valid {
 			storedCode = code.String
 		}
 		ref := refID
-		lineTotal := qty * price
 		out = append(out, expenseBillLine{
 			RefID:        &ref,
 			Code:         storedCode,
@@ -757,15 +785,21 @@ func normalizeExpenseLines(q queryRower, in []expenseBillLineInput) ([]expenseBi
 	return out, total, ""
 }
 
-func parseExpenseRefID(raw json.RawMessage) (int64, string) {
+// parseOptionalExpenseRefID treats missing or null ref_id as a typed particular.
+// A present value must be a positive integer (legacy catalog desks).
+func parseOptionalExpenseRefID(raw json.RawMessage) (refID int64, hasRef bool, errMsg string) {
+	trimmed := strings.TrimSpace(string(raw))
+	if trimmed == "" || trimmed == "null" {
+		return 0, false, ""
+	}
 	n, errMsg := parseRequiredJSONInt(raw, "ref_id required", "ref_id must be an integer")
 	if errMsg != "" {
-		return 0, errMsg
+		return 0, false, errMsg
 	}
 	if n < 1 {
-		return 0, "ref_id required"
+		return 0, false, "ref_id required"
 	}
-	return n, ""
+	return n, true, ""
 }
 
 func parseExpenseQty(raw json.RawMessage) (int64, string) {
@@ -829,6 +863,7 @@ func insertExpenseBillLines(tx *sql.Tx, billID int64, lines []expenseBillLine) e
 
 type sqlQuery interface {
 	Query(query string, args ...any) (*sql.Rows, error)
+	QueryRow(query string, args ...any) *sql.Row
 }
 
 func loadExpenseBill(db *sql.DB, id int64) (expenseBill, error) {

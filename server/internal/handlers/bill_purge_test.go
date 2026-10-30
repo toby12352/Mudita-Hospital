@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -38,12 +39,71 @@ func TestBillPurgeAdminOnly(t *testing.T) {
 
 	w = doJSON(opd, http.MethodDelete, "/api/opd/bills/"+strconv.FormatInt(draft.ID, 10), adminTok, "")
 	mustCode(t, w, http.StatusOK)
-	var gone int
-	if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM opd_bills WHERE id = ?`, draft.ID).Scan(&gone); err != nil {
+	var status string
+	var lineN int
+	if err := sqlDB.QueryRow(`SELECT status FROM opd_bills WHERE id = ?`, draft.ID).Scan(&status); err != nil {
 		t.Fatal(err)
 	}
-	if gone != 0 {
-		t.Fatal("draft still present")
+	if status != "deleted" {
+		t.Fatalf("draft status %q, want deleted", status)
+	}
+	if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM bill_lines WHERE bill_id = ?`, draft.ID).Scan(&lineN); err != nil {
+		t.Fatal(err)
+	}
+	if lineN < 1 {
+		t.Fatal("draft lines were removed")
+	}
+
+	// Soft-deleted draft stays in desk list, leaves patient chart.
+	w = doJSON(charts, http.MethodPost, "/api/patients", adminTok, `{"name":"Daw Chart","phone":"0999"}`)
+	mustCode(t, w, http.StatusCreated)
+	chartDraft := decodePatient(t, w)
+	w = doJSON(opd, http.MethodPost, "/api/opd/bills", adminTok, fmt.Sprintf(`{
+		"patient_id":%d,"patient_name":"Daw Chart","lines":[{"line_type":"service","ref_id":%d,"qty":1,"unit_price_mmk":2000}]
+	}`, chartDraft.ID, serviceID))
+	mustCode(t, w, http.StatusCreated)
+	chartBill := decodeOpdBill(t, w)
+	w = doJSON(opd, http.MethodDelete, "/api/opd/bills/"+strconv.FormatInt(chartBill.ID, 10), adminTok, "")
+	mustCode(t, w, http.StatusOK)
+
+	w = doJSON(opd, http.MethodGet, "/api/opd/bills", adminTok, "")
+	mustCode(t, w, http.StatusOK)
+	var deskList struct {
+		Bills []struct {
+			ID     int64  `json:"id"`
+			Status string `json:"status"`
+		} `json:"bills"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &deskList); err != nil {
+		t.Fatal(err)
+	}
+	foundDeleted := false
+	for _, b := range deskList.Bills {
+		if b.ID == chartBill.ID {
+			foundDeleted = true
+			if b.Status != "deleted" {
+				t.Fatalf("desk list status %q", b.Status)
+			}
+		}
+	}
+	if !foundDeleted {
+		t.Fatal("deleted bill missing from unfiltered desk list")
+	}
+
+	w = doJSON(charts, http.MethodGet, fmt.Sprintf("/api/patients/%d/history", chartDraft.ID), adminTok, "")
+	mustCode(t, w, http.StatusOK)
+	var hist struct {
+		OPD []struct {
+			ID int64 `json:"id"`
+		} `json:"opd"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &hist); err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range hist.OPD {
+		if row.ID == chartBill.ID {
+			t.Fatal("deleted bill still on patient chart")
+		}
 	}
 
 	w = doJSON(opd, http.MethodPost, "/api/opd/bills", adminTok, fmt.Sprintf(`{
@@ -55,6 +115,12 @@ func TestBillPurgeAdminOnly(t *testing.T) {
 	mustCode(t, w, http.StatusOK)
 	w = doJSON(opd, http.MethodDelete, "/api/opd/bills/"+strconv.FormatInt(paid.ID, 10), adminTok, "")
 	mustCode(t, w, http.StatusBadRequest)
+	if err := sqlDB.QueryRow(`SELECT status FROM opd_bills WHERE id = ?`, paid.ID).Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	if status != "paid" {
+		t.Fatalf("paid status became %q", status)
+	}
 
 	itemID := insertItem(t, sqlDB, "PURGEMED", "Purge med", 50, 100)
 	batchID := insertBatch(t, sqlDB, itemID, "P1", "2030-01-01", 30)
@@ -78,11 +144,25 @@ func TestBillPurgeAdminOnly(t *testing.T) {
 	if batchQty(t, sqlDB, batchID) != 30 {
 		t.Fatalf("purge changed stock %d", batchQty(t, sqlDB, batchID))
 	}
-	if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM pharmacy_bills WHERE id = ?`, sale.ID).Scan(&gone); err != nil {
+	if err := sqlDB.QueryRow(`SELECT status FROM pharmacy_bills WHERE id = ?`, sale.ID).Scan(&status); err != nil {
 		t.Fatal(err)
 	}
-	if gone != 0 {
-		t.Fatal("voided pharmacy bill still present")
+	if status != "deleted" {
+		t.Fatalf("voided pharmacy status %q", status)
+	}
+	// Deleted void drops out of cash (pay and reversal legs both require paid/void).
+	var cashHits int
+	if err := sqlDB.QueryRow(`
+		SELECT COUNT(1) FROM pharmacy_bills
+		WHERE id = ? AND (
+		  status = 'paid'
+		  OR (status = 'void' AND voided_at IS NOT NULL AND TRIM(voided_at) != '')
+		)
+	`, sale.ID).Scan(&cashHits); err != nil {
+		t.Fatal(err)
+	}
+	if cashHits != 0 {
+		t.Fatal("deleted pharmacy bill still matches cash predicates")
 	}
 
 	w = doJSON(charts, http.MethodPost, "/api/patients", adminTok, `{"name":"Daw Stay","phone":"091234"}`)
@@ -135,11 +215,17 @@ func TestBillPurgeAdminOnly(t *testing.T) {
 	if stayNetAfter != stayNetBefore {
 		t.Fatalf("stay net %d -> %d", stayNetBefore, stayNetAfter)
 	}
+	if err := sqlDB.QueryRow(`SELECT status FROM opd_bills WHERE id = ?`, charge.ID).Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	if status != "deleted" {
+		t.Fatalf("charged void status %q", status)
+	}
 
 	otItem := insertItem(t, sqlDB, "PURGEOT", "OT purge", 10, 400)
 	otCupboard := insertOtBatch(t, sqlDB, otItem, "OT1", "2031-01-01", 5)
 
-	// Unbilled draft: case delete removes the visit; cupboard qty unchanged.
+	// Unbilled draft: soft-delete keeps the visit row and items; cupboard qty unchanged.
 	w = doJSON(ot, http.MethodPost, "/api/ot/cases", adminTok, fmt.Sprintf(`{
 		"patient_name":"OT Unbilled","items":[{"item_id":%d,"qty_issued":1}]
 	}`, otItem))
@@ -149,25 +235,25 @@ func TestBillPurgeAdminOnly(t *testing.T) {
 	mustCode(t, w, http.StatusForbidden)
 	w = doJSON(ot, http.MethodDelete, "/api/ot/cases/"+strconv.FormatInt(otUnbilled.ID, 10), adminTok, "")
 	mustCode(t, w, http.StatusOK)
-	if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM ot_cases WHERE id = ?`, otUnbilled.ID).Scan(&gone); err != nil {
+	if err := sqlDB.QueryRow(`SELECT status FROM ot_cases WHERE id = ?`, otUnbilled.ID).Scan(&status); err != nil {
 		t.Fatal(err)
 	}
-	if gone != 0 {
-		t.Fatal("unbilled ot case still present")
+	if status != "deleted" {
+		t.Fatalf("unbilled ot case status %q", status)
 	}
-	if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM ot_case_items WHERE case_id = ?`, otUnbilled.ID).Scan(&gone); err != nil {
+	if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM ot_case_items WHERE case_id = ?`, otUnbilled.ID).Scan(&lineN); err != nil {
 		t.Fatal(err)
 	}
-	if gone != 0 {
-		t.Fatal("ot case items still present")
+	if lineN < 1 {
+		t.Fatal("ot case items were removed")
 	}
 	if otBatchQty(t, sqlDB, otCupboard) != 5 {
 		t.Fatalf("unbilled purge changed cupboard %d", otBatchQty(t, sqlDB, otCupboard))
 	}
 	w = doJSON(ot, http.MethodDelete, "/api/ot/cases/"+strconv.FormatInt(otUnbilled.ID, 10), adminTok, "")
-	mustCode(t, w, http.StatusNotFound)
+	mustCode(t, w, http.StatusBadRequest)
 
-	// Draft bill: case delete removes case and bill; cupboard qty unchanged.
+	// Draft bill: soft-delete keeps case and bill.
 	w = doJSON(ot, http.MethodPost, "/api/ot/cases", adminTok, fmt.Sprintf(`{
 		"patient_name":"OT Draft","items":[{"item_id":%d,"qty_issued":1}]
 	}`, otItem))
@@ -178,23 +264,23 @@ func TestBillPurgeAdminOnly(t *testing.T) {
 	otDraftBill := decodeOtBill(t, w)
 	w = doJSON(ot, http.MethodDelete, "/api/ot/cases/"+strconv.FormatInt(otDraftCase.ID, 10), adminTok, "")
 	mustCode(t, w, http.StatusOK)
-	if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM ot_cases WHERE id = ?`, otDraftCase.ID).Scan(&gone); err != nil {
+	if err := sqlDB.QueryRow(`SELECT status FROM ot_cases WHERE id = ?`, otDraftCase.ID).Scan(&status); err != nil {
 		t.Fatal(err)
 	}
-	if gone != 0 {
-		t.Fatal("draft ot case still present")
+	if status != "deleted" {
+		t.Fatalf("draft ot case status %q", status)
 	}
-	if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM ot_bills WHERE id = ?`, otDraftBill.ID).Scan(&gone); err != nil {
+	if err := sqlDB.QueryRow(`SELECT status FROM ot_bills WHERE id = ?`, otDraftBill.ID).Scan(&status); err != nil {
 		t.Fatal(err)
 	}
-	if gone != 0 {
-		t.Fatal("draft ot bill still present")
+	if status != "deleted" {
+		t.Fatalf("draft ot bill status %q", status)
 	}
 	if otBatchQty(t, sqlDB, otCupboard) != 5 {
 		t.Fatalf("draft purge changed cupboard %d", otBatchQty(t, sqlDB, otCupboard))
 	}
 
-	// Last-bill path: DELETE /bills/{id} on a lone draft also removes the case.
+	// Last-bill path: DELETE /bills/{id} on a lone draft soft-deletes bill and case.
 	w = doJSON(ot, http.MethodPost, "/api/ot/cases", adminTok, fmt.Sprintf(`{
 		"patient_name":"OT Last Bill","items":[{"item_id":%d,"qty_issued":1}]
 	}`, otItem))
@@ -205,17 +291,17 @@ func TestBillPurgeAdminOnly(t *testing.T) {
 	otLastBill := decodeOtBill(t, w)
 	w = doJSON(ot, http.MethodDelete, "/api/ot/bills/"+strconv.FormatInt(otLastBill.ID, 10), adminTok, "")
 	mustCode(t, w, http.StatusOK)
-	if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM ot_bills WHERE id = ?`, otLastBill.ID).Scan(&gone); err != nil {
+	if err := sqlDB.QueryRow(`SELECT status FROM ot_bills WHERE id = ?`, otLastBill.ID).Scan(&status); err != nil {
 		t.Fatal(err)
 	}
-	if gone != 0 {
-		t.Fatal("last-bill path left the bill")
+	if status != "deleted" {
+		t.Fatalf("last-bill path bill status %q", status)
 	}
-	if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM ot_cases WHERE id = ?`, otLastCase.ID).Scan(&gone); err != nil {
+	if err := sqlDB.QueryRow(`SELECT status FROM ot_cases WHERE id = ?`, otLastCase.ID).Scan(&status); err != nil {
 		t.Fatal(err)
 	}
-	if gone != 0 {
-		t.Fatal("last-bill path left the case")
+	if status != "deleted" {
+		t.Fatalf("last-bill path case status %q", status)
 	}
 	if otBatchQty(t, sqlDB, otCupboard) != 5 {
 		t.Fatalf("last-bill purge changed cupboard %d", otBatchQty(t, sqlDB, otCupboard))
@@ -239,23 +325,23 @@ func TestBillPurgeAdminOnly(t *testing.T) {
 	mustCode(t, w, http.StatusBadRequest)
 	w = doJSON(ot, http.MethodDelete, "/api/ot/cases/"+strconv.FormatInt(otPaidCase.ID, 10), adminTok, "")
 	mustCode(t, w, http.StatusBadRequest)
-	if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM ot_cases WHERE id = ?`, otPaidCase.ID).Scan(&gone); err != nil {
+	if err := sqlDB.QueryRow(`SELECT status FROM ot_cases WHERE id = ?`, otPaidCase.ID).Scan(&status); err != nil {
 		t.Fatal(err)
 	}
-	if gone != 1 {
-		t.Fatal("paid ot case was deleted")
+	if status == "deleted" {
+		t.Fatal("paid ot case was soft-deleted")
 	}
-	if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM ot_bills WHERE id = ?`, otPaidBill.ID).Scan(&gone); err != nil {
+	if err := sqlDB.QueryRow(`SELECT status FROM ot_bills WHERE id = ?`, otPaidBill.ID).Scan(&status); err != nil {
 		t.Fatal(err)
 	}
-	if gone != 1 {
-		t.Fatal("paid ot bill was deleted")
+	if status != "paid" {
+		t.Fatalf("paid ot bill status %q", status)
 	}
 	if otBatchQty(t, sqlDB, otCupboard) != 4 {
 		t.Fatalf("paid refuse changed cupboard %d", otBatchQty(t, sqlDB, otCupboard))
 	}
 
-	// Pay → void → delete case: visit gone, cupboard restored, SALE+VOID movements kept.
+	// Pay → void → delete case: visit soft-deleted, cupboard restored, SALE+VOID movements kept.
 	w = doJSON(ot, http.MethodPost, fmt.Sprintf("/api/ot/bills/%d/void", otPaidBill.ID), adminTok, `{"reason":"void ot"}`)
 	mustCode(t, w, http.StatusOK)
 	if otBatchQty(t, sqlDB, otCupboard) != 5 {
@@ -263,17 +349,17 @@ func TestBillPurgeAdminOnly(t *testing.T) {
 	}
 	w = doJSON(ot, http.MethodDelete, "/api/ot/cases/"+strconv.FormatInt(otPaidCase.ID, 10), adminTok, "")
 	mustCode(t, w, http.StatusOK)
-	if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM ot_bills WHERE id = ?`, otPaidBill.ID).Scan(&gone); err != nil {
+	if err := sqlDB.QueryRow(`SELECT status FROM ot_bills WHERE id = ?`, otPaidBill.ID).Scan(&status); err != nil {
 		t.Fatal(err)
 	}
-	if gone != 0 {
-		t.Fatal("voided ot bill still present")
+	if status != "deleted" {
+		t.Fatalf("voided ot bill status %q", status)
 	}
-	if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM ot_cases WHERE id = ?`, otPaidCase.ID).Scan(&gone); err != nil {
+	if err := sqlDB.QueryRow(`SELECT status FROM ot_cases WHERE id = ?`, otPaidCase.ID).Scan(&status); err != nil {
 		t.Fatal(err)
 	}
-	if gone != 0 {
-		t.Fatal("voided ot case still present")
+	if status != "deleted" {
+		t.Fatalf("voided ot case status %q", status)
 	}
 	if otBatchQty(t, sqlDB, otCupboard) != 5 {
 		t.Fatalf("void purge changed cupboard %d", otBatchQty(t, sqlDB, otCupboard))
@@ -346,7 +432,6 @@ func TestBillPurgeAdminOnly(t *testing.T) {
 	if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM stock_transfers WHERE pharmacy_bill_id = ?`, xfer.ID).Scan(&transferRows); err != nil {
 		t.Fatal(err)
 	}
-	// After void the link may still point at the bill or be cleared depending on reverseTransfersForBill.
 	w = doJSON(ph, http.MethodDelete, "/api/pharmacy/bills/"+strconv.FormatInt(xfer.ID, 10), adminTok, "")
 	mustCode(t, w, http.StatusOK)
 	if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM stock_transfers`).Scan(&transferRows); err != nil {
@@ -359,8 +444,15 @@ func TestBillPurgeAdminOnly(t *testing.T) {
 	if err := sqlDB.QueryRow(`SELECT pharmacy_bill_id FROM stock_transfers ORDER BY id DESC LIMIT 1`).Scan(&linked); err != nil {
 		t.Fatal(err)
 	}
-	if linked.Valid {
-		t.Fatalf("pharmacy_bill_id still set %v", linked.Int64)
+	// Soft-delete keeps the transfer link; the bill row still exists.
+	if !linked.Valid || linked.Int64 != xfer.ID {
+		t.Fatalf("pharmacy_bill_id after soft-delete got %v, want %d", linked, xfer.ID)
+	}
+	if err := sqlDB.QueryRow(`SELECT status FROM pharmacy_bills WHERE id = ?`, xfer.ID).Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	if status != "deleted" {
+		t.Fatalf("transfer bill status %q", status)
 	}
 	if batchQty(t, sqlDB, xferBatch) != 10 {
 		t.Fatalf("transfer purge stock %d", batchQty(t, sqlDB, xferBatch))
@@ -380,10 +472,10 @@ func TestBillPurgeAdminOnly(t *testing.T) {
 	mustCode(t, w, http.StatusForbidden)
 	w = doJSON(exp, http.MethodDelete, "/api/expenses/bills/"+strconv.FormatInt(expBill.ID, 10), adminTok, "")
 	mustCode(t, w, http.StatusOK)
-	if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM expense_bills WHERE id = ?`, expBill.ID).Scan(&gone); err != nil {
+	if err := sqlDB.QueryRow(`SELECT status FROM expense_bills WHERE id = ?`, expBill.ID).Scan(&status); err != nil {
 		t.Fatal(err)
 	}
-	if gone != 0 {
-		t.Fatal("expense draft still present")
+	if status != "deleted" {
+		t.Fatalf("expense draft status %q", status)
 	}
 }

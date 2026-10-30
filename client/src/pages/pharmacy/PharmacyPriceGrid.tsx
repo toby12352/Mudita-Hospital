@@ -41,6 +41,16 @@ export function PharmacyPriceGrid({
   disabled = false,
   unitLabel,
   required = false,
+  /** Edit page only: blank the purchase price after a packing-count change. */
+  purchaseRequired = false,
+  /**
+   * Saved packing counts for the item edit page. When set, a count change
+   * clears the purchase price and a return to these counts restores the saved prices.
+   * Omit on create and restock so those screens keep their current price behavior.
+   */
+  editQtyKey,
+  editBuyOuter = 0,
+  editSellSmallest = 0,
   /** Bump when parent reloads/resets stored prices so markup re-derives. */
   syncToken = 0,
 }: {
@@ -51,6 +61,10 @@ export function PharmacyPriceGrid({
   disabled?: boolean;
   unitLabel: (unit: string) => string;
   required?: boolean;
+  purchaseRequired?: boolean;
+  editQtyKey?: string;
+  editBuyOuter?: number;
+  editSellSmallest?: number;
   syncToken?: number | string;
 }) {
   const { t } = useI18n();
@@ -59,20 +73,28 @@ export function PharmacyPriceGrid({
   const sellOuter = Math.max(0, sellSmallest || 0) * unitsPerOuter;
   const slots = packPriceSlots(levels, buyOuter, sellOuter);
   const chainKey = packChainKey(levels);
+  const qtyKey = levels.qtys.join(",");
 
   const [markup, setMarkup] = useState(() => markupFromPrices(buyOuter, sellOuter));
   const [focus, setFocus] = useState<FocusCell | null>(null);
 
   const unitsPerOuterRef = useRef(unitsPerOuter);
   const chainKeyRef = useRef(chainKey);
+  const qtyKeyRef = useRef(qtyKey);
   const buyOuterRef = useRef(buyOuter);
   const sellSmallestRef = useRef(sellSmallest);
   const markupRef = useRef(markup);
   const onPricesRef = useRef(onPrices);
+  const editQtyKeyRef = useRef(editQtyKey);
+  const editBuyRef = useRef(editBuyOuter);
+  const editSellRef = useRef(editSellSmallest);
   buyOuterRef.current = buyOuter;
   sellSmallestRef.current = sellSmallest;
   markupRef.current = markup;
   onPricesRef.current = onPrices;
+  editQtyKeyRef.current = editQtyKey;
+  editBuyRef.current = editBuyOuter;
+  editSellRef.current = editSellSmallest;
 
   useEffect(() => {
     setMarkup(markupFromPrices(buyOuter, sellOuter));
@@ -82,32 +104,60 @@ export function PharmacyPriceGrid({
   }, [syncToken]);
 
   // When packing depth or qtys change, keep outer sale (or markup %) aligned with the new factor.
+  // The item edit page is the exception: a count change clears the purchase price.
   useEffect(() => {
     const prevFactor = unitsPerOuterRef.current;
     const prevChain = chainKeyRef.current;
+    const prevQty = qtyKeyRef.current;
     unitsPerOuterRef.current = unitsPerOuter;
     chainKeyRef.current = chainKey;
-    if (prevChain === chainKey || prevFactor === unitsPerOuter) return;
+    qtyKeyRef.current = qtyKey;
+
+    const baselineQty = editQtyKeyRef.current;
+    if (baselineQty === undefined) {
+      if (prevChain === chainKey || prevFactor === unitsPerOuter) return;
+
+      setFocus(null);
+      const buy = buyOuterRef.current;
+      const sell = sellSmallestRef.current;
+      const pct = parseWholePercent(markupRef.current);
+      let nextSell = sell;
+      if (pct != null && buy > 0) {
+        nextSell = sellSmallestFromMarkup(buy, unitsPerOuter, pct);
+        setMarkup(String(pct));
+      } else if (sell > 0 && prevFactor > 0) {
+        const oldSellOuter = sell * prevFactor;
+        nextSell = Math.round(oldSellOuter / unitsPerOuter);
+        setMarkup(markupFromPrices(buy, nextSell * unitsPerOuter));
+      } else {
+        setMarkup(markupFromPrices(buy, sell * unitsPerOuter));
+      }
+      if (nextSell !== sell) {
+        onPricesRef.current(buy, nextSell);
+      }
+      return;
+    }
+
+    // Unit-name edits do not change the count key, so prices stay.
+    if (prevQty === qtyKey) return;
 
     setFocus(null);
-    const buy = buyOuterRef.current;
-    const sell = sellSmallestRef.current;
-    const pct = parseWholePercent(markupRef.current);
-    let nextSell = sell;
-    if (pct != null && buy > 0) {
-      nextSell = sellSmallestFromMarkup(buy, unitsPerOuter, pct);
-      setMarkup(String(pct));
-    } else if (sell > 0 && prevFactor > 0) {
-      const oldSellOuter = sell * prevFactor;
-      nextSell = Math.round(oldSellOuter / unitsPerOuter);
-      setMarkup(markupFromPrices(buy, nextSell * unitsPerOuter));
-    } else {
+    if (qtyKey === baselineQty) {
+      const buy = editBuyRef.current;
+      const sell = editSellRef.current;
       setMarkup(markupFromPrices(buy, sell * unitsPerOuter));
+      onPricesRef.current(buy, sell);
+      return;
     }
-    if (nextSell !== sell) {
-      onPricesRef.current(buy, nextSell);
+
+    const sell = sellSmallestRef.current;
+    let nextSell = sell;
+    if (prevFactor !== unitsPerOuter && sell > 0 && prevFactor > 0) {
+      nextSell = Math.round((sell * prevFactor) / unitsPerOuter);
     }
-  }, [chainKey, unitsPerOuter]);
+    setMarkup("");
+    onPricesRef.current(0, nextSell);
+  }, [chainKey, unitsPerOuter, qtyKey]);
 
   function parseNonNeg(raw: string): number {
     if (raw.trim() === "") return 0;
@@ -151,15 +201,22 @@ export function PharmacyPriceGrid({
     onPrices(buyOuter, sellSmallestFromMarkup(buyOuter, unitsPerOuter, pct));
   }
 
+  const buyRequired = required || purchaseRequired;
+
   /** Create mode starts blank. A stored 0 must not satisfy `required`. */
   function priceText(n: number): string {
     if (required && !(n > 0)) return "";
     return String(n);
   }
 
+  function buyText(n: number): string {
+    if (buyRequired && !(n > 0)) return "";
+    return String(n);
+  }
+
   function displayBuy(index: number): string {
     if (focus?.kind === "buy" && focus.index === index) return focus.draft;
-    return priceText(slots[index]?.buy_mmk ?? 0);
+    return buyText(slots[index]?.buy_mmk ?? 0);
   }
 
   function displaySell(index: number): string {
@@ -199,15 +256,15 @@ export function PharmacyPriceGrid({
             <input
               className="price-buy"
               type="number"
-              min={required && i === 0 ? 1 : 0}
+              min={buyRequired && i === 0 ? 1 : 0}
               value={displayBuy(i)}
               placeholder={t("buyPricePlaceholder")}
               disabled={disabled}
-              required={required && i === 0}
+              required={buyRequired && i === 0}
               aria-label={`${t("purPrice")} ${unitLabel(slot.unit)}`}
               style={{ gridColumn: 2, gridRow: row }}
               onFocus={() =>
-                setFocus({ kind: "buy", index: i, draft: priceText(slots[i]?.buy_mmk ?? 0) })
+                setFocus({ kind: "buy", index: i, draft: buyText(slots[i]?.buy_mmk ?? 0) })
               }
               onChange={(e) => {
                 const draft = e.target.value;

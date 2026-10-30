@@ -195,6 +195,24 @@ func (h *Pharmacy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.purgePharmacyBill(w, r, path)
 		case strings.HasPrefix(path, "/bills/") && r.Method == http.MethodPut:
 			h.updatePharmacyBill(w, r, path)
+		case path == "/purchase-bills" && r.Method == http.MethodGet:
+			h.listPharmacyPurchaseBills(w, r)
+		case path == "/purchase-bills" && r.Method == http.MethodPost:
+			h.createPharmacyPurchaseBill(w, r)
+		case strings.HasPrefix(path, "/purchase-bills/") && strings.HasSuffix(path, "/pay") && r.Method == http.MethodPost:
+			h.payPharmacyPurchaseBill(w, r, path)
+		case strings.HasPrefix(path, "/purchase-bills/") && strings.HasSuffix(path, "/printed") && r.Method == http.MethodPost:
+			h.markPharmacyPurchaseBillPrinted(w, r, path)
+		case strings.HasPrefix(path, "/purchase-bills/") && strings.HasSuffix(path, "/void") && r.Method == http.MethodPost:
+			h.voidPharmacyPurchaseBill(w, r, path)
+		case strings.HasPrefix(path, "/purchase-bills/") && strings.HasSuffix(path, "/print") && r.Method == http.MethodGet:
+			h.printPharmacyPurchaseBill(w, r, path)
+		case strings.HasPrefix(path, "/purchase-bills/") && r.Method == http.MethodGet:
+			h.getPharmacyPurchaseBill(w, r, path)
+		case strings.HasPrefix(path, "/purchase-bills/") && r.Method == http.MethodDelete:
+			h.purgePharmacyPurchaseBill(w, r, path)
+		case strings.HasPrefix(path, "/purchase-bills/") && r.Method == http.MethodPut:
+			h.updatePharmacyPurchaseBill(w, r, path)
 		case path == "/items" && r.Method == http.MethodGet:
 			h.listItems(w, r)
 		case path == "/items" && r.Method == http.MethodPost:
@@ -595,28 +613,6 @@ func (h *Pharmacy) updateItem(w http.ResponseWriter, r *http.Request, path strin
 		}
 		sell = *req.SellPriceMMK
 	}
-	existingInner := packInnermostUnit(existingPack)
-	packChanged := pack.L2Qty != existing.PackL2Qty ||
-		pack.L3Qty != existing.PackL3Qty ||
-		pack.L4Qty != existing.PackL4Qty ||
-		pack.L5Qty != existing.PackL5Qty ||
-		pack.L6Qty != existing.PackL6Qty ||
-		packInnermostUnit(pack) != existingInner
-	if packChanged {
-		var onHand int64
-		if err := h.DB.QueryRow(`
-			SELECT COALESCE(SUM(qty), 0) FROM item_batches WHERE item_id = ? AND qty > 0
-		`, id).Scan(&onHand); err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "stock load failed"})
-			return
-		}
-		if onHand > 0 {
-			writeJSON(w, http.StatusBadRequest, map[string]string{
-				"error": "pack quantities and the small unit cannot change while stock remains",
-			})
-			return
-		}
-	}
 	active := existing.Active
 	if req.Active != nil {
 		active = *req.Active
@@ -654,6 +650,15 @@ func (h *Pharmacy) updateItem(w http.ResponseWriter, r *http.Request, path strin
 	uid := user.ID
 	audit.WriteAudit(h.DB, &uid, "update", "item", &id, map[string]any{
 		"code": req.Code, "name": req.Name, "active": active,
+		"pack_l2_qty": pack.L2Qty, "pack_l3_qty": pack.L3Qty,
+		"pack_l4_qty": pack.L4Qty, "pack_l5_qty": pack.L5Qty, "pack_l6_qty": pack.L6Qty,
+		"units_per_purchase": units.UnitsPerPurchase,
+		"buy_price_mmk":      buy, "sell_price_mmk": sell,
+		"prev_pack_l2_qty": existing.PackL2Qty, "prev_pack_l3_qty": existing.PackL3Qty,
+		"prev_pack_l4_qty": existing.PackL4Qty, "prev_pack_l5_qty": existing.PackL5Qty,
+		"prev_pack_l6_qty":        existing.PackL6Qty,
+		"prev_units_per_purchase": existing.UnitsPerPurchase,
+		"prev_buy_price_mmk":      existing.BuyPriceMMK, "prev_sell_price_mmk": existing.SellPriceMMK,
 	})
 
 	item, err := loadPharmacyItem(h.DB, id, true)

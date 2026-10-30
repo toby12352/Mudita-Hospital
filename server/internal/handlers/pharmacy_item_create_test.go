@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"testing"
 )
 
@@ -194,5 +195,74 @@ func TestCreatePharmacyItemDuplicateCode(t *testing.T) {
 	}
 	if n != 1 {
 		t.Fatalf("items with PARA = %d, want 1", n)
+	}
+}
+
+func TestUpdatePackWhileStockRemains(t *testing.T) {
+	sqlDB := openTestDB(t)
+	_, token := insertSession(t, sqlDB, "Admin", 0)
+	h := &Pharmacy{DB: sqlDB}
+
+	w := doJSON(h, http.MethodPost, "/api/pharmacy/items", token, `{
+		"code":"PACKED",
+		"name":"Packed item",
+		"pack_l1_qty":1,
+		"pack_l1_unit":"Box",
+		"pack_l2_qty":10,
+		"pack_l2_unit":"Strip",
+		"pack_l3_qty":10,
+		"pack_l3_unit":"Tablet",
+		"buy_price_mmk":50000,
+		"sell_price_mmk":100,
+		"initial_qty":200,
+		"initial_qty_unit":"stock"
+	}`)
+	mustCode(t, w, http.StatusCreated)
+	var created pharmacyItem
+	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	if created.UnitsPerPurchase != 100 || created.StockMain != 200 {
+		t.Fatalf("created upp=%d stock=%d", created.UnitsPerPurchase, created.StockMain)
+	}
+
+	w = doJSON(h, http.MethodPut, "/api/pharmacy/items/"+strconv.FormatInt(created.ID, 10), token, `{
+		"code":"PACKED",
+		"name":"Packed item",
+		"pack_l1_qty":1,
+		"pack_l1_unit":"Box",
+		"pack_l2_qty":10,
+		"pack_l2_unit":"Strip",
+		"pack_l3_qty":8,
+		"pack_l3_unit":"Tablet",
+		"pack_l4_qty":1,
+		"pack_l4_unit":"Tablet",
+		"pack_l5_qty":1,
+		"pack_l5_unit":"Tablet",
+		"pack_l6_qty":1,
+		"pack_l6_unit":"Tablet",
+		"buy_price_mmk":40000,
+		"sell_price_mmk":125
+	}`)
+	mustCode(t, w, http.StatusOK)
+	var updated pharmacyItem
+	if err := json.Unmarshal(w.Body.Bytes(), &updated); err != nil {
+		t.Fatal(err)
+	}
+	if updated.UnitsPerPurchase != 80 || updated.PackL3Qty != 8 {
+		t.Fatalf("upp=%d l3=%d", updated.UnitsPerPurchase, updated.PackL3Qty)
+	}
+	if updated.BuyPriceMMK != 40000 || updated.SellPriceMMK != 125 {
+		t.Fatalf("buy=%d sell=%d", updated.BuyPriceMMK, updated.SellPriceMMK)
+	}
+	if updated.StockMain != 200 {
+		t.Fatalf("stock=%d, want 200", updated.StockMain)
+	}
+	var batchQty int64
+	if err := sqlDB.QueryRow(`SELECT COALESCE(SUM(qty), 0) FROM item_batches WHERE item_id = ?`, created.ID).Scan(&batchQty); err != nil {
+		t.Fatal(err)
+	}
+	if batchQty != 200 {
+		t.Fatalf("batch qty=%d, want 200", batchQty)
 	}
 }

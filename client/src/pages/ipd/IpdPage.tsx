@@ -6,7 +6,6 @@ import {
   getIpdAdmission,
   listIpdAdmissions,
   postIpdDeposit,
-  postIpdWardCharge,
   printIpdCash,
   printIpdDeposit,
   printIpdStatement,
@@ -18,15 +17,17 @@ import {
 import type { PatientChart } from "@/features/patients/api";
 import { PatientChartTypeahead } from "@/features/patients/PatientChartTypeahead";
 import { IpdDailyStatementPreview } from "@/pages/ipd/IpdDailyStatementPreview";
-import { defaultIpdStatementDate } from "@/pages/ipd/ipdStatementDate";
+import { defaultIpdStatementDate, utcStampToYangonDate, yangonToday } from "@/pages/ipd/ipdStatementDate";
 import { ActionIcon } from "@/shared/ActionIcon";
 import { AlertDialog } from "@/shared/AlertDialog";
 import { getStoredUser } from "@/shared/auth";
+import { BillBtnIcon } from "@/shared/BillBtnIcon";
 import { BillDateField, formatUtcAsLocal, nowDatetimeLocal } from "@/shared/BillDateField";
 import { fieldKeyForApiError } from "@/shared/errors";
 import { FieldError, revealField } from "@/shared/FieldError";
 import { formatMMK } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
+import { useBillActionPending } from "@/shared/useActionLock";
 
 export function IpdPage() {
   const { t } = useI18n();
@@ -41,15 +42,12 @@ export function IpdPage() {
   const isAdmin = getStoredUser()?.role === "Admin";
   const [depositAmount, setDepositAmount] = useState("");
   const [depositNote, setDepositNote] = useState("");
-  const [wardDescription, setWardDescription] = useState("");
-  const [wardAmount, setWardAmount] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [patientError, setPatientError] = useState<string | null>(null);
   const [depositAmountError, setDepositAmountError] = useState<string | null>(null);
-  const [wardDescriptionError, setWardDescriptionError] = useState<string | null>(null);
-  const [wardAmountError, setWardAmountError] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const { action: pendingAction, pending, begin, end } = useBillActionPending();
   const [listStatus, setListStatus] = useState<"open" | "settled">("open");
   const [showCash, setShowCash] = useState(false);
   const [confirmDischarge, setConfirmDischarge] = useState(false);
@@ -57,8 +55,6 @@ export function IpdPage() {
   const patientFieldRef = useRef<HTMLDivElement>(null);
   const roomRef = useRef<HTMLInputElement>(null);
   const depositAmountRef = useRef<HTMLInputElement>(null);
-  const wardDescriptionRef = useRef<HTMLInputElement>(null);
-  const wardAmountRef = useRef<HTMLInputElement>(null);
   const formErrorRef = useRef<HTMLParagraphElement>(null);
   const okMsgRef = useRef<HTMLParagraphElement>(null);
 
@@ -73,11 +69,9 @@ export function IpdPage() {
   function clearFieldErrors() {
     setPatientError(null);
     setDepositAmountError(null);
-    setWardDescriptionError(null);
-    setWardAmountError(null);
   }
 
-  function applyApiError(e: unknown, amountTarget: "deposit" | "ward" = "deposit") {
+  function applyApiError(e: unknown) {
     const msg = e instanceof Error ? e.message : t("errGeneric");
     const key = fieldKeyForApiError(e);
     if (key === "patient") {
@@ -85,19 +79,9 @@ export function IpdPage() {
       window.setTimeout(() => revealField(patientFieldRef.current), 0);
       return;
     }
-    if (key === "description") {
-      setWardDescriptionError(msg);
-      window.setTimeout(() => revealField(wardDescriptionRef.current), 0);
-      return;
-    }
     if (key === "amount") {
-      if (amountTarget === "ward") {
-        setWardAmountError(msg);
-        window.setTimeout(() => revealField(wardAmountRef.current), 0);
-      } else {
-        setDepositAmountError(msg);
-        window.setTimeout(() => revealField(depositAmountRef.current), 0);
-      }
+      setDepositAmountError(msg);
+      window.setTimeout(() => revealField(depositAmountRef.current), 0);
       return;
     }
     if (key === "form") {
@@ -137,8 +121,6 @@ export function IpdPage() {
     setChartId(null);
     setDepositAmount("");
     setDepositNote("");
-    setWardDescription("");
-    setWardAmount("");
     setError(null);
     clearFieldErrors();
     setOkMsg(null);
@@ -164,6 +146,7 @@ export function IpdPage() {
       window.setTimeout(() => revealField(patientFieldRef.current), 0);
       return;
     }
+    if (!begin("admit")) return;
     setBusy(true);
     setError(null);
     clearFieldErrors();
@@ -180,11 +163,13 @@ export function IpdPage() {
       applyApiError(e);
     } finally {
       setBusy(false);
+      end();
     }
   }
 
   async function saveNotes() {
     if (!stay) return;
+    if (!begin("notes")) return;
     setBusy(true);
     setError(null);
     clearFieldErrors();
@@ -198,6 +183,7 @@ export function IpdPage() {
       applyApiError(e);
     } finally {
       setBusy(false);
+      end();
     }
   }
 
@@ -209,6 +195,7 @@ export function IpdPage() {
       window.setTimeout(() => revealField(depositAmountRef.current), 0);
       return;
     }
+    if (!begin("deposit")) return;
     setBusy(true);
     setError(null);
     clearFieldErrors();
@@ -218,51 +205,18 @@ export function IpdPage() {
       setStay(saved);
       setDepositAmount("");
       setDepositNote("");
-      setWardDescription("");
-      setWardAmount("");
       setOkMsg(t("saved"));
     } catch (e) {
-      applyApiError(e, "deposit");
+      applyApiError(e);
     } finally {
       setBusy(false);
-    }
-  }
-
-  async function postWard() {
-    if (!stay) return;
-    const description = wardDescription.trim();
-    const amount = parseKyat(wardAmount);
-    if (!description) {
-      setWardDescriptionError(t("errIpdDescription"));
-      window.setTimeout(() => revealField(wardDescriptionRef.current), 0);
-      return;
-    }
-    if (amount == null) {
-      setWardAmountError(t("errIpdAmount"));
-      window.setTimeout(() => revealField(wardAmountRef.current), 0);
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    clearFieldErrors();
-    setOkMsg(null);
-    try {
-      const saved = await postIpdWardCharge(stay.id, description, amount);
-      setStay(saved);
-      setDepositAmount("");
-      setDepositNote("");
-      setWardDescription("");
-      setWardAmount("");
-      setOkMsg(t("saved"));
-    } catch (e) {
-      applyApiError(e, "ward");
-    } finally {
-      setBusy(false);
+      end();
     }
   }
 
   async function printLedgerLine(line: IpdLedgerLine) {
     if (!stay) return;
+    if (!begin("print")) return;
     setBusy(true);
     setError(null);
     try {
@@ -275,11 +229,13 @@ export function IpdPage() {
       applyApiError(e);
     } finally {
       setBusy(false);
+      end();
     }
   }
 
   async function printStatement() {
     if (!stay) return;
+    if (!begin("statement")) return;
     setBusy(true);
     setError(null);
     try {
@@ -288,11 +244,13 @@ export function IpdPage() {
       applyApiError(e);
     } finally {
       setBusy(false);
+      end();
     }
   }
 
   async function dischargeStay() {
     if (!stay || stay.status !== "open") return;
+    if (!begin("discharge")) return;
     setBusy(true);
     setError(null);
     clearFieldErrors();
@@ -306,8 +264,6 @@ export function IpdPage() {
       setRoomEditing(false);
       setDepositAmount("");
       setDepositNote("");
-      setWardDescription("");
-      setWardAmount("");
       setOkMsg(t("ipdDischarged"));
       await loadStays();
     } catch (e) {
@@ -315,7 +271,22 @@ export function IpdPage() {
       setConfirmDischarge(false);
     } finally {
       setBusy(false);
+      end();
     }
+  }
+
+  function refreshAfterDecision() {
+    const id = stay?.id;
+    if (id == null) return;
+    void (async () => {
+      try {
+        const saved = await getIpdAdmission(id);
+        setStay((current) => (current?.id === id ? saved : current));
+        setStays(await listIpdAdmissions(listStatus));
+      } catch {
+        /* the list reloads when they go back */
+      }
+    })();
   }
 
   function backToList() {
@@ -498,40 +469,6 @@ export function IpdPage() {
                   />
                 </label>
               </div>
-              <div className="opd-bill-header-col">
-                <span className="opd-bill-label">{t("ipdWardCharge")}</span>
-                <label className={`opd-bill-field${wardDescriptionError ? " is-invalid" : ""}`}>
-                  <span className="opd-bill-label">{t("description")}</span>
-                  <input
-                    ref={wardDescriptionRef}
-                    className="opd-bill-input"
-                    value={wardDescription}
-                    disabled={busy || stay.status !== "open"}
-                    onChange={(e) => {
-                      setWardDescription(e.target.value);
-                      setWardDescriptionError(null);
-                    }}
-                    aria-invalid={wardDescriptionError ? true : undefined}
-                  />
-                </label>
-                <FieldError>{wardDescriptionError}</FieldError>
-                <label className={`opd-bill-field${wardAmountError ? " is-invalid" : ""}`}>
-                  <span className="opd-bill-label">{t("amount")}</span>
-                  <input
-                    ref={wardAmountRef}
-                    className="opd-bill-input"
-                    inputMode="numeric"
-                    value={wardAmount}
-                    disabled={busy || stay.status !== "open"}
-                    onChange={(e) => {
-                      setWardAmount(e.target.value);
-                      setWardAmountError(null);
-                    }}
-                    aria-invalid={wardAmountError ? true : undefined}
-                  />
-                </label>
-                <FieldError>{wardAmountError}</FieldError>
-              </div>
             </div>
             ) : null}
           </>
@@ -588,6 +525,9 @@ export function IpdPage() {
                     <p className="row-sub">
                       {t("chartLabel")} {row.patient.id} · {formatUtcAsLocal(row.admitted_at)}
                     </p>
+                    {listStatus === "open" ? (
+                      <p className="row-sub">{yesterdayStayLine(row, t)}</p>
+                    ) : null}
                   </div>
                   <button
                     type="button"
@@ -625,33 +565,23 @@ export function IpdPage() {
                   className="opd-bill-rail-btn opd-bill-rail-btn--accent"
                   disabled={busy || parseKyat(depositAmount) == null}
                   data-guide="ipd-take-deposit"
+                  aria-busy={(pending && pendingAction === "deposit") || undefined}
                   onClick={() => void takeDeposit()}
                 >
                   <span className="opd-bill-rail-btn-main">
-                    <ActionIcon name="plus" />
+                    <BillBtnIcon name="plus" pending={pending && pendingAction === "deposit"} />
                     <span>{t("ipdTakeDeposit")}</span>
                   </span>
                 </button>
                 <button
                   type="button"
                   className="opd-bill-rail-btn"
-                  disabled={busy || wardDescription.trim() === "" || parseKyat(wardAmount) == null}
-                  data-guide="ipd-ward-charge"
-                  onClick={() => void postWard()}
-                >
-                  <span className="opd-bill-rail-btn-main">
-                    <ActionIcon name="clipboard" />
-                    <span>{t("ipdPostWard")}</span>
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  className="opd-bill-rail-btn"
                   disabled={busy}
+                  aria-busy={(pending && pendingAction === "notes") || undefined}
                   onClick={() => void saveNotes()}
                 >
                   <span className="opd-bill-rail-btn-main">
-                    <ActionIcon name="check" />
+                    <BillBtnIcon name="check" pending={pending && pendingAction === "notes"} />
                     <span>{t("ipdSaveNotes")}</span>
                   </span>
                 </button>
@@ -663,7 +593,7 @@ export function IpdPage() {
                   onClick={() => setConfirmDischarge(true)}
                 >
                   <span className="opd-bill-rail-btn-main">
-                    <ActionIcon name="check" />
+                    <BillBtnIcon name="check" />
                     <span className="opd-bill-rail-btn-text">
                       <span className="opd-bill-rail-btn-label">{t("ipdDischarge")}</span>
                       <span className="opd-bill-rail-btn-sub">
@@ -676,19 +606,25 @@ export function IpdPage() {
             ) : null}
             <button type="button" className="opd-bill-rail-btn" disabled={busy} onClick={() => setDailyOpen(true)}>
               <span className="opd-bill-rail-btn-main">
-                <ActionIcon name="print" />
+                <BillBtnIcon name="print" />
                 <span>{t("ipdPrintDailyStatement")}</span>
               </span>
             </button>
-            <button type="button" className="opd-bill-rail-btn" disabled={busy} onClick={() => void printStatement()}>
+            <button
+              type="button"
+              className="opd-bill-rail-btn"
+              disabled={busy}
+              aria-busy={(pending && pendingAction === "statement") || undefined}
+              onClick={() => void printStatement()}
+            >
               <span className="opd-bill-rail-btn-main">
-                <ActionIcon name="print" />
+                <BillBtnIcon name="print" pending={pending && pendingAction === "statement"} />
                 <span>{t("ipdPrintStatement")}</span>
               </span>
             </button>
             <button type="button" className="opd-bill-rail-btn" disabled={busy} onClick={backToList}>
               <span className="opd-bill-rail-btn-main">
-                <ActionIcon name="history" />
+                <BillBtnIcon name="history" />
                 <span>{t("ipdBackToList")}</span>
               </span>
             </button>
@@ -700,10 +636,11 @@ export function IpdPage() {
               className="opd-bill-rail-btn opd-bill-rail-btn--accent"
               disabled={busy || chartId == null}
               data-guide="ipd-admit"
+              aria-busy={(pending && pendingAction === "admit") || undefined}
               onClick={() => void admit()}
             >
               <span className="opd-bill-rail-btn-main">
-                <ActionIcon name="plus" />
+                <BillBtnIcon name="plus" pending={pending && pendingAction === "admit"} />
                 <span>{t("ipdAdmit")}</span>
               </span>
             </button>
@@ -717,7 +654,7 @@ export function IpdPage() {
               }}
             >
               <span className="opd-bill-rail-btn-main">
-                <ActionIcon name="clipboard" />
+                <BillBtnIcon name="clipboard" />
                 <span>{t("ipdDailyCash")}</span>
               </span>
             </button>
@@ -728,7 +665,7 @@ export function IpdPage() {
               onClick={() => setListStatus((current) => (current === "open" ? "settled" : "open"))}
             >
               <span className="opd-bill-rail-btn-main">
-                <ActionIcon name="history" />
+                <BillBtnIcon name="history" />
                 <span>{listStatus === "open" ? t("ipdSettledStays") : t("ipdOpenStays")}</span>
               </span>
             </button>
@@ -738,16 +675,18 @@ export function IpdPage() {
       {dailyOpen && stay ? (
         <IpdDailyStatementPreview
           stayId={stay.id}
+          stayOpen={stay.status === "open"}
           initialDate={defaultIpdStatementDate(stay)}
           title={t("ipdDailyStatement")}
           onClose={() => setDailyOpen(false)}
+          onDecided={refreshAfterDecision}
         />
       ) : null}
       {confirmDischarge ? (
         <AlertDialog
           tone="warning"
           title={t("ipdDischarge")}
-          message={t("confirmIpdDischarge")}
+          message={dischargeConfirmMessage(stay, t)}
           busy={busy}
           danger
           confirmLabel={t("ipdDischarge")}
@@ -768,6 +707,27 @@ function genderLabel(gender: string, t: (key: string) => string): string {
   return gender;
 }
 
+function yesterdayStayLine(row: IpdAdmission, t: (key: string) => string): string {
+  return `${t("ipdYesterday")}: ${voucherStatusLabel(row.yesterday_voucher_status ?? "", row.admitted_at, t)}`;
+}
+
+function voucherStatusLabel(status: string, admittedAt: string, t: (key: string) => string): string {
+  if (status === "paid") return t("ipdVoucherPaid");
+  if (status === "credit") return t("ipdVoucherCarried");
+  if (status === "issued") return t("ipdVoucherAwaiting");
+  const admitted = utcStampToYangonDate(admittedAt);
+  if (!admitted || admitted >= yangonToday()) return t("ipdVoucherStillOpen");
+  return t("ipdVoucherAwaiting");
+}
+
+function dischargeConfirmMessage(stay: IpdAdmission | null, t: (key: string) => string): string {
+  const base = t("confirmIpdDischarge");
+  if (stay?.yesterday_voucher_status === "issued") {
+    return `${base} ${t("confirmIpdDischargeAwaiting")}`;
+  }
+  return base;
+}
+
 function statusLabel(status: string, t: (key: string) => string): string {
   if (status === "open") return t("ipdStatusOpen");
   if (status === "settled") return t("ipdStatusSettled");
@@ -785,6 +745,7 @@ function ledgerKindLabel(
   if (kind === "charge") {
     const charge = amount < 0;
     if (source === "opd") return charge ? t("ipdKindOpdCharge") : t("ipdKindOpdCredit");
+    if (source === "lab") return charge ? t("ipdKindLabCharge") : t("ipdKindLabCredit");
     if (source === "ot") return charge ? t("ipdKindOtCharge") : t("ipdKindOtCredit");
     if (source === "pharmacy") return charge ? t("ipdKindPharmacyCharge") : t("ipdKindPharmacyCredit");
     return charge ? t("ipdKindCharge") : t("ipdKindCredit");
@@ -808,7 +769,12 @@ function totalChargesMmk(ledger: IpdLedgerLine[]): number {
 function ledgerCanPrint(line: IpdLedgerLine): boolean {
   if (line.kind === "deposit") return true;
   if (line.source_id == null || line.source_id < 1) return false;
-  return line.source === "opd" || line.source === "ot" || line.source === "pharmacy";
+  return (
+    line.source === "opd" ||
+    line.source === "ot" ||
+    line.source === "pharmacy" ||
+    line.source === "lab"
+  );
 }
 
 function ledgerSub(line: IpdLedgerLine): string {
@@ -817,6 +783,8 @@ function ledgerSub(line: IpdLedgerLine): string {
       ? ""
       : line.source === "opd"
         ? "OPD"
+        : line.source === "lab"
+          ? "Lab"
         : line.source === "ot"
           ? "OT"
           : line.source === "pharmacy"
@@ -843,6 +811,7 @@ function IpdCashPanel({ onBack }: { onBack: () => void }) {
   const [date, setDate] = useState(localDay);
   const [report, setReport] = useState<IpdCashReport | null>(null);
   const [busy, setBusy] = useState(false);
+  const { pending, begin, end } = useBillActionPending();
   const [error, setError] = useState<string | null>(null);
 
   async function load(next = date) {
@@ -854,6 +823,20 @@ function IpdCashPanel({ onBack }: { onBack: () => void }) {
       setError(e instanceof Error ? e.message : t("errGeneric"));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function printCash() {
+    if (!begin("dailyCash")) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await printIpdCash(date, t("ipdDailyCash"));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t("errGeneric"));
+    } finally {
+      setBusy(false);
+      end();
     }
   }
 
@@ -909,16 +892,17 @@ function IpdCashPanel({ onBack }: { onBack: () => void }) {
           type="button"
           className="opd-bill-rail-btn opd-bill-rail-btn--accent"
           disabled={busy || !report}
-          onClick={() => void printIpdCash(date, t("ipdDailyCash"))}
+          aria-busy={pending || undefined}
+          onClick={() => void printCash()}
         >
           <span className="opd-bill-rail-btn-main">
-            <ActionIcon name="print" />
+            <BillBtnIcon name="print" pending={pending} />
             <span>{t("print")}</span>
           </span>
         </button>
         <button type="button" className="opd-bill-rail-btn" disabled={busy} onClick={onBack}>
           <span className="opd-bill-rail-btn-main">
-            <ActionIcon name="history" />
+            <BillBtnIcon name="history" />
             <span>{t("ipdBackToList")}</span>
           </span>
         </button>

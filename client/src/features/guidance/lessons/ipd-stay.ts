@@ -5,7 +5,7 @@ const ipdScreen: GuideScreen = {
   section: "ipd",
 };
 
-/** Stay lesson. Opens Stays. Does not press Admit, Take deposit, or Post ward charge. */
+/** Stay lesson. Opens Stays. Does not press Admit, Take deposit, or IPD Bill. */
 export const ipdStayLesson: GuideLesson = {
   id: "ipd-stay",
   steps: [
@@ -26,9 +26,9 @@ export const ipdStayLesson: GuideLesson = {
       screen: ipdScreen,
     },
     {
-      id: "ward-charge",
-      element: '[data-guide="ipd-ward-charge"]',
-      side: "left",
+      id: "ipd-bill",
+      element: '[data-guide="ipd-bill"]',
+      side: "right",
       titleKey: "guideIpdWardTitle",
       bodyKey: "guideIpdWardBody",
       screen: ipdScreen,

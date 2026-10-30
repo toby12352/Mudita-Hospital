@@ -48,6 +48,11 @@ const (
 	GrantPharmacyUpdate = "pharmacy.update"
 	GrantPharmacyDelete = "pharmacy.delete"
 
+	GrantLabRead   = "lab.read"
+	GrantLabCreate = "lab.create"
+	GrantLabUpdate = "lab.update"
+	GrantLabDelete = "lab.delete"
+
 	// GrantDashboard is the single dashboard checkbox, not a clinic module.
 	GrantDashboard = "dashboard"
 )
@@ -79,6 +84,11 @@ var grantablePerms = map[string]struct{}{
 	GrantPharmacyUpdate: {},
 	GrantPharmacyDelete: {},
 
+	GrantLabRead:   {},
+	GrantLabCreate: {},
+	GrantLabUpdate: {},
+	GrantLabDelete: {},
+
 	GrantDashboard: {},
 }
 
@@ -108,6 +118,7 @@ var grantCanon = []string{
 	GrantOPDRead, GrantOPDCreate, GrantOPDUpdate, GrantOPDDelete,
 	GrantOTRead, GrantOTCreate, GrantOTUpdate, GrantOTDelete,
 	GrantPharmacyRead, GrantPharmacyCreate, GrantPharmacyUpdate, GrantPharmacyDelete,
+	GrantLabRead, GrantLabCreate, GrantLabUpdate, GrantLabDelete,
 	GrantDashboard,
 }
 
@@ -122,6 +133,7 @@ var grantModules = []struct {
 	{GrantOPDRead, []string{GrantOPDCreate, GrantOPDUpdate, GrantOPDDelete}},
 	{GrantOTRead, []string{GrantOTCreate, GrantOTUpdate, GrantOTDelete}},
 	{GrantPharmacyRead, []string{GrantPharmacyCreate, GrantPharmacyUpdate, GrantPharmacyDelete}},
+	{GrantLabRead, []string{GrantLabCreate, GrantLabUpdate, GrantLabDelete}},
 }
 
 // NormalizeGrants checks a client grant list.
@@ -268,6 +280,8 @@ func moduleGrants(perm string) []string {
 		return []string{GrantOTRead, GrantOTCreate, GrantOTUpdate, GrantOTDelete}
 	case PermPharmacy:
 		return []string{GrantPharmacyRead, GrantPharmacyCreate, GrantPharmacyUpdate, GrantPharmacyDelete}
+	case PermLab:
+		return []string{GrantLabRead, GrantLabCreate, GrantLabUpdate, GrantLabDelete}
 	default:
 		return nil
 	}

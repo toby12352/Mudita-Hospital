@@ -59,3 +59,12 @@ func rejectPurgeStatus(w http.ResponseWriter, status string) bool {
 		return true
 	}
 }
+
+// rejectDeletedBill refuses pay/edit/void on a soft-deleted bill.
+func rejectDeletedBill(w http.ResponseWriter, status string) bool {
+	if status != "deleted" {
+		return false
+	}
+	writeJSON(w, http.StatusBadRequest, map[string]string{"error": "deleted bills cannot be changed"})
+	return true
+}

@@ -59,5 +59,5 @@ A chart is the patient record. A name typed on a bill is not a chart. This page 
 - Do not press Create. Do not save a new chart during the lesson.
 - Do not press Attach bill, and do not type a live bill number in order to attach it.
 - Do not edit or delete a chart.
-- Do not admit, take a deposit, post a ward charge, or discharge. Those belong to ipd-stay and ipd-discharge.
+- Do not admit, take a deposit, open IPD Bill, or discharge. Those belong to ipd-stay and ipd-discharge.
 - Do not press Mark Paid, Charge to IPD, or Seed training data.

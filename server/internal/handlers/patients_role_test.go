@@ -381,11 +381,13 @@ func TestPatientHistory(t *testing.T) {
 	users := &Users{DB: sqlDB}
 
 	w := doJSON(users, http.MethodPost, "/api/users", adminTok, `{
-		"username":"chartdesk","display_name":"Chart Desk","role":"Patients","password":"secret1"
+		"username":"chartdesk","display_name":"Chart Desk","password":"secret1",
+		"grants":["patients.read","patients.create","patients.update"]
 	}`)
 	mustCode(t, w, http.StatusCreated)
 	w = doJSON(users, http.MethodPost, "/api/users", adminTok, `{
-		"username":"ipddesk","display_name":"IPD Desk","role":"IPD","password":"secret1"
+		"username":"ipddesk","display_name":"IPD Desk","password":"secret1",
+		"grants":["ipd.read","ipd.create","ipd.update"]
 	}`)
 	mustCode(t, w, http.StatusCreated)
 

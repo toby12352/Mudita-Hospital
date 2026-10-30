@@ -50,13 +50,17 @@ import type { ConnState, NavIntent, NavSectionId, PortalId, View } from "./types
 import { OpdDoctorsPage } from "@/pages/opd/OpdDoctorsPage";
 import { OpdPage } from "@/pages/opd/OpdPage";
 import { OpdServicesPage } from "@/pages/opd/OpdServicesPage";
+import { LabPage } from "@/pages/lab/LabPage";
+import { LabServicesPage } from "@/pages/lab/LabServicesPage";
 import { OtMaintenancePage } from "@/pages/ot/OtMaintenancePage";
 import { OtPage } from "@/pages/ot/OtPage";
 import { PharmacyBillingPage } from "@/pages/pharmacy/PharmacyBillingPage";
 import { PharmacyPage } from "@/pages/pharmacy/PharmacyPage";
+import { PharmacyPurchasePage } from "@/pages/pharmacy/PharmacyPurchasePage";
 import { PharmacyReturnPage } from "@/pages/pharmacy/PharmacyReturnPage";
 import { PharmacyTransferPage } from "@/pages/pharmacy/PharmacyTransferPage";
 import { ExpenseBillPage } from "@/pages/expenses/ExpenseBillPage";
+import { IpdChargeBillPage } from "@/pages/ipd/IpdChargeBillPage";
 import { IpdPage } from "@/pages/ipd/IpdPage";
 import { PatientsPage } from "@/pages/patients/PatientsPage";
 import { SettingsPage } from "@/pages/settings/SettingsPage";
@@ -357,6 +361,7 @@ export default function App() {
   const portal = shown.portal;
 
   const opdScreen = shownIntent.opdScreen ?? "bill";
+  const labScreen = shownIntent.labScreen ?? "bill";
   const portalTitleKey = sharedLayout
     ? titleKeyForAdmin(shownView, portal)
     : deskPortal ?? "navHome";
@@ -423,6 +428,9 @@ export default function App() {
           initialMode={shownIntent.billingMode ?? "list"}
         />
       ) : null}
+      {portal === "pharmacy" && shownView === "pharmacy_purchase" ? (
+        <PharmacyPurchasePage key={pageKey} />
+      ) : null}
       {portal === "pharmacy" && shownView === "pharmacy_transfer" ? (
         <PharmacyTransferPage
           key={pageKey}
@@ -467,6 +475,12 @@ export default function App() {
       {portal === "opd" && shownView === "opd" && opdScreen === "expense" ? (
         <ExpenseBillPage key={pageKey} portal="opd" />
       ) : null}
+      {portal === "lab" && shownView === "lab" && labScreen === "services" ? (
+        <LabServicesPage key={pageKey} />
+      ) : null}
+      {portal === "lab" && shownView === "lab" && labScreen === "bill" ? (
+        <LabPage key={pageKey} initialMode={shownIntent.billingMode ?? "list"} />
+      ) : null}
       {portal === "ot" && shownView === "ot" && shownIntent.otMode === "stock" ? (
         <OtMaintenancePage key={pageKey} />
       ) : null}
@@ -493,6 +507,7 @@ export default function App() {
         />
       ) : null}
       {portal === "ipd" && shownView === "ipd" ? <IpdPage key={pageKey} /> : null}
+      {portal === "ipd" && shownView === "ipd_bill" ? <IpdChargeBillPage key={pageKey} /> : null}
       {portal === "ipd" && shownView === "ipd_expense" ? (
         <ExpenseBillPage key={pageKey} portal="ipd" />
       ) : null}

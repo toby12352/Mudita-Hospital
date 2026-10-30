@@ -18,6 +18,22 @@ export function yangonToday(): string {
   return yangonDate(new Date());
 }
 
+/** Shift a `YYYY-MM-DD` civil date by whole days. The calendar math stays in UTC. */
+export function yangonAddDays(iso: string, days: number): string {
+  const [year, month, day] = iso.split("-").map(Number);
+  if (!year || !month || !day) return iso;
+  const utc = new Date(Date.UTC(year, month - 1, day));
+  utc.setUTCDate(utc.getUTCDate() + days);
+  const nextYear = utc.getUTCFullYear();
+  const nextMonth = String(utc.getUTCMonth() + 1).padStart(2, "0");
+  const nextDay = String(utc.getUTCDate()).padStart(2, "0");
+  return `${nextYear}-${nextMonth}-${nextDay}`;
+}
+
+export function yangonYesterday(): string {
+  return yangonAddDays(yangonToday(), -1);
+}
+
 /** Stored ledger timestamps are UTC `YYYY-MM-DD HH:MM:SS`. */
 export function utcStampToYangonDate(stamp: string): string | null {
   const match = stamp.trim().match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})/);
@@ -28,16 +44,15 @@ export function utcStampToYangonDate(stamp: string): string | null {
   return iso || null;
 }
 
-/** Today when the stay has a line today, else the latest line date, else admission. */
+/**
+ * Yesterday when the stay has any ledger line before today, so the morning
+ * sheet is the one being sent. Otherwise today, which stays preview-only.
+ */
 export function defaultIpdStatementDate(stay: IpdAdmission): string {
   const today = yangonToday();
-  let latest = "";
   for (const line of stay.ledger ?? []) {
     const day = utcStampToYangonDate(line.created_at);
-    if (!day) continue;
-    if (day === today) return today;
-    if (day > latest) latest = day;
+    if (day && day < today) return yangonYesterday();
   }
-  if (latest) return latest;
-  return utcStampToYangonDate(stay.admitted_at) ?? today;
+  return today;
 }

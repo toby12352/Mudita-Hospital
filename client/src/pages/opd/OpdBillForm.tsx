@@ -1,25 +1,27 @@
-import { useEffect, useRef, type Ref } from "react";
+import { type Ref } from "react";
 import type { PatientChart } from "@/features/patients/api";
 import { PatientChartTypeahead } from "@/features/patients/PatientChartTypeahead";
 import type { OpdBillLine, OpdDoctor, OpdService } from "@/features/opd/api";
 import { useClinicActions } from "@/app/clinicActions";
 import { ActionIcon } from "@/shared/ActionIcon";
 import { AlertDialog } from "@/shared/AlertDialog";
+import { BillBtnIcon } from "@/shared/BillBtnIcon";
 import { BillLineGrid, createBillLineEntry } from "@/shared/BillLineGrid";
 import {
   BillChargeToIpdButton,
   BillCollectNote,
   BillMarkPaidButton,
   BillPrintButton,
+  BillSaveDraftButton,
   moneyStatusLabel,
 } from "@/shared/BillPayPrint";
 import { BillDateField } from "@/shared/BillDateField";
 import { BillTotals } from "@/shared/BillTotals";
 import { discountKyats, type DiscountUnit } from "@/shared/discount";
-import { revealField } from "@/shared/FieldError";
 import { formatMMK } from "@/shared/format";
 import { Typeahead } from "@/shared/Typeahead";
 import { useI18n } from "@/shared/i18n";
+import type { BillActionKind, BillFeedback } from "@/shared/useActionLock";
 
 type Props = {
   billId: number | null;
@@ -42,8 +44,10 @@ type Props = {
   billedAtLocal: string;
   onBilledAtLocal: (value: string) => void;
   busy: boolean;
+  /** Delayed pending rail action (spinner); null when idle or still under delay. */
+  pendingAction?: BillActionKind;
+  feedback?: BillFeedback;
   error: string | null;
-  okMsg: string | null;
   isDraft: boolean;
   discountValue: string;
   discountUnit: DiscountUnit;
@@ -61,13 +65,13 @@ type Props = {
   onClearDoctorId: () => void;
   onPickDoctor: (d: OpdDoctor) => void;
   onDescription: (v: string) => void;
-  onCommitService: (s: OpdService, qty: number, foc: boolean) => void;
+  onCommitService: (s: OpdService, qty: number) => void;
   onLookupService: (code: string) => Promise<OpdService | null>;
   onAddConsultation: () => void;
   loadServiceSuggestions: (term: string) => Promise<OpdService[]>;
   onCommitLineQty: (index: number, qty: number) => void;
   onRemoveLine: (index: number) => void;
-  onClearFoc: (index: number) => void;
+  onFocChange: (index: number, foc: boolean) => void;
   onPrint: () => void;
   onMarkPaid: () => void;
   onChargeToIpd?: () => void;
@@ -100,21 +104,25 @@ export function OpdBillForm(props: Props) {
     dateEditable,
     billedAtLocal,
     busy,
+    pendingAction = null,
+    feedback = null,
     error,
-    okMsg,
     isDraft,
     discountValue,
     discountUnit,
   } = props;
   const { opdCreate, opdDelete } = useClinicActions();
   const writable = isDraft && opdCreate;
+  const pendingMarkPaid = pendingAction === "markPaid";
+  const pendingCharge = pendingAction === "chargeIpd";
+  const pendingPrint = pendingAction === "print";
+  const pendingSave = pendingAction === "saveDraft";
+  const ok = (kind: NonNullable<BillActionKind>) =>
+    feedback?.action === kind && feedback.kind === "ok";
+  const err = (kind: NonNullable<BillActionKind>) =>
+    feedback?.action === kind && feedback.kind === "err";
   const patientLocked = patientId != null;
   const identityEditable = writable && !patientLocked;
-  const okMsgRef = useRef<HTMLParagraphElement>(null);
-
-  useEffect(() => {
-    if (okMsg?.trim()) revealField(okMsgRef.current);
-  }, [okMsg]);
 
   const total = lines.reduce(
     (s, l) => (l.foc === 1 ? s : s + l.qty * l.unit_price_mmk),
@@ -308,7 +316,7 @@ export function OpdBillForm(props: Props) {
           }))}
           onQtyCommit={props.onCommitLineQty}
           onRemove={props.onRemoveLine}
-          onClearFoc={props.onClearFoc}
+          onFocChange={props.onFocChange}
           entries={[
             createBillLineEntry<OpdService>(
               {
@@ -329,7 +337,7 @@ export function OpdBillForm(props: Props) {
                   </>
                 ),
                 unitsFor: () => [],
-                onCommit: (s, qty, _unit, foc) => props.onCommitService(s, qty, foc),
+                onCommit: (s, qty) => props.onCommitService(s, qty),
                 onSubmitCode: props.onLookupService,
               },
               {
@@ -362,11 +370,6 @@ export function OpdBillForm(props: Props) {
           />
         </div>
 
-        {okMsg ? (
-          <p ref={okMsgRef} className="form-ok" role="status">
-            {okMsg}
-          </p>
-        ) : null}
       </div>
 
       <aside className="opd-bill-rail" aria-label={t("billActions")}>
@@ -374,31 +377,42 @@ export function OpdBillForm(props: Props) {
           <BillMarkPaidButton
             status={billStatus || "draft"}
             busy={busy}
+            pending={pendingMarkPaid}
+            success={ok("markPaid")}
+            fail={err("markPaid")}
             onClick={props.onMarkPaid}
           />
         ) : null}
         {opdCreate && props.onChargeToIpd ? (
-          <BillChargeToIpdButton busy={busy} onClick={props.onChargeToIpd} />
+          <BillChargeToIpdButton
+            busy={busy}
+            pending={pendingCharge}
+            success={ok("chargeIpd")}
+            fail={err("chargeIpd")}
+            onClick={props.onChargeToIpd}
+          />
         ) : null}
-        <BillPrintButton status={billStatus || "draft"} busy={busy} onClick={props.onPrint} />
+        <BillPrintButton
+          status={billStatus || "draft"}
+          busy={busy}
+          pending={pendingPrint}
+          success={ok("print")}
+          fail={err("print")}
+          onClick={props.onPrint}
+        />
         {opdCreate ? (
-          <button
-            type="button"
-            className="opd-bill-rail-btn"
-            disabled={busy || !isDraft}
+          <BillSaveDraftButton
+            busy={busy}
+            enabled={isDraft}
+            pending={pendingSave}
+            success={ok("saveDraft")}
+            fail={err("saveDraft")}
             onClick={props.onConfirm}
-            data-guide="bill-save-draft"
-          >
-            <span className="opd-bill-rail-btn-main">
-              <ActionIcon name="check" />
-              <span>{t("saveDraft")}</span>
-            </span>
-            <kbd>F5</kbd>
-          </button>
+          />
         ) : null}
         <button type="button" className="opd-bill-rail-btn" disabled={busy} onClick={props.onHistory} data-guide="bill-history">
           <span className="opd-bill-rail-btn-main">
-            <ActionIcon name="history" />
+            <BillBtnIcon name="history" />
             <span>{t("history")}</span>
           </span>
           <kbd>F9</kbd>
@@ -406,13 +420,13 @@ export function OpdBillForm(props: Props) {
         {opdDelete ? (
           <button
             type="button"
-            className="opd-bill-rail-btn opd-bill-rail-btn--danger"
+            className={`opd-bill-rail-btn opd-bill-rail-btn--danger${err("void") ? " opd-bill-rail-btn--shake" : ""}`}
             disabled={busy}
             onClick={props.onDelete}
             data-guide="bill-void"
           >
             <span className="opd-bill-rail-btn-main">
-              <ActionIcon name="trash" />
+              <BillBtnIcon name="trash" pending={false} success={ok("void")} />
               <span>{t("vDelete")}</span>
             </span>
             <kbd>^F8</kbd>
@@ -421,12 +435,12 @@ export function OpdBillForm(props: Props) {
         {props.onPurge ? (
           <button
             type="button"
-            className="opd-bill-rail-btn opd-bill-rail-btn--danger"
+            className={`opd-bill-rail-btn opd-bill-rail-btn--danger${err("purge") ? " opd-bill-rail-btn--shake" : ""}`}
             disabled={busy}
             onClick={props.onPurge}
           >
             <span className="opd-bill-rail-btn-main">
-              <ActionIcon name="trash" />
+              <BillBtnIcon name="trash" success={ok("purge")} />
               <span>{t("delete")}</span>
             </span>
           </button>
@@ -444,7 +458,7 @@ export function OpdBillForm(props: Props) {
           data-guide="bill-new"
         >
           <span className="opd-bill-rail-btn-main">
-            <ActionIcon name="plus" />
+            <BillBtnIcon name="plus" />
             <span>{t("newBill")}</span>
           </span>
           <kbd>F2</kbd>

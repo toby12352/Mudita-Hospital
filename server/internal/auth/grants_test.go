@@ -75,7 +75,7 @@ func insertGrants(t *testing.T, sqlDB *sql.DB, userID int64, perms ...string) {
 }
 
 func TestGrantableKeys(t *testing.T) {
-	if !Grantable(GrantPharmacyRead) || !Grantable(GrantDashboard) || !Grantable(GrantIPDRead) {
+	if !Grantable(GrantPharmacyRead) || !Grantable(GrantDashboard) || !Grantable(GrantIPDRead) || !Grantable(GrantLabRead) {
 		t.Fatal("expected clinic and dashboard keys to be grantable")
 	}
 	rejected := []string{GrantIPDDelete, PermSettings, PermManageUsers, PermPharmacy, "pharmacy.adjust", ""}
@@ -86,6 +86,16 @@ func TestGrantableKeys(t *testing.T) {
 	}
 	if !ValidAccessMode(AccessPortal) || !ValidAccessMode(AccessUnified) || ValidAccessMode("other") {
 		t.Fatal("access mode validation")
+	}
+	if _, err := NormalizeGrants([]string{GrantLabDelete}); !errors.Is(err, ErrGrantNeedsRead) {
+		t.Fatalf("lab delete without read: %v", err)
+	}
+	lab, err := NormalizeGrants([]string{GrantLabRead, GrantLabDelete})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(lab) != 2 || lab[0] != GrantLabRead || lab[1] != GrantLabDelete {
+		t.Fatalf("lab grants %v", lab)
 	}
 }
 

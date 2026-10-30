@@ -17,6 +17,7 @@ const MODULES = [
   { id: "opd", labelKey: "roleOPD" },
   { id: "ot", labelKey: "roleOT" },
   { id: "pharmacy", labelKey: "rolePharmacy" },
+  { id: "lab", labelKey: "roleLab" },
 ] as const;
 
 const ACTIONS = ["read", "create", "update", "delete"] as const;

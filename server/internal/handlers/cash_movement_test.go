@@ -12,6 +12,10 @@ import (
 
 func TestCashMovement(t *testing.T) {
 	sqlDB := openTestDB(t)
+	// Fixture dates stay on the charge income rule when the epoch row is absent.
+	if _, err := sqlDB.Exec(`DELETE FROM ipd_voucher_epoch`); err != nil {
+		t.Fatal(err)
+	}
 	_, adminTok := insertSession(t, sqlDB, auth.RoleAdmin, 0)
 	_, opdTok := insertSession(t, sqlDB, auth.RoleOPD, 0)
 	_, otTok := insertSession(t, sqlDB, auth.RoleOT, 0)
@@ -258,7 +262,7 @@ func TestCashMovement(t *testing.T) {
 	insertLedger(t, sqlDB, printStay, "collection", 800, printDay+" 03:00:00")
 	insertExpense(t, sqlDB, "EXP-PRINT", "pharmacy", "Supplies", "paid", 5000, 0, printDay+" 12:00:00", "", "")
 
-	t.Run("admin print shows net and expenses and the clinic print stays desk scoped", func(t *testing.T) {
+	t.Run("admin print shows portal tables and difference and the clinic print stays desk scoped", func(t *testing.T) {
 		// Collection is drawer cash only; income stays the desk total.
 		move := requireMove(t, sqlDB, printDay, 7000, -5000, 7000, 800)
 		assertEndpointsMatch(t, dash, adminTok, printDay, move)
@@ -266,39 +270,45 @@ func TestCashMovement(t *testing.T) {
 		printed := doJSON(dash, http.MethodGet, "/api/dashboard/daily-report/print?date="+printDay, adminTok, "")
 		mustCode(t, printed, http.StatusOK)
 		body := printed.Body.String()
-		if !strings.Contains(body, "Net: "+formatMMK(move.NetCashMMK)+" MMK") {
-			t.Fatalf("admin print missing net %d: %s", move.NetCashMMK, body)
+		diff := move.IncomeMMK + move.ExpenseMMK
+		if !strings.Contains(body, "Difference") || !strings.Contains(body, formatMMK(diff)+" MMK") {
+			t.Fatalf("admin print missing difference %d: %s", diff, body)
 		}
-		if !strings.Contains(body, "Income: "+formatMMK(move.IncomeMMK)+" MMK") {
+		if !strings.Contains(body, "Total income") || !strings.Contains(body, formatMMK(move.IncomeMMK)+" MMK") {
 			t.Fatalf("admin print missing income %d: %s", move.IncomeMMK, body)
 		}
-		if !strings.Contains(body, "IPD gains") || !strings.Contains(body, "IPD cash drawer") || !strings.Contains(body, "IPD open stays") {
-			t.Fatalf("admin print missing IPD sections: %s", body)
-		}
-		if !strings.Contains(body, "Expenses: "+formatMMK(move.ExpenseMMK)+" MMK") || !strings.Contains(body, "EXP-PRINT") {
+		if !strings.Contains(body, "Total expenses") || !strings.Contains(body, "EXP-PRINT") {
 			t.Fatalf("admin print missing signed expense: %s", body)
 		}
-		if !strings.Contains(body, "IPD-PRINT") || !strings.Contains(body, "OT-PRINT") || !strings.Contains(body, "PH-PRINT") {
+		if !strings.Contains(body, "<h3>OPD</h3>") || !strings.Contains(body, "<h3>OT</h3>") || !strings.Contains(body, "<h3>Pharmacy</h3>") {
+			t.Fatalf("admin print missing portal tables: %s", body)
+		}
+		if !strings.Contains(body, "OPD-PRINT") || !strings.Contains(body, "OT-PRINT") || !strings.Contains(body, "PH-PRINT") {
 			t.Fatalf("admin print missing cash lines: %s", body)
+		}
+		for _, hide := range []string{"Net:", "IPD cash drawer", "IPD open stays", "<h3>Desk</h3>", "IPD-PRINT"} {
+			if strings.Contains(body, hide) {
+				t.Fatalf("admin print leaked %q: %s", hide, body)
+			}
 		}
 
 		incomePrinted := doJSON(dash, http.MethodGet, "/api/dashboard/daily-report/print?date="+printDay+"&kind=income", adminTok, "")
 		mustCode(t, incomePrinted, http.StatusOK)
 		incomeBody := incomePrinted.Body.String()
-		if !strings.Contains(incomeBody, "Income report") || !strings.Contains(incomeBody, "OT-PRINT") || !strings.Contains(incomeBody, "IPD gains") {
+		if !strings.Contains(incomeBody, "Income Cash Report") || !strings.Contains(incomeBody, "OT-PRINT") || !strings.Contains(incomeBody, "Total income") {
 			t.Fatalf("income print missing sections: %s", incomeBody)
 		}
-		if strings.Contains(incomeBody, "EXP-PRINT") || strings.Contains(incomeBody, "IPD cash drawer") {
+		if strings.Contains(incomeBody, "EXP-PRINT") || strings.Contains(incomeBody, "IPD cash drawer") || strings.Contains(incomeBody, "Difference") {
 			t.Fatalf("income print leaked expense/drawer: %s", incomeBody)
 		}
 
 		expensePrinted := doJSON(dash, http.MethodGet, "/api/dashboard/daily-report/print?date="+printDay+"&kind=expense", adminTok, "")
 		mustCode(t, expensePrinted, http.StatusOK)
 		expenseBody := expensePrinted.Body.String()
-		if !strings.Contains(expenseBody, "Expense report") || !strings.Contains(expenseBody, "EXP-PRINT") {
+		if !strings.Contains(expenseBody, "Expenses Cash Report") || !strings.Contains(expenseBody, "EXP-PRINT") || !strings.Contains(expenseBody, "Total expenses") {
 			t.Fatalf("expense print missing expense: %s", expenseBody)
 		}
-		if strings.Contains(expenseBody, "OT-PRINT") || strings.Contains(expenseBody, "IPD gains") {
+		if strings.Contains(expenseBody, "OT-PRINT") || strings.Contains(expenseBody, "Difference") {
 			t.Fatalf("expense print leaked income: %s", expenseBody)
 		}
 

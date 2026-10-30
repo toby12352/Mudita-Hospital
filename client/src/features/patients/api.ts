@@ -72,6 +72,7 @@ export type PatientHistoryIpd = {
 
 export type PatientHistory = {
   opd: PatientHistoryOpd[];
+  lab: PatientHistoryOpd[];
   pharmacy: PatientHistoryPharmacy[];
   ot: PatientHistoryOt[];
   ipd: PatientHistoryIpd[];

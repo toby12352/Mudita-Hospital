@@ -32,7 +32,7 @@ export function PatientChartTypeahead({ value, disabled = false, inputRef, onCha
           <span className="typeahead-title">
             {p.name} · {t("chartLabel")} {p.id}
           </span>
-          <span className="typeahead-sub">{p.phone}</span>
+          <span className="typeahead-sub">{p.father_mother_name}</span>
         </>
       )}
       onPick={onPick}

@@ -97,7 +97,10 @@ export function ExpenseBillListDialog({
       setLoading(true);
       setError(null);
       try {
-        const list = mode === "purge" ? await loadPurgeList() : await listExpenseBills(portal);
+        const list =
+          mode === "purge"
+            ? await loadPurgeList()
+            : (await listExpenseBills(portal)).filter((b) => b.status !== "deleted");
         if (!cancelled) setBills(list);
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Load failed");
@@ -122,7 +125,8 @@ export function ExpenseBillListDialog({
   }, [onClose]);
 
   const selected = bills.find((b) => b.id === selectedId) ?? null;
-  const canVoid = selected != null && selected.status !== "void";
+  const canVoid =
+    selected != null && selected.status !== "void" && selected.status !== "deleted";
   const canPurge =
     selected != null && (selected.status === "draft" || selected.status === "void");
 

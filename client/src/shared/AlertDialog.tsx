@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef } from "react";
 import { DialogCloseButton } from "@/shared/DialogCloseButton";
 import { useI18n } from "@/shared/i18n";
+import { useDelayedFlag } from "@/shared/useActionLock";
 
 export type AlertTone = "check" | "warning" | "success" | "print";
 
@@ -171,6 +172,7 @@ export function AlertDialog({
   const actionLabel = confirmLabel?.trim() || defaultConfirmLabel(tone, danger, t);
   const singleOkLabel = okLabel?.trim() || t("alertOk");
   const errorText = error?.trim() ?? "";
+  const showPending = useDelayedFlag(busy);
 
   useEffect(() => {
     if (!trimmed) return;
@@ -260,7 +262,9 @@ export function AlertDialog({
               className={danger ? "btn danger" : "btn primary"}
               onClick={onConfirm}
               disabled={busy}
+              aria-busy={showPending || undefined}
             >
+              {showPending ? <span className="opd-bill-btn-spinner" aria-hidden="true" /> : null}
               {actionLabel}
             </button>
           </div>

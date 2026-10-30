@@ -52,12 +52,13 @@ func pharmacyGrant(method, path string) (grant string, skip bool) {
 		return auth.GrantPharmacyUpdate, false
 	}
 	if method == http.MethodPost && (path == "/bills" ||
+		path == "/purchase-bills" ||
 		strings.HasSuffix(path, "/pay") ||
 		strings.HasSuffix(path, "/printed") ||
 		strings.HasSuffix(path, "/transfer")) {
 		return auth.GrantPharmacyCreate, false
 	}
-	if method == http.MethodPut && strings.HasPrefix(path, "/bills/") {
+	if method == http.MethodPut && (strings.HasPrefix(path, "/bills/") || strings.HasPrefix(path, "/purchase-bills/")) {
 		return auth.GrantPharmacyCreate, false
 	}
 	return auth.GrantPharmacyRead, false
@@ -118,15 +119,62 @@ func otGrant(method, path string) string {
 }
 
 func ipdGrant(method, path string) string {
+	// Purge is admin-only inside the handler. The cell is update because
+	// ipd.delete is not a grantable key. Void uses create, same as posting
+	// the charge, so a desk that can charge can undo it.
+	if method == http.MethodDelete && strings.HasPrefix(path, "/charge-bills/") {
+		return auth.GrantIPDUpdate
+	}
+	if method == http.MethodPut && strings.HasPrefix(path, "/charge-bills/") {
+		return auth.GrantIPDCreate
+	}
 	if method == http.MethodPost && (path == "/admissions" ||
+		path == "/charge-bills" ||
 		strings.HasSuffix(path, "/deposits") ||
-		strings.HasSuffix(path, "/ward-charges")) {
+		strings.HasSuffix(path, "/ward-charges") ||
+		strings.HasSuffix(path, "/issue") ||
+		strings.HasSuffix(path, "/pay") ||
+		strings.HasSuffix(path, "/credit") ||
+		strings.HasSuffix(path, "/unpay") ||
+		strings.HasSuffix(path, "/charge") ||
+		strings.HasSuffix(path, "/printed") ||
+		strings.HasSuffix(path, "/void")) {
 		return auth.GrantIPDCreate
 	}
 	if method == http.MethodPut || (method == http.MethodPost && strings.HasSuffix(path, "/discharge")) {
 		return auth.GrantIPDUpdate
 	}
 	return auth.GrantIPDRead
+}
+
+// labGrant maps a Lab route to a cell. Service catalog uses update/delete;
+// bill draft, pay, and print use create; void and purge use delete.
+func labGrant(method, path string) string {
+	if method == http.MethodDelete && strings.HasPrefix(path, "/bills/") {
+		return auth.GrantLabDelete
+	}
+	if method == http.MethodPost && strings.HasSuffix(path, "/void") {
+		return auth.GrantLabDelete
+	}
+	if method == http.MethodDelete && strings.HasPrefix(path, "/services/") {
+		return auth.GrantLabDelete
+	}
+	if method == http.MethodPost && strings.HasPrefix(path, "/services/") && strings.HasSuffix(path, "/delete") {
+		return auth.GrantLabDelete
+	}
+	if method == http.MethodPost && path == "/services" {
+		return auth.GrantLabUpdate
+	}
+	if method == http.MethodPut && strings.HasPrefix(path, "/services/") {
+		return auth.GrantLabUpdate
+	}
+	if method == http.MethodPost && (path == "/bills" || strings.HasSuffix(path, "/pay") || strings.HasSuffix(path, "/printed")) {
+		return auth.GrantLabCreate
+	}
+	if method == http.MethodPut && strings.HasPrefix(path, "/bills/") {
+		return auth.GrantLabCreate
+	}
+	return auth.GrantLabRead
 }
 
 // masterGrant is the OPD service and doctor catalog.

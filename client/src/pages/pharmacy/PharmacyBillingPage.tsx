@@ -35,6 +35,7 @@ import { AlertDialog } from "@/shared/AlertDialog";
 import { userMessage } from "@/shared/errors";
 import { useClinicActions } from "@/app/clinicActions";
 import { useI18n } from "@/shared/i18n";
+import { useBillActionFeedback, useBillActionPending } from "@/shared/useActionLock";
 import {
   PharmacyBillForm,
   type PharmacyBillLineView,
@@ -59,8 +60,9 @@ export function PharmacyBillingPage({
   const isReturn = kind === "return";
   const isTransfer = kind === "transfer";
   const [error, setError] = useState<string | null>(null);
-  const [okMsg, setOkMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const { action: pendingAction, pending, begin, end, isLocked } = useBillActionPending();
+  const { feedback, pulse } = useBillActionFeedback();
   const [dialog, setDialog] = useState<PharmacyBillListDialogMode | null>(
     initialMode === "list" ? "history" : null,
   );
@@ -163,8 +165,7 @@ export function PharmacyBillingPage({
     setAwaitingConfirm(false);
     setTransferDone(false);
     setError(null);
-    setOkMsg(null);
-  }
+      }
 
   function rememberOnHand(id: number, qty: number) {
     setOnHandByItemId((prev) => ({ ...prev, [id]: qty }));
@@ -201,8 +202,7 @@ export function PharmacyBillingPage({
   async function openBill(id: number) {
     setBusy(true);
     setError(null);
-    setOkMsg(null);
-    setTransferDone(false);
+        setTransferDone(false);
     try {
       const b = await getPharmacyBill(id);
       setBillId(b.id);
@@ -302,7 +302,6 @@ export function PharmacyBillingPage({
       qty_l5: number;
       qty_l6: number;
     },
-    foc = false,
   ) {
     const pack = packFromItem(item);
     const { total: billingQty, charge: lineTotal, error: convErr } = lineChargeFromPack(
@@ -342,7 +341,7 @@ export function PharmacyBillingPage({
         unit_price_mmk: item.sell_price_mmk,
         line_total_mmk: lineTotal,
         sort_order: prev.length,
-        foc: !isReturn && !isTransfer && foc ? 1 : 0,
+        foc: 0,
       },
     ]);
     setError(null);
@@ -369,7 +368,6 @@ export function PharmacyBillingPage({
       ? await updatePharmacyBill(billId, body)
       : await createPharmacyBill(body);
     applySavedBill(b);
-    setOkMsg(`${t("saved")} ${b.bill_no}`);
     return b;
   }
 
@@ -380,17 +378,21 @@ export function PharmacyBillingPage({
     return t("receiptPaidTitle").replace("{bill}", billNoPaid);
   }
 
+
   async function doConfirm() {
     if (!isDraft) return;
+    if (!begin("saveDraft")) return;
     setBusy(true);
     setError(null);
-    setOkMsg(null);
     try {
-      await saveDraft();
+      const saved = await saveDraft();
+      if (saved != null) pulse("saveDraft", "ok");
     } catch (e) {
+      pulse("saveDraft", "err");
       setError(e instanceof Error ? e.message : "Save failed");
     } finally {
       setBusy(false);
+      end();
     }
   }
 
@@ -409,13 +411,14 @@ export function PharmacyBillingPage({
   }
 
   async function doPrint() {
+    if (!begin("print")) return;
     setBusy(true);
     setError(null);
-    setOkMsg(null);
     try {
       let id = billId;
       if (billStatus === "paid" && id) {
         await printPharmacyBill(id, paidReceiptPreviewOpts(billNo));
+        pulse("print", "ok");
         return;
       }
       if (!isDraft) {
@@ -427,19 +430,21 @@ export function PharmacyBillingPage({
       id = saved.id;
       const stamped = await markPharmacyBillPrinted(id);
       applySavedBill(stamped);
-      setOkMsg(t("printedReceiptReady").replace("{bill}", stamped.bill_no));
       await printPharmacyBill(id, printedReceiptPreviewOpts(stamped.bill_no));
+      pulse("print", "ok");
     } catch (e) {
+      pulse("print", "err");
       setError(e instanceof Error ? e.message : "Print failed");
     } finally {
       setBusy(false);
+      end();
     }
   }
 
   async function doMarkPaid() {
+    if (!begin("markPaid")) return;
     setBusy(true);
     setError(null);
-    setOkMsg(null);
     try {
       if (billStatus === "paid") return;
       if (!isDraft) {
@@ -450,25 +455,22 @@ export function PharmacyBillingPage({
       if (saved == null) return;
       const paid = await payPharmacyBill(saved.id);
       applySavedBill(paid);
-      setOkMsg(
-        (isReturn ? t("returnedReceiptReady") : t("paidReceiptReady")).replace(
-          "{bill}",
-          paid.bill_no,
-        ),
-      );
+      pulse("markPaid", "ok");
       setPrintAfterPay(paid.bill_no);
     } catch (e) {
+      pulse("markPaid", "err");
       setError(e instanceof Error ? e.message : "Pay failed");
     } finally {
       setBusy(false);
+      end();
     }
   }
 
   async function doChargeToIpd() {
     if (openAdmissionId == null || isReturn || isTransfer) return;
+    if (!begin("chargeIpd")) return;
     setBusy(true);
     setError(null);
-    setOkMsg(null);
     try {
       if (billStatus === "paid") return;
       if (!isDraft) throw new Error(userMessage("Only draft bills can be paid"));
@@ -477,19 +479,21 @@ export function PharmacyBillingPage({
       if (saved == null) return;
       const paid = await payPharmacyBill(saved.id, { admission_id: openAdmissionId });
       applySavedBill(paid);
-      setOkMsg(t("chargedToIpdReady").replace("{bill}", paid.bill_no));
+      pulse("chargeIpd", "ok");
     } catch (e) {
+      pulse("chargeIpd", "err");
       setError(e instanceof Error ? e.message : "Pay failed");
     } finally {
       setBusy(false);
+      end();
     }
   }
 
   async function doCreditToIpd() {
     if (openAdmissionId == null || !isReturn || returnSaleId == null) return;
+    if (!begin("chargeIpd")) return;
     setBusy(true);
     setError(null);
-    setOkMsg(null);
     try {
       if (billStatus === "paid") return;
       if (!isDraft) throw new Error(userMessage("Only draft bills can be paid"));
@@ -501,65 +505,82 @@ export function PharmacyBillingPage({
         source_bill_id: returnSaleId,
       });
       applySavedBill(paid);
-      setOkMsg(t("creditedToIpdReady").replace("{bill}", paid.bill_no));
+      pulse("chargeIpd", "ok");
     } catch (e) {
+      pulse("chargeIpd", "err");
       setError(e instanceof Error ? e.message : "Pay failed");
     } finally {
       setBusy(false);
+      end();
     }
   }
 
   async function doArmTransfer() {
     if (!isTransfer || !isDraft || awaitingConfirm) return;
+    if (!begin("transfer")) return;
     setBusy(true);
     setError(null);
-    setOkMsg(null);
     setTransferDone(false);
     try {
       if (lines.length === 0) throw new Error(userMessage("Add at least one medicine"));
       const saved = await saveDraft();
       if (saved == null) return;
       setAwaitingConfirm(true);
-      setOkMsg(t("transferArmed").replace("{bill}", saved.bill_no));
+      pulse("transfer", "ok");
     } catch (e) {
       setAwaitingConfirm(false);
+      pulse("transfer", "err");
       setError(e instanceof Error ? e.message : "Save failed");
     } finally {
       setBusy(false);
+      end();
     }
   }
 
   async function doConfirmTransfer() {
     if (!isTransfer || !isDraft || !awaitingConfirm || billId == null) return;
+    if (!begin("confirmTransfer")) return;
     setBusy(true);
     setError(null);
-    setOkMsg(null);
     try {
       const done = await transferPharmacyBill(billId);
       applySavedBill(done);
       setAwaitingConfirm(false);
       setTransferDone(true);
+      pulse("confirmTransfer", "ok");
     } catch (e) {
+      pulse("confirmTransfer", "err");
       setError(e instanceof Error ? e.message : "Transfer failed");
     } finally {
       setBusy(false);
+      end();
     }
   }
 
   async function doVoidSelected(id: number, reason: string) {
-    const b = await voidPharmacyBill(id, reason);
-    if (billId === id) {
-      await openBill(id);
+    try {
+      await voidPharmacyBill(id, reason);
+      if (billId === id) {
+        await openBill(id);
+      }
+      pulse("void", "ok");
+    } catch (e) {
+      pulse("void", "err");
+      throw e;
     }
-    setOkMsg(`${t("voided")} ${b.bill_no}`);
   }
 
   async function doPurgeSelected(id: number) {
-    await purgePharmacyBill(id);
-    if (billId === id) {
-      resetEditor();
+    try {
+      await purgePharmacyBill(id);
+      if (billId === id) {
+        resetEditor();
+      }
+      pulse("purge", "ok");
+    } catch (e) {
+      pulse("purge", "err");
+      throw e;
     }
-    setOkMsg(t("billPurged"));
   }
 
   function doCancel() {
@@ -611,7 +632,7 @@ export function PharmacyBillingPage({
     );
   }
 
-  function commitNewItem(item: PharmacyItem, qty: number, unitId: string | null, foc = false) {
+  function commitNewItem(item: PharmacyItem, qty: number, unitId: string | null) {
     disarm();
     const pack = packFromItem(item);
     const units = saleUnitsFromPack(pack, item.sell_price_mmk);
@@ -631,7 +652,7 @@ export function PharmacyBillingPage({
       }
     }
     const qtys = packQtysForSale(chosen, qty);
-    addLineFromItem(item, qtys, foc);
+    addLineFromItem(item, qtys);
   }
 
   function commitLineQty(index: number, qty: number): boolean {
@@ -743,20 +764,21 @@ export function PharmacyBillingPage({
       if (document.querySelector(".alert-dialog-overlay")) return;
 
       const key = e.key;
+      const blocked = busy || isLocked();
       if (key === "F5") {
         e.preventDefault();
-        if (!busy && isDraft && pharmacyCreate) void doConfirm();
+        if (!blocked && isDraft && pharmacyCreate) void doConfirm();
         return;
       }
       if (key === "F6") {
         e.preventDefault();
-        if (busy || isTransfer) return;
+        if (blocked || isTransfer) return;
         void doPrint();
         return;
       }
       if (key === "F7") {
         e.preventDefault();
-        if (busy) return;
+        if (blocked) return;
         if (!pharmacyCreate) return;
         if (isTransfer) {
           if (!isDraft) return;
@@ -769,22 +791,22 @@ export function PharmacyBillingPage({
       }
       if (key === "F9") {
         e.preventDefault();
-        if (!busy) setDialog("history");
+        if (!blocked) setDialog("history");
         return;
       }
       if (key === "F8" && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
-        if (!busy && pharmacyDelete) setDialog("delete");
+        if (!blocked && pharmacyDelete) setDialog("delete");
         return;
       }
       if (key === "F10") {
         e.preventDefault();
-        if (!busy) doCancel();
+        if (!blocked) doCancel();
         return;
       }
       if (key === "F2") {
         e.preventDefault();
-        if (!busy && pharmacyCreate) doNewBill();
+        if (!blocked && pharmacyCreate) doNewBill();
       }
     }
     window.addEventListener("keydown", onKey);
@@ -817,8 +839,9 @@ export function PharmacyBillingPage({
         billedAtLocal={billedAtLocal}
         onBilledAtLocal={setBilledAtLocal}
         busy={busy}
+        pendingAction={pending ? pendingAction : null}
+        feedback={feedback}
         error={error}
-        okMsg={okMsg}
         isDraft={isDraft}
         discountValue={discountValue}
         discountUnit={discountUnit}
@@ -849,10 +872,10 @@ export function PharmacyBillingPage({
           disarm();
           setLines((prev) => prev.filter((_, j) => j !== i));
         }}
-        onClearFoc={(i) => {
+        onFocChange={(i, foc) => {
           disarm();
           setLines((prev) =>
-            prev.map((line, j) => (j === i ? { ...line, foc: 0 } : line)),
+            prev.map((line, j) => (j === i ? { ...line, foc: foc ? 1 : 0 } : line)),
           );
         }}
         onPrint={() => void doPrint()}

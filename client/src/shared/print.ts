@@ -115,6 +115,20 @@ export function openPrintPreview(html: string, opts: PrintPreviewOptions = {}): 
   iframe.srcdoc = html;
 }
 
+/** Print routes answer with JSON `{"error":"..."}` on failure. Peel that out so the clerk sees the sentence, not the raw body. */
+function printErrorText(text: string, status: number): string {
+  const trimmed = text.trim();
+  if (trimmed.startsWith("{")) {
+    try {
+      const body = JSON.parse(trimmed) as { error?: unknown };
+      if (typeof body.error === "string" && body.error.trim()) return body.error;
+    } catch {
+      /* keep the body */
+    }
+  }
+  return trimmed || `print failed (${status})`;
+}
+
 /** Fetch authenticated print HTML without opening the shared preview. */
 export async function fetchPrintHtml(
   path: string,
@@ -127,7 +141,7 @@ export async function fetchPrintHtml(
   });
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(userMessage(text || `print failed (${res.status})`, res.status));
+    throw new Error(userMessage(printErrorText(text, res.status), res.status));
   }
   return res.text();
 }

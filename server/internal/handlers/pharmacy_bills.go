@@ -733,11 +733,9 @@ func (h *Pharmacy) purgePharmacyBill(w http.ResponseWriter, r *http.Request, pat
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "ledger purge failed"})
 		return
 	}
-	if _, err := tx.Exec(`UPDATE stock_transfers SET pharmacy_bill_id = NULL WHERE pharmacy_bill_id = ?`, id); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "transfer unlink failed"})
-		return
-	}
-	res, err := tx.Exec(`DELETE FROM pharmacy_bills WHERE id = ?`, id)
+	res, err := tx.Exec(`
+		UPDATE pharmacy_bills SET status = 'deleted', updated_at = datetime('now') WHERE id = ?
+	`, id)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "delete failed"})
 		return
@@ -753,7 +751,7 @@ func (h *Pharmacy) purgePharmacyBill(w http.ResponseWriter, r *http.Request, pat
 	}
 	uid := user.ID
 	audit.WriteAudit(h.DB, &uid, "delete", "pharmacy_bill", &id, map[string]any{
-		"bill_no": billNo, "was_status": status, "total_mmk": totalMMK,
+		"bill_no": billNo, "was_status": status, "status": "deleted", "total_mmk": totalMMK,
 	})
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
@@ -794,6 +792,9 @@ func (h *Pharmacy) voidPharmacyBill(w http.ResponseWriter, r *http.Request, path
 	}
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "load failed"})
+		return
+	}
+	if rejectDeletedBill(w, status) {
 		return
 	}
 	if status == "void" {

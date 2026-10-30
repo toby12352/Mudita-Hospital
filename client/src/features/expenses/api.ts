@@ -4,80 +4,6 @@ import { fetchAndPreviewPrint } from "@/shared/print";
 
 export type ExpensePortal = "opd" | "ot" | "ipd" | "pharmacy";
 
-export type ExpenseService = {
-  id: number;
-  code: string;
-  name: string;
-  price_mmk: number | null;
-  active: boolean;
-  created_at?: string;
-  updated_at?: string;
-};
-
-export type ExpenseCatalogService = {
-  id: number;
-  code: string;
-  name: string;
-  price_mmk: number | null;
-};
-
-export type ExpenseServiceWrite = {
-  code: string;
-  name: string;
-  price_mmk: number | null;
-  active?: boolean;
-};
-
-export async function listExpenseServices(q = ""): Promise<ExpenseService[]> {
-  const qs = q ? `?q=${encodeURIComponent(q)}&all=1` : "?all=1";
-  const res = await apiFetch<{ services: ExpenseService[] }>(`/api/expenses/services${qs}`);
-  return res.services ?? [];
-}
-
-export async function createExpenseService(body: ExpenseServiceWrite): Promise<ExpenseService> {
-  return apiFetch<ExpenseService>("/api/expenses/services", {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
-}
-
-export async function updateExpenseService(
-  id: number,
-  body: ExpenseServiceWrite,
-): Promise<ExpenseService> {
-  return apiFetch<ExpenseService>(`/api/expenses/services/${id}`, {
-    method: "PUT",
-    body: JSON.stringify(body),
-  });
-}
-
-export async function deactivateExpenseService(id: number): Promise<void> {
-  await apiFetch(`/api/expenses/services/${id}`, { method: "DELETE" });
-}
-
-export async function deleteExpenseService(id: number): Promise<void> {
-  await apiFetch(`/api/expenses/services/${id}/delete`, {
-    method: "POST",
-    body: JSON.stringify({}),
-  });
-}
-
-/** Active catalog rows for the expense-bill typeahead. */
-export async function listExpenseCatalog(q = ""): Promise<ExpenseCatalogService[]> {
-  const qs = q.trim() ? `?q=${encodeURIComponent(q.trim())}` : "";
-  const res = await apiFetch<{ services: ExpenseCatalogService[] }>(
-    `/api/expenses/catalog/services${qs}`,
-  );
-  return res.services ?? [];
-}
-
-export async function findExpenseCatalogByCode(code: string): Promise<ExpenseCatalogService | null> {
-  const res = await apiFetch<{ services: ExpenseCatalogService[] }>(
-    `/api/expenses/catalog/services?code=${encodeURIComponent(code.trim())}`,
-  );
-  return res.services?.[0] ?? null;
-}
-
 export type ExpenseBillLine = {
   id?: number;
   ref_id?: number | null;
@@ -114,7 +40,7 @@ export type ExpenseBillWrite = {
   description: string;
   discount_value: number;
   discount_unit: "percent" | "mmk";
-  lines: { ref_id: number; qty: number; unit_price_mmk: number }[];
+  lines: { description: string; qty: number; unit_price_mmk: number }[];
   /** Admin-only on create. Yangon wall time as `YYYY-MM-DDTHH:mm`. */
   billed_at?: string;
 };

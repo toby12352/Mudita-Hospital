@@ -120,7 +120,7 @@ func parseBilledAtInput(raw string) (time.Time, bool) {
 // payAtForBill returns billed_at when set, otherwise the live Yangon clock.
 func payAtForBill(tx *sql.Tx, table string, id int64) (string, error) {
 	switch table {
-	case "opd_bills", "pharmacy_bills", "ot_bills", "expense_bills":
+	case "opd_bills", "pharmacy_bills", "ot_bills", "expense_bills", "lab_bills":
 	default:
 		return "", fmt.Errorf("unknown bill table")
 	}
@@ -141,7 +141,7 @@ func payAtForBill(tx *sql.Tx, table string, id int64) (string, error) {
 // paid_at uses billed_at when the bill was created with an Admin override.
 func execPayDraft(tx *sql.Tx, table string, id, userID int64, admissionID *int64) (int64, error) {
 	switch table {
-	case "opd_bills", "pharmacy_bills", "ot_bills":
+	case "opd_bills", "pharmacy_bills", "ot_bills", "lab_bills":
 	default:
 		return 0, fmt.Errorf("unknown bill table")
 	}
@@ -169,7 +169,7 @@ func execPayDraft(tx *sql.Tx, table string, id, userID int64, admissionID *int64
 // n is 0 when the bill is no longer draft. Re-print refreshes the timestamp.
 func execMarkPrinted(tx *sql.Tx, table string, id int64) (int64, error) {
 	switch table {
-	case "opd_bills", "pharmacy_bills", "ot_bills":
+	case "opd_bills", "pharmacy_bills", "ot_bills", "lab_bills":
 	default:
 		return 0, fmt.Errorf("unknown bill table")
 	}

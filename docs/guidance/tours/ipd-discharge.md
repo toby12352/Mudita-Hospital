@@ -24,18 +24,18 @@ Discharge is its own lesson because it is final. Read the cash line on the butto
 
 ### 2. discharge
 - Anchor to add later: data-guide="ipd-discharge"
-- Where the control is now: the same rail button in `client/src/pages/ipd/IpdPage.tsx`, label `ipdDischarge`. Pressing it opens `AlertDialog` with message `confirmIpdDischarge` and confirm label `ipdDischarge`. After a real discharge the success line is `ipdDischarged`, the stay is settled, and later deposits, ward charges, and desk charges are refused with `errIpdNotOpen`. The open-stay buttons are then hidden. If the button is not on screen, skip this step.
+- Where the control is now: the same rail button in `client/src/pages/ipd/IpdPage.tsx`, label `ipdDischarge`. Pressing it opens `AlertDialog` with message `confirmIpdDischarge`, and `confirmIpdDischargeAwaiting` as well when yesterday’s voucher is still `issued`. The confirm label is `ipdDischarge`. After a real discharge the success line is `ipdDischarged`, the stay is settled, vouchers still `issued` become `paid`, and later deposits and charges are refused with `errIpdNotOpen`. The open-stay buttons are then hidden. If the button is not on screen, skip this step.
 - Placement: left
 - Title EN: Discharge
 - Title MY: ဆင်းခွင့်ရှင်း
-- Body EN: Discharge (ဆင်းခွင့်ရှင်း) asks Discharge this stay? The cash line is final. (ဤတက်ရောက်မှုကို ဆင်းခွင့်ရှင်းမည်လား။ ငွေစာကြောင်းသည် အပြီးဖြစ်သည်။). After a real discharge, Take deposit (အပ်ငွေ လက်ခံ), Post ward charge (ဝပ်ကြေး တင်), and desk charges are refused with This stay is not open (ဤတက်ရောက်မှုကို မဖွင့်ထားပါ။), and the success line is Discharged. Balance is zero. (ဆင်းပြီး။ လက်ကျန် သုည။). Do not press Discharge on a real stay during this lesson, and do not confirm the dialog.
-- Body MY: Discharge (ဆင်းခွင့်ရှင်း) သည် Discharge this stay? The cash line is final. (ဤတက်ရောက်မှုကို ဆင်းခွင့်ရှင်းမည်လား။ ငွေစာကြောင်းသည် အပြီးဖြစ်သည်။) ဟု မေးသည်။ တကယ်ဆင်းပြီးနောက် Take deposit (အပ်ငွေ လက်ခံ)၊ Post ward charge (ဝပ်ကြေး တင်)၊ ကောင်တာတင်ကြေးတို့ကို This stay is not open (ဤတက်ရောက်မှုကို မဖွင့်ထားပါ။) ဖြင့် ငြင်းပြီး အောင်မြင်စာကြောင်းသည် Discharged. Balance is zero. (ဆင်းပြီး။ လက်ကျန် သုည။) ဖြစ်သည်။ ဤသင်ခန်းစာတွင် တကယ်ဖွင့်ထားသော တက်ရောက်မှုကို Discharge မနှိပ်ရဘဲ ဒိုင်ယာလော့ခ်ကိုလည်း အတည်မပြုရ။
+- Body EN: Discharge (ဆင်းခွင့်ရှင်း) asks The final statement settles the whole stay. (နောက်ဆုံးစာရင်းသည် တက်ရောက်မှုတစ်ခုလုံးကို ရှင်းသည်။). If yesterday is Awaiting (ဆုံးဖြတ်ရန် ကျန်), it also says Discharge will collect or refund the balance. (ဆင်းခွင့်ရှင်းလျှင် လက်ကျန်ကို ကောက်မည် သို့မဟုတ် ပြန်အမ်းမည်။). After a real discharge, Take deposit (အပ်ငွေ လက်ခံ) and further charges are refused with This stay is not open (ဤတက်ရောက်မှုကို မဖွင့်ထားပါ။), and the success line is Discharged. Balance is zero. (ဆင်းပြီး။ လက်ကျန် သုည။). Do not press Discharge on a real stay during this lesson, and do not confirm the dialog.
+- Body MY: Discharge (ဆင်းခွင့်ရှင်း) သည် The final statement settles the whole stay. (နောက်ဆုံးစာရင်းသည် တက်ရောက်မှုတစ်ခုလုံးကို ရှင်းသည်။) ဟု မေးသည်။ မနေ့က Awaiting (ဆုံးဖြတ်ရန် ကျန်) ဖြစ်လျှင် Discharge will collect or refund the balance. (ဆင်းခွင့်ရှင်းလျှင် လက်ကျန်ကို ကောက်မည် သို့မဟုတ် ပြန်အမ်းမည်။) ကိုပါ ပြသည်။ တကယ်ဆင်းပြီးနောက် Take deposit (အပ်ငွေ လက်ခံ) နှင့် နောက်ထပ်ကြေးတင်ခြင်းကို This stay is not open (ဤတက်ရောက်မှုကို မဖွင့်ထားပါ။) ဖြင့် ငြင်းပြီး အောင်မြင်စာကြောင်းသည် Discharged. Balance is zero. (ဆင်းပြီး။ လက်ကျန် သုည။) ဖြစ်သည်။ ဤသင်ခန်းစာတွင် တကယ်ဖွင့်ထားသော တက်ရောက်မှုကို Discharge မနှိပ်ရဘဲ ဒိုင်ယာလော့ခ်ကိုလည်း အတည်မပြုရ။
 - Must not press: Discharge, and the confirm button that also says Discharge
 - If the control is missing: skip this step
 
 ## Out of this tour
 - Do not press Discharge on a real stay. Do not confirm the dialog.
 - Do not press Open (ဖွင့်မည်) in order to reach Discharge. If the button is missing, skip the step.
-- Do not press Admit, Take deposit, Post ward charge, or Save notes during this lesson.
-- Do not press Charge to IPD, Mark Paid, or Credit to IPD. Charges after discharge are refused because the stay is not open.
+- Do not press Admit, Take deposit, IPD Bill, or Save notes during this lesson.
+- Do not press Charge to IPD, Mark Paid, Pay this day, or Credit to IPD. F7 does not charge the stay. Charges after discharge are refused because the stay is not open.
 - Do not void a bill, transfer stock, or seed training data.

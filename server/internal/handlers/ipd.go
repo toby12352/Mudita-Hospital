@@ -13,8 +13,9 @@ import (
 	"mudita-hospital/server/internal/middleware"
 )
 
-// IPD admits a chart, posts deposits and ward charges, and discharges an open stay
-// from the ledger balance. Desk bill charging lives on the desk handlers. Stock is not touched here.
+// IPD admits a chart, posts deposits and ward charges, discharges an open stay
+// from the ledger balance, and keeps IPD charge bills. Desk bill charging lives
+// on the desk handlers. Stock is not touched here.
 type IPD struct {
 	DB *sql.DB
 }
@@ -28,20 +29,21 @@ type ipdPatient struct {
 }
 
 type ipdAdmission struct {
-	ID              int64           `json:"id"`
-	AdmissionNo     string          `json:"admission_no"`
-	PatientID       int64           `json:"patient_id"`
-	Status          string          `json:"status"`
-	Notes           string          `json:"notes"`
-	RoomNo          string          `json:"room_no"`
-	AdmittedAt      string          `json:"admitted_at"`
-	DischargedAt    *string         `json:"discharged_at"`
-	CreatedByUserID *int64          `json:"created_by_user_id"`
-	CreatedAt       string          `json:"created_at"`
-	UpdatedAt       string          `json:"updated_at"`
-	Patient         ipdPatient      `json:"patient"`
-	BalanceMMK      *int64          `json:"balance_mmk,omitempty"`
-	Ledger          []ipdLedgerLine `json:"ledger,omitempty"`
+	ID                     int64           `json:"id"`
+	AdmissionNo            string          `json:"admission_no"`
+	PatientID              int64           `json:"patient_id"`
+	Status                 string          `json:"status"`
+	Notes                  string          `json:"notes"`
+	RoomNo                 string          `json:"room_no"`
+	AdmittedAt             string          `json:"admitted_at"`
+	DischargedAt           *string         `json:"discharged_at"`
+	CreatedByUserID        *int64          `json:"created_by_user_id"`
+	CreatedAt              string          `json:"created_at"`
+	UpdatedAt              string          `json:"updated_at"`
+	Patient                ipdPatient      `json:"patient"`
+	BalanceMMK             *int64          `json:"balance_mmk,omitempty"`
+	Ledger                 []ipdLedgerLine `json:"ledger,omitempty"`
+	YesterdayVoucherStatus string          `json:"yesterday_voucher_status,omitempty"`
 }
 
 type ipdAdmitRequest struct {
@@ -75,6 +77,24 @@ func (h *IPD) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.dailyCash(w, r, false)
 		case path == "/daily-cash/print" && r.Method == http.MethodGet:
 			h.dailyCash(w, r, true)
+		case path == "/charge-bills" && r.Method == http.MethodGet:
+			h.listChargeBills(w, r)
+		case path == "/charge-bills" && r.Method == http.MethodPost:
+			h.createChargeBill(w, r)
+		case strings.HasPrefix(path, "/charge-bills/") && strings.HasSuffix(path, "/charge") && r.Method == http.MethodPost:
+			h.chargeBillToIPD(w, r, path)
+		case strings.HasPrefix(path, "/charge-bills/") && strings.HasSuffix(path, "/printed") && r.Method == http.MethodPost:
+			h.markChargeBillPrinted(w, r, path)
+		case strings.HasPrefix(path, "/charge-bills/") && strings.HasSuffix(path, "/void") && r.Method == http.MethodPost:
+			h.voidChargeBill(w, r, path)
+		case strings.HasPrefix(path, "/charge-bills/") && strings.HasSuffix(path, "/print") && r.Method == http.MethodGet:
+			h.printChargeBill(w, r, path)
+		case strings.HasPrefix(path, "/charge-bills/") && r.Method == http.MethodGet:
+			h.getChargeBill(w, r, path)
+		case strings.HasPrefix(path, "/charge-bills/") && r.Method == http.MethodPut:
+			h.updateChargeBill(w, r, path)
+		case strings.HasPrefix(path, "/charge-bills/") && r.Method == http.MethodDelete:
+			h.purgeChargeBill(w, r, path)
 		case r.Method == http.MethodPost && strings.HasSuffix(path, "/discharge"):
 			h.discharge(w, r, path)
 		case r.Method == http.MethodGet && strings.HasSuffix(path, "/statement"):
@@ -83,6 +103,8 @@ func (h *IPD) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.postDeposit(w, r, path)
 		case r.Method == http.MethodPost && strings.HasSuffix(path, "/ward-charges"):
 			h.postWardCharge(w, r, path)
+		case r.Method == http.MethodPost && strings.Contains(path, "/vouchers/"):
+			h.dayVoucher(w, r, path)
 		case r.Method == http.MethodGet && strings.HasSuffix(path, "/print"):
 			h.printDeposit(w, r, path)
 		case strings.HasPrefix(path, "/admissions/") && r.Method == http.MethodGet:
@@ -124,6 +146,10 @@ func (h *IPD) list(w http.ResponseWriter, r *http.Request) {
 		list = append(list, row)
 	}
 	if err := rows.Err(); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "list failed"})
+		return
+	}
+	if err := attachYesterdayVoucherStatus(h.DB, list); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "list failed"})
 		return
 	}
@@ -387,6 +413,52 @@ func scanAdmission(s scanner) (ipdAdmission, error) {
 		row.Patient.AgeYears = &v
 	}
 	return row, nil
+}
+
+// attachYesterdayVoucherStatus fills each stay with yesterday's stored voucher
+// status (issued, paid, or credit). A missing row stays blank. It does not issue.
+func attachYesterdayVoucherStatus(db *sql.DB, list []ipdAdmission) error {
+	if len(list) == 0 {
+		return nil
+	}
+	yesterday, ok := previousCivilDate(localToday())
+	if !ok {
+		return nil
+	}
+	args := make([]any, 0, len(list)+1)
+	args = append(args, yesterday)
+	placeholders := make([]string, len(list))
+	for i, row := range list {
+		placeholders[i] = "?"
+		args = append(args, row.ID)
+	}
+	rows, err := db.Query(`
+		SELECT admission_id, status
+		FROM ipd_day_vouchers
+		WHERE civil_date = ? AND admission_id IN (`+strings.Join(placeholders, ",")+`)
+	`, args...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	statusByID := map[int64]string{}
+	for rows.Next() {
+		var id int64
+		var status string
+		if err := rows.Scan(&id, &status); err != nil {
+			return err
+		}
+		statusByID[id] = status
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for i := range list {
+		if status, ok := statusByID[list[i].ID]; ok {
+			list[i].YesterdayVoucherStatus = status
+		}
+	}
+	return nil
 }
 
 func admissionPathID(path string) (int64, bool) {

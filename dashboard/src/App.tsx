@@ -461,7 +461,7 @@ function LoginForm({
   disabled?: boolean;
   t: (k: string) => string;
 }) {
-  const [username, setUsername] = useState("admin");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);

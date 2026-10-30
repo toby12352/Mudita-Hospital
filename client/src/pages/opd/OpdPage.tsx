@@ -28,6 +28,7 @@ import { userMessage } from "@/shared/errors";
 import { getStoredUser } from "@/shared/auth";
 import { useClinicActions } from "@/app/clinicActions";
 import { useI18n } from "@/shared/i18n";
+import { useBillActionFeedback, useBillActionPending } from "@/shared/useActionLock";
 import { OpdBillForm } from "@/pages/opd/OpdBillForm";
 import {
   OpdBillListDialog,
@@ -42,8 +43,9 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
   const { opdCreate, opdDelete, billPurge } = useClinicActions();
   const [doctors, setDoctors] = useState<OpdDoctor[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [okMsg, setOkMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const { action: pendingAction, pending, begin, end, isLocked } = useBillActionPending();
+  const { feedback, pulse } = useBillActionFeedback();
   const [dialog, setDialog] = useState<OpdBillListDialogMode | null>(null);
   const [confirm, setConfirm] = useState<DeskConfirm | null>(null);
   const [printAfterPay, setPrintAfterPay] = useState<string | null>(null);
@@ -117,13 +119,11 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
     setCreatedAt(null);
     setBilledAtLocal(nowDatetimeLocal());
     setError(null);
-    setOkMsg(null);
   }
 
   async function openBill(id: number) {
     setBusy(true);
     setError(null);
-    setOkMsg(null);
     try {
       const b = await getOpdBill(id);
       setBillId(b.id);
@@ -248,7 +248,7 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
     setDoctorName(d.name);
   }
 
-  function addOpdService(svc: OpdService, qty: number, foc = false) {
+  function addOpdService(svc: OpdService, qty: number) {
     const n = Math.max(1, Math.floor(qty) || 1);
     setLines((prev) => [
       ...prev,
@@ -260,7 +260,7 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
         qty: n,
         unit_price_mmk: svc.price_mmk,
         line_total_mmk: n * svc.price_mmk,
-        foc: foc ? 1 : 0,
+        foc: 0,
       },
     ]);
   }
@@ -279,21 +279,23 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
     const body = buildBody();
     const b = billId ? await updateOpdBill(billId, body) : await createOpdBill(body);
     applySavedBill(b);
-    setOkMsg(`${t("saved")} ${b.bill_no}`);
     return b.id;
   }
 
   async function doConfirm() {
     if (!isDraft) return;
+    if (!begin("saveDraft")) return;
     setBusy(true);
     setError(null);
-    setOkMsg(null);
     try {
-      await saveDraft();
+      const id = await saveDraft();
+      if (id != null) pulse("saveDraft", "ok");
     } catch (e) {
+      pulse("saveDraft", "err");
       setError(e instanceof Error ? e.message : "Save failed");
     } finally {
       setBusy(false);
+      end();
     }
   }
 
@@ -312,13 +314,14 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
   }
 
   async function doPrint() {
+    if (!begin("print")) return;
     setBusy(true);
     setError(null);
-    setOkMsg(null);
     try {
       let id = billId;
       if (billStatus === "paid" && id) {
         await printOpdBill(id, paidReceiptPreviewOpts(billNo));
+        pulse("print", "ok");
         return;
       }
       if (!isDraft) {
@@ -329,19 +332,21 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
       if (id == null) return;
       const stamped = await markOpdBillPrinted(id);
       applySavedBill(stamped);
-      setOkMsg(t("printedReceiptReady").replace("{bill}", stamped.bill_no));
       await printOpdBill(id, printedReceiptPreviewOpts(stamped.bill_no));
+      pulse("print", "ok");
     } catch (e) {
+      pulse("print", "err");
       setError(e instanceof Error ? e.message : "Print failed");
     } finally {
       setBusy(false);
+      end();
     }
   }
 
   async function doMarkPaid() {
+    if (!begin("markPaid")) return;
     setBusy(true);
     setError(null);
-    setOkMsg(null);
     try {
       if (billStatus === "paid") return;
       if (!isDraft) {
@@ -352,20 +357,22 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
       if (id == null) return;
       const paid = await payOpdBill(id);
       applySavedBill(paid);
-      setOkMsg(t("paidReceiptReady").replace("{bill}", paid.bill_no));
+      pulse("markPaid", "ok");
       setPrintAfterPay(paid.bill_no);
     } catch (e) {
+      pulse("markPaid", "err");
       setError(e instanceof Error ? e.message : "Pay failed");
     } finally {
       setBusy(false);
+      end();
     }
   }
 
   async function doChargeToIpd() {
     if (openAdmissionId == null) return;
+    if (!begin("chargeIpd")) return;
     setBusy(true);
     setError(null);
-    setOkMsg(null);
     try {
       if (billStatus === "paid") return;
       if (!isDraft) {
@@ -376,28 +383,40 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
       if (id == null) return;
       const paid = await payOpdBill(id, openAdmissionId);
       applySavedBill(paid);
-      setOkMsg(t("chargedToIpdReady").replace("{bill}", paid.bill_no));
+      pulse("chargeIpd", "ok");
     } catch (e) {
+      pulse("chargeIpd", "err");
       setError(e instanceof Error ? e.message : "Pay failed");
     } finally {
       setBusy(false);
+      end();
     }
   }
 
   async function doVoidSelected(id: number, reason: string) {
-    const b = await voidOpdBill(id, reason);
-    if (billId === id) {
-      await openBill(id);
+    try {
+      await voidOpdBill(id, reason);
+      if (billId === id) {
+        await openBill(id);
+      }
+      pulse("void", "ok");
+    } catch (e) {
+      pulse("void", "err");
+      throw e;
     }
-    setOkMsg(`${t("voided")} ${b.bill_no}`);
   }
 
   async function doPurgeSelected(id: number) {
-    await purgeOpdBill(id);
-    if (billId === id) {
-      resetEditor();
+    try {
+      await purgeOpdBill(id);
+      if (billId === id) {
+        resetEditor();
+      }
+      pulse("purge", "ok");
+    } catch (e) {
+      pulse("purge", "err");
+      throw e;
     }
-    setOkMsg(t("billPurged"));
   }
 
   function doCancel() {
@@ -478,6 +497,7 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
         qty: 1,
         unit_price_mmk: doc.consultation_mmk,
         line_total_mmk: doc.consultation_mmk,
+        foc: 0,
       },
     ]);
   }
@@ -509,9 +529,9 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
     setLines((prev) => prev.filter((_, i) => i !== index));
   }
 
-  function clearLineFoc(index: number) {
+  function setLineFoc(index: number, foc: boolean) {
     setLines((prev) =>
-      prev.map((line, i) => (i === index ? { ...line, foc: 0 } : line)),
+      prev.map((line, i) => (i === index ? { ...line, foc: foc ? 1 : 0 } : line)),
     );
   }
 
@@ -522,39 +542,40 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
       if (document.querySelector(".alert-dialog-overlay")) return;
 
       const key = e.key;
+      const blocked = busy || isLocked();
       if (key === "F5") {
         e.preventDefault();
-        if (!busy && isDraft && opdCreate) void doConfirm();
+        if (!blocked && isDraft && opdCreate) void doConfirm();
         return;
       }
       if (key === "F6") {
         e.preventDefault();
-        if (!busy) void doPrint();
+        if (!blocked) void doPrint();
         return;
       }
       if (key === "F7") {
         e.preventDefault();
-        if (!busy && isDraft && opdCreate) void doMarkPaid();
+        if (!blocked && isDraft && opdCreate) void doMarkPaid();
         return;
       }
       if (key === "F9") {
         e.preventDefault();
-        if (!busy) setDialog("history");
+        if (!blocked) setDialog("history");
         return;
       }
       if (key === "F8" && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
-        if (!busy && opdDelete) setDialog("delete");
+        if (!blocked && opdDelete) setDialog("delete");
         return;
       }
       if (key === "F10") {
         e.preventDefault();
-        if (!busy) doCancel();
+        if (!blocked) doCancel();
         return;
       }
       if (key === "F2") {
         e.preventDefault();
-        if (!busy && opdCreate) doNewBill();
+        if (!blocked && opdCreate) doNewBill();
       }
     }
     window.addEventListener("keydown", onKey);
@@ -588,8 +609,9 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
         billedAtLocal={billedAtLocal}
         onBilledAtLocal={setBilledAtLocal}
         busy={busy}
+        pendingAction={pending ? pendingAction : null}
+        feedback={feedback}
         error={error}
-        okMsg={okMsg}
         isDraft={isDraft}
         discountValue={discountValue}
         discountUnit={discountUnit}
@@ -607,16 +629,16 @@ export function OpdPage(_props: { initialMode?: "list" | "edit" } = {}) {
         onClearDoctorId={() => setDoctorId("")}
         onPickDoctor={pickDoctor}
         onDescription={setDescription}
-        onCommitService={(s, qty, foc) => {
+        onCommitService={(s, qty) => {
           setError(null);
-          addOpdService(s, qty, foc);
+          addOpdService(s, qty);
         }}
         onLookupService={addByCode}
         onAddConsultation={addConsultation}
         loadServiceSuggestions={loadOpdServiceSuggestions}
         onCommitLineQty={commitLineQty}
         onRemoveLine={removeLine}
-        onClearFoc={clearLineFoc}
+        onFocChange={setLineFoc}
         onPrint={() => void doPrint()}
         onMarkPaid={() => void doMarkPaid()}
         onChargeToIpd={isDraft && openAdmissionId != null ? () => void doChargeToIpd() : undefined}

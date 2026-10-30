@@ -38,6 +38,7 @@ func TestBillHistoryMoneyAndDateFilters(t *testing.T) {
 		{"OPD-VOID", "U Void", "void", "", createdAMid},
 		{"OPD-DRAFT", "Daw Draft", "draft", "", createdBMid},
 		{"OPD-PRINT", "U Printed", "draft", "2026-03-11 09:00:00", createdBMid},
+		{"OPD-DEL", "Daw Deleted", "deleted", "", createdBMid},
 	}
 	for _, s := range seed {
 		var printed any
@@ -91,8 +92,9 @@ func TestBillHistoryMoneyAndDateFilters(t *testing.T) {
 	hasOnly(listNos("/api/opd/bills?money=void"), "OPD-VOID")
 	hasOnly(listNos("/api/opd/bills?money=draft"), "OPD-DRAFT")
 	hasOnly(listNos("/api/opd/bills?money=printed_not_paid"), "OPD-PRINT")
+	hasOnly(listNos("/api/opd/bills?money=deleted"), "OPD-DEL")
 	hasOnly(listNos("/api/opd/bills?from="+dayA+"&to="+dayA), "OPD-PAID", "OPD-VOID")
-	hasOnly(listNos("/api/opd/bills?from="+dayB+"&to="+dayB), "OPD-DRAFT", "OPD-PRINT")
+	hasOnly(listNos("/api/opd/bills?from="+dayB+"&to="+dayB), "OPD-DRAFT", "OPD-PRINT", "OPD-DEL")
 	hasOnly(listNos("/api/opd/bills?q=Printed&money=printed_not_paid"), "OPD-PRINT")
 
 	w := doJSON(opd, http.MethodGet, "/api/opd/bills?money=bogus", token, "")
@@ -108,8 +110,8 @@ func TestBillHistoryMoneyAndDateFilters(t *testing.T) {
 		t.Fatalf("sort=asc first %v, want OPD-PAID", asc)
 	}
 	desc := listNos("/api/opd/bills?sort=desc")
-	if len(desc) < 1 || desc[0] != "OPD-PRINT" {
-		t.Fatalf("sort=desc first %v, want OPD-PRINT", desc)
+	if len(desc) < 1 || (desc[0] != "OPD-PRINT" && desc[0] != "OPD-DEL") {
+		t.Fatalf("sort=desc first %v, want OPD-PRINT or OPD-DEL", desc)
 	}
 	w = doJSON(opd, http.MethodGet, "/api/opd/bills?sort=bogus", token, "")
 	mustCode(t, w, http.StatusBadRequest)

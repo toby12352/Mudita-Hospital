@@ -8,6 +8,8 @@ export type DashOverview = {
   ot_total_mmk: number;
   pharmacy_count: number;
   pharmacy_total_mmk: number;
+  lab_count: number;
+  lab_total_mmk: number;
   grand_total_mmk: number;
   bill_count: number;
   avg_bill_mmk: number;
@@ -26,6 +28,7 @@ export type TrendPoint = {
   opd_total_mmk: number;
   ot_total_mmk: number;
   pharmacy_total_mmk: number;
+  lab_total_mmk: number;
   grand_total_mmk: number;
   bill_count: number;
   ipd_cash_mmk: number;
@@ -214,6 +217,8 @@ export type DailyReportResponse = {
   ot_total_mmk: number;
   pharmacy_count: number;
   pharmacy_total_mmk: number;
+  lab_count: number;
+  lab_total_mmk: number;
   grand_total_mmk: number;
   bill_count: number;
   voids: number;
@@ -221,11 +226,13 @@ export type DailyReportResponse = {
   prev_opd_total_mmk: number;
   prev_ot_total_mmk: number;
   prev_pharmacy_total_mmk: number;
+  prev_lab_total_mmk: number;
   prev_grand_total_mmk: number;
   prev_bill_count: number;
   delta_opd_mmk: number;
   delta_ot_mmk: number;
   delta_pharmacy_mmk: number;
+  delta_lab_mmk: number;
   delta_grand_mmk: number;
   delta_bills: number;
   income_mmk: number;

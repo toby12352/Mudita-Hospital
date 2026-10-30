@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { listOtCases, type OtCase } from "@/features/ot/api";
-import { ActionIcon } from "@/shared/ActionIcon";
 import { AlertDialog } from "@/shared/AlertDialog";
+import { BillBtnIcon } from "@/shared/BillBtnIcon";
 import {
   BillHistoryToolbar,
   type BillHistoryQuery,
@@ -11,6 +11,7 @@ import { BillHistoryTable } from "@/shared/BillHistoryTable";
 import { moneyStatusLabel } from "@/shared/BillPayPrint";
 import { DialogCloseButton } from "@/shared/DialogCloseButton";
 import { useI18n } from "@/shared/i18n";
+import { useActionLock, useDelayedFlag } from "@/shared/useActionLock";
 
 function formatWhen(iso: string): string {
   const d = new Date(iso.includes("T") ? iso : iso.replace(" ", "T") + "Z");
@@ -26,6 +27,7 @@ function formatWhen(iso: string): string {
 
 /** Cases the admin Delete dialog may remove (no paid bill; no issued/reconciled). */
 function isPurgeableOtCase(c: OtCase): boolean {
+  if (c.status === "deleted" || c.bill_status === "deleted") return false;
   if (c.status === "issued" || c.status === "reconciled") return false;
   if (c.bill_status === "paid") return false;
   if (c.status === "draft" || c.status === "void") return true;
@@ -56,6 +58,8 @@ export function OtHistoryModal({
   const [voidReason, setVoidReason] = useState("Voided");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const { tryAcquire, release } = useActionLock();
+  const voidPending = useDelayedFlag(busy);
   const [loading, setLoading] = useState(true);
   const [purgeStep, setPurgeStep] = useState<0 | 1 | 2>(0);
   const [purgeError, setPurgeError] = useState<string | null>(null);
@@ -109,7 +113,10 @@ export function OtHistoryModal({
       setLoading(true);
       setError(null);
       try {
-        const list = mode === "purge" ? await loadPurgeList() : await listOtCases("", "");
+        const list =
+          mode === "purge"
+            ? await loadPurgeList()
+            : (await listOtCases("", "")).filter((c) => c.status !== "deleted");
         if (!cancelled) setRows(list);
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Load failed");
@@ -135,7 +142,11 @@ export function OtHistoryModal({
 
   const selectedCase = rows.find((r) => r.id === selectedId) ?? null;
   const canVoid =
-    selectedCase != null && selectedCase.ot_bill_id != null && selectedCase.status !== "void";
+    selectedCase != null &&
+    selectedCase.ot_bill_id != null &&
+    selectedCase.status !== "void" &&
+    selectedCase.status !== "deleted" &&
+    selectedCase.bill_status !== "deleted";
   const canPurge = selectedCase != null && isPurgeableOtCase(selectedCase);
 
   async function handleDelete() {
@@ -145,6 +156,7 @@ export function OtHistoryModal({
       setError(t("voidReasonRequired"));
       return;
     }
+    if (!tryAcquire()) return;
     setBusy(true);
     setError(null);
     try {
@@ -154,6 +166,7 @@ export function OtHistoryModal({
       setError(e instanceof Error ? e.message : "Delete failed");
     } finally {
       setBusy(false);
+      release();
     }
   }
 
@@ -176,6 +189,7 @@ export function OtHistoryModal({
       setPurgeError(null);
       return;
     }
+    if (!tryAcquire()) return;
     setBusy(true);
     setPurgeError(null);
     try {
@@ -185,6 +199,7 @@ export function OtHistoryModal({
       setPurgeError(e instanceof Error ? e.message : "Delete failed");
     } finally {
       setBusy(false);
+      release();
     }
   }
 
@@ -316,10 +331,11 @@ export function OtHistoryModal({
               type="button"
               className="btn action danger"
               disabled={busy || !canVoid}
+              aria-busy={voidPending || undefined}
               onClick={() => void handleDelete()}
             >
-              <ActionIcon name="trash" />
-              {busy ? "…" : t("voidStatus")}
+              <BillBtnIcon name="trash" pending={voidPending} />
+              {t("voidStatus")}
             </button>
           </div>
         ) : null}
@@ -332,7 +348,7 @@ export function OtHistoryModal({
               disabled={busy || !canPurge}
               onClick={openPurgeConfirm}
             >
-              <ActionIcon name="trash" />
+              <BillBtnIcon name="trash" />
               {t("delete")}
             </button>
           </div>

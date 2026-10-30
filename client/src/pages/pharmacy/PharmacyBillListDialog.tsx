@@ -4,8 +4,8 @@ import {
   type PharmacyBill,
   type PharmacyBillKind,
 } from "@/features/pharmacy/api";
-import { ActionIcon } from "@/shared/ActionIcon";
 import { AlertDialog } from "@/shared/AlertDialog";
+import { BillBtnIcon } from "@/shared/BillBtnIcon";
 import {
   BillHistoryToolbar,
   type BillHistoryQuery,
@@ -16,6 +16,7 @@ import { DialogCloseButton } from "@/shared/DialogCloseButton";
 import { moneyStatusLabel } from "@/shared/BillPayPrint";
 import { formatMMK } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
+import { useActionLock, useDelayedFlag } from "@/shared/useActionLock";
 
 export type PharmacyBillListDialogMode = "history" | "delete" | "purge";
 
@@ -42,6 +43,8 @@ export function PharmacyBillListDialog({
   const [voidReason, setVoidReason] = useState("Voided");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const { tryAcquire, release } = useActionLock();
+  const voidPending = useDelayedFlag(busy);
   const [loading, setLoading] = useState(true);
   const [purgeStep, setPurgeStep] = useState<0 | 1 | 2>(0);
   const [purgeError, setPurgeError] = useState<string | null>(null);
@@ -97,7 +100,10 @@ export function PharmacyBillListDialog({
       setLoading(true);
       setError(null);
       try {
-        const list = mode === "purge" ? await loadPurgeList() : await listPharmacyBills("", "", kind);
+        const list =
+          mode === "purge"
+            ? await loadPurgeList()
+            : (await listPharmacyBills("", "", kind)).filter((b) => b.status !== "deleted");
         if (!cancelled) setBills(list);
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Load failed");
@@ -122,7 +128,8 @@ export function PharmacyBillListDialog({
   }, [onClose]);
 
   const selected = bills.find((b) => b.id === selectedId) ?? null;
-  const canVoid = selected != null && selected.status !== "void";
+  const canVoid =
+    selected != null && selected.status !== "void" && selected.status !== "deleted";
   const canPurge =
     selected != null && (selected.status === "draft" || selected.status === "void");
 
@@ -133,6 +140,7 @@ export function PharmacyBillListDialog({
       setError(t("voidReasonRequired"));
       return;
     }
+    if (!tryAcquire()) return;
     setBusy(true);
     setError(null);
     try {
@@ -142,6 +150,7 @@ export function PharmacyBillListDialog({
       setError(e instanceof Error ? e.message : "Delete failed");
     } finally {
       setBusy(false);
+      release();
     }
   }
 
@@ -164,6 +173,7 @@ export function PharmacyBillListDialog({
       setPurgeError(null);
       return;
     }
+    if (!tryAcquire()) return;
     setBusy(true);
     setPurgeError(null);
     try {
@@ -173,6 +183,7 @@ export function PharmacyBillListDialog({
       setPurgeError(e instanceof Error ? e.message : "Delete failed");
     } finally {
       setBusy(false);
+      release();
     }
   }
 
@@ -293,10 +304,11 @@ export function PharmacyBillListDialog({
               type="button"
               className="btn action danger"
               disabled={busy || !canVoid}
+              aria-busy={voidPending || undefined}
               onClick={() => void handleDelete()}
             >
-              <ActionIcon name="trash" />
-              {busy ? "…" : t("voidStatus")}
+              <BillBtnIcon name="trash" pending={voidPending} />
+              {t("voidStatus")}
             </button>
           </div>
         ) : null}
@@ -309,7 +321,7 @@ export function PharmacyBillListDialog({
               disabled={busy || !canPurge}
               onClick={openPurgeConfirm}
             >
-              <ActionIcon name="trash" />
+              <BillBtnIcon name="trash" />
               {t("delete")}
             </button>
           </div>

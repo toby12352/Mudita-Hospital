@@ -37,6 +37,20 @@
   --placeholder: #64748b;
   --focus-ring: 0 0 0 3px rgba(37, 99, 235, 0.18);
   --transition-fast: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
+  /* Billing rail / confirm press — leave --transition-fast alone for other .btn */
+  --motion-ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --motion-hover-ms: 120ms;
+  --motion-press-ms: 120ms;
+  --motion-release-ms: 180ms;
+  --motion-status-ms: 200ms;
+  --motion-press-scale: 0.98;
+  --transition-billing-press: background-color var(--motion-hover-ms) var(--motion-ease-out),
+    border-color var(--motion-hover-ms) var(--motion-ease-out),
+    color var(--motion-hover-ms) var(--motion-ease-out),
+    transform var(--motion-press-ms) var(--motion-ease-out),
+    box-shadow var(--motion-release-ms) var(--motion-ease-out);
+  --transition-billing-status: opacity var(--motion-status-ms) var(--motion-ease-out),
+    transform var(--motion-status-ms) var(--motion-ease-out);
   font-family: "Segoe UI Variable", "Segoe UI", "Noto Sans Myanmar", "Noto Sans", sans-serif;
   font-size: 16px;
   line-height: 1.45;
@@ -2094,13 +2108,60 @@ body,
 }
 
 .print-preview-aside {
-  flex: 0 0 15rem;
-  width: 15rem;
+  flex: 0 0 17rem;
+  width: 17rem;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.65rem;
   padding: 1rem 0.85rem;
   position: relative;
   z-index: 3;
   overflow: visible;
   border-right: 1px solid var(--border);
+}
+
+.ipd-voucher-chip {
+  margin: 0;
+  align-self: flex-start;
+  padding: 0.12rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--ink);
+  font-size: 0.75rem;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.ipd-day-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.45rem;
+}
+
+.ipd-day-actions .btn.action {
+  justify-content: flex-start;
+  width: 100%;
+  height: auto;
+  white-space: normal;
+  text-align: left;
+}
+
+.ipd-day-action-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.05rem;
+  min-width: 0;
+}
+
+.ipd-day-action-sub {
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.2;
+  opacity: 0.9;
 }
 
 .print-preview-card--with-aside .print-preview-frame-wrap {
@@ -3002,6 +3063,37 @@ body,
   grid-template-columns: minmax(0, 1fr) 8.5rem 4.25rem 7.25rem 5.25rem 5.5rem 2.25rem;
 }
 
+/* Purchase cart: Medicines · Packing · Expiry · Qty · Unit · Purchase price · remove */
+.opd-bill-grid--purchase .opd-bill-grid-head,
+.opd-bill-grid--purchase .opd-bill-grid-row {
+  grid-template-columns: minmax(0, 1.15fr) minmax(6.5rem, 0.75fr) 9.5rem 4.25rem 6.75rem 6.5rem 2.25rem;
+}
+
+.bill-line-expiry {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.bill-line-expiry-cell {
+  min-width: 0;
+}
+
+.opd-bill-grid-row .bill-line-expiry-input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  height: var(--bill-cart-control-height);
+  padding: var(--bill-cart-pad-y) var(--bill-cart-pad-x);
+  line-height: var(--bill-cart-line);
+  font-size: var(--bill-cart-font);
+  border: 1px solid var(--field-border);
+  border-radius: var(--radius-control);
+  background: var(--bg-input);
+  color: var(--ink);
+}
+
 .opd-bill-grid--foc .opd-bill-grid-head,
 .opd-bill-grid--foc .opd-bill-grid-row {
   grid-template-columns: minmax(0, 1fr) 4.5rem 5.5rem 5.5rem 3.25rem 2.25rem;
@@ -3022,10 +3114,12 @@ body,
   grid-template-columns: minmax(0, 1fr) 8.5rem 4.25rem 7.25rem 5.25rem 5.5rem 3.25rem 2.25rem;
 }
 
+.bill-line-foc-head,
 .bill-line-foc-cell {
   display: flex;
   justify-content: center;
   align-items: center;
+  text-align: center;
 }
 
 .bill-line-foc-label {
@@ -3036,12 +3130,20 @@ body,
   cursor: pointer;
 }
 
+.bill-line-foc-label:has(.bill-line-foc-check:disabled) {
+  cursor: default;
+}
+
 .bill-line-foc-check {
   width: 1rem;
   height: 1rem;
   margin: 0;
   accent-color: var(--accent);
   cursor: pointer;
+}
+
+.bill-line-foc-check:disabled {
+  cursor: default;
 }
 
 .opd-bill-grid-row.bill-line-foc .bill-line-title {
@@ -3073,6 +3175,12 @@ body,
   border-bottom: 1px solid var(--border);
   font-size: 0.875rem;
   line-height: 1.2;
+}
+
+/* Purchase entry can stack pack label + expiry; keep the row inside the grid border. */
+.opd-bill-grid-row.bill-line-entry {
+  height: auto;
+  min-height: var(--bill-line-row-height);
 }
 
 .opd-bill-grid-row .btn {
@@ -3138,6 +3246,33 @@ body,
   white-space: nowrap;
 }
 
+.bill-line-pack:has(.bill-line-pack-stack) {
+  white-space: normal;
+  overflow: visible;
+}
+
+.bill-line-pack-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+  white-space: normal;
+}
+
+.bill-line-pack-stack > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bill-line-pack-stack .opd-bill-input {
+  height: var(--bill-cart-control-height);
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--bill-cart-pad-y) var(--bill-cart-pad-x);
+}
+
 .bill-line-cell {
   min-width: 0;
 }
@@ -3164,6 +3299,17 @@ body,
   border-radius: var(--radius-control);
   background: var(--bg-input);
   color: var(--ink);
+}
+
+/* Expense free-text particular / purchase picked name: fill the item column like typeaheads. */
+.opd-bill-grid .bill-line-cell.bill-line-typeahead > .opd-bill-input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  height: var(--bill-cart-control-height);
+  padding: var(--bill-cart-pad-y) var(--bill-cart-pad-x);
+  line-height: var(--bill-cart-line);
+  font-size: var(--bill-cart-font);
 }
 
 .bill-line-unit {
@@ -3484,7 +3630,14 @@ body,
   background: var(--bg-panel);
   color: var(--ink);
   cursor: pointer;
-  transition: var(--transition-fast);
+  transition: var(--transition-billing-press);
+  transform: scale(1);
+  transform-origin: center;
+  will-change: transform;
+}
+
+.opd-bill-rail-btn:active:not(:disabled) {
+  transform: scale(var(--motion-press-scale));
 }
 
 .opd-bill-rail-btn-main {
@@ -3494,7 +3647,8 @@ body,
   min-width: 0;
 }
 
-.opd-bill-rail-btn-main > svg {
+.opd-bill-rail-btn-main > svg,
+.opd-bill-rail-btn-main > .opd-bill-rail-btn-icon-slot {
   display: block;
   flex-shrink: 0;
   width: 16px;
@@ -3588,6 +3742,134 @@ body,
 .opd-bill-rail-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+  transform: none;
+}
+
+.opd-bill-rail-btn[aria-busy="true"] {
+  cursor: wait;
+}
+
+.opd-bill-rail-btn-icon-slot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+
+.opd-bill-rail-btn-icon-slot > svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
+.opd-bill-btn-spinner {
+  display: block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  opacity: 0.85;
+  animation: opd-bill-btn-spin 0.7s linear infinite;
+}
+
+@keyframes opd-bill-btn-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.opd-bill-rail-btn-sub--pending {
+  transition: var(--transition-billing-status);
+}
+
+.opd-bill-rail-btn-icon-slot--success {
+  color: var(--ok);
+}
+
+.opd-bill-btn-check {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
+.opd-bill-btn-check-path {
+  stroke-dasharray: 16;
+  stroke-dashoffset: 16;
+  animation: opd-bill-btn-check-draw 400ms var(--motion-ease-out) forwards;
+}
+
+@keyframes opd-bill-btn-check-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.opd-bill-rail-btn-label-swap {
+  display: inline-grid;
+  align-items: center;
+  justify-items: start;
+  min-width: 0;
+}
+
+.opd-bill-rail-btn-label-swap > span {
+  grid-area: 1 / 1;
+  line-height: 1.2;
+  transition: opacity var(--motion-status-ms) var(--motion-ease-out);
+}
+
+.opd-bill-rail-btn-label-saved {
+  opacity: 0;
+  color: var(--ok);
+  pointer-events: none;
+}
+
+.opd-bill-rail-btn-label-swap--saved .opd-bill-rail-btn-label-idle {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.opd-bill-rail-btn-label-swap--saved .opd-bill-rail-btn-label-saved {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.opd-bill-rail-btn--shake {
+  animation: opd-bill-btn-shake 380ms var(--motion-ease-out);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.opd-bill-rail-btn--shake.opd-bill-rail-btn--accent {
+  background: #fef7f7;
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.opd-bill-rail-btn--shake kbd {
+  color: inherit;
+  opacity: 0.75;
+}
+
+@keyframes opd-bill-btn-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-3px);
+  }
+  40% {
+    transform: translateX(3px);
+  }
+  60% {
+    transform: translateX(-2px);
+  }
+  80% {
+    transform: translateX(2px);
+  }
 }
 
 .opd-bill-rail-btn kbd {
@@ -3735,6 +4017,7 @@ body,
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 0.4rem;
   margin-top: 0.35rem;
   padding: 0.65rem 1rem;
   border: none;
@@ -3744,21 +4027,52 @@ body,
   font: inherit;
   font-weight: 600;
   cursor: pointer;
-  transition: var(--transition-fast);
+  transition: var(--transition-billing-press);
+  transform: scale(1);
+  transform-origin: center;
 }
 
 .alert-dialog-ok:hover:not(:disabled) {
   background: #e8eaed;
 }
 
+.alert-dialog-ok:active:not(:disabled) {
+  background: #dfe1e5;
+  transform: scale(var(--motion-press-scale));
+}
+
 .alert-dialog-ok:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+  transform: none;
 }
 
 .alert-dialog-ok:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
+}
+
+.alert-dialog-ok[aria-busy="true"],
+.alert-dialog-actions .btn[aria-busy="true"] {
+  cursor: wait;
+}
+
+.alert-dialog-actions .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  transition: var(--transition-billing-press);
+  transform: scale(1);
+  transform-origin: center;
+}
+
+.alert-dialog-actions .btn:active:not(:disabled) {
+  transform: scale(var(--motion-press-scale));
+}
+
+.alert-dialog-actions .btn:disabled {
+  transform: none;
 }
 
 .alert-dialog-actions {
@@ -4272,6 +4586,13 @@ body,
   color: var(--danger);
   background: rgba(198, 40, 40, 0.08);
   border-color: var(--danger-border);
+}
+
+.bill-history-status--deleted {
+  color: #64748b;
+  background: rgba(100, 116, 139, 0.12);
+  border-color: rgba(100, 116, 139, 0.35);
+  text-decoration: line-through;
 }
 
 .bill-history-status--printed {
@@ -5061,6 +5382,43 @@ body,
   filter: none;
 }
 
+/* Bill history / dialog footer actions — press parity with the rail */
+.opd-bill-dialog .btn.action {
+  transition: var(--transition-billing-press);
+  transform: scale(1);
+  transform-origin: center;
+}
+
+.opd-bill-dialog .btn.action:active:not(:disabled) {
+  background: #f1f5f9;
+  border-color: var(--border-strong);
+  transform: scale(var(--motion-press-scale));
+}
+
+.opd-bill-dialog .btn.action.danger:active:not(:disabled) {
+  background: #fdeeee;
+  border-color: var(--danger);
+  transform: scale(var(--motion-press-scale));
+}
+
+.opd-bill-dialog .btn.action.primary:active:not(:disabled) {
+  background: var(--accent-pressed);
+  border-color: var(--accent-pressed);
+  transform: scale(var(--motion-press-scale));
+}
+
+.opd-bill-dialog .btn.action:disabled {
+  transform: none;
+}
+
+.opd-bill-dialog .btn.action[aria-busy="true"] {
+  cursor: wait;
+}
+
+.opd-bill-dialog .btn.action .opd-bill-rail-btn-icon-slot {
+  margin-inline-end: 0;
+}
+
 /* Field rows and a primary sitting with an action share one height and --radius-control.
    Standalone .btn.action groups keep the 12px radius above. Danger outline is unchanged. */
 .list-toolbar .field input,
@@ -5412,6 +5770,40 @@ body,
   .catalog-filter-wrap,
   .catalog-filter-clip {
     transition: none;
+  }
+
+  .opd-bill-rail-btn,
+  .opd-bill-dialog .btn.action,
+  .alert-dialog-ok,
+  .alert-dialog-actions .btn {
+    transition: none;
+  }
+
+  .opd-bill-rail-btn:active:not(:disabled),
+  .opd-bill-dialog .btn.action:active:not(:disabled),
+  .alert-dialog-ok:active:not(:disabled),
+  .alert-dialog-actions .btn:active:not(:disabled) {
+    transform: none;
+  }
+
+  .opd-bill-btn-spinner {
+    animation: none;
+    border-right-color: currentColor;
+    opacity: 0.55;
+  }
+
+  .opd-bill-rail-btn-sub--pending,
+  .opd-bill-rail-btn-label-swap > span {
+    transition: none;
+  }
+
+  .opd-bill-btn-check-path {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+
+  .opd-bill-rail-btn--shake {
+    animation: none;
   }
 }
 

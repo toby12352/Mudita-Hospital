@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"html"
 	"net/http"
@@ -105,6 +106,20 @@ func (h *IPD) discharge(w http.ResponseWriter, r *http.Request, path string) {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "stay is not open"})
 		return
 	}
+	// The discharge collection or refund settles the whole stay. Days still
+	// waiting on a decision are paid by that settlement. Credit days stay
+	// credit; their gap is inside this collection and is income once, here.
+	if _, err := tx.Exec(`
+		UPDATE ipd_day_vouchers
+		SET status = 'paid',
+		    decided_at = datetime('now'),
+		    decided_by_user_id = ?,
+		    updated_at = datetime('now')
+		WHERE admission_id = ? AND status = 'issued'
+	`, actorID, id); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "discharge failed"})
+		return
+	}
 	if err := tx.Commit(); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "discharge failed"})
 		return
@@ -159,8 +174,17 @@ func (h *IPD) printStatement(w http.ResponseWriter, r *http.Request, path string
 	if err != nil || hosp == nil {
 		hosp = &hospitalSettings{HospitalName: "Mudita Hospital"}
 	}
+	page, err := renderIpdStatement(h.DB, hosp, row, daily)
+	if err != nil {
+		if errors.Is(err, errPreviousVoucherIssued) {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": errPreviousVoucherIssued.Error()})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "statement failed"})
+		return
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = w.Write([]byte(renderIpdStatement(h.DB, hosp, row, daily)))
+	_, _ = w.Write([]byte(page))
 }
 
 type ipdCashLine struct {
@@ -230,8 +254,9 @@ func (h *IPD) dailyCash(w http.ResponseWriter, r *http.Request, asHTML bool) {
 
 // buildIpdCash sums deposits, collections, and refunds on the Asia/Yangon
 // civil day of ledger created_at. Rows are stored as UTC datetime('now').
-// Ward, charge, and reversal rows are not cash. Drawer cash is not income;
-// earned charges enter income through buildIpdEarned.
+// Ward, charge, and reversal rows are not cash. Drawer cash is deposits,
+// collections, and refunds. Income uses buildIpdEarned, which counts charges
+// before the voucher epoch and this drawer cash on and after it.
 func buildIpdCash(db *sql.DB, date string) (*ipdCashReport, error) {
 	rep := &ipdCashReport{Date: date, Lines: []ipdCashLine{}}
 	start, end, ok := yangonDayUTCRange(date)
@@ -273,12 +298,32 @@ func buildIpdCash(db *sql.DB, date string) (*ipdCashReport, error) {
 	return rep, nil
 }
 
-// buildIpdEarned sums ward, charge, and reversal lines on the Asia/Yangon
-// civil day. Charges are stored negative; EarnedMMK is the opposite of that sum.
+// buildIpdEarned is the IPD part of income for one Asia/Yangon civil day.
+// With no epoch row, or when date is before ipd_voucher_epoch.started_on,
+// it sums ward, charge, and reversal lines. Charges are stored negative;
+// EarnedMMK is the opposite of that sum.
+// On and after the epoch those charges are omitted. EarnedMMK is deposits +
+// collections + refunds, signed the same way as the ledger (a refund reduces
+// income). buildIpdCash still reports that drawer movement on its own.
 func buildIpdEarned(db *sql.DB, date string) (*ipdEarnedReport, error) {
 	rep := &ipdEarnedReport{Date: date, Lines: []ipdCashLine{}}
 	start, end, ok := yangonDayUTCRange(date)
 	if !ok {
+		return rep, nil
+	}
+	epoch, err := voucherEpochStartedOn(db)
+	if err != nil {
+		return nil, err
+	}
+	if epoch != "" && date >= epoch {
+		cash, err := buildIpdCash(db, date)
+		if err != nil {
+			return nil, err
+		}
+		rep.EarnedMMK = cash.NetMMK
+		if cash.Lines != nil {
+			rep.Lines = cash.Lines
+		}
 		return rep, nil
 	}
 	rows, err := db.Query(`
@@ -377,6 +422,8 @@ func ledgerBillNo(db *sql.DB, source string, sourceID *int64) string {
 		table = "ot_bills"
 	case "pharmacy":
 		table = "pharmacy_bills"
+	case "lab":
+		table = "lab_bills"
 	default:
 		return ""
 	}
@@ -396,6 +443,8 @@ func statementDesk(source string) string {
 		return "OT"
 	case "pharmacy":
 		return "Pharmacy"
+	case "lab":
+		return "Lab"
 	default:
 		return ""
 	}
@@ -425,6 +474,16 @@ func statementKind(line ipdLedgerLine) string {
 				return "Pharmacy charge"
 			}
 			return "Pharmacy credit"
+		case "lab":
+			if charge {
+				return "Lab charge"
+			}
+			return "Lab credit"
+		case "ipd":
+			if charge {
+				return "IPD charge"
+			}
+			return "IPD credit"
 		default:
 			if charge {
 				return "Desk charge"
@@ -474,6 +533,7 @@ func ipdStatementCSS() string {
 .a4-day{margin:12px 0 6px;font-size:12pt;font-weight:700}
 .a4-items tfoot td{font-weight:700}
 .a4-time{width:8ch;white-space:nowrap}
+.a4-items.a4-daily th.col-amt{white-space:normal;line-height:1.15}
 `
 }
 
@@ -609,6 +669,82 @@ func writeStatementTable(b *strings.Builder, db *sql.DB, lines []ipdLedgerLine, 
 	b.WriteString(`</table>`)
 }
 
+func writeDailyAmount(b *strings.Builder, amount int64, blankZero bool) {
+	b.WriteString(`<td class="col-amt">`)
+	if amount != 0 || !blankZero {
+		b.WriteString(formatMMK(amount))
+	}
+	b.WriteString(`</td>`)
+}
+
+// writeDailyStatementTable prints one civil day with Deposited Fee, To Pay,
+// and Difference. The final statement keeps writeStatementTable.
+func writeDailyStatementTable(b *strings.Builder, db *sql.DB, rows []daySheetRow, empty string) {
+	b.WriteString(`<table class="a4-items a4-daily"><thead><tr>`)
+	b.WriteString(`<th class="col-no">No.</th><th>Kind</th><th>Detail</th><th class="a4-time">Time</th>`)
+	b.WriteString(`<th class="col-amt">Deposited Fee</th><th class="col-amt">To Pay</th><th class="col-amt">Difference</th>`)
+	b.WriteString(`</tr></thead><tbody>`)
+	if len(rows) == 0 {
+		b.WriteString(`<tr><td colspan="7">`)
+		b.WriteString(html.EscapeString(empty))
+		b.WriteString(`</td></tr>`)
+	}
+	for i, row := range rows {
+		kind := row.Label
+		detail := row.Detail
+		when := ""
+		if row.Kind == daySheetLedger && row.Ledger != nil {
+			kind = statementKind(*row.Ledger)
+			detail = statementDetail(db, *row.Ledger)
+			when = formatLedgerTime(row.Ledger.CreatedAt)
+		}
+		b.WriteString(`<tr><td class="col-no">`)
+		b.WriteString(fmt.Sprintf("%d", i+1))
+		b.WriteString(`</td><td>`)
+		b.WriteString(html.EscapeString(kind))
+		b.WriteString(`</td><td>`)
+		b.WriteString(html.EscapeString(detail))
+		b.WriteString(`</td><td class="a4-time">`)
+		b.WriteString(html.EscapeString(when))
+		b.WriteString(`</td>`)
+		writeDailyAmount(b, row.DepositedMMK, true)
+		writeDailyAmount(b, row.ToPayMMK, true)
+		writeDailyAmount(b, row.DifferenceMMK, false)
+		b.WriteString(`</tr>`)
+	}
+	b.WriteString(`</tbody></table>`)
+}
+
+func previousCivilDate(date string) (string, bool) {
+	ts, err := time.ParseInLocation("2006-01-02", strings.TrimSpace(date), yangon)
+	if err != nil {
+		return "", false
+	}
+	return ts.AddDate(0, 0, -1).Format("2006-01-02"), true
+}
+
+// loadPreviousDayVoucher reads the stored voucher for the civil date before
+// civilDate. No row means there is no opening carry.
+func loadPreviousDayVoucher(db sqlQuery, admissionID int64, civilDate string) (dayVoucherPrior, error) {
+	prev, ok := previousCivilDate(civilDate)
+	if !ok {
+		return dayVoucherPrior{}, fmt.Errorf("invalid date")
+	}
+	var prior dayVoucherPrior
+	err := db.QueryRow(`
+		SELECT status, closing_mmk
+		FROM ipd_day_vouchers
+		WHERE admission_id = ? AND civil_date = ?
+	`, admissionID, prev).Scan(&prior.Status, &prior.ClosingMMK)
+	if err == sql.ErrNoRows {
+		return dayVoucherPrior{}, nil
+	}
+	if err != nil {
+		return dayVoucherPrior{}, err
+	}
+	return prior, nil
+}
+
 func writeStatementSettle(b *strings.Builder, rows [][2]string) {
 	b.WriteString(`<table class="a4-settle"><tbody>`)
 	last := len(rows) - 1
@@ -637,29 +773,32 @@ func statementBalanceLabel(balance int64) (string, int64) {
 	return "ပိုငွေ", balance
 }
 
-// renderIpdStatement prints the final stay sheet. dailyDate (YYYY-MM-DD) limits
-// the body to that Asia/Yangon civil day and swaps the footer for a day total
-// plus the balance through the end of that day.
-func renderIpdStatement(db *sql.DB, hosp *hospitalSettings, row ipdAdmission, dailyDate string) string {
+// renderIpdStatement prints the stay sheet. dailyDate (YYYY-MM-DD) prints that
+// Asia/Yangon day with Deposited Fee, To Pay, and Difference, and an opening
+// carry when the previous stored voucher says so. An empty date prints the
+// final statement: one MMK column and the stay balance.
+func renderIpdStatement(db *sql.DB, hosp *hospitalSettings, row ipdAdmission, dailyDate string) (string, error) {
 	if hosp == nil {
 		hosp = &hospitalSettings{HospitalName: "Mudita Hospital"}
 	}
 	dailyDate = strings.TrimSpace(dailyDate)
 	daily := dailyDate != ""
 	lines := row.Ledger
-	var through int64
+	var sheet daySheet
 	if daily {
-		start, end, _ := yangonDayUTCRange(dailyDate)
-		filtered := make([]ipdLedgerLine, 0)
-		for _, line := range row.Ledger {
-			if lineOnYangonDay(line.CreatedAt, start, end) {
-				filtered = append(filtered, line)
-			}
-			if ts, ok := ledgerUTC(line.CreatedAt); ok && ts.Format("2006-01-02 15:04:05") < end {
-				through += line.AmountMMK
-			}
+		prior, err := loadPreviousDayVoucher(db, row.ID, dailyDate)
+		if err != nil {
+			return "", err
 		}
-		lines = filtered
+		skip, err := loadVoucherCollectionIDs(db, row.ID)
+		if err != nil {
+			return "", err
+		}
+		dayLines := linesForCivilDay(row.Ledger, dailyDate, skip)
+		sheet, err = buildDaySheet(dailyDate, dayLines, prior)
+		if err != nil {
+			return "", err
+		}
 	}
 
 	title := "IPD FINAL STATEMENT"
@@ -698,16 +837,11 @@ func renderIpdStatement(db *sql.DB, hosp *hospitalSettings, row ipdAdmission, da
 	b.WriteString(`</div></div>`)
 
 	if daily {
-		empty := "No lines on this date."
-		writeStatementTable(&b, db, lines, false, empty)
-		var daySum int64
-		for _, line := range lines {
-			daySum += line.AmountMMK
-		}
-		balLabel, balAmt := statementBalanceLabel(through)
+		writeDailyStatementTable(&b, db, sheet.Rows, "No lines on this date.")
 		writeStatementSettle(&b, [][2]string{
-			{"Day total", formatMMK(daySum)},
-			{balLabel, formatMMK(balAmt)},
+			{"Day deposited", formatMMK(sheet.DayDeposited)},
+			{"Day to pay", formatMMK(sheet.DayToPay)},
+			{sheet.ClosingLabel, formatMMK(sheet.ClosingAbsMMK)},
 		})
 	} else {
 		sections, multi := groupStatementDays(lines)
@@ -729,7 +863,7 @@ func renderIpdStatement(db *sql.DB, hosp *hospitalSettings, row ipdAdmission, da
 		writeStatementSettle(&b, [][2]string{{balLabel, formatMMK(balAmt)}})
 	}
 	b.WriteString(`</div></body></html>`)
-	return b.String()
+	return b.String(), nil
 }
 
 func renderIpdCashHTML(hosp *hospitalSettings, rep *ipdCashReport) string {

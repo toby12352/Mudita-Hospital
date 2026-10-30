@@ -69,6 +69,8 @@ func (h *Patients) attach(w http.ResponseWriter, r *http.Request, path string) {
 	switch {
 	case strings.HasPrefix(billNo, "OPD-"):
 		result = attachBillPatient(tx, "opd_bills", billNo, patientID)
+	case strings.HasPrefix(billNo, "LAB-"):
+		result = attachBillPatient(tx, "lab_bills", billNo, patientID)
 	case strings.HasPrefix(billNo, "PH-"), strings.HasPrefix(billNo, "RT-"):
 		result = attachBillPatient(tx, "pharmacy_bills", billNo, patientID)
 	case strings.HasPrefix(billNo, "OTB-"):

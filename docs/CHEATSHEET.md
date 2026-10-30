@@ -11,7 +11,7 @@ Print this page and laminate it for the OPD, OT, pharmacy, patients, and IPD des
    - OT → **OT Bill** (OT ဘေလ်)
    - Pharmacy → **Pharmacy Bill** (ဆေးဆိုင် ဘေလ်)
    - Patients → **Patient Charts** (လူနာမှတ်တမ်း)
-   - IPD → **Stays** (တက်ရောက်မှု)
+   - IPD → **Stays** (တက်ရောက်မှု) and **IPD Bill** (IPD ဘေလ်)
    - Admin → Home, then any module. Settings and training seed are Admin-only.
 4. Idle ~15 minutes → auto lock.
 5. **History** (မှတ်တမ်း, F9) lists that desk's bills only. Another desk's cash is not on this screen.
@@ -25,7 +25,7 @@ Print this page and laminate it for the OPD, OT, pharmacy, patients, and IPD des
 | F5 | **Save draft** · မူကြမ်းသိမ်း | Bill stays editable. No cash. No stock. |
 | F6 | **Print** · ပရင့် | Saves if needed and opens the receipt. Status **Printed — Not Paid** · ပရင့်ပြီး — မပေးရသေး. Still editable. No cash. No stock. |
 | F7 | **Mark Paid** · ပေးပြီးမှတ် | Desk cash. Subtitle **Final · locks bill** · နောက်ဆုံး · ဘေလ်ပိတ်မည်. Editing stops. Pharmacy sale deducts MAIN stock. OT Bill deducts inventory quantity. Expense does not move stock. |
-| none | **Charge to IPD** · IPD သို့ တင် | Not a function key. F7 does not do this. Subtitle **Not desk cash** · ကောင်တာငွေ မဟုတ်. Shown only when the chosen chart has an open stay. A typed name never shows it. Not on Expense bill or Transfer to OT. |
+| none | **Charge to IPD** · IPD သို့ တင် | Not a function key. F7 does not charge the stay. Subtitle **Not desk cash** · ကောင်တာငွေ မဟုတ်. On a sale, shown only when the chosen chart has an open stay. On **IPD Bill** it is the first button, and that page has no **Mark Paid**. A typed name never shows it. Not on Expense bill or Transfer to OT. |
 | ^F8 | **Void Bills** · ဘေလ်ပယ်ဖျက် | Ctrl+F8 or Cmd+F8. Reason required (**Required to void** · ပယ်ဖျက်ရန် လိုအပ်သည်). The dialog confirm button is **Delete** · ဖျက်ရန်. |
 | F9 | **History** · မှတ်တမ်း | This desk's bills. |
 | F10 | **Cancel** · မလုပ်တော့ | Clears the form. |
@@ -49,20 +49,23 @@ Patient, doctor, then a service or consultation. Medicines are billed on **Pharm
 
 1. **Pharmacy Bill** (sale): sale rail. **Mark Paid** takes desk cash and deducts MAIN stock, earliest expiry first. **Charge to IPD** only for a linked chart with an open stay. Void of a paid sale puts MAIN quantity back.
 2. **Return in** (ပြန်သွင်း). This is not the OT inventory return. F5 **Save draft**. F6 **Print** (the slip stays editable). F7 **Mark returned** (ပြန်သွင်းမှတ်), subtitle **Credits stock · refunds cash** · စတော့ပြန်ထည့် · ငွေပြန်အမ်း, then the slip locks. F2 is **New return** (ပြန်သွင်းအသစ်). If that chart has an open stay and at least one charged pharmacy sale, the rail can show **Credit to IPD** (IPD သို့ ပြန်ထည့်). No function key. It is not **Charge to IPD** and not desk cash. Void of a paid return takes that quantity off MAIN again.
-3. **Transfer to OT**: see section 4. F2 is **New transfer** (လွှဲစာရင်း အသစ်). Void of a confirmed transfer reverses the move.
-4. Pharmacy **Maintenance** (ထိန်းသိမ်းရေး): item section **Packing Size** (ထုပ်ပိုးအရွယ်), first field **Smallest Unit** (အသေးဆုံးယူနစ်). Stock on hand is MAIN. Create an unknown code before restock. Low stock and near expiry are MAIN only. This screen does not save on F5. F5 reloads the window.
+3. **Purchase Bills** (ဝယ်ယူမှု ဘေလ်), under Return in. Hospital buying stock. Pick medicine, optional expiry, qty then unit, then the total paid for that quantity. F5 **Save draft**. F6 **Print**. F7 **Mark purchased** (ဝယ်ပြီးမှတ်), subtitle **Credits stock · records expense** · စတော့ထည့် · အသုံးစရိတ်မှတ်: MAIN qty in, catalog purchase price updated from that unit, sale price unchanged, money on the admin expense report. Not desk cash. F2 is **New purchase** (ဝယ်ယူမှု အသစ်).
+4. **Transfer to OT**: see section 4. F2 is **New transfer** (လွှဲစာရင်း အသစ်). Void of a confirmed transfer reverses the move.
+5. Pharmacy **Maintenance** (ထိန်းသိမ်းရေး): item section **Packing Size** (ထုပ်ပိုးအရွယ်), first field **Smallest Unit** (အသေးဆုံးယူနစ်). Stock on hand is MAIN. Create an unknown code before restock. Low stock and near expiry are MAIN only. This screen does not save on F5. F5 reloads the window.
 
 ## 6. Expense bills
 
-Each desk has **Expense bill** (အသုံးစရိတ် ဘေလ်): OPD, OT, pharmacy, and the IPD portal (next to **Stays**). Same F5 **Save draft**, F6 **Print** (still editable), F7 **Mark Paid** (desk cash, bill locked). No **Charge to IPD**. No stock. Each desk lists only its own expense bills.
+Each desk has **Expense bill** (အသုံးစရိတ် ဘေလ်): OPD, OT, pharmacy, and the IPD portal (next to **Stays** and **IPD Bill**). Same F5 **Save draft**, F6 **Print** (still editable), F7 **Mark Paid** (desk cash, bill locked). No **Charge to IPD**. No stock. Each desk lists only its own expense bills. Expense bill is money out. It is not **IPD Bill**.
 
 ## 7. Patients and IPD
 
 1. **Patient Charts** (လူနာမှတ်တမ်း). A chart is the patient record. A name typed on a bill is not a chart. Typing a name clears the link, so **Charge to IPD** disappears. **Create New Patient** (လူနာအသစ် ဖန်တီးရန်) is shown only when that account may create charts.
 2. On the chart, **Attach bill** (ဘေလ် တွဲရန်) links one bill number that has no chart yet. Totals, status, stock, and cash stay the same. A `TO-` transfer slip cannot be attached.
-3. **Stays** (တက်ရောက်မှု). No function keys on this page. F5 reloads the window. **Admit** (တက်ခွင့်) opens one stay per chart. Then **Take deposit** (အပ်ငွေ လက်ခံ), **Post ward charge** (ဝပ်ကြေး တင်), and **Save notes** (မှတ်ချက်သိမ်း). A ward charge is room or nursing, not a drug and not an OPD service. **Charge to IPD** is not on this page. It is on OPD Bill, OT Bill, and Pharmacy Bill.
-4. **Discharge** (ဆင်းခွင့်ရှင်း) is final. Positive balance: **Refund the remainder** (လက်ကျန်ကို ပြန်အမ်း). Negative balance: **Collect the amount owed** (ပေးရန်ကျန်ကို ကောက်). Zero: **No cash. Balance is zero** (ငွေမထိ။ လက်ကျန် သုည). After discharge, deposits, ward charges, and desk charges are refused.
-5. **IPD daily cash** (IPD နေ့စဉ်ငွေ) counts deposits, collections, and refunds. The admin dashboard shows that net as one IPD total.
+3. **Stays** (တက်ရောက်မှု). No function keys on this page. F5 reloads the window. **Admit** (တက်ခွင့်) opens one stay per chart. Then **Take deposit** (အပ်ငွေ လက်ခံ) and **Save notes** (မှတ်ချက်သိမ်း). Room and nursing are not posted here. Each open stay shows **Yesterday** (မနေ့) as Still open, Awaiting, Paid, or Carried.
+4. **IPD Bill** (IPD ဘေလ်). Free-text lines (particular, quantity, fee). F5 **Save draft**. F6 **Print** (A4 charge slip, still editable). There is no F7 and no **Mark Paid**. The first button is **Charge to IPD**, subtitle **Not desk cash**. F7 does not charge the stay. The button is hidden until the chart has an open stay. A name that is not a chart shows **Admit this patient first** (ဤလူနာကို အရင် တက်ခွင့်ပေးပါ။). After charge the slip says **Charged to IPD**.
+5. **Print Daily Statement** (နေ့စဉ်စာရင်းထုတ်) opens yesterday when the stay already has a line from before today. Today can still be viewed. Pay stays off for today. **Pay this day** (ဤနေ့ ပေးမည်) collects the လိုငွေ after a confirm. **Pay later** (နောက်မှ ပေးမည်) shows only while the day is Awaiting and the family owes. **Mark unpaid** (ပေးထားမှု ပြန်ဖြုတ်) shows only on Paid, and only before the next day’s sheet exists. Printing does not choose for them.
+6. **Discharge** (ဆင်းခွင့်ရှင်း) is final. The dialog says **The final statement settles the whole stay** (နောက်ဆုံးစာရင်းသည် တက်ရောက်မှုတစ်ခုလုံးကို ရှင်းသည်။). If yesterday is Awaiting, it also says **Discharge will collect or refund the balance** (ဆင်းခွင့်ရှင်းလျှင် လက်ကျန်ကို ကောက်မည် သို့မဟုတ် ပြန်အမ်းမည်။). Positive balance: **Refund the remainder** (လက်ကျန်ကို ပြန်အမ်း). Negative balance: **Collect the amount owed** (ပေးရန်ကျန်ကို ကောက်). Zero: **No cash. Balance is zero** (ငွေမထိ။ လက်ကျန် သုည). After discharge, deposits and further charges are refused.
+7. **IPD daily cash** (IPD နေ့စဉ်ငွေ) counts deposits, collections, and refunds. The admin dashboard shows that net as one IPD total. An unpaid day is not income.
 
 ## 8. Reports
 
@@ -86,12 +89,12 @@ The admin dashboard is the day book for the whole hospital. A clinic desk does n
 ## Myanmar summary / မြန်မာ အကျဉ်း
 
 1. **ဝင်ရန်** — ဆာဗာ IP → **ဝင်ရန်**။ ဘာသာ **English** / **မြန်မာ**။ မိမိကောင်တာသာ ပွင့်သည်။ ခဏနားလျှင် သော့ကျသည်။ **မှတ်တမ်း** သည် မိမိဘေလ်သာ။
-2. **ရောင်းဘေလ်** (OPD ဘေလ်၊ OT ဘေလ်၊ ဆေးဆိုင် ဘေလ်၊ အသုံးစရိတ် ဘေလ်) — F5 **မူကြမ်းသိမ်း** (ပြင်နိုင်၊ ငွေမကောက်၊ စတော့မလှုပ်)။ F6 **ပရင့်** (**ပရင့်ပြီး — မပေးရသေး**၊ ပြင်နိုင်သေး၊ ငွေမကောက်)။ F7 **ပေးပြီးမှတ်** (ကောင်တာငွေ၊ **နောက်ဆုံး · ဘေလ်ပိတ်မည်**)။ **IPD သို့ တင်** သည် ဖွင့်ထားသော တက်ရောက်မှုရှိမှ။ စာတန်း **ကောင်တာငွေ မဟုတ်**။ ဖန်ရှင်ခလုတ်မရှိ။ အမည်ရိုက်ရုံဖြင့် မပေါ်။ ^F8 **ဘေလ်ပယ်ဖျက်** (**ပယ်ဖျက်ရန် လိုအပ်သည်**)။ အတည်ပြုခလုတ်သည် **ဖျက်ရန်**။ F9 **မှတ်တမ်း**။ F10 **မလုပ်တော့**။ F2 **ဘေလ်အသစ်**။
+2. **ရောင်းဘေလ်** (OPD ဘေလ်၊ OT ဘေလ်၊ ဆေးဆိုင် ဘေလ်၊ အသုံးစရိတ် ဘေလ်) — F5 **မူကြမ်းသိမ်း** (ပြင်နိုင်၊ ငွေမကောက်၊ စတော့မလှုပ်)။ F6 **ပရင့်** (**ပရင့်ပြီး — မပေးရသေး**၊ ပြင်နိုင်သေး၊ ငွေမကောက်)။ F7 **ပေးပြီးမှတ်** (ကောင်တာငွေ၊ **နောက်ဆုံး · ဘေလ်ပိတ်မည်**)။ **IPD သို့ တင်** သည် ဖွင့်ထားသော တက်ရောက်မှုရှိမှ။ စာတန်း **ကောင်တာငွေ မဟုတ်**။ ဖန်ရှင်ခလုတ်မရှိ။ F7 သည် တက်ရောက်မှုသို့ မတင်ပါ။ **IPD ဘေလ်** တွင် ပထမခလုတ်ဖြစ်ပြီး **ပေးပြီးမှတ်** မရှိ။ အမည်ရိုက်ရုံဖြင့် မပေါ်။ ^F8 **ဘေလ်ပယ်ဖျက်** (**ပယ်ဖျက်ရန် လိုအပ်သည်**)။ အတည်ပြုခလုတ်သည် **ဖျက်ရန်**။ F9 **မှတ်တမ်း**။ F10 **မလုပ်တော့**။ F2 **ဘေလ်အသစ်**။
 3. **OPD ဘေလ်** — ဝန်ဆောင်မှု။ ဆေးသည် **ဆေးဆိုင် ဘေလ်** တွင်။ ပြေစာ 80 mm။
 4. **OT** — **OT သို့ လွှဲ**။ F6 မလုပ်။ ပထမ F7 **လွှဲမည်**၊ ဒုတိယ F7 **လွှဲခြင်း အတည်ပြု**။ ငွေမကောက်။ **ထိန်းသိမ်းရေး** → **စာရင်း**။ မသုံးသော အရေအတွက် **ဆေးဆိုင်သို့ ပြန်ပို့ရန်**။ ၎င်းသည် **ပြန်သွင်း** မဟုတ်၊ **ဘေလ်ပယ်ဖျက်** မဟုတ်။ OT ဘေလ် **ပေးပြီးမှတ်** လျှင် စာရင်းလျော့။ ပရင့်သည် A4။
 5. **ဆေးဆိုင်** — **ပေးပြီးမှတ်** လျှင် MAIN လျော့။ **ပြန်သွင်း** တွင် F7 **ပြန်သွင်းမှတ်** (**စတော့ပြန်ထည့် · ငွေပြန်အမ်း**)။ **IPD သို့ ပြန်ထည့်** သည် **IPD သို့ တင်** မဟုတ်၊ ကောင်တာငွေ မဟုတ်။ ဆေးပစ္စည်း **ထိန်းသိမ်းရေး** တွင် F5 သည် **မူကြမ်းသိမ်း** မဟုတ် — ဝင်းဒိုးပြန်ဖွင့်သည်။ မသိသော ကုဒ်ကို အရင်ဖန်တီးပါ။ လက်ကျန်နည်းနှင့် သက်တမ်းနီးသည် MAIN သာ။
-6. **အသုံးစရိတ် ဘေလ်** — F5 **မူကြမ်းသိမ်း**၊ F6 **ပရင့်**၊ F7 **ပေးပြီးမှတ်**။ **IPD သို့ တင်** မရှိ။ စတော့မလှုပ်။
+6. **အသုံးစရိတ် ဘေလ်** — F5 **မူကြမ်းသိမ်း**၊ F6 **ပရင့်**၊ F7 **ပေးပြီးမှတ်**။ **IPD သို့ တင်** မရှိ။ စတော့မလှုပ်။ **IPD ဘေလ်** မဟုတ်။
 7. **လူနာမှတ်တမ်း** — ရိုက်ထားသော အမည်သည် မှတ်တမ်းမဟုတ်။ **ဘေလ် တွဲရန်** တစ်စောင်။ စုစုပေါင်း၊ အခြေအနေ၊ စတော့၊ ငွေ မပြောင်း။ `TO-` တွဲမရ။
-8. **တက်ရောက်မှု** — F5 မနှိပ်ပါ (ဝင်းဒိုးပြန်ဖွင့်သည်)။ **တက်ခွင့်** တစ်ခု။ **အပ်ငွေ လက်ခံ**၊ **ဝပ်ကြေး တင်**၊ **မှတ်ချက်သိမ်း**။ **IPD သို့ တင်** သည် ဤစာမျက်နှာတွင် မဟုတ်။ **ဆင်းခွင့်ရှင်း** ပြီးလျှင် **လက်ကျန်ကို ပြန်အမ်း** / **ပေးရန်ကျန်ကို ကောက်** / **ငွေမထိ။ လက်ကျန် သုည**။ နောက်မှ အပ်ငွေနှင့် ကြေးတင်ခြင်း ငြင်းသည်။
+8. **တက်ရောက်မှု** — F5 မနှိပ်ပါ (ဝင်းဒိုးပြန်ဖွင့်သည်)။ **တက်ခွင့်** တစ်ခု။ **အပ်ငွေ လက်ခံ**၊ **မှတ်ချက်သိမ်း**။ အခန်းကြေးသည် **IPD ဘေလ်** တွင်။ F7 မရှိ။ **ဤနေ့ ပေးမည်** / **နောက်မှ ပေးမည်** / **ပေးထားမှု ပြန်ဖြုတ်** သည် နေ့စဉ်စာရင်းတွင်။ **ဆင်းခွင့်ရှင်း** သည် တက်ရောက်မှုတစ်ခုလုံးကို ရှင်းသည်။ မနေ့က ဆုံးဖြတ်ရန် ကျန်လျှင် လက်ကျန်ကို ကောက်မည် သို့မဟုတ် ပြန်အမ်းမည်။ ပြီးလျှင် **လက်ကျန်ကို ပြန်အမ်း** / **ပေးရန်ကျန်ကို ကောက်** / **ငွေမထိ။ လက်ကျန် သုည**။ နောက်မှ အပ်ငွေနှင့် ကြေးတင်ခြင်း ငြင်းသည်။
 9. **အစီရင်ခံစာ** — ကောင်တာနေ့စဉ်ငွေသည် **ပေးပြီး** ငွေသားဘေလ်။ **IPD သို့ တင်ပြီး** မပါ။ **IPD နေ့စဉ်ငွေ** သည် အပ်ငွေ၊ ကောက်ခံ၊ ပြန်အမ်း။
 10. **နေ့စဉ်** — မနက် **ဆာဗာ ချိတ်ဆက်ပြီး**။ Admin **အရန်သိမ်း**။ လေ့ကျင့်ဒေတာသည် ကောင်တာအဆင့် မဟုတ်။ **လူနာမှတ်တမ်း** နှင့် **တက်ရောက်မှု** မဖန်တီးပါ။

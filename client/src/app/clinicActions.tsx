@@ -12,6 +12,9 @@ export type ClinicActionFlags = {
   otCreate: boolean;
   otUpdate: boolean;
   otDelete: boolean;
+  labCreate: boolean;
+  labUpdate: boolean;
+  labDelete: boolean;
   patientsCreate: boolean;
   patientsUpdate: boolean;
   /** Unused-chart delete. The server still requires Admin, so the grant does not show it. */
@@ -45,6 +48,9 @@ export function clinicActionFlags(input: ClinicActionInput): ClinicActionFlags {
     otCreate: allowGrant(input, "ot.create", true),
     otUpdate: allowGrant(input, "ot.update", true),
     otDelete: allowGrant(input, "ot.delete", true),
+    labCreate: allowGrant(input, "lab.create", true),
+    labUpdate: allowGrant(input, "lab.update", true),
+    labDelete: allowGrant(input, "lab.delete", true),
     patientsCreate: allowGrant(input, "patients.create", true),
     patientsUpdate: allowGrant(input, "patients.update", true),
     patientsDelete: input.fullAdmin,
@@ -84,7 +90,12 @@ export function shortcutVisible(view: string, key: string, actions: ClinicAction
     if (key === "F8") return actions.pharmacyDelete;
     return true;
   }
-  if (view === "pharmacy_billing" || view === "pharmacy_return" || view === "pharmacy_transfer") {
+  if (
+    view === "pharmacy_billing" ||
+    view === "pharmacy_return" ||
+    view === "pharmacy_purchase" ||
+    view === "pharmacy_transfer"
+  ) {
     if (key === "F2" || key === "F5" || key === "F7") return actions.pharmacyCreate;
     if (deleteKey) return actions.pharmacyDelete;
     return true;
@@ -98,6 +109,11 @@ export function shortcutVisible(view: string, key: string, actions: ClinicAction
     if (key === "F5") return actions.otCreate || actions.otUpdate;
     if (key === "F2" || key === "F7") return actions.otCreate;
     if (deleteKey) return actions.otDelete;
+    return true;
+  }
+  if (view === "lab") {
+    if (key === "F2" || key === "F5" || key === "F7") return actions.labCreate;
+    if (deleteKey) return actions.labDelete;
     return true;
   }
   return true;

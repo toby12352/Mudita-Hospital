@@ -34,8 +34,8 @@ import {
   saleUnitsFromPack,
   type SaleUnit,
 } from "@/features/pharmacy/api";
-import { ActionIcon } from "@/shared/ActionIcon";
 import { getStoredUser } from "@/shared/auth";
+import { BillBtnIcon } from "@/shared/BillBtnIcon";
 import { BillDateField, formatUtcAsLocal, nowDatetimeLocal } from "@/shared/BillDateField";
 import { BillTotals } from "@/shared/BillTotals";
 import {
@@ -51,14 +51,15 @@ import {
   BillCollectNote,
   BillMarkPaidButton,
   BillPrintButton,
+  BillSaveDraftButton,
   moneyStatusLabel,
 } from "@/shared/BillPayPrint";
 import { userMessage } from "@/shared/errors";
-import { revealField } from "@/shared/FieldError";
 import { formatMMK } from "@/shared/format";
 import { Typeahead } from "@/shared/Typeahead";
 import { useClinicActions } from "@/app/clinicActions";
 import { useI18n } from "@/shared/i18n";
+import { useBillActionFeedback, useBillActionPending } from "@/shared/useActionLock";
 import { OtHistoryModal, type OtHistoryModalMode } from "./OtHistoryModal";
 
 /** Client-only cart order. Not sent to the API. */
@@ -108,16 +109,12 @@ export function OtPage() {
   const canSaveCase = otCreate || otUpdate;
   const [doctors, setDoctors] = useState<OtDoctor[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [okMsg, setOkMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const { action: pendingAction, pending, begin, end, isLocked } = useBillActionPending();
+  const { pulse, isOk, isErr } = useBillActionFeedback();
   const [dialog, setDialog] = useState<OtHistoryModalMode | null>(null);
   const [confirm, setConfirm] = useState<DeskConfirm | null>(null);
   const [printAfterPay, setPrintAfterPay] = useState<string | null>(null);
-  const okMsgRef = useRef<HTMLParagraphElement>(null);
-
-  useEffect(() => {
-    if (okMsg?.trim()) revealField(okMsgRef.current);
-  }, [okMsg]);
 
   const [caseId, setCaseId] = useState<number | null>(null);
   const [caseNo, setCaseNo] = useState("");
@@ -210,7 +207,6 @@ export function OtPage() {
     setCreatedAt(null);
     setBilledAtLocal(nowDatetimeLocal());
     setError(null);
-    setOkMsg(null);
   }
 
   function rememberOtOnHand(id: number, qty: number) {
@@ -348,7 +344,7 @@ export function OtPage() {
     );
   }
 
-  function addOtItem(item: OtCatalogItem, qty: number, unit: SaleUnit | null, foc = false) {
+  function addOtItem(item: OtCatalogItem, qty: number, unit: SaleUnit | null) {
     const units = saleUnitsFromPack(packFromItem(item), item.sell_price_mmk);
     const chosen = unit ?? (units.length === 1 ? units[0] : null);
     if (!chosen && units.length > 0) {
@@ -393,13 +389,13 @@ export function OtPage() {
         qty_returned: 0,
         qty_wasted: 0,
         qty_kept_on_floor: 0,
-        foc: foc ? 1 : 0,
+        foc: 0,
       },
     ]);
     setError(null);
   }
 
-  function addOtService(svc: OtService, foc = false) {
+  function addOtService(svc: OtService) {
     const seq = takeSeq();
     setServices((prev) => [
       ...prev,
@@ -410,7 +406,7 @@ export function OtPage() {
         description: svc.name,
         qty: 1,
         unit_price_mmk: svc.price_mmk,
-        foc: foc ? 1 : 0,
+        foc: 0,
       },
     ]);
     setError(null);
@@ -526,8 +522,10 @@ export function OtPage() {
     return true;
   }
 
+
   async function saveDraft() {
     if (blockMissingPatientName()) return;
+    if (!begin("saveDraft")) return;
     setBusy(true);
     setError(null);
     try {
@@ -553,14 +551,16 @@ export function OtPage() {
         const updated = await updateOtBill(otBillId, serviceLines, discount);
         setBill(updated);
         setServices(stampServiceSeqs(servicesFromBill(updated)));
-        setOkMsg(`${t("saved")} ${updated.bill_no}`);
+        pulse("saveDraft", "ok");
       } else {
-        setOkMsg(`${t("saved")} ${c.case_no}`);
+        pulse("saveDraft", "ok");
       }
     } catch (e) {
+      pulse("saveDraft", "err");
       setError(e instanceof Error ? e.message : "Save failed");
     } finally {
       setBusy(false);
+      end();
     }
   }
 
@@ -621,7 +621,6 @@ export function OtPage() {
     setServices(stampServiceSeqs(servicesFromBill(b)));
     setOtBillId(b.id);
     setCaseStatus("billed");
-    setOkMsg(`${t("saved")} ${b.bill_no}`);
     return b;
   }
 
@@ -640,15 +639,16 @@ export function OtPage() {
   }
 
   async function doPrint() {
+    if (!begin("print")) return;
     setBusy(true);
     setError(null);
-    setOkMsg(null);
     try {
       const b = await ensureBillReady();
       if (!b) return;
       const billId = b.id;
       if (b.status === "paid") {
         await printOtBill(billId, paidReceiptPreviewOpts(b.bill_no));
+        pulse("print", "ok");
         return;
       }
       if (b.status !== "draft") {
@@ -656,19 +656,21 @@ export function OtPage() {
       }
       const stamped = await markOtBillPrinted(billId);
       setBill(stamped);
-      setOkMsg(t("printedReceiptReady").replace("{bill}", stamped.bill_no));
       await printOtBill(billId, printedReceiptPreviewOpts(stamped.bill_no));
+      pulse("print", "ok");
     } catch (e) {
+      pulse("print", "err");
       setError(e instanceof Error ? e.message : "Print failed");
     } finally {
       setBusy(false);
+      end();
     }
   }
 
   async function doMarkPaid() {
+    if (!begin("markPaid")) return;
     setBusy(true);
     setError(null);
-    setOkMsg(null);
     try {
       const b = await ensureBillReady();
       if (!b) return;
@@ -678,20 +680,22 @@ export function OtPage() {
       }
       const paid = await payOtBill(b.id);
       setBill(paid);
-      setOkMsg(t("paidReceiptReady").replace("{bill}", paid.bill_no));
+      pulse("markPaid", "ok");
       setPrintAfterPay(paid.bill_no);
     } catch (e) {
+      pulse("markPaid", "err");
       setError(e instanceof Error ? e.message : "Pay failed");
     } finally {
       setBusy(false);
+      end();
     }
   }
 
   async function doChargeToIpd() {
     if (openAdmissionId == null) return;
+    if (!begin("chargeIpd")) return;
     setBusy(true);
     setError(null);
-    setOkMsg(null);
     try {
       const b = await ensureBillReady();
       if (!b) return;
@@ -701,11 +705,13 @@ export function OtPage() {
       }
       const paid = await payOtBill(b.id, openAdmissionId);
       setBill(paid);
-      setOkMsg(t("chargedToIpdReady").replace("{bill}", paid.bill_no));
+      pulse("chargeIpd", "ok");
     } catch (e) {
+      pulse("chargeIpd", "err");
       setError(e instanceof Error ? e.message : "Pay failed");
     } finally {
       setBusy(false);
+      end();
     }
   }
 
@@ -759,21 +765,31 @@ export function OtPage() {
     if (!c.ot_bill_id) {
       throw new Error("No bill to void");
     }
-    const b = await voidOtBill(c.ot_bill_id, reason);
-    setOkMsg(t("voidOtDone").replace("{bill}", b.bill_no));
-    if (otBillId === c.ot_bill_id) {
-      setBill(b);
-      setCaseStatus("draft");
-      setOtBillId(null);
+    try {
+      const b = await voidOtBill(c.ot_bill_id, reason);
+      if (otBillId === c.ot_bill_id) {
+        setBill(b);
+        setCaseStatus("draft");
+        setOtBillId(null);
+      }
+      pulse("void", "ok");
+    } catch (e) {
+      pulse("void", "err");
+      throw e;
     }
   }
 
   async function purgeFromHistory(caseRowId: number) {
-    await purgeOtCase(caseRowId);
-    if (caseId === caseRowId) {
-      resetCaseForm();
+    try {
+      await purgeOtCase(caseRowId);
+      if (caseId === caseRowId) {
+        resetCaseForm();
+      }
+      pulse("purge", "ok");
+    } catch (e) {
+      pulse("purge", "err");
+      throw e;
     }
-    setOkMsg(t("billPurged"));
   }
 
   useEffect(() => {
@@ -782,39 +798,40 @@ export function OtPage() {
       if (document.querySelector(".print-preview-overlay")) return;
       if (document.querySelector(".alert-dialog-overlay")) return;
       const key = e.key;
+      const blocked = busy || isLocked();
       if (key === "F5") {
         e.preventDefault();
-        if (!busy && isDraft && canSaveCase) void saveDraft();
+        if (!blocked && isDraft && canSaveCase) void saveDraft();
         return;
       }
       if (key === "F6") {
         e.preventDefault();
-        if (!busy) void doPrint();
+        if (!blocked) void doPrint();
         return;
       }
       if (key === "F7") {
         e.preventDefault();
-        if (!busy && isDraft && otCreate) void doMarkPaid();
+        if (!blocked && isDraft && otCreate) void doMarkPaid();
         return;
       }
       if (key === "F9") {
         e.preventDefault();
-        if (!busy) setDialog("history");
+        if (!blocked) setDialog("history");
         return;
       }
       if (key === "F8" && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
-        if (!busy && otDelete) setDialog("delete");
+        if (!blocked && otDelete) setDialog("delete");
         return;
       }
       if (key === "F10") {
         e.preventDefault();
-        if (!busy) doCancelForm();
+        if (!blocked) doCancelForm();
         return;
       }
       if (key === "F2") {
         e.preventDefault();
-        if (!busy && otCreate) doNewBill();
+        if (!blocked && otCreate) doNewBill();
       }
     }
     window.addEventListener("keydown", onKey);
@@ -1146,16 +1163,17 @@ export function OtPage() {
                 setServices((prev) => prev.filter((_, i) => i !== kind.index));
               }
             }}
-            onClearFoc={(index) => {
+            onFocChange={(index, foc) => {
               const kind = otKinds[index];
               if (!kind || kind.kind === "fee") return;
+              const flag = foc ? 1 : 0;
               if (kind.kind === "item") {
                 setItems((prev) =>
-                  prev.map((it, i) => (i === kind.index ? { ...it, foc: 0 } : it)),
+                  prev.map((it, i) => (i === kind.index ? { ...it, foc: flag } : it)),
                 );
               } else {
                 setServices((prev) =>
-                  prev.map((s, i) => (i === kind.index ? { ...s, foc: 0 } : s)),
+                  prev.map((s, i) => (i === kind.index ? { ...s, foc: flag } : s)),
                 );
               }
             }}
@@ -1186,13 +1204,12 @@ export function OtPage() {
                     })),
                   packFor: (item) => formatPackCompact(packFromItem(item)),
                   packTitleFor: (item) => formatPackPreview(packFromItem(item)),
-                  onCommit: (item, qty, unit, foc) => {
+                  onCommit: (item, qty, unit) => {
                     const units = saleUnitsFromPack(packFromItem(item), item.sell_price_mmk);
                     addOtItem(
                       item,
                       qty,
                       unit ? (units.find((u) => u.id === unit.id) ?? null) : null,
-                      foc,
                     );
                   },
                   onSubmitCode: lookupOtItem,
@@ -1228,7 +1245,7 @@ export function OtPage() {
                   ),
                   unitsFor: () => [],
                   commitOnPick: true,
-                  onCommit: (svc, _qty, _unit, foc) => addOtService(svc, foc),
+                  onCommit: (svc) => addOtService(svc),
                   onSubmitCode: lookupOtService,
                 },
                 {
@@ -1268,11 +1285,6 @@ export function OtPage() {
             />
           </div>
 
-          {okMsg ? (
-            <p ref={okMsgRef} className="form-ok" role="status">
-              {okMsg}
-            </p>
-          ) : null}
         </div>
 
         <aside className="opd-bill-rail" aria-label={t("billActions")}>
@@ -1280,31 +1292,38 @@ export function OtPage() {
             <BillMarkPaidButton
               status={bill?.status ?? "draft"}
               busy={busy}
+              pending={pending && pendingAction === "markPaid"}
+              success={isOk("markPaid")}
+              fail={isErr("markPaid")}
               onClick={() => void doMarkPaid()}
             />
           ) : null}
           {otCreate && isDraft && openAdmissionId != null ? (
-            <BillChargeToIpdButton busy={busy} onClick={() => void doChargeToIpd()} />
+            <BillChargeToIpdButton
+              busy={busy}
+              pending={pending && pendingAction === "chargeIpd"}
+              success={isOk("chargeIpd")}
+              fail={isErr("chargeIpd")}
+              onClick={() => void doChargeToIpd()}
+            />
           ) : null}
           <BillPrintButton
             status={bill?.status ?? "draft"}
             busy={busy}
+            pending={pending && pendingAction === "print"}
+            success={isOk("print")}
+            fail={isErr("print")}
             onClick={() => void doPrint()}
           />
           {canSaveCase ? (
-            <button
-              type="button"
-              className="opd-bill-rail-btn"
-              disabled={busy || !isDraft}
+            <BillSaveDraftButton
+              busy={busy}
+              enabled={isDraft}
+              pending={pending && pendingAction === "saveDraft"}
+              success={isOk("saveDraft")}
+              fail={isErr("saveDraft")}
               onClick={() => void saveDraft()}
-              data-guide="bill-save-draft"
-            >
-              <span className="opd-bill-rail-btn-main">
-                <ActionIcon name="check" />
-                <span>{t("saveDraft")}</span>
-              </span>
-              <kbd>F5</kbd>
-            </button>
+            />
           ) : null}
           <button
             type="button"
@@ -1314,7 +1333,7 @@ export function OtPage() {
             data-guide="bill-history"
           >
             <span className="opd-bill-rail-btn-main">
-              <ActionIcon name="history" />
+              <BillBtnIcon name="history" />
               <span>{t("history")}</span>
             </span>
             <kbd>F9</kbd>
@@ -1322,13 +1341,13 @@ export function OtPage() {
           {otDelete ? (
             <button
               type="button"
-              className="opd-bill-rail-btn opd-bill-rail-btn--danger"
+              className={`opd-bill-rail-btn opd-bill-rail-btn--danger${isErr("void") ? " opd-bill-rail-btn--shake" : ""}`}
               disabled={busy}
               onClick={() => setDialog("delete")}
               data-guide="bill-void"
             >
               <span className="opd-bill-rail-btn-main">
-                <ActionIcon name="trash" />
+                <BillBtnIcon name="trash" success={isOk("void")} />
                 <span>{t("vDelete")}</span>
               </span>
               <kbd>^F8</kbd>
@@ -1337,12 +1356,12 @@ export function OtPage() {
           {billPurge ? (
             <button
               type="button"
-              className="opd-bill-rail-btn opd-bill-rail-btn--danger"
+              className={`opd-bill-rail-btn opd-bill-rail-btn--danger${isErr("purge") ? " opd-bill-rail-btn--shake" : ""}`}
               disabled={busy}
               onClick={() => setDialog("purge")}
             >
               <span className="opd-bill-rail-btn-main">
-                <ActionIcon name="trash" />
+                <BillBtnIcon name="trash" success={isOk("purge")} />
                 <span>{t("delete")}</span>
               </span>
             </button>
@@ -1360,7 +1379,7 @@ export function OtPage() {
             data-guide="bill-new"
           >
             <span className="opd-bill-rail-btn-main">
-              <ActionIcon name="plus" />
+              <BillBtnIcon name="plus" />
               <span>{t("newBill")}</span>
             </span>
             <kbd>F2</kbd>

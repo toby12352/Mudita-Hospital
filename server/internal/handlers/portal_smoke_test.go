@@ -78,7 +78,8 @@ func TestPortalRoleIsolation(t *testing.T) {
 
 	t.Run("ot role can be created", func(t *testing.T) {
 		w := doJSON(users, http.MethodPost, "/api/users", adminTok, `{
-			"username":"otdesk2","display_name":"OT Two","role":"OT","password":"secret1"
+			"username":"otdesk2","display_name":"OT Two","password":"secret1",
+			"grants":["ot.read","ot.create","ot.update","ot.delete"]
 		}`)
 		mustCode(t, w, http.StatusCreated)
 	})

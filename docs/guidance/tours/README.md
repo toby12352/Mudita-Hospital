@@ -9,9 +9,9 @@ Roles are the logins that may open the lesson. A desk login only sees its own mo
 | Id | Roles | File | Depends on | Anchors |
 |---|---|---|---|---|
 | bill-buttons | Admin, OPD, OT, Pharmacy, and IPD. IPD only has the expense rail, so the Charge to IPD step skips. Patients has no bill rail. | [bill-buttons.md](bill-buttons.md) | none | `bill-save-draft`, `bill-print`, `bill-mark-paid`, `bill-charge-ipd`, `bill-void`, `bill-history`, `bill-new`, `bill-cancel` |
-| charge-to-ipd | Admin, OPD, OT, and Pharmacy, on a sale desk. IPD does not show this button. Patients has no bill rail. Not on Return in. | [charge-to-ipd.md](charge-to-ipd.md) | bill-buttons, ipd-stay | `bill-charge-ipd`, `bill-mark-paid` |
+| charge-to-ipd | Admin, OPD, OT, and Pharmacy, on a sale desk. IPD Bill’s first button uses the same label and is taught on ipd-stay. Patients has no bill rail. Not on Return in. | [charge-to-ipd.md](charge-to-ipd.md) | bill-buttons, ipd-stay | `bill-charge-ipd`, `bill-mark-paid` |
 | patient-chart | Admin and Patients. OPD, OT, Pharmacy, and IPD do not open Patient Charts. | [patient-chart.md](patient-chart.md) | none | `patient-create`, `patient-search`, `patient-attach` |
-| ipd-stay | Admin and IPD. Patients, OPD, OT, and Pharmacy do not open Stays. | [ipd-stay.md](ipd-stay.md) | patient-chart | `ipd-admit`, `ipd-take-deposit`, `ipd-ward-charge` |
+| ipd-stay | Admin and IPD. Patients, OPD, OT, and Pharmacy do not open Stays. | [ipd-stay.md](ipd-stay.md) | patient-chart | `ipd-admit`, `ipd-take-deposit`, `ipd-bill` |
 | ipd-discharge | Admin and IPD. Patients, OPD, OT, and Pharmacy do not open Stays. | [ipd-discharge.md](ipd-discharge.md) | ipd-stay | `ipd-discharge` |
 | pharmacy-item | Admin and Pharmacy. OPD, OT, Patients, and IPD do not open Drug Setup. | [pharmacy-item.md](pharmacy-item.md) | none | `pharmacy-pack`, `pharmacy-restock` |
 | pharmacy-return | Admin and Pharmacy. OPD, OT, Patients, and IPD do not open Return in. | [pharmacy-return.md](pharmacy-return.md) | bill-buttons | `bill-save-draft`, `bill-print`, `pharmacy-return-mark` |

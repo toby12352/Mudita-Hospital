@@ -769,7 +769,9 @@ func (h *OPD) purgeBill(w http.ResponseWriter, r *http.Request, path string) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "ledger purge failed"})
 		return
 	}
-	res, err := tx.Exec(`DELETE FROM opd_bills WHERE id = ?`, id)
+	res, err := tx.Exec(`
+		UPDATE opd_bills SET status = 'deleted', updated_at = datetime('now') WHERE id = ?
+	`, id)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "delete failed"})
 		return
@@ -785,7 +787,7 @@ func (h *OPD) purgeBill(w http.ResponseWriter, r *http.Request, path string) {
 	}
 	uid := user.ID
 	audit.WriteAudit(h.DB, &uid, "delete", "opd_bill", &id, map[string]any{
-		"bill_no": billNo, "was_status": status, "total_mmk": totalMMK,
+		"bill_no": billNo, "was_status": status, "status": "deleted", "total_mmk": totalMMK,
 	})
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
@@ -826,6 +828,9 @@ func (h *OPD) voidBill(w http.ResponseWriter, r *http.Request, path string) {
 	}
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "load failed"})
+		return
+	}
+	if rejectDeletedBill(w, status) {
 		return
 	}
 	if status == "void" {

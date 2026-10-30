@@ -1,0 +1,661 @@
+import { useEffect, useRef, useState } from "react";
+import {
+  createLabBill,
+  findLabServiceByCode,
+  getLabBill,
+  listLabDoctors,
+  listLabServices,
+  markLabBillPrinted,
+  payLabBill,
+  printLabBill,
+  purgeLabBill,
+  updateLabBill,
+  voidLabBill,
+  type LabBillLine,
+  type LabDoctor,
+  type LabService,
+} from "@/features/lab/api";
+import type { PatientChart } from "@/features/patients/api";
+import { useOpenAdmission } from "@/features/patients/useOpenAdmission";
+import {
+  discountFieldsFromBill,
+  discountWrite,
+  type DiscountUnit,
+} from "@/shared/discount";
+import { AlertDialog } from "@/shared/AlertDialog";
+import { formatUtcAsLocal, nowDatetimeLocal } from "@/shared/BillDateField";
+import { userMessage } from "@/shared/errors";
+import { getStoredUser } from "@/shared/auth";
+import { useClinicActions } from "@/app/clinicActions";
+import { useI18n } from "@/shared/i18n";
+import { useBillActionFeedback, useBillActionPending } from "@/shared/useActionLock";
+import { LabBillForm } from "@/pages/lab/LabBillForm";
+import {
+  LabBillListDialog,
+  type LabBillListDialogMode,
+} from "@/pages/lab/LabBillListDialog";
+
+type DeskConfirm = "cancel" | "newBill";
+
+/** Lab Bill always opens the desk form; history replaces the old list. */
+export function LabPage(_props: { initialMode?: "list" | "edit" } = {}) {
+  const { t } = useI18n();
+  const { labCreate, labDelete, billPurge } = useClinicActions();
+  const [doctors, setDoctors] = useState<LabDoctor[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const { action: pendingAction, pending, begin, end, isLocked } = useBillActionPending();
+  const { feedback, pulse } = useBillActionFeedback();
+  const [dialog, setDialog] = useState<LabBillListDialogMode | null>(null);
+  const [confirm, setConfirm] = useState<DeskConfirm | null>(null);
+  const [printAfterPay, setPrintAfterPay] = useState<string | null>(null);
+
+  const [billId, setBillId] = useState<number | null>(null);
+  const [billNo, setBillNo] = useState("");
+  const [billStatus, setBillStatus] = useState("draft");
+  const [printedAt, setPrintedAt] = useState<string | null>(null);
+  const [collectedCash, setCollectedCash] = useState<number | null>(null);
+  const [patientId, setPatientId] = useState<number | null>(null);
+  const [linkedChartId, setLinkedChartId] = useState<number | null>(null);
+  const [patientName, setPatientName] = useState("");
+  const patientNameRef = useRef<HTMLInputElement>(null);
+  const [patientPhone, setPatientPhone] = useState("");
+  const [patientAge, setPatientAge] = useState("");
+  const [patientGender, setPatientGender] = useState("");
+  const [doctorId, setDoctorId] = useState("");
+  const [doctorName, setDoctorName] = useState("");
+  const [description, setDescription] = useState("");
+  const [lines, setLines] = useState<LabBillLine[]>([]);
+  const [discountValue, setDiscountValue] = useState("");
+  const [discountUnit, setDiscountUnit] = useState<DiscountUnit>("percent");
+  const [createdAt, setCreatedAt] = useState<string | null>(null);
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  const [billedAtLocal, setBilledAtLocal] = useState(() => nowDatetimeLocal());
+  const isAdmin = getStoredUser()?.role === "Admin";
+  const dateEditable = isAdmin && billId == null;
+
+  const isDraft = billStatus === "draft";
+  const openAdmissionId = useOpenAdmission(linkedChartId);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const docList = await listLabDoctors();
+        if (!cancelled) setDoctors(docList);
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : "Load failed");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (createdAt) return;
+    const id = window.setInterval(() => setNowTick(Date.now()), 30_000);
+    return () => window.clearInterval(id);
+  }, [createdAt]);
+
+  function resetEditor() {
+    setBillId(null);
+    setPrintedAt(null);
+    setCollectedCash(null);
+    setBillNo("");
+    setBillStatus("draft");
+    setPatientId(null);
+    setLinkedChartId(null);
+    setPatientName("");
+    setPatientPhone("");
+    setPatientAge("");
+    setPatientGender("");
+    setDoctorId("");
+    setDoctorName("");
+    setDescription("");
+    setLines([]);
+    setDiscountValue("");
+    setDiscountUnit("percent");
+    setCreatedAt(null);
+    setBilledAtLocal(nowDatetimeLocal());
+    setError(null);
+  }
+
+  async function openBill(id: number) {
+    setBusy(true);
+    setError(null);
+    try {
+      const b = await getLabBill(id);
+      setBillId(b.id);
+      setBillNo(b.bill_no);
+      setBillStatus(b.status);
+      setPrintedAt(b.printed_at ?? null);
+      setCollectedCash(b.collected_cash ?? null);
+      setPatientId(b.patient_id ?? null);
+      setLinkedChartId(b.patient_id ?? null);
+      setPatientName(b.patient_name);
+      setPatientPhone(b.patient_phone);
+      setPatientAge(b.patient_age_years != null ? String(b.patient_age_years) : "");
+      setPatientGender(b.patient_gender);
+      setDoctorId(b.doctor_id != null ? String(b.doctor_id) : "");
+      setDoctorName(b.doctor_name || "");
+      setDescription(b.description);
+      setCreatedAt(b.created_at);
+      setLines(
+        (b.lines ?? []).map((l) => ({
+          ...l,
+          line_total_mmk: l.qty * l.unit_price_mmk,
+        })),
+      );
+      const discount = discountFieldsFromBill(b.discount_value, b.discount_unit);
+      setDiscountValue(discount.value);
+      setDiscountUnit(discount.unit);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Open failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function buildBody() {
+    const age = patientAge.trim() ? Number(patientAge) : null;
+    return {
+      patient_name: patientName.trim(),
+      patient_phone: patientPhone.trim(),
+      patient_age_years: age != null && Number.isFinite(age) ? age : null,
+      patient_gender: patientGender.trim(),
+      doctor_id: doctorId ? Number(doctorId) : null,
+      doctor_name: doctorName.trim(),
+      description: description.trim(),
+      save_patient: true,
+      ...(linkedChartId != null ? { patient_id: linkedChartId } : {}),
+      ...discountWrite(discountValue, discountUnit),
+      ...(dateEditable && billedAtLocal ? { billed_at: billedAtLocal } : {}),
+      lines: lines.map((l, i) => {
+        const qty = Math.max(1, Math.floor(Number(l.qty)) || 1);
+        return {
+          line_type: l.line_type,
+          ref_id: l.ref_id ?? null,
+          code: l.code,
+          description: l.description,
+          qty,
+          unit_price_mmk: l.unit_price_mmk,
+          line_total_mmk: qty * l.unit_price_mmk,
+          sort_order: i,
+          foc: l.foc === 1 ? 1 : 0,
+        };
+      }),
+    };
+  }
+
+  function applySavedBill(b: {
+    id: number;
+    bill_no: string;
+    status: string;
+    printed_at?: string | null;
+    collected_cash?: number | null;
+    patient_id?: number | null;
+    created_at: string;
+    lines?: LabBillLine[];
+    discount_value?: number;
+    discount_unit?: string;
+  }) {
+    setBillId(b.id);
+    setBillNo(b.bill_no);
+    setBillStatus(b.status);
+    setPrintedAt(b.printed_at ?? null);
+    setCollectedCash(b.collected_cash ?? null);
+    setPatientId(b.patient_id ?? null);
+    setLinkedChartId(b.patient_id ?? null);
+    setCreatedAt(b.created_at);
+    setLines(
+      (b.lines ?? []).map((l) => ({
+        ...l,
+        line_total_mmk: l.qty * l.unit_price_mmk,
+      })),
+    );
+    const discount = discountFieldsFromBill(b.discount_value, b.discount_unit);
+    setDiscountValue(discount.value);
+    setDiscountUnit(discount.unit);
+  }
+
+  function onPatientName(v: string) {
+    setPatientName(v);
+    setLinkedChartId(null);
+  }
+
+  function pickPatient(p: PatientChart) {
+    setLinkedChartId(p.id);
+    setPatientId(p.id);
+    setPatientName(p.name);
+    setPatientPhone(p.phone || "");
+    setPatientAge(p.age_years != null ? String(p.age_years) : "");
+    setPatientGender(p.gender || "");
+  }
+
+  function clearLinkedPatient() {
+    setLinkedChartId(null);
+    setPatientId(null);
+    setPatientName("");
+    setPatientPhone("");
+    setPatientAge("");
+    setPatientGender("");
+    window.setTimeout(() => patientNameRef.current?.focus(), 0);
+  }
+
+  function pickDoctor(d: LabDoctor) {
+    setDoctorId(String(d.id));
+    setDoctorName(d.name);
+  }
+
+  function addLabService(svc: LabService, qty: number) {
+    const n = Math.max(1, Math.floor(qty) || 1);
+    setLines((prev) => [
+      ...prev,
+      {
+        line_type: "service",
+        ref_id: svc.id,
+        code: svc.code,
+        description: svc.name,
+        qty: n,
+        unit_price_mmk: svc.price_mmk,
+        line_total_mmk: n * svc.price_mmk,
+        foc: 0,
+      },
+    ]);
+  }
+
+  async function saveDraft(): Promise<number | null> {
+    if (!patientName.trim()) {
+      const el = patientNameRef.current;
+      if (el && !el.disabled) {
+        if (patientName !== "") setPatientName("");
+        if (el.value !== "") el.value = "";
+        el.reportValidity();
+        return null;
+      }
+      throw new Error(userMessage("Patient name required"));
+    }
+    const body = buildBody();
+    const b = billId ? await updateLabBill(billId, body) : await createLabBill(body);
+    applySavedBill(b);
+    return b.id;
+  }
+
+  async function doConfirm() {
+    if (!isDraft) return;
+    if (!begin("saveDraft")) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const id = await saveDraft();
+      if (id != null) pulse("saveDraft", "ok");
+    } catch (e) {
+      pulse("saveDraft", "err");
+      setError(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setBusy(false);
+      end();
+    }
+  }
+
+  function paidReceiptPreviewOpts(billNoPaid: string) {
+    return {
+      title: t("receiptPaidTitle").replace("{bill}", billNoPaid),
+      note: t("receiptAlreadyPaidNote"),
+    };
+  }
+
+  function printedReceiptPreviewOpts(billNoPrinted: string) {
+    return {
+      title: t("receiptPrintedTitle").replace("{bill}", billNoPrinted),
+      note: t("receiptPrintedNote"),
+    };
+  }
+
+  async function doPrint() {
+    if (!begin("print")) return;
+    setBusy(true);
+    setError(null);
+    try {
+      let id = billId;
+      if (billStatus === "paid" && id) {
+        await printLabBill(id, paidReceiptPreviewOpts(billNo));
+        pulse("print", "ok");
+        return;
+      }
+      if (!isDraft) {
+        throw new Error(userMessage("Only draft or paid bills can be printed"));
+      }
+      if (lines.length === 0) throw new Error(userMessage("Add at least one line"));
+      id = await saveDraft();
+      if (id == null) return;
+      const stamped = await markLabBillPrinted(id);
+      applySavedBill(stamped);
+      await printLabBill(id, printedReceiptPreviewOpts(stamped.bill_no));
+      pulse("print", "ok");
+    } catch (e) {
+      pulse("print", "err");
+      setError(e instanceof Error ? e.message : "Print failed");
+    } finally {
+      setBusy(false);
+      end();
+    }
+  }
+
+  async function doMarkPaid() {
+    if (!begin("markPaid")) return;
+    setBusy(true);
+    setError(null);
+    try {
+      if (billStatus === "paid") return;
+      if (!isDraft) {
+        throw new Error(userMessage("Only draft bills can be paid"));
+      }
+      if (lines.length === 0) throw new Error(userMessage("Add at least one line"));
+      const id = await saveDraft();
+      if (id == null) return;
+      const paid = await payLabBill(id);
+      applySavedBill(paid);
+      pulse("markPaid", "ok");
+      setPrintAfterPay(paid.bill_no);
+    } catch (e) {
+      pulse("markPaid", "err");
+      setError(e instanceof Error ? e.message : "Pay failed");
+    } finally {
+      setBusy(false);
+      end();
+    }
+  }
+
+  async function doChargeToIpd() {
+    if (openAdmissionId == null) return;
+    if (!begin("chargeIpd")) return;
+    setBusy(true);
+    setError(null);
+    try {
+      if (billStatus === "paid") return;
+      if (!isDraft) {
+        throw new Error(userMessage("Only draft bills can be paid"));
+      }
+      if (lines.length === 0) throw new Error(userMessage("Add at least one line"));
+      const id = await saveDraft();
+      if (id == null) return;
+      const paid = await payLabBill(id, openAdmissionId);
+      applySavedBill(paid);
+      pulse("chargeIpd", "ok");
+    } catch (e) {
+      pulse("chargeIpd", "err");
+      setError(e instanceof Error ? e.message : "Pay failed");
+    } finally {
+      setBusy(false);
+      end();
+    }
+  }
+
+  async function doVoidSelected(id: number, reason: string) {
+    try {
+      await voidLabBill(id, reason);
+      if (billId === id) {
+        await openBill(id);
+      }
+      pulse("void", "ok");
+    } catch (e) {
+      pulse("void", "err");
+      throw e;
+    }
+  }
+
+  async function doPurgeSelected(id: number) {
+    try {
+      await purgeLabBill(id);
+      if (billId === id) {
+        resetEditor();
+      }
+      pulse("purge", "ok");
+    } catch (e) {
+      pulse("purge", "err");
+      throw e;
+    }
+  }
+
+  function doCancel() {
+    setConfirm("cancel");
+  }
+
+  function focusBillPatient() {
+    window.requestAnimationFrame(() => {
+      document.querySelector<HTMLInputElement>('[data-focus="bill-patient"]')?.focus();
+    });
+  }
+
+  function doNewBill() {
+    const finished = billStatus === "paid" || billStatus === "void";
+    if (!finished) {
+      const dirty =
+        Boolean(patientName.trim()) || lines.length > 0 || billId != null || Boolean(billNo);
+      if (dirty) {
+        setConfirm("newBill");
+        return;
+      }
+    }
+    resetEditor();
+    focusBillPatient();
+  }
+
+  function runConfirm() {
+    if (confirm === "cancel") {
+      setConfirm(null);
+      resetEditor();
+      return;
+    }
+    if (confirm === "newBill") {
+      setConfirm(null);
+      resetEditor();
+      focusBillPatient();
+    }
+  }
+
+  function printAfterMarkPaid() {
+    setPrintAfterPay(null);
+    void doPrint();
+  }
+
+  async function addByCode(code: string): Promise<LabService | null> {
+    const trimmed = code.trim();
+    if (!trimmed) return null;
+    setError(null);
+    try {
+      const svc = await findLabServiceByCode(trimmed);
+      if (svc) return svc;
+      setError(t("labServiceCodeNotFound").replace("{code}", trimmed));
+      return null;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Lookup failed");
+      return null;
+    }
+  }
+
+  async function loadLabServiceSuggestions(term: string): Promise<LabService[]> {
+    return (await listLabServices(term)).slice(0, 8);
+  }
+
+  function updateLineQty(index: number, qtyStr: string) {
+    const trimmed = qtyStr.trim();
+    const qty = trimmed === "" ? 0 : Math.floor(Number(trimmed));
+    if (trimmed !== "" && (!Number.isFinite(qty) || qty < 0)) return;
+    setLines((prev) => {
+      const line = prev[index];
+      if (!line) return prev;
+      const next = [...prev];
+      next[index] = {
+        ...line,
+        qty,
+        line_total_mmk: qty * line.unit_price_mmk,
+      };
+      return next;
+    });
+  }
+
+  function commitLineQty(index: number, qty: number) {
+    const n = Math.floor(qty);
+    if (!Number.isFinite(n) || n < 1) return;
+    updateLineQty(index, String(n));
+  }
+
+  function removeLine(index: number) {
+    setLines((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function setLineFoc(index: number, foc: boolean) {
+    setLines((prev) =>
+      prev.map((line, i) => (i === index ? { ...line, foc: foc ? 1 : 0 } : line)),
+    );
+  }
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (dialog) return;
+      if (document.querySelector(".print-preview-overlay")) return;
+      if (document.querySelector(".alert-dialog-overlay")) return;
+
+      const key = e.key;
+      const blocked = busy || isLocked();
+      if (key === "F5") {
+        e.preventDefault();
+        if (!blocked && isDraft && labCreate) void doConfirm();
+        return;
+      }
+      if (key === "F6") {
+        e.preventDefault();
+        if (!blocked) void doPrint();
+        return;
+      }
+      if (key === "F7") {
+        e.preventDefault();
+        if (!blocked && isDraft && labCreate) void doMarkPaid();
+        return;
+      }
+      if (key === "F9") {
+        e.preventDefault();
+        if (!blocked) setDialog("history");
+        return;
+      }
+      if (key === "F8" && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        if (!blocked && labDelete) setDialog("delete");
+        return;
+      }
+      if (key === "F10") {
+        e.preventDefault();
+        if (!blocked) doCancel();
+        return;
+      }
+      if (key === "F2") {
+        e.preventDefault();
+        if (!blocked && labCreate) doNewBill();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // Intentional: handlers close over latest state each render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- shortcut wiring
+  }, [dialog, busy, isDraft, billId, billStatus, billNo, lines, patientName, linkedChartId, discountValue, discountUnit, labCreate, labDelete]);
+
+  const displayWhen = formatUtcAsLocal(createdAt, nowTick);
+
+  return (
+    <>
+      <LabBillForm
+        billId={billId}
+        billNo={billNo}
+        billStatus={billStatus}
+        printedAt={printedAt}
+        collectedCash={collectedCash}
+        patientId={patientId}
+        patientName={patientName}
+        patientPhone={patientPhone}
+        patientAge={patientAge}
+        patientGender={patientGender}
+        doctorId={doctorId}
+        doctorName={doctorName}
+        description={description}
+        lines={lines}
+        doctors={doctors}
+        displayWhen={displayWhen}
+        dateEditable={dateEditable}
+        billedAtLocal={billedAtLocal}
+        onBilledAtLocal={setBilledAtLocal}
+        busy={busy}
+        pendingAction={pending ? pendingAction : null}
+        feedback={feedback}
+        error={error}
+        isDraft={isDraft}
+        discountValue={discountValue}
+        discountUnit={discountUnit}
+        onDiscountValue={setDiscountValue}
+        onDiscountUnit={setDiscountUnit}
+        onDismissError={() => setError(null)}
+        patientNameRef={patientNameRef}
+        onPatientName={onPatientName}
+        onPickPatient={pickPatient}
+        onClearPatient={clearLinkedPatient}
+        onPatientPhone={setPatientPhone}
+        onPatientAge={setPatientAge}
+        onPatientGender={setPatientGender}
+        onDoctorName={setDoctorName}
+        onClearDoctorId={() => setDoctorId("")}
+        onPickDoctor={pickDoctor}
+        onDescription={setDescription}
+        onCommitService={(s, qty) => {
+          setError(null);
+          addLabService(s, qty);
+        }}
+        onLookupService={addByCode}
+        loadServiceSuggestions={loadLabServiceSuggestions}
+        onCommitLineQty={commitLineQty}
+        onRemoveLine={removeLine}
+        onFocChange={setLineFoc}
+        onPrint={() => void doPrint()}
+        onMarkPaid={() => void doMarkPaid()}
+        onChargeToIpd={isDraft && openAdmissionId != null ? () => void doChargeToIpd() : undefined}
+        onConfirm={() => void doConfirm()}
+        onHistory={() => setDialog("history")}
+        onDelete={() => setDialog("delete")}
+        onPurge={billPurge ? () => setDialog("purge") : undefined}
+        onCancel={doCancel}
+        onNewBill={doNewBill}
+      />
+      {dialog ? (
+        <LabBillListDialog
+          mode={dialog}
+          onClose={() => setDialog(null)}
+          onOpen={(id) => void openBill(id)}
+          onVoid={doVoidSelected}
+          onPurge={doPurgeSelected}
+        />
+      ) : null}
+      {confirm ? (
+        <AlertDialog
+          tone="warning"
+          title={t("clear")}
+          message={confirm === "cancel" ? t("confirmCancelBill") : t("confirmNewBill")}
+          confirmLabel={t("clear")}
+          onClose={() => setConfirm(null)}
+          onConfirm={runConfirm}
+        />
+      ) : null}
+      {printAfterPay ? (
+        <AlertDialog
+          tone="print"
+          title={t("paid")}
+          message={t("paidPrintPrompt").replace("{bill}", printAfterPay)}
+          confirmLabel={t("print")}
+          onClose={() => setPrintAfterPay(null)}
+          onConfirm={printAfterMarkPaid}
+        />
+      ) : null}
+    </>
+  );
+}
+

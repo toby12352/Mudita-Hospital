@@ -333,9 +333,9 @@ func patientHasRecordedService(tx *sql.Tx, patientID int64) (bool, string) {
 		query  string
 		reason string
 	}{
-		{`SELECT 1 FROM opd_bills WHERE patient_id = ? LIMIT 1`, "patient has recorded vouchers"},
-		{`SELECT 1 FROM pharmacy_bills WHERE patient_id = ? AND bill_no NOT LIKE 'TO-%' LIMIT 1`, "patient has recorded vouchers"},
-		{`SELECT 1 FROM ot_cases WHERE patient_id = ? LIMIT 1`, "patient has recorded vouchers"},
+		{`SELECT 1 FROM opd_bills WHERE patient_id = ? AND status != 'deleted' LIMIT 1`, "patient has recorded vouchers"},
+		{`SELECT 1 FROM pharmacy_bills WHERE patient_id = ? AND bill_no NOT LIKE 'TO-%' AND status != 'deleted' LIMIT 1`, "patient has recorded vouchers"},
+		{`SELECT 1 FROM ot_cases WHERE patient_id = ? AND status != 'deleted' LIMIT 1`, "patient has recorded vouchers"},
 		{`SELECT 1 FROM ipd_admissions WHERE patient_id = ? LIMIT 1`, "patient has recorded vouchers"},
 	}
 	for _, c := range checks {

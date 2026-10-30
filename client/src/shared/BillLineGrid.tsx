@@ -19,6 +19,8 @@ export type BillLineGridRow = {
   packLabel?: string;
   /** Longer packing sentence, shown as the cell tooltip. */
   packTitle?: string;
+  /** Purchase cart: expiry shown in its own column (YYYY-MM-DD). */
+  expiryLabel?: string;
   priceMmk: number | null;
   amountMmk: number;
   /** Qty and unit stay as text (consultation, doctor fee, mixed legacy pack). */
@@ -98,7 +100,7 @@ export type BillLineGridEntry<T> = {
   unitsFor: (item: T) => BillLineUnitOption[];
   /** Pick adds the row immediately with qty 1. */
   commitOnPick?: boolean;
-  onCommit: (item: T, qty: number, unit: BillLineUnitOption | null, foc: boolean) => void;
+  onCommit: (item: T, qty: number, unit: BillLineUnitOption | null) => void;
   /** Enter on an exact code while the suggestion menu is closed. */
   onSubmitCode?: (code: string) => Promise<T | null>;
 };
@@ -142,6 +144,10 @@ type GridProps = {
   draft: boolean;
   showUnitColumn?: boolean;
   showPackColumn?: boolean;
+  /** Purchase cart: Expiry Date between packing and qty. */
+  showExpiryColumn?: boolean;
+  /** When false, omit Amount (purchase price is the line total). Default true. */
+  showAmountColumn?: boolean;
   showFoc?: boolean;
   itemHeader: string;
   priceHeader: string;
@@ -152,8 +158,8 @@ type GridProps = {
   onPriceCommit?: (index: number, priceMmk: number | null) => boolean | void;
   onUnitChange?: (index: number, unitId: string) => void;
   onRemove: (index: number) => void;
-  /** Drop FOC only; the priced line stays. */
-  onClearFoc?: (index: number) => void;
+  /** Toggle free-of-charge on a cart line; the priced line stays. */
+  onFocChange?: (index: number, foc: boolean) => void;
   entries?: BillLineEntryNode[];
 };
 
@@ -169,6 +175,8 @@ export function BillLineGrid({
   draft,
   showUnitColumn = false,
   showPackColumn = false,
+  showExpiryColumn = false,
+  showAmountColumn = true,
   showFoc = false,
   itemHeader,
   priceHeader,
@@ -178,7 +186,7 @@ export function BillLineGrid({
   onPriceCommit,
   onUnitChange,
   onRemove,
-  onClearFoc,
+  onFocChange,
   entries = [],
 }: GridProps) {
   const { t } = useI18n();
@@ -189,14 +197,18 @@ export function BillLineGrid({
   const focusSearchRef = useRef(false);
   const prevSnapRef = useRef<RowSnapshot[] | null>(null);
   const [selectedKey, setSelectedKey] = useState(entries[0]?.key ?? "");
-  const gridClass = [
-    "opd-bill-grid",
-    showUnitColumn ? "opd-bill-grid--units" : "",
-    showPackColumn ? "opd-bill-grid--pack" : "",
-    showFoc ? "opd-bill-grid--foc" : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
+  const purchaseColumns =
+    showExpiryColumn && showPackColumn && showUnitColumn && !showAmountColumn && !showFoc;
+  const gridClass = purchaseColumns
+    ? "opd-bill-grid opd-bill-grid--purchase"
+    : [
+        "opd-bill-grid",
+        showUnitColumn ? "opd-bill-grid--units" : "",
+        showPackColumn ? "opd-bill-grid--pack" : "",
+        showFoc ? "opd-bill-grid--foc" : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
 
   useEffect(() => {
     if (entries.length === 0) return;
@@ -271,11 +283,12 @@ export function BillLineGrid({
       <div className="opd-bill-grid-head">
         <span>{itemHeader}</span>
         {showPackColumn ? <span>{t("packingSize")}</span> : null}
+        {showExpiryColumn ? <span>{t("expiry")}</span> : null}
         <span className="num">{t("qty")}</span>
         {showUnitColumn ? <span>{t("unit")}</span> : null}
         <span className="num">{priceHeader}</span>
-        <span className="num">{t("amount")}</span>
-        {showFoc ? <span className="num">{t("foc")}</span> : null}
+        {showAmountColumn ? <span className="num">{t("amount")}</span> : null}
+        {showFoc ? <span className="bill-line-foc-head">{t("foc")}</span> : null}
         <span />
       </div>
       <div className="opd-bill-grid-body" ref={bodyRef}>
@@ -287,7 +300,10 @@ export function BillLineGrid({
             draft={draft}
             showUnitColumn={showUnitColumn}
             showPackColumn={showPackColumn}
+            showExpiryColumn={showExpiryColumn}
+            showAmountColumn={showAmountColumn}
             showFoc={showFoc}
+            priceHeader={priceHeader}
             onQtyCommit={(qty) => onQtyCommit(index, qty)}
             onPriceCommit={
               onPriceCommit ? (price) => onPriceCommit(index, price) : undefined
@@ -296,7 +312,9 @@ export function BillLineGrid({
               onUnitChange ? (unitId) => onUnitChange(index, unitId) : undefined
             }
             onRemove={() => onRemove(index)}
-            onClearFoc={onClearFoc ? () => onClearFoc(index) : undefined}
+            onFocChange={
+              onFocChange ? (foc) => onFocChange(index, foc) : undefined
+            }
           />
         ))}
       </div>
@@ -378,23 +396,29 @@ function CommittedRow({
   draft,
   showUnitColumn,
   showPackColumn,
+  showExpiryColumn,
+  showAmountColumn,
   showFoc,
+  priceHeader,
   onQtyCommit,
   onPriceCommit,
   onUnitChange,
   onRemove,
-  onClearFoc,
+  onFocChange,
 }: {
   row: BillLineGridRow;
   draft: boolean;
   showUnitColumn: boolean;
   showPackColumn: boolean;
+  showExpiryColumn: boolean;
+  showAmountColumn: boolean;
   showFoc: boolean;
+  priceHeader: string;
   onQtyCommit: (qty: number) => boolean | void;
   onPriceCommit?: (priceMmk: number | null) => boolean | void;
   onUnitChange?: (unitId: string) => void;
   onRemove: () => void;
-  onClearFoc?: () => void;
+  onFocChange?: (foc: boolean) => void;
 }) {
   const { t } = useI18n();
   const editable = draft && !row.locked;
@@ -402,7 +426,10 @@ function CommittedRow({
   const units = row.units ?? [];
   const canChangeUnit = editable && units.length > 1 && !!onUnitChange;
   const priceEditable = draft && !!row.priceEditable && !!onPriceCommit;
-  const showCompanion = !!row.foc && row.priceMmk != null;
+  const focDefined = typeof row.foc === "boolean";
+  const focOn = focDefined && row.foc;
+  const showCompanion = focOn && row.priceMmk != null;
+  const focToggleable = draft && focDefined && !!onFocChange;
 
   return (
     <>
@@ -414,6 +441,9 @@ function CommittedRow({
           <span className="bill-line-pack" title={row.packTitle || row.packLabel || undefined}>
             {row.packLabel ?? ""}
           </span>
+        ) : null}
+        {showExpiryColumn ? (
+          <span className="bill-line-expiry">{row.expiryLabel ?? ""}</span>
         ) : null}
         <span className="num">
           {qtyEditable ? (
@@ -446,7 +476,7 @@ function CommittedRow({
           {priceEditable ? (
             <PriceField
               priceMmk={row.priceMmk}
-              ariaLabel={t("fees")}
+              ariaLabel={priceHeader}
               onCommit={onPriceCommit}
             />
           ) : row.priceMmk == null ? (
@@ -455,8 +485,25 @@ function CommittedRow({
             formatMMK(row.priceMmk)
           )}
         </span>
-        <span className="num">{row.priceMmk == null ? "" : formatMMK(row.amountMmk)}</span>
-        {showFoc ? <span className="num" /> : null}
+        {showAmountColumn ? (
+          <span className="num">{row.priceMmk == null ? "" : formatMMK(row.amountMmk)}</span>
+        ) : null}
+        {showFoc ? (
+          <span className="bill-line-cell bill-line-foc-cell">
+            {focDefined ? (
+              <label className="bill-line-foc-label">
+                <input
+                  type="checkbox"
+                  className="bill-line-foc-check"
+                  checked={focOn}
+                  disabled={!focToggleable}
+                  aria-label={t("foc")}
+                  onChange={(e) => onFocChange?.(e.target.checked)}
+                />
+              </label>
+            ) : null}
+          </span>
+        ) : null}
         <span>
           {draft && row.removable !== false ? (
             <button type="button" className="btn ghost danger" aria-label={t("delete")} onClick={onRemove}>
@@ -469,23 +516,15 @@ function CommittedRow({
         <div className="opd-bill-grid-row bill-line-foc" data-row-key={`${row.key}-foc`}>
           <span className="bill-line-title">{t("foc")}</span>
           {showPackColumn ? <span className="bill-line-pack" /> : null}
+          {showExpiryColumn ? <span className="bill-line-expiry" /> : null}
           <span className="num" />
           {showUnitColumn ? <span className="bill-line-cell" /> : null}
           <span className="num" />
-          <span className="num">{formatMMK(-row.amountMmk)}</span>
-          {showFoc ? <span className="num" /> : null}
-          <span>
-            {draft && onClearFoc ? (
-              <button
-                type="button"
-                className="btn ghost danger"
-                aria-label={t("delete")}
-                onClick={onClearFoc}
-              >
-                <ActionIcon name="trash" />
-              </button>
-            ) : null}
-          </span>
+          {showAmountColumn ? (
+            <span className="num">{formatMMK(-row.amountMmk)}</span>
+          ) : null}
+          {showFoc ? <span className="bill-line-cell bill-line-foc-cell" /> : null}
+          <span />
         </div>
       ) : null}
     </>
@@ -617,12 +656,10 @@ function EntryRow<T>({
   const submitSeq = useRef(0);
   const pickedRef = useRef<T | null>(null);
   const unitIdRef = useRef("");
-  const focRef = useRef(false);
   const [text, setText] = useState("");
   const [picked, setPicked] = useState<T | null>(null);
   const [qty, setQty] = useState("");
   const [unitId, setUnitId] = useState("");
-  const [foc, setFoc] = useState(false);
 
   const units = picked ? entry.unitsFor(picked) : [];
   const needsUnit = showUnitColumn && units.length > 0;
@@ -632,14 +669,19 @@ function EntryRow<T>({
 
   pickedRef.current = picked;
   unitIdRef.current = unitId;
-  focRef.current = foc;
 
   useEffect(() => {
     if (!pickedKey) {
       if (focusSearchRef.current) {
         focusSearchRef.current = false;
         const active = document.activeElement;
-        if (active == null || active === document.body) {
+        const stillInEntry =
+          active instanceof Node && !!rowRef.current?.contains(active);
+        if (
+          stillInEntry ||
+          active == null ||
+          active === document.body
+        ) {
           inputRef.current?.focus();
         }
       }
@@ -683,17 +725,15 @@ function EntryRow<T>({
     submitSeq.current += 1;
     pickedRef.current = null;
     unitIdRef.current = "";
-    focRef.current = false;
     setPicked(null);
     setQty("");
     setText("");
     setUnitId("");
-    setFoc(false);
   }
 
   function commitPicked(item: T, n: number, unit: BillLineUnitOption | null) {
     pickedRef.current = null;
-    entry.onCommit(item, n, unit, focRef.current);
+    entry.onCommit(item, n, unit);
     resetEntry();
   }
 
@@ -878,19 +918,7 @@ function EntryRow<T>({
       ) : null}
       <span className="num" />
       <span className="num" />
-      {showFoc ? (
-        <span className="bill-line-cell bill-line-foc-cell">
-          <label className="bill-line-foc-label">
-            <input
-              type="checkbox"
-              className="bill-line-foc-check"
-              checked={foc}
-              aria-label={t("foc")}
-              onChange={(e) => setFoc(e.target.checked)}
-            />
-          </label>
-        </span>
-      ) : null}
+      {showFoc ? <span className="bill-line-cell bill-line-foc-cell" /> : null}
       <span />
     </div>
   );

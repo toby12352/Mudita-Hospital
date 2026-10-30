@@ -88,12 +88,20 @@ func TestIpdStatementDaysAndDaily(t *testing.T) {
 		"12A",
 		"day-one",
 		"08:30",
-		">Day total</td><td>1,000 MMK</td>",
+		">Deposited Fee</th>",
+		">To Pay</th>",
+		">Difference</th>",
+		`>Deposit</td><td>day-one</td><td class="a4-time">08:30</td><td class="col-amt">1,000</td><td class="col-amt"></td><td class="col-amt">1,000</td>`,
+		">Day deposited</td><td>1,000 MMK</td>",
+		">Day to pay</td><td>0 MMK</td>",
 		">ပိုငွေ</td><td>1,000 MMK</td>",
 	} {
 		if !strings.Contains(jan1, want) {
 			t.Fatalf("1 Jan daily missing %q:\n%s", want, jan1)
 		}
+	}
+	if strings.Contains(jan1, ">MMK</th>") || strings.Contains(jan1, "Day total") {
+		t.Fatalf("1 Jan daily kept the single MMK column:\n%s", jan1)
 	}
 	if strings.Contains(jan1, "boundary") || strings.Contains(jan1, "00:30") || strings.Contains(jan1, `class="a4-day"`) {
 		t.Fatalf("1 Jan daily included the next Yangon day:\n%s", jan1)
@@ -106,15 +114,17 @@ func TestIpdStatementDaysAndDaily(t *testing.T) {
 		"IPD DAILY STATEMENT",
 		"boundary",
 		"00:30",
-		">Day total</td><td>-400 MMK</td>",
-		">ပိုငွေ</td><td>600 MMK</td>",
+		`>Ward</td><td>boundary</td><td class="a4-time">00:30</td><td class="col-amt"></td><td class="col-amt">400</td><td class="col-amt">-400</td>`,
+		">Day deposited</td><td>0 MMK</td>",
+		">Day to pay</td><td>400 MMK</td>",
+		">လိုငွေ</td><td>400 MMK</td>",
 	} {
 		if !strings.Contains(jan2, want) {
 			t.Fatalf("2 Jan daily missing %q:\n%s", want, jan2)
 		}
 	}
-	if strings.Contains(jan2, "day-one") {
-		t.Fatalf("2 Jan daily included 1 Jan:\n%s", jan2)
+	if strings.Contains(jan2, "day-one") || strings.Contains(jan2, "ပိုငွေ") {
+		t.Fatalf("2 Jan daily included 1 Jan or a carry without a stored voucher:\n%s", jan2)
 	}
 
 	w = doJSON(ipd, http.MethodGet, path+"?date=2026-01-03", token, "")
@@ -122,15 +132,19 @@ func TestIpdStatementDaysAndDaily(t *testing.T) {
 	emptyDay := w.Body.String()
 	for _, want := range []string{
 		"No lines on this date.",
-		">Day total</td><td>0 MMK</td>",
-		">ပိုငွေ</td><td>600 MMK</td>",
+		">Deposited Fee</th>",
+		">To Pay</th>",
+		">Difference</th>",
+		">Day deposited</td><td>0 MMK</td>",
+		">Day to pay</td><td>0 MMK</td>",
+		">ပိုငွေ</td><td>0 MMK</td>",
 	} {
 		if !strings.Contains(emptyDay, want) {
 			t.Fatalf("empty day missing %q:\n%s", want, emptyDay)
 		}
 	}
-	if strings.Contains(emptyDay, "day-one") || strings.Contains(emptyDay, "boundary") {
-		t.Fatalf("empty day listed lines:\n%s", emptyDay)
+	if strings.Contains(emptyDay, "day-one") || strings.Contains(emptyDay, "boundary") || strings.Contains(emptyDay, "600") {
+		t.Fatalf("empty day listed lines or a carry without a stored voucher:\n%s", emptyDay)
 	}
 
 	w = doJSON(ipd, http.MethodGet, path+"?date=2026-13-01", token, "")
@@ -208,5 +222,100 @@ func TestIpdStatementDaysAndDaily(t *testing.T) {
 	}
 	if strings.Contains(owingHTML, "ပိုငွေ") {
 		t.Fatalf("owing stay should not print ပိုငွေ:\n%s", owingHTML)
+	}
+	if strings.Contains(owingHTML, "Deposited Fee") || strings.Contains(owingHTML, ">To Pay</th>") {
+		t.Fatalf("final statement picked up the daily columns:\n%s", owingHTML)
+	}
+}
+
+func TestIpdDailyStatementOpeningDue(t *testing.T) {
+	sqlDB := openTestDB(t)
+	_, token := insertSession(t, sqlDB, "Admin", 0)
+	charts := &Patients{DB: sqlDB}
+	ipd := &IPD{DB: sqlDB}
+
+	w := doJSON(charts, http.MethodPost, "/api/patients", token, `{"name":"Daw Carry","phone":"095555"}`)
+	mustCode(t, w, http.StatusCreated)
+	chart := decodePatient(t, w)
+	w = doJSON(ipd, http.MethodPost, "/api/ipd/admissions", token, fmt.Sprintf(`{"patient_id":%d}`, chart.ID))
+	mustCode(t, w, http.StatusCreated)
+	stay := decodeAdmission(t, w)
+	if _, err := sqlDB.Exec(`
+		INSERT INTO ipd_day_vouchers (admission_id, civil_date, status, closing_mmk)
+		VALUES (?, '2026-06-01', 'credit', -30000)
+	`, stay.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sqlDB.Exec(`
+		INSERT INTO ipd_ledger (admission_id, kind, amount_mmk, note, created_at)
+		VALUES (?, 'ward', -10000, 'nursing', '2026-06-02 02:00:00')
+	`, stay.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	w = doJSON(ipd, http.MethodGet, "/api/ipd/admissions/"+strconv.FormatInt(stay.ID, 10)+"/statement?date=2026-06-02", token, "")
+	mustCode(t, w, http.StatusOK)
+	page := w.Body.String()
+	opening := `>လိုငွေ</td><td></td><td class="a4-time"></td><td class="col-amt"></td><td class="col-amt">30,000</td><td class="col-amt">-30,000</td>`
+	ward := `>Ward</td><td>nursing</td><td class="a4-time">08:30</td><td class="col-amt"></td><td class="col-amt">10,000</td><td class="col-amt">-40,000</td>`
+	for _, want := range []string{
+		"IPD DAILY STATEMENT",
+		">Deposited Fee</th>",
+		">To Pay</th>",
+		">Difference</th>",
+		opening,
+		ward,
+		">Day deposited</td><td>0 MMK</td>",
+		">Day to pay</td><td>40,000 MMK</td>",
+		`class="emph"><td>လိုငွေ</td><td>40,000 MMK</td>`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("opening due sheet missing %q:\n%s", want, page)
+		}
+	}
+	if strings.Index(page, opening) > strings.Index(page, ward) {
+		t.Fatalf("opening row is not first:\n%s", page)
+	}
+	if strings.Contains(page, ">MMK</th>") || strings.Contains(page, "Day total") {
+		t.Fatalf("opening due sheet kept the final column layout:\n%s", page)
+	}
+
+	w = doJSON(ipd, http.MethodGet, "/api/ipd/admissions/"+strconv.FormatInt(stay.ID, 10)+"/statement", token, "")
+	mustCode(t, w, http.StatusOK)
+	finalHTML := w.Body.String()
+	if !strings.Contains(finalHTML, ">MMK</th>") || strings.Contains(finalHTML, "Deposited Fee") {
+		t.Fatalf("final statement changed:\n%s", finalHTML)
+	}
+	if !strings.Contains(finalHTML, ">လိုငွေ</td><td>10,000 MMK</td>") {
+		t.Fatalf("final statement should keep the stay balance:\n%s", finalHTML)
+	}
+}
+
+func TestIpdDailyStatementRefusesIssuedPrior(t *testing.T) {
+	sqlDB := openTestDB(t)
+	_, token := insertSession(t, sqlDB, "Admin", 0)
+	charts := &Patients{DB: sqlDB}
+	ipd := &IPD{DB: sqlDB}
+
+	w := doJSON(charts, http.MethodPost, "/api/patients", token, `{"name":"U Issued","phone":"096666"}`)
+	mustCode(t, w, http.StatusCreated)
+	chart := decodePatient(t, w)
+	w = doJSON(ipd, http.MethodPost, "/api/ipd/admissions", token, fmt.Sprintf(`{"patient_id":%d}`, chart.ID))
+	mustCode(t, w, http.StatusCreated)
+	stay := decodeAdmission(t, w)
+	if _, err := sqlDB.Exec(`
+		INSERT INTO ipd_day_vouchers (admission_id, civil_date, status, closing_mmk)
+		VALUES (?, '2026-07-01', 'issued', -1000)
+	`, stay.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	w = doJSON(ipd, http.MethodGet, "/api/ipd/admissions/"+strconv.FormatInt(stay.ID, 10)+"/statement?date=2026-07-02", token, "")
+	mustCode(t, w, http.StatusConflict)
+	if !strings.Contains(w.Body.String(), "still issued") {
+		t.Fatalf("issued prior body %s", w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), "IPD DAILY STATEMENT") {
+		t.Fatalf("issued prior still printed a sheet:\n%s", w.Body.String())
 	}
 }

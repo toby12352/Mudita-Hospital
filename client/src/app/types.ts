@@ -6,15 +6,18 @@ export type View =
   | "pharmacy"
   | "pharmacy_billing"
   | "pharmacy_return"
+  | "pharmacy_purchase"
   | "pharmacy_transfer"
   | "pharmacy_expense"
   | "opd"
+  | "lab"
   | "ot"
   | "patients"
   | "ipd"
+  | "ipd_bill"
   | "ipd_expense"
   | "reports";
-export type PortalId = "opd" | "ot" | "pharmacy" | "patients" | "ipd" | "settings";
+export type PortalId = "opd" | "ot" | "pharmacy" | "patients" | "ipd" | "settings" | "lab";
 export type NavSectionId =
   | "portals"
   | "home"
@@ -24,19 +27,24 @@ export type NavSectionId =
   | "admin_opd"
   | "admin_ot"
   | "admin_pharmacy"
+  | "admin_lab"
   | "opd"
   | "opd_expense"
   | "opd_maintenance"
+  | "lab"
+  | "lab_maintenance"
   | "ot_bill"
   | "ot_expense"
   | "ot_stock"
   | "pharmacy"
   | "pharmacy_expense"
   | "pharmacy_return"
+  | "pharmacy_purchase"
   | "pharmacy_transfer"
   | "patients"
   | "patients_create"
   | "ipd"
+  | "ipd_bill"
   | "ipd_expense"
   | "stock"
   | "settings";
@@ -60,6 +68,7 @@ export type NavIntent = {
   otMode?: "case" | "stock" | "expense";
   pharmacyScreen?: PharmacyScreen;
   opdScreen?: OpdScreen;
+  labScreen?: "bill" | "services";
   patientsScreen?: PatientsScreen;
   patientsFocusId?: number;
 };

@@ -178,6 +178,12 @@ export function PharmacyItemForm({
     (doneRels.length > 0 && lastChild === smallestUnit.trim());
 
   const showPriceGrid = !!(levels && packValid && childMatches);
+  const savedQtyKey = useMemo(() => {
+    if (!editing) return null;
+    return packLevelsFromItemPack(packFromItem(editing)).qtys.join(",");
+  }, [editing]);
+  const packQtyChanged =
+    savedQtyKey != null && levels != null && levels.qtys.join(",") !== savedQtyKey;
 
   const initialUnits = useMemo(() => {
     if (!pack || !childMatches) return [] as SaleUnit[];
@@ -403,6 +409,9 @@ export function PharmacyItemForm({
 
     let pricesFailed = false;
     if (!editing && !packingFailed && (buyOuter <= 0 || sellSmallest <= 0)) {
+      pricesFailed = true;
+    }
+    if (editing && packQtyChanged && !packingFailed && buyOuter <= 0) {
       pricesFailed = true;
     }
 
@@ -807,10 +816,23 @@ export function PharmacyItemForm({
             disabled={busy}
             unitLabel={unitLabel}
             required={!editing}
+            purchaseRequired={packQtyChanged}
+            editQtyKey={editing ? (savedQtyKey ?? "") : undefined}
+            editBuyOuter={editing?.buy_price_mmk ?? 0}
+            editSellSmallest={editing?.sell_price_mmk ?? 0}
             syncToken={editing?.id ?? "new"}
           />
         ) : attempted && doneRels.length > 0 && !childMatches ? (
           <p className="hint">{t("packChildMustMatch")}</p>
+        ) : null}
+        {packQtyChanged ? (
+          <p
+            ref={pricesErrorRef}
+            className={attempted && buyOuter <= 0 ? "form-error" : "hint"}
+            role={attempted && buyOuter <= 0 ? "alert" : undefined}
+          >
+            {t("packQtyBuyReset")}
+          </p>
         ) : null}
         {pricesError ? (
           <p ref={pricesErrorRef} className="form-error" role="alert">

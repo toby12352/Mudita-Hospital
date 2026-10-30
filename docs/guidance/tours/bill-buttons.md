@@ -1,7 +1,7 @@
 # Tour: bill-buttons
 
 - Id: bill-buttons
-- Roles: Admin, OPD, OT, Pharmacy, and IPD. IPD only has the expense rail, so the Charge to IPD step skips. Patients has no bill rail.
+- Roles: Admin, OPD, OT, Pharmacy, and IPD. On IPD Bill the Mark Paid step skips and Charge to IPD is the first button. On the IPD expense rail the Charge to IPD step skips. Patients has no bill rail.
 - Depends on: none
 - Opens: the sale desk already on screen. Do not switch views during this lesson. OPD Bill is view `opd` with `opdScreen: "bill"`. OT Bill is view `ot` with `otMode: "case"`. Pharmacy Bill (sale) is view `pharmacy_billing` with `billingMode: "edit"`. Expense bill is view `opd` with `opdScreen: "expense"`, view `ot` with `otMode: "expense"`, view `pharmacy_expense`, or view `ipd_expense`. Do not open Return in (`pharmacy_return`) or Transfer to OT (`pharmacy_transfer`) for this lesson.
 - Mode: point and explain. Clicks on the highlighted control stay off. This lesson does not tell staff to press Mark Paid or Charge to IPD.
@@ -11,7 +11,7 @@
 
 ### 1. save-draft
 - Anchor to add later: data-guide="bill-save-draft"
-- Where the control is now: `client/src/pages/opd/OpdBillForm.tsx`, `client/src/pages/ot/OtPage.tsx`, `client/src/pages/pharmacy/PharmacyBillForm.tsx`, and `client/src/pages/expenses/ExpenseBillPage.tsx`, each rendering `saveDraft`. Key F5. Shown only when that desk’s create action is allowed.
+- Where the control is now: `client/src/pages/opd/OpdBillForm.tsx`, `client/src/pages/ot/OtPage.tsx`, `client/src/pages/pharmacy/PharmacyBillForm.tsx`, `client/src/pages/expenses/ExpenseBillPage.tsx`, and `client/src/pages/ipd/IpdChargeBillPage.tsx`, each rendering `saveDraft`. Key F5. Shown only when that desk’s create action is allowed.
 - Placement: left
 - Title EN: Save draft
 - Title MY: မူကြမ်းသိမ်း
@@ -44,18 +44,18 @@
 
 ### 4. charge-to-ipd
 - Anchor to add later: data-guide="bill-charge-ipd"
-- Where the control is now: `client/src/shared/BillPayPrint.tsx` (`BillChargeToIpdButton`), i18n `chargeToIpd`, subtitle `chargeToIpdSub`. No function key. Passed in only from `client/src/pages/opd/OpdPage.tsx`, `client/src/pages/ot/OtPage.tsx`, and `client/src/pages/pharmacy/PharmacyBillingPage.tsx` when the bill is still a draft and the linked chart has an open stay. The same component on Return in can render `creditToIpd` instead; that label is not this step.
+- Where the control is now: `client/src/shared/BillPayPrint.tsx` (`BillChargeToIpdButton`), i18n `chargeToIpd`, subtitle `chargeToIpdSub`. No function key. On a sale it is passed in from `client/src/pages/opd/OpdPage.tsx`, `client/src/pages/ot/OtPage.tsx`, and `client/src/pages/pharmacy/PharmacyBillingPage.tsx` when the bill is still a draft and the linked chart has an open stay. On IPD Bill it is the first button in `client/src/pages/ipd/IpdChargeBillPage.tsx`, and that page has no Mark Paid. The same component on Return in can render `creditToIpd` instead; that label is not this step. F7 does not charge the stay.
 - Placement: left
 - Title EN: Charge to IPD
 - Title MY: IPD သို့ တင်
-- Body EN: Charge to IPD (IPD သို့ တင်) has no function key, and the subtitle is Not desk cash (ကောင်တာငွေ မဟုတ်). It shows only on a draft OPD, OT, or pharmacy sale when the chosen chart has an open stay; a typed name, an expense bill, Return in, and Transfer to OT do not show it, and F7 does not charge the stay.
-- Body MY: Charge to IPD (IPD သို့ တင်) တွင် ဖန်ရှင်ကီးမရှိဘဲ ခေါင်းစဉ်ခွဲသည် Not desk cash (ကောင်တာငွေ မဟုတ်) ဖြစ်သည်။ မူကြမ်း OPD၊ OT၊ သို့မဟုတ် ဆေးဆိုင်အရောင်းတွင် ရွေးထားသောမှတ်တမ်း၌ ဖွင့်ထားသော တက်ရောက်မှုရှိမှသာ ပေါ်ပြီး၊ စာရိုက်အမည်၊ အသုံးစရိတ်၊ Return in၊ Transfer to OT တို့တွင် မပေါ်သလို F7 သည်လည်း တက်ရောက်မှုသို့ မတင်ပါ။
+- Body EN: Charge to IPD (IPD သို့ တင်) has no function key, and the subtitle is Not desk cash (ကောင်တာငွေ မဟုတ်). On a draft OPD, OT, or pharmacy sale it shows when the chosen chart has an open stay. On IPD Bill (IPD ဘေလ်) it is the first button, and that page has no Mark Paid (ပေးပြီးမှတ်). A typed name, an expense bill, Return in, and Transfer to OT do not show it, and F7 does not charge the stay.
+- Body MY: Charge to IPD (IPD သို့ တင်) တွင် ဖန်ရှင်ကီးမရှိဘဲ ခေါင်းစဉ်ခွဲသည် Not desk cash (ကောင်တာငွေ မဟုတ်) ဖြစ်သည်။ မူကြမ်း OPD၊ OT၊ သို့မဟုတ် ဆေးဆိုင်အရောင်းတွင် ရွေးထားသောမှတ်တမ်း၌ ဖွင့်ထားသော တက်ရောက်မှုရှိမှ ပေါ်သည်။ IPD Bill (IPD ဘေလ်) တွင် ပထမခလုတ်ဖြစ်ပြီး ထိုစာမျက်နှာ၌ Mark Paid (ပေးပြီးမှတ်) မရှိပါ။ စာရိုက်အမည်၊ အသုံးစရိတ်၊ Return in၊ Transfer to OT တို့တွင် မပေါ်သလို F7 သည်လည်း တက်ရောက်မှုသို့ မတင်ပါ။
 - Must not press: Charge to IPD
 - If the control is missing: skip this step
 
 ### 5. void
 - Anchor to add later: data-guide="bill-void"
-- Where the control is now: the same four desk files as Save draft, rendering `vDelete` (“Void Bills” / “ဘေလ်ပယ်ဖျက်”), not the unused key `voidBill`. Footer key is Ctrl+F8 or Cmd+F8; the footer text is `^F8`. The reason field is `voidReason`. The empty-reason hint is `voidReasonRequired`. The history dialog’s confirm button is `delete`. Shown only when delete is allowed.
+- Where the control is now: the same desk files as Save draft, including IPD Bill, rendering `vDelete` (“Void Bills” / “ဘေလ်ပယ်ဖျက်”), not the unused key `voidBill`. Footer key is Ctrl+F8 or Cmd+F8; the footer text is `^F8`. The reason field is `voidReason`. The empty-reason hint is `voidReasonRequired`. The history dialog’s confirm button is `delete`. Shown only when delete is allowed.
 - Placement: left
 - Title EN: Void Bills
 - Title MY: ဘေလ်ပယ်ဖျက်
