@@ -4,11 +4,11 @@ import {
   type FocusEvent as ReactFocusEvent,
   type KeyboardEvent,
   useEffect,
-  useId,
   useMemo,
   useRef,
   useState,
 } from "react";
+import { getGuideRun, subscribeGuide } from "@/features/guidance/guideControl";
 import { labelOtBatch, listOtStock, returnOtStock, type OtStockBatch } from "@/features/ot/api";
 import {
   formatPackCompact,
@@ -22,9 +22,14 @@ import {
 import { useClinicActions } from "@/app/clinicActions";
 import { ActionIcon } from "@/shared/ActionIcon";
 import { matchesActive, type ActiveFilterValue } from "@/shared/ActiveFilter";
-import { CatalogFilterButton, CatalogFilterPanel } from "@/shared/CatalogListFilter";
+import {
+  BillHistoryToolbar,
+  type BillHistoryQuery,
+  type BillHistoryStatusOption,
+} from "@/shared/BillHistoryToolbar";
 import { DatePicker } from "@/shared/DatePicker";
-import { sortByDateAscDesc, type DateSortValue } from "@/shared/DateSort";
+import { DialogCloseButton } from "@/shared/DialogCloseButton";
+import { sortByDateAscDesc } from "@/shared/DateSort";
 import { useI18n } from "@/shared/i18n";
 
 type CupboardItem = {
@@ -105,58 +110,107 @@ function openUnitSelect(el: HTMLSelectElement | null) {
   }, 0);
 }
 
-export function OtStockPage() {
+function emptyListQuery(): BillHistoryQuery {
+  return { q: "", money: "", category: "", unit: "", from: "", to: "", sort: "desc" };
+}
+
+function activeFromMoney(money: string): ActiveFilterValue {
+  if (money === "active") return "active";
+  if (money === "inactive") return "inactive";
+  return "all";
+}
+
+export function OtStockPage({
+  onBrowseChange,
+}: {
+  onBrowseChange?: (browsing: boolean) => void;
+} = {}) {
   const { t } = useI18n();
   const { otCreate, otUpdate } = useClinicActions();
   const [batches, setBatches] = useState<OtStockBatch[]>([]);
-  const [filterOpen, setFilterOpen] = useState(false);
-  const filterPanelId = useId();
-  const [filterQ, setFilterQ] = useState("");
-  const [activeFilter, setActiveFilter] = useState<ActiveFilterValue>("all");
-  const [dateSort, setDateSort] = useState<DateSortValue>("desc");
+  const [listLoading, setListLoading] = useState(true);
+  const [listQuery, setListQuery] = useState<BillHistoryQuery>(emptyListQuery);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const detailTitleRef = useRef<HTMLHeadingElement>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
+  const returnListFocusIdRef = useRef<number | null>(null);
+  const [guideLessonId, setGuideLessonId] = useState<string | null>(
+    () => getGuideRun()?.lessonId ?? null,
+  );
+  const [guideStepIndex, setGuideStepIndexState] = useState(
+    () => getGuideRun()?.stepIndex ?? 0,
+  );
 
   const items = useMemo(() => groupBatches(batches), [batches]);
+  const showList = selectedId == null;
+  const showDetail = selectedId != null;
+
+  const statusOptions = useMemo((): BillHistoryStatusOption[] => {
+    return [
+      { value: "", label: t("all") },
+      { value: "active", label: t("active") },
+      { value: "inactive", label: t("notActive") },
+    ];
+  }, [t]);
 
   const filtered = useMemo(() => {
-    const q = filterQ.trim().toLowerCase();
+    const q = listQuery.q.trim().toLowerCase();
+    const status = activeFromMoney(listQuery.money);
     const matched = items.filter((it) => {
-      if (!matchesActive(it.active, activeFilter)) return false;
+      if (!matchesActive(it.active, status)) return false;
       if (!q) return true;
       return (
         it.item_code.toLowerCase().includes(q) || it.item_name.toLowerCase().includes(q)
       );
     });
-    return sortByDateAscDesc(matched, dateSort, (it) => it.created_at, (it) => it.item_id);
-  }, [items, filterQ, activeFilter, dateSort]);
+    return sortByDateAscDesc(matched, listQuery.sort, (it) => it.created_at, (it) => it.item_id);
+  }, [items, listQuery.q, listQuery.money, listQuery.sort]);
 
-  const activeId =
-    filtered.length === 0
-      ? null
-      : filtered.some((it) => it.item_id === selectedId)
-        ? selectedId
-        : filtered[0].item_id;
-  const selected = filtered.find((it) => it.item_id === activeId) ?? null;
+  const selected = items.find((it) => it.item_id === selectedId) ?? null;
 
-  function resetFilters() {
-    setFilterQ("");
-    setActiveFilter("all");
-    setDateSort("desc");
+  useEffect(() => {
+    onBrowseChange?.(showList);
+  }, [showList, onBrowseChange]);
+
+  useEffect(() => {
+    return subscribeGuide(() => {
+      const run = getGuideRun();
+      setGuideLessonId(run?.lessonId ?? null);
+      setGuideStepIndexState(run?.stepIndex ?? 0);
+    });
+  }, []);
+
+  function rememberOpener() {
+    const el = document.activeElement;
+    openerRef.current = el instanceof HTMLElement ? el : null;
+  }
+
+  function restoreOpener() {
+    const prev = openerRef.current;
+    openerRef.current = null;
+    if (prev && document.contains(prev)) {
+      window.requestAnimationFrame(() => prev.focus());
+    }
   }
 
   async function reload(preferItemId?: number | null) {
-    const data = await listOtStock();
-    setBatches(data);
-    const grouped = groupBatches(data);
-    const keepId = preferItemId ?? selectedId;
-    if (keepId != null && grouped.some((it) => it.item_id === keepId)) {
-      setSelectedId(keepId);
-      return;
+    setListLoading(true);
+    try {
+      const data = await listOtStock();
+      setBatches(data);
+      const grouped = groupBatches(data);
+      const keepId = preferItemId ?? selectedId;
+      if (keepId != null && grouped.some((it) => it.item_id === keepId)) {
+        setSelectedId(keepId);
+        return;
+      }
+      if (selectedId != null) setSelectedId(null);
+    } finally {
+      setListLoading(false);
     }
-    setSelectedId(grouped[0]?.item_id ?? null);
   }
 
   useEffect(() => {
@@ -166,10 +220,12 @@ export function OtStockPage() {
         const data = await listOtStock();
         if (cancelled) return;
         setBatches(data);
-        const grouped = groupBatches(data);
-        setSelectedId(grouped[0]?.item_id ?? null);
+        setListLoading(false);
       } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : "Load failed");
+        if (!cancelled) {
+          setListLoading(false);
+          setError(e instanceof Error ? e.message : "Load failed");
+        }
       }
     })();
     return () => {
@@ -178,8 +234,70 @@ export function OtStockPage() {
   }, []);
 
   useEffect(() => {
-    if (activeId !== selectedId) setSelectedId(activeId);
-  }, [activeId, selectedId]);
+    if (guideLessonId !== "ot-cupboard") return;
+    // Cupboard step stays on the list; return step needs the record page.
+    if (guideStepIndex < 1) {
+      if (selectedId != null) {
+        setSelectedId(null);
+        setError(null);
+        setNotice(null);
+      }
+      return;
+    }
+    if (selectedId != null) return;
+    if (filtered.length === 0) return;
+    selectItem(filtered[0].item_id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- guide sync list/detail with step
+  }, [guideLessonId, guideStepIndex, filtered, selectedId]);
+
+  useEffect(() => {
+    if (!showDetail) return;
+    window.requestAnimationFrame(() => detailTitleRef.current?.focus());
+  }, [showDetail, selectedId]);
+
+  useEffect(() => {
+    if (!showList) return;
+    const id = returnListFocusIdRef.current;
+    if (id == null) return;
+    returnListFocusIdRef.current = null;
+    window.requestAnimationFrame(() => {
+      document.querySelector<HTMLElement>(`[data-item-row="${id}"]`)?.focus();
+    });
+  }, [showList, filtered]);
+
+  useEffect(() => {
+    function onKey(e: globalThis.KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      if (document.querySelector(".alert-dialog-overlay, .print-preview-overlay")) return;
+      if (selectedId != null) {
+        e.preventDefault();
+        backToList();
+      }
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Escape wiring
+  }, [selectedId]);
+
+  function runListSearch(query: BillHistoryQuery) {
+    setListQuery(query);
+  }
+
+  function selectItem(id: number) {
+    rememberOpener();
+    setSelectedId(id);
+    setError(null);
+    setNotice(null);
+  }
+
+  function backToList() {
+    returnListFocusIdRef.current = selectedId;
+    openerRef.current = null;
+    setSelectedId(null);
+    setError(null);
+    setNotice(null);
+    restoreOpener();
+  }
 
   async function onLabel(e: FormEvent, batch: OtStockBatch, batchNo: string, expiry: string) {
     e.preventDefault();
@@ -244,86 +362,130 @@ export function OtStockPage() {
   }
 
   return (
-    <section className="drug-setup" aria-label={t("maintenanceInventory")}>
-      <div className="drug-setup-list-pane">
-        <div className="drug-setup-title-row">
-          <h2 className="drug-setup-title">{t("maintenanceInventory")}</h2>
-        </div>
-        <p className="hint">{t("otStockHint")}</p>
-        <div className="drug-setup-filter">
-          <input
-            className="drug-info-input"
-            value={filterQ}
-            onChange={(e) => setFilterQ(e.target.value)}
-            placeholder={t("idCodeOrName")}
-            aria-label={t("search")}
-          />
-          <CatalogFilterButton
-            open={filterOpen}
-            controlsId={filterPanelId}
-            onToggle={() => setFilterOpen((v) => !v)}
-          />
-        </div>
-        <CatalogFilterPanel
-          id={filterPanelId}
-          open={filterOpen}
-          query={filterQ}
-          onQueryChange={setFilterQ}
-          queryPlaceholder={t("idCodeOrName")}
-          searchLabel={t("searchItems")}
-          onSearch={() => setFilterOpen(false)}
-          active={activeFilter}
-          onActiveChange={setActiveFilter}
-          dateSort={dateSort}
-          onDateSortChange={setDateSort}
-          onReset={resetFilters}
-        />
-        {error && !selected ? <p className="form-error">{error}</p> : null}
-        <div className="drug-setup-table" role="listbox" aria-label={t("cupboardItems")} data-guide="ot-cupboard">
-          <div className="drug-setup-table-head ot-cupboard-cols">
-            <span title={t("code")}>{t("code")}</span>
-            <span title={t("drugNameTrade")}>{t("drugNameTrade")}</span>
-            <span title={t("qty")}>{t("qty")}</span>
-          </div>
-          {filtered.length === 0 ? <p className="empty-row">{t("noOtStock")}</p> : null}
-          {filtered.map((item) => {
-            const qtyText = `${item.ot_on_hand.toLocaleString()}${
-              item.stock_unit ? ` ${item.stock_unit}` : ""
-            }`;
-            return (
-              <div
-                key={item.item_id}
-                role="option"
-                tabIndex={0}
-                aria-selected={item.item_id === activeId}
-                className={`drug-setup-table-row ot-cupboard-cols${
-                  item.item_id === activeId ? " selected" : ""
-                }`}
-                onClick={() => setSelectedId(item.item_id)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    setSelectedId(item.item_id);
-                  }
-                }}
-              >
-                <span title={item.item_code}>{item.item_code}</span>
-                <span title={item.item_name}>{item.item_name}</span>
-                <span title={qtyText}>{qtyText}</span>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="drug-setup-detail-pane">
-        <h3 className="drug-setup-title" style={{ fontSize: "1.1rem" }}>
-          {t("drugInfo")}
-        </h3>
-        {notice ? <p className="form-ok">{notice}</p> : null}
-        {error && selected ? <p className="form-error">{error}</p> : null}
-        {selected ? (
+    <section className="opd-bill-desk opd-bill-desk--history" aria-label={t("otStockInventory")}>
+      <div className="opd-bill-desk-main">
+        {showList ? (
           <>
+            <h2 className="opd-bill-desk-title">{t("otStockInventory")}</h2>
+            <p className="hint">{t("otStockHint")}</p>
+            <BillHistoryToolbar
+              key="ot-stock"
+              searchPlaceholder={t("idCodeOrName")}
+              initialRange="all"
+              statusOptions={statusOptions}
+              statusFieldLabel={t("status")}
+              explicitSearch
+              hideDateRange
+              onSearch={runListSearch}
+              onInvalidRange={() => setError(t("billHistoryInvalidRange"))}
+            />
+            {error ? (
+              <p className="form-error" role="alert">
+                {error}
+              </p>
+            ) : null}
+            <div
+              className="bill-history-table-wrap"
+              role="region"
+              aria-label={t("cupboardItems")}
+              data-guide="ot-cupboard"
+            >
+              <div
+                className="bill-history-table-head bill-history-table-head--ot-stock"
+                role="row"
+              >
+                <span className="bill-history-col bill-history-col--no" role="columnheader">
+                  {t("listNo")}
+                </span>
+                <span className="bill-history-col" role="columnheader">
+                  {t("code")}
+                </span>
+                <span className="bill-history-col bill-history-col--name" role="columnheader">
+                  {t("drugNameTrade")}
+                </span>
+                <span className="bill-history-col" role="columnheader">
+                  {t("otOnHand")}
+                </span>
+              </div>
+              {listLoading ? <p className="hint bill-history-table-msg">{t("loading")}</p> : null}
+              {!listLoading && filtered.length === 0 ? (
+                <p className="hint bill-history-table-msg empty-row">{t("noOtStock")}</p>
+              ) : null}
+              <ul className="bill-history-table-body">
+                {filtered.map((item, index) => {
+                  const qtyText = `${item.ot_on_hand.toLocaleString()}${
+                    item.stock_unit ? ` ${item.stock_unit}` : ""
+                  }`;
+                  const nameLabel = item.active
+                    ? item.item_name
+                    : `${item.item_name} ${t("inactive")}`;
+                  return (
+                    <li key={item.item_id}>
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        data-item-row={item.item_id}
+                        aria-label={`${item.item_code} · ${nameLabel}`}
+                        className={`bill-history-table-row bill-history-table-row--ot-stock bill-history-table-row--clickable${
+                          !item.active ? " inactive" : ""
+                        }`}
+                        onClick={() => selectItem(item.item_id)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            selectItem(item.item_id);
+                          }
+                        }}
+                      >
+                        <span className="bill-history-col bill-history-col--no">{index + 1}</span>
+                        <span className="bill-history-col" title={item.item_code}>
+                          {item.item_code}
+                        </span>
+                        <span
+                          className="bill-history-col bill-history-col--name"
+                          title={nameLabel}
+                        >
+                          <span className="bill-history-name-primary">{item.item_name}</span>
+                          {!item.active ? (
+                            <span className="bill-history-name-detail">{t("inactive")}</span>
+                          ) : null}
+                        </span>
+                        <span className="bill-history-col" title={qtyText}>
+                          {qtyText}
+                        </span>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          </>
+        ) : null}
+
+        {showDetail && selected ? (
+          <div className="catalog-master-detail-page">
+            <div className="patient-chart-title-row">
+              <div className="patient-chart-title-block">
+                <h2 ref={detailTitleRef} tabIndex={-1} className="opd-bill-desk-title">
+                  {selected.item_name}
+                </h2>
+                <p className="patient-chart-sub">
+                  {[
+                    selected.item_code,
+                    formatPackCompact(packFromItem(selected)) || null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
+              </div>
+              <DialogCloseButton onClick={backToList} />
+            </div>
+            {notice ? <p className="form-ok">{notice}</p> : null}
+            {error ? (
+              <p className="form-error" role="alert">
+                {error}
+              </p>
+            ) : null}
             <div className="drug-info-fields">
               <div className="drug-info-field">
                 <span className="drug-info-label">{t("brandName")}</span>
@@ -410,10 +572,8 @@ export function OtStockPage() {
                 </div>
               ))}
             </div>
-          </>
-        ) : (
-          <p className="hint">{t("noOtStock")}</p>
-        )}
+          </div>
+        ) : null}
       </div>
     </section>
   );

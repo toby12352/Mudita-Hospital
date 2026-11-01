@@ -8,16 +8,15 @@ export type View =
   | "pharmacy_return"
   | "pharmacy_purchase"
   | "pharmacy_transfer"
-  | "pharmacy_expense"
   | "opd"
   | "lab"
   | "ot"
   | "patients"
   | "ipd"
   | "ipd_bill"
-  | "ipd_expense"
+  | "expense"
   | "reports";
-export type PortalId = "opd" | "ot" | "pharmacy" | "patients" | "ipd" | "settings" | "lab";
+export type PortalId = "opd" | "ot" | "pharmacy" | "patients" | "ipd" | "settings" | "lab" | "expense";
 export type NavSectionId =
   | "portals"
   | "home"
@@ -28,16 +27,14 @@ export type NavSectionId =
   | "admin_ot"
   | "admin_pharmacy"
   | "admin_lab"
+  | "admin_expense"
   | "opd"
-  | "opd_expense"
   | "opd_maintenance"
   | "lab"
   | "lab_maintenance"
   | "ot_bill"
-  | "ot_expense"
   | "ot_stock"
   | "pharmacy"
-  | "pharmacy_expense"
   | "pharmacy_return"
   | "pharmacy_purchase"
   | "pharmacy_transfer"
@@ -45,7 +42,7 @@ export type NavSectionId =
   | "patients_create"
   | "ipd"
   | "ipd_bill"
-  | "ipd_expense"
+  | "expense"
   | "stock"
   | "settings";
 export type SettingsTab =
@@ -57,7 +54,7 @@ export type SettingsTab =
   | "backup"
   | "training";
 export type PharmacyTab = "items" | "movements";
-export type OpdScreen = "doctors" | "services" | "bill" | "expense";
+export type OpdScreen = "doctors" | "services" | "bill";
 export type PharmacyScreen = "browse" | "form" | "history";
 export type PatientsScreen = "list" | "create";
 
@@ -65,10 +62,12 @@ export type PatientsScreen = "list" | "create";
 export type NavIntent = {
   settingsTab?: SettingsTab;
   billingMode?: "list" | "edit";
-  otMode?: "case" | "stock" | "expense";
+  otMode?: "case" | "stock";
   pharmacyScreen?: PharmacyScreen;
   opdScreen?: OpdScreen;
   labScreen?: "bill" | "services";
   patientsScreen?: PatientsScreen;
   patientsFocusId?: number;
+  /** Open this bill, OT case, or IPD stay once the desk mounts. */
+  openRecordId?: number;
 };

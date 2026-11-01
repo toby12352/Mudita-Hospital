@@ -32,10 +32,13 @@ import {
   type DiscountUnit,
 } from "@/shared/discount";
 import { AlertDialog } from "@/shared/AlertDialog";
+import { draftHasContent } from "@/shared/billDraft";
+import { useRegisterBillLeaveGuard } from "@/shared/billLeaveGuard";
 import { userMessage } from "@/shared/errors";
 import { useClinicActions } from "@/app/clinicActions";
 import { useI18n } from "@/shared/i18n";
 import { useBillActionFeedback, useBillActionPending } from "@/shared/useActionLock";
+import { VoidBillConfirm } from "@/shared/VoidBillConfirm";
 import {
   PharmacyBillForm,
   type PharmacyBillLineView,
@@ -51,9 +54,11 @@ type DeskConfirm = "cancel" | "newBill";
 export function PharmacyBillingPage({
   initialMode = "edit",
   kind = "sale",
+  openRecordId,
 }: {
   initialMode?: "list" | "edit";
   kind?: PharmacyBillKind;
+  openRecordId?: number;
 }) {
   const { t } = useI18n();
   const { pharmacyCreate, pharmacyDelete, billPurge } = useClinicActions();
@@ -66,6 +71,7 @@ export function PharmacyBillingPage({
   const [dialog, setDialog] = useState<PharmacyBillListDialogMode | null>(
     initialMode === "list" ? "history" : null,
   );
+  const [voidOpen, setVoidOpen] = useState(false);
   const [confirm, setConfirm] = useState<DeskConfirm | null>(null);
   const [printAfterPay, setPrintAfterPay] = useState<string | null>(null);
 
@@ -74,6 +80,7 @@ export function PharmacyBillingPage({
   const [billStatus, setBillStatus] = useState("draft");
   const [printedAt, setPrintedAt] = useState<string | null>(null);
   const [collectedCash, setCollectedCash] = useState<number | null>(null);
+  const [paymentType, setPaymentType] = useState<"cash" | "online">("cash");
   const [chargedSales, setChargedSales] = useState<{ id: number; bill_no: string }[]>([]);
   const [returnSaleId, setReturnSaleId] = useState<number | null>(null);
   const [patientName, setPatientName] = useState("");
@@ -96,7 +103,14 @@ export function PharmacyBillingPage({
   const dateEditable = isAdmin && billId == null;
 
   const isDraft = billStatus === "draft";
+  const canVoid =
+    billId != null && billStatus !== "void" && billStatus !== "deleted";
   const openAdmissionId = useOpenAdmission(isTransfer ? null : linkedChartId);
+
+  function openVoidConfirm() {
+    if (!canVoid) return;
+    setVoidOpen(true);
+  }
 
   useEffect(() => {
     if (createdAt) return;
@@ -150,6 +164,7 @@ export function PharmacyBillingPage({
     setBillStatus("draft");
     setPrintedAt(null);
     setCollectedCash(null);
+    setPaymentType("cash");
     setPatientName("");
     setLinkedChartId(null);
     setPatientPhone("");
@@ -190,6 +205,7 @@ export function PharmacyBillingPage({
     setBillStatus(b.status);
     setPrintedAt(b.printed_at ?? null);
     setCollectedCash(b.collected_cash ?? null);
+    setPaymentType(b.payment_type === "online" ? "online" : "cash");
     setCreatedAt(b.created_at);
     const next = b.lines ?? [];
     setLines(next);
@@ -202,7 +218,7 @@ export function PharmacyBillingPage({
   async function openBill(id: number) {
     setBusy(true);
     setError(null);
-        setTransferDone(false);
+    setTransferDone(false);
     try {
       const b = await getPharmacyBill(id);
       setBillId(b.id);
@@ -210,6 +226,7 @@ export function PharmacyBillingPage({
       setBillStatus(b.status);
       setPrintedAt(b.printed_at ?? null);
       setCollectedCash(b.collected_cash ?? null);
+      setPaymentType(b.payment_type === "online" ? "online" : "cash");
       setPatientName(b.patient_name);
       setLinkedChartId(isTransfer ? null : (b.patient_id ?? null));
       setPatientPhone(b.patient_phone || "");
@@ -230,6 +247,11 @@ export function PharmacyBillingPage({
       setBusy(false);
     }
   }
+
+  useEffect(() => {
+    if (openRecordId != null) void openBill(openRecordId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- open once on mount from patient chart
+  }, []);
 
   function buildBody() {
     const age = patientAge.trim() ? Number(patientAge) : null;
@@ -267,6 +289,7 @@ export function PharmacyBillingPage({
         ? { discount_value: 0, discount_unit: "percent" as const }
         : discountWrite(discountValue, discountUnit)),
       ...(dateEditable && billedAtLocal ? { billed_at: billedAtLocal } : {}),
+      ...(!isTransfer ? { payment_type: paymentType } : {}),
     };
   }
 
@@ -351,25 +374,67 @@ export function PharmacyBillingPage({
     setAwaitingConfirm(false);
   }
 
-  async function saveDraft(): Promise<PharmacyBill | null> {
+  function blockIncompletePay(): boolean {
     if (!isTransfer && !patientName.trim()) {
       const el = patientNameRef.current;
       if (el && !el.disabled) {
         if (patientName !== "") setPatientName("");
         if (el.value !== "") el.value = "";
         el.reportValidity();
-        return null;
+        return true;
       }
-      throw new Error(userMessage("Patient name required"));
+      setError(t("errPatientNameRequired"));
+      return true;
+    }
+    if (lines.length === 0) {
+      setError(userMessage("Add at least one medicine"));
+      return true;
+    }
+    return false;
+  }
+
+  async function saveDraft(): Promise<PharmacyBill | null> {
+    if (
+      !isTransfer &&
+      !draftHasContent({
+        texts: [patientName, patientPhone, patientAge, patientGender, description],
+        flags: [linkedChartId != null],
+        lineCount: lines.length,
+        discountValue,
+      })
+    ) {
+      setError(t("errDraftEmpty"));
+      return null;
+    }
+    if (
+      isTransfer &&
+      !draftHasContent({
+        texts: [description],
+        lineCount: lines.length,
+      })
+    ) {
+      // Transfer always sends patient_name "OT"; still require some desk content.
+      setError(t("errDraftEmpty"));
+      return null;
     }
     const body = buildBody();
-    if (body.lines.length === 0) throw new Error(userMessage("Add at least one medicine"));
     const b = billId
       ? await updatePharmacyBill(billId, body)
       : await createPharmacyBill(body);
     applySavedBill(b);
     return b;
   }
+
+  useRegisterBillLeaveGuard(lines.length > 0 && billId == null, async () => {
+    try {
+      setError(null);
+      const saved = await saveDraft();
+      return saved != null;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Save failed");
+      return false;
+    }
+  });
 
   function receiptTitle(billNoPaid: string) {
     if (isReturn) {
@@ -424,7 +489,7 @@ export function PharmacyBillingPage({
       if (!isDraft) {
         throw new Error(userMessage("Only draft or paid bills can be printed"));
       }
-      if (lines.length === 0) throw new Error(userMessage("Add at least one medicine"));
+      if (blockIncompletePay()) return;
       const saved = await saveDraft();
       if (saved == null) return;
       id = saved.id;
@@ -450,10 +515,10 @@ export function PharmacyBillingPage({
       if (!isDraft) {
         throw new Error(userMessage("Only draft bills can be paid"));
       }
-      if (lines.length === 0) throw new Error(userMessage("Add at least one medicine"));
+      if (blockIncompletePay()) return;
       const saved = await saveDraft();
       if (saved == null) return;
-      const paid = await payPharmacyBill(saved.id);
+      const paid = await payPharmacyBill(saved.id, { payment_type: paymentType });
       applySavedBill(paid);
       pulse("markPaid", "ok");
       setPrintAfterPay(paid.bill_no);
@@ -474,10 +539,13 @@ export function PharmacyBillingPage({
     try {
       if (billStatus === "paid") return;
       if (!isDraft) throw new Error(userMessage("Only draft bills can be paid"));
-      if (lines.length === 0) throw new Error(userMessage("Add at least one medicine"));
+      if (blockIncompletePay()) return;
       const saved = await saveDraft();
       if (saved == null) return;
-      const paid = await payPharmacyBill(saved.id, { admission_id: openAdmissionId });
+      const paid = await payPharmacyBill(saved.id, {
+        admission_id: openAdmissionId,
+        payment_type: paymentType,
+      });
       applySavedBill(paid);
       pulse("chargeIpd", "ok");
     } catch (e) {
@@ -497,12 +565,13 @@ export function PharmacyBillingPage({
     try {
       if (billStatus === "paid") return;
       if (!isDraft) throw new Error(userMessage("Only draft bills can be paid"));
-      if (lines.length === 0) throw new Error(userMessage("Add at least one medicine"));
+      if (blockIncompletePay()) return;
       const saved = await saveDraft();
       if (saved == null) return;
       const paid = await payPharmacyBill(saved.id, {
         admission_id: openAdmissionId,
         source_bill_id: returnSaleId,
+        payment_type: paymentType,
       });
       applySavedBill(paid);
       pulse("chargeIpd", "ok");
@@ -522,7 +591,7 @@ export function PharmacyBillingPage({
     setError(null);
     setTransferDone(false);
     try {
-      if (lines.length === 0) throw new Error(userMessage("Add at least one medicine"));
+      if (blockIncompletePay()) return;
       const saved = await saveDraft();
       if (saved == null) return;
       setAwaitingConfirm(true);
@@ -759,7 +828,7 @@ export function PharmacyBillingPage({
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (dialog) return;
+      if (dialog || voidOpen) return;
       if (document.querySelector(".print-preview-overlay")) return;
       if (document.querySelector(".alert-dialog-overlay")) return;
 
@@ -796,7 +865,7 @@ export function PharmacyBillingPage({
       }
       if (key === "F8" && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
-        if (!blocked && pharmacyDelete) setDialog("delete");
+        if (!blocked && pharmacyDelete && canVoid) openVoidConfirm();
         return;
       }
       if (key === "F10") {
@@ -813,7 +882,7 @@ export function PharmacyBillingPage({
     return () => window.removeEventListener("keydown", onKey);
     // Intentional: handlers close over latest state each render.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- shortcut wiring
-  }, [dialog, busy, isDraft, billId, billStatus, billNo, lines, patientName, linkedChartId, awaitingConfirm, isTransfer, discountValue, discountUnit, pharmacyCreate, pharmacyDelete]);
+  }, [dialog, voidOpen, busy, isDraft, billId, billStatus, billNo, lines, patientName, linkedChartId, awaitingConfirm, isTransfer, discountValue, discountUnit, pharmacyCreate, pharmacyDelete, canVoid]);
 
   const displayWhen = formatUtcAsLocal(createdAt, nowTick);
 
@@ -825,6 +894,8 @@ export function PharmacyBillingPage({
         billStatus={billStatus}
         printedAt={printedAt}
         collectedCash={collectedCash}
+        paymentType={paymentType}
+        onPaymentType={setPaymentType}
         chargedSales={chargedSales}
         returnSaleId={returnSaleId}
         patientId={linkedChartId}
@@ -895,7 +966,8 @@ export function PharmacyBillingPage({
         onConfirmTransfer={() => void doConfirmTransfer()}
         onConfirm={() => void doConfirm()}
         onHistory={() => setDialog("history")}
-        onDelete={() => setDialog("delete")}
+        onDelete={openVoidConfirm}
+        canVoid={canVoid}
         onPurge={billPurge ? () => setDialog("purge") : undefined}
         onCancel={doCancel}
         onNewBill={doNewBill}
@@ -906,8 +978,16 @@ export function PharmacyBillingPage({
           kind={kind}
           onClose={() => setDialog(null)}
           onOpen={(id) => void openBill(id)}
-          onVoid={doVoidSelected}
           onPurge={doPurgeSelected}
+        />
+      ) : null}
+      {voidOpen && billId != null ? (
+        <VoidBillConfirm
+          billNo={billNo || String(billId)}
+          identityName={patientName}
+          defaultReason="Voided"
+          onClose={() => setVoidOpen(false)}
+          onVoid={(reason) => doVoidSelected(billId, reason)}
         />
       ) : null}
       {confirm ? (

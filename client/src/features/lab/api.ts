@@ -34,6 +34,7 @@ export type LabBill = {
   printed_at?: string | null;
   admission_id?: number | null;
   collected_cash?: number;
+  payment_type?: "cash" | "online" | string;
   paid_at?: string | null;
   voided_at?: string | null;
   void_reason?: string;
@@ -84,6 +85,7 @@ export type LabBillWrite = {
   discount_value?: number;
   discount_unit?: "percent" | "mmk";
   billed_at?: string;
+  payment_type?: "cash" | "online";
 };
 
 export async function listAllLabServices(q = "", all = true): Promise<LabService[]> {
@@ -183,9 +185,19 @@ export async function updateLabBill(id: number, body: LabBillWrite): Promise<Lab
   });
 }
 
-export async function payLabBill(id: number, admissionId?: number | null): Promise<LabBill> {
-  const body = admissionId != null ? JSON.stringify({ admission_id: admissionId }) : "{}";
-  return apiFetch<LabBill>(`/api/lab/bills/${id}/pay`, { method: "POST", body });
+export async function payLabBill(
+  id: number,
+  admissionId?: number | null,
+  paymentType: "cash" | "online" = "cash",
+): Promise<LabBill> {
+  const payload: { payment_type: string; admission_id?: number } = {
+    payment_type: paymentType,
+  };
+  if (admissionId != null) payload.admission_id = admissionId;
+  return apiFetch<LabBill>(`/api/lab/bills/${id}/pay`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function markLabBillPrinted(id: number): Promise<LabBill> {

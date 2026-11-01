@@ -3,21 +3,25 @@ import { DialogCloseButton } from "@/shared/DialogCloseButton";
 import { useI18n } from "@/shared/i18n";
 import { useDelayedFlag } from "@/shared/useActionLock";
 
-export type AlertTone = "check" | "warning" | "success" | "print";
+export type AlertTone = "check" | "warning" | "success" | "print" | "save";
 
 type Props = {
   message: string;
   onClose: () => void;
-  /** Default "check". Use "success" for a green tick, "warning" for confirms, "print" after Mark Paid. */
+  /** Default "check". Use "success" for a green tick, "warning" for confirms, "print" after Mark Paid, "save" for leave-draft. */
   tone?: AlertTone;
   /** Optional title; defaults by tone. */
   title?: string;
   /** When set, shows Cancel + confirm instead of a single OK. */
   onConfirm?: () => void;
-  /** Label for the confirm button (defaults: print → Print, danger → Delete, else Confirm). */
+  /** Label for the confirm button (defaults: print → Print, save → Save draft, danger → Delete, else Confirm). */
   confirmLabel?: string;
   /** Label for the single OK button when not confirming (defaults: alertOk). */
   okLabel?: string;
+  /** Optional third action (e.g. leave without saving). Cancel / Escape still call onClose. */
+  onDiscard?: () => void;
+  /** Label for onDiscard (defaults: dontSave). */
+  discardLabel?: string;
   /** Filled red confirm button (delete / restore). */
   danger?: boolean;
   /** Disables buttons and close while an action is in flight. */
@@ -34,6 +38,7 @@ function defaultTitle(tone: AlertTone, t: (k: string) => string): string {
   if (tone === "success") return t("transferred");
   if (tone === "warning") return t("alertWarning");
   if (tone === "print") return t("paid");
+  if (tone === "save") return t("saveDraft");
   return t("alertCheck");
 }
 
@@ -43,6 +48,7 @@ function defaultConfirmLabel(
   t: (k: string) => string,
 ): string {
   if (tone === "print") return t("print");
+  if (tone === "save") return t("saveDraft");
   if (danger) return t("delete");
   return t("confirm");
 }
@@ -122,6 +128,47 @@ function BadgeIcon({ tone }: { tone: AlertTone }) {
     );
   }
 
+  if (tone === "save") {
+    return (
+      <svg viewBox="0 0 48 48" width="40" height="40" className="alert-dialog-save">
+        <path
+          className="alert-dialog-draw-path alert-dialog-draw-path--save"
+          d="M12 12h20l6 6v18a2 2 0 01-2 2H12a2 2 0 01-2-2V14a2 2 0 012-2z"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.25"
+          strokeLinejoin="round"
+        />
+        <path
+          className="alert-dialog-draw-path alert-dialog-draw-path--save"
+          d="M16 12v10h14V12"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.25"
+          strokeLinejoin="round"
+        />
+        <path
+          className="alert-dialog-draw-path alert-dialog-draw-path--save-slot"
+          d="M16 36h16v-8H16z"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.25"
+          strokeLinejoin="round"
+        />
+        <rect
+          className="alert-dialog-save-tab"
+          x="28"
+          y="14"
+          width="5"
+          height="6"
+          rx="1"
+          fill="currentColor"
+          opacity="0.28"
+        />
+      </svg>
+    );
+  }
+
   return (
     <svg viewBox="0 0 48 48" width="40" height="40">
       <rect
@@ -156,6 +203,8 @@ export function AlertDialog({
   onConfirm,
   confirmLabel,
   okLabel,
+  onDiscard,
+  discardLabel,
   danger = false,
   busy = false,
   error = null,
@@ -164,19 +213,31 @@ export function AlertDialog({
 }: Props) {
   const { t } = useI18n();
   const actionRef = useRef<HTMLButtonElement>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
   const titleId = useId();
   const bodyId = useId();
   const trimmed = message.trim();
   const isConfirm = typeof onConfirm === "function";
+  const showDiscard = typeof onDiscard === "function";
   const heading = title?.trim() || defaultTitle(tone, t);
   const actionLabel = confirmLabel?.trim() || defaultConfirmLabel(tone, danger, t);
+  const discardActionLabel = discardLabel?.trim() || t("dontSave");
   const singleOkLabel = okLabel?.trim() || t("alertOk");
   const errorText = error?.trim() ?? "";
   const showPending = useDelayedFlag(busy);
 
   useEffect(() => {
     if (!trimmed) return;
+    const opener = document.activeElement;
+    openerRef.current = opener instanceof HTMLElement ? opener : null;
     actionRef.current?.focus();
+    return () => {
+      const prev = openerRef.current;
+      openerRef.current = null;
+      if (prev && document.contains(prev)) {
+        prev.focus();
+      }
+    };
   }, [trimmed, irreversible]);
 
   useEffect(() => {
@@ -209,7 +270,9 @@ export function AlertDialog({
         ? " alert-dialog--warning"
         : tone === "print"
           ? " alert-dialog--print"
-          : " alert-dialog--check";
+          : tone === "save"
+            ? " alert-dialog--save"
+            : " alert-dialog--check";
   const irreversibleClass = irreversible ? " alert-dialog--irreversible" : "";
 
   return (
@@ -256,6 +319,16 @@ export function AlertDialog({
             >
               {t("cancel")}
             </button>
+            {showDiscard ? (
+              <button
+                type="button"
+                className="alert-dialog-ok"
+                onClick={onDiscard}
+                disabled={busy}
+              >
+                {discardActionLabel}
+              </button>
+            ) : null}
             <button
               ref={actionRef}
               type="button"

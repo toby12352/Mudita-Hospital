@@ -19,14 +19,16 @@ type Reports struct {
 }
 
 type cashLine struct {
-	Source     string `json:"source"` // OPD | OT | Pharmacy | Lab
-	BillNo     string `json:"bill_no"`
-	Patient    string `json:"patient"`
-	Doctor     string `json:"doctor"`
-	TotalMMK   int64  `json:"total_mmk"`
-	PaidAt     string `json:"paid_at"`
-	PaidByName string `json:"paid_by_name"`
-	Reversal   bool   `json:"reversal,omitempty"`
+	Source      string `json:"source"` // OPD | OT | Pharmacy | Lab
+	BillNo      string `json:"bill_no"`
+	Patient     string `json:"patient"`
+	Doctor      string `json:"doctor"`
+	Remark      string `json:"remark,omitempty"`
+	PaymentType string `json:"payment_type"` // cash | online
+	TotalMMK    int64  `json:"total_mmk"`
+	PaidAt      string `json:"paid_at"`
+	PaidByName  string `json:"paid_by_name"`
+	Reversal    bool   `json:"reversal,omitempty"`
 }
 
 type cashReport struct {
@@ -39,6 +41,8 @@ type cashReport struct {
 	PharmacyTotal int64      `json:"pharmacy_total_mmk"`
 	LabCount      int        `json:"lab_count"`
 	LabTotal      int64      `json:"lab_total_mmk"`
+	CashTotal     int64      `json:"cash_total_mmk"`
+	OnlineTotal   int64      `json:"online_total_mmk"`
 	GrandTotal    int64      `json:"grand_total_mmk"`
 	Lines         []cashLine `json:"lines"`
 }
@@ -359,6 +363,11 @@ func accumulateCashLine(rep *cashReport, line cashLine) {
 		}
 		rep.LabTotal += line.TotalMMK
 	}
+	if strings.EqualFold(strings.TrimSpace(line.PaymentType), "online") {
+		rep.OnlineTotal += line.TotalMMK
+	} else {
+		rep.CashTotal += line.TotalMMK
+	}
 }
 
 func deskBillTable(source string) (table string, pharmacy bool, err error) {
@@ -382,9 +391,15 @@ func appendDeskCash(db *sql.DB, rep *cashReport, source, date, voidStart, voidEn
 		return err
 	}
 	doctorSQL := "COALESCE(b.doctor_name, '')"
+	remarkSQL := "COALESCE(b.description, '')"
+	fromSQL := table + " b"
 	payAmount := "b.total_mmk"
 	voidAmount := "-b.total_mmk"
 	extra := ""
+	if source == "OT" {
+		remarkSQL = "COALESCE(c.notes, '')"
+		fromSQL = table + " b JOIN ot_cases c ON c.id = b.case_id"
+	}
 	if pharmacy {
 		doctorSQL = "''"
 		payAmount = "CASE WHEN b.bill_no LIKE 'RT-%' THEN -b.total_mmk ELSE b.total_mmk END"
@@ -392,9 +407,10 @@ func appendDeskCash(db *sql.DB, rep *cashReport, source, date, voidStart, voidEn
 		extra = " AND b.bill_no NOT LIKE 'TO-%'"
 	}
 	paySQL := fmt.Sprintf(`
-		SELECT b.bill_no, b.patient_name, %s, %s,
+		SELECT b.bill_no, b.patient_name, %s, %s, %s,
+		       COALESCE(NULLIF(TRIM(b.payment_type), ''), 'cash'),
 		       COALESCE(b.paid_at, ''), COALESCE(u.display_name, '')
-		FROM %s b
+		FROM %s
 		LEFT JOIN users u ON u.id = b.paid_by_user_id
 		WHERE b.collected_cash = 1
 		  AND b.paid_at IS NOT NULL AND TRIM(b.paid_at) != ''
@@ -404,7 +420,7 @@ func appendDeskCash(db *sql.DB, rep *cashReport, source, date, voidStart, voidEn
 		    OR (b.status = 'void' AND b.voided_at IS NOT NULL AND TRIM(b.voided_at) != '')
 		  )%s
 		ORDER BY b.paid_at ASC, b.id ASC
-	`, doctorSQL, payAmount, table, extra)
+	`, doctorSQL, remarkSQL, payAmount, fromSQL, extra)
 	rows, err := db.Query(paySQL, date)
 	if err != nil {
 		return err
@@ -413,9 +429,10 @@ func appendDeskCash(db *sql.DB, rep *cashReport, source, date, voidStart, voidEn
 		return err
 	}
 	voidSQL := fmt.Sprintf(`
-		SELECT b.bill_no, b.patient_name, %s, %s,
+		SELECT b.bill_no, b.patient_name, %s, %s, %s,
+		       COALESCE(NULLIF(TRIM(b.payment_type), ''), 'cash'),
 		       COALESCE(b.paid_at, ''), COALESCE(u.display_name, '')
-		FROM %s b
+		FROM %s
 		LEFT JOIN users u ON u.id = b.paid_by_user_id
 		WHERE b.collected_cash = 1
 		  AND b.paid_at IS NOT NULL AND TRIM(b.paid_at) != ''
@@ -423,7 +440,7 @@ func appendDeskCash(db *sql.DB, rep *cashReport, source, date, voidStart, voidEn
 		  AND b.voided_at IS NOT NULL AND TRIM(b.voided_at) != ''
 		  AND b.voided_at >= ? AND b.voided_at < ?%s
 		ORDER BY b.voided_at ASC, b.id ASC
-	`, doctorSQL, voidAmount, table, extra)
+	`, doctorSQL, remarkSQL, voidAmount, fromSQL, extra)
 	rows, err = db.Query(voidSQL, voidStart, voidEnd)
 	if err != nil {
 		return err
@@ -437,8 +454,14 @@ func scanDeskRows(rows *sql.Rows, rep *cashReport, source string, reversal bool)
 		var line cashLine
 		line.Source = source
 		line.Reversal = reversal
-		if err := rows.Scan(&line.BillNo, &line.Patient, &line.Doctor, &line.TotalMMK, &line.PaidAt, &line.PaidByName); err != nil {
+		if err := rows.Scan(
+			&line.BillNo, &line.Patient, &line.Doctor, &line.Remark, &line.TotalMMK,
+			&line.PaymentType, &line.PaidAt, &line.PaidByName,
+		); err != nil {
 			return err
+		}
+		if line.PaymentType == "" {
+			line.PaymentType = "cash"
 		}
 		rep.Lines = append(rep.Lines, line)
 		accumulateCashLine(rep, line)
@@ -640,12 +663,18 @@ func renderCashReportHTML(hosp *hospitalSettings, rep *cashReport, sources map[s
 	if sources["Lab"] {
 		parts = append(parts, fmt.Sprintf("Lab: %d · %s MMK", rep.LabCount, formatMMK(rep.LabTotal)))
 	}
-	parts = append(parts, fmt.Sprintf("<strong>Total: %s MMK</strong>", formatMMK(rep.GrandTotal)))
+	parts = append(parts, fmt.Sprintf("Cash balance: %s MMK", formatMMK(rep.CashTotal)))
+	parts = append(parts, fmt.Sprintf("Online balance: %s MMK", formatMMK(rep.OnlineTotal)))
+	parts = append(parts, fmt.Sprintf("<strong>Total balance: %s MMK</strong>", formatMMK(rep.GrandTotal)))
 	b.WriteString(`<p class="summary">`)
 	b.WriteString(strings.Join(parts, " &nbsp;|&nbsp; "))
 	b.WriteString("</p>")
-	b.WriteString("<table><thead><tr><th>Source</th><th>Bill</th><th>Patient</th><th>Doctor</th><th>Paid</th><th class=\"num\">MMK</th></tr></thead><tbody>")
+	b.WriteString("<table><thead><tr><th>Source</th><th>Bill</th><th>Patient</th><th>Doctor</th><th>Pay</th><th>Paid</th><th class=\"num\">MMK</th></tr></thead><tbody>")
 	for _, line := range rep.Lines {
+		payLabel := "Cash"
+		if strings.EqualFold(line.PaymentType, "online") {
+			payLabel = "Online"
+		}
 		b.WriteString("<tr><td>")
 		b.WriteString(html.EscapeString(line.Source))
 		b.WriteString("</td><td>")
@@ -655,13 +684,15 @@ func renderCashReportHTML(hosp *hospitalSettings, rep *cashReport, sources map[s
 		b.WriteString("</td><td>")
 		b.WriteString(html.EscapeString(line.Doctor))
 		b.WriteString("</td><td>")
+		b.WriteString(html.EscapeString(payLabel))
+		b.WriteString("</td><td>")
 		b.WriteString(html.EscapeString(line.PaidAt))
 		b.WriteString("</td><td class=\"num\">")
 		b.WriteString(formatMMK(line.TotalMMK))
 		b.WriteString("</td></tr>")
 	}
 	if len(rep.Lines) == 0 {
-		b.WriteString("<tr><td colspan=\"6\">No paid bills on this date.</td></tr>")
+		b.WriteString("<tr><td colspan=\"7\">No paid bills on this date.</td></tr>")
 	}
 	b.WriteString("</tbody></table>")
 	b.WriteString("<p class=\"meta\">Printed from Mudita Hospital</p>")
@@ -670,14 +701,15 @@ func renderCashReportHTML(hosp *hospitalSettings, rep *cashReport, sources map[s
 }
 
 // dailyPortalOrder is the print order for income and expense portal tables.
-var dailyPortalOrder = []string{"OPD", "OT", "IPD", "Pharmacy", "Lab"}
+var dailyPortalOrder = []string{"OPD", "OT", "IPD", "Pharmacy", "Lab", "Expenses"}
 
 // renderDashboardDailyHTML is the admin daily print. kind is income, expense,
 // or overall (default). Income is desk bills plus IPD gains, one table per
 // portal. Expense is paid expense lines grouped by portal. Overall prints
 // income, then expenses on a new page, then Difference = income + expense.
-// Drawer cash and open stays are omitted.
-func renderDashboardDailyHTML(hosp *hospitalSettings, move *cashMovement, kind string) string {
+// Drawer cash and open stays are omitted. carry is yesterday's IPD ပိုငွေ /
+// လိုငွေ opening rows; they print first under IPD and are not income.
+func renderDashboardDailyHTML(hosp *hospitalSettings, move *cashMovement, kind string, carry []ipdPrintCarryRow) string {
 	if hosp == nil {
 		hosp = &hospitalSettings{HospitalName: "Mudita Hospital"}
 	}
@@ -720,7 +752,7 @@ func renderDashboardDailyHTML(hosp *hospitalSettings, move *cashMovement, kind s
 	writeDailyReportTitle(&b, heading, dateLabel)
 
 	if showIncome {
-		wrote := writeDailyIncomeTables(&b, desk.Lines, earnedLines)
+		wrote := writeDailyIncomeTables(&b, desk.Lines, earnedLines, carry)
 		if !wrote {
 			b.WriteString(`<p class="daily-empty">No income on this date.</p>`)
 		}
@@ -742,14 +774,14 @@ func renderDashboardDailyHTML(hosp *hospitalSettings, move *cashMovement, kind s
 		}
 		if kind == "expense" {
 			writeDailySettle(&b, []dailySettleRow{
-				{Label: "Total expenses", Amount: move.ExpenseMMK, Emph: true},
+				{Label: "Total expenses", Amount: -move.ExpenseMMK, Emph: true},
 			})
 		}
 		if kind == "overall" {
 			b.WriteString(`</div>`)
 			writeDailySettle(&b, []dailySettleRow{
 				{Label: "Total income", Amount: move.IncomeMMK, Emph: false},
-				{Label: "Total expenses", Amount: move.ExpenseMMK, Emph: false},
+				{Label: "Total expenses", Amount: -move.ExpenseMMK, Emph: false},
 				{Label: "Difference", Amount: move.IncomeMMK + move.ExpenseMMK, Emph: true},
 			})
 		}
@@ -793,7 +825,8 @@ func writeDailySettle(b *strings.Builder, rows []dailySettleRow) {
 
 // writeDailyIncomeTables emits one table per portal that has lines.
 // Order is OPD, OT, IPD, Pharmacy, Lab. Returns whether any table was written.
-func writeDailyIncomeTables(b *strings.Builder, desk []cashLine, earned []ipdCashLine) bool {
+// IPD prints when there are earned cash lines or brought-forward carry rows.
+func writeDailyIncomeTables(b *strings.Builder, desk []cashLine, earned []ipdCashLine, carry []ipdPrintCarryRow) bool {
 	bySource := map[string][]cashLine{}
 	for _, line := range desk {
 		bySource[line.Source] = append(bySource[line.Source], line)
@@ -801,10 +834,10 @@ func writeDailyIncomeTables(b *strings.Builder, desk []cashLine, earned []ipdCas
 	wrote := false
 	for _, portal := range dailyPortalOrder {
 		if portal == "IPD" {
-			if len(earned) == 0 {
+			if len(earned) == 0 && len(carry) == 0 {
 				continue
 			}
-			writeDailyIPDIncomeTable(b, earned)
+			writeDailyIPDIncomeTable(b, earned, carry)
 			wrote = true
 			continue
 		}
@@ -821,7 +854,7 @@ func writeDailyIncomeTables(b *strings.Builder, desk []cashLine, earned []ipdCas
 func writeDailyDeskIncomeTable(b *strings.Builder, portal string, lines []cashLine) {
 	openDailyPortalSection(b, portal)
 	b.WriteString(`<table class="daily-table"><thead><tr>`)
-	b.WriteString(`<th>Bill</th><th>Patient</th><th>Doctor</th><th>Paid</th><th class="num">MMK</th>`)
+	b.WriteString(`<th>Bill</th><th>Patient</th><th>Doctor</th><th>Paid</th><th>Remark</th><th class="num">MMK</th>`)
 	b.WriteString(`</tr></thead><tbody>`)
 	var subtotal int64
 	for _, line := range lines {
@@ -837,12 +870,14 @@ func writeDailyDeskIncomeTable(b *strings.Builder, portal string, lines []cashLi
 		b.WriteString(html.EscapeString(line.Doctor))
 		b.WriteString(`</td><td>`)
 		b.WriteString(html.EscapeString(line.PaidAt))
+		b.WriteString(`</td><td>`)
+		b.WriteString(html.EscapeString(line.Remark))
 		b.WriteString(`</td><td class="num">`)
 		b.WriteString(formatMMK(line.TotalMMK))
 		b.WriteString(`</td></tr>`)
 		subtotal += line.TotalMMK
 	}
-	writeDailySubtotalRow(b, 4, subtotal)
+	writeDailySubtotalRow(b, 5, subtotal)
 	b.WriteString(`</tbody></table></section>`)
 }
 
@@ -858,11 +893,29 @@ func ipdEarnedDisplayMMK(line ipdCashLine) int64 {
 	}
 }
 
-func writeDailyIPDIncomeTable(b *strings.Builder, lines []ipdCashLine) {
+// expenseDisplayMMK is the amount printed for one expense cash line.
+// Payments are stored negative; the sheet shows money spent as positive.
+// Reversals stay negative so they reduce the portal and day totals.
+func expenseDisplayMMK(line expenseCashLine) int64 {
+	return -line.AmountMMK
+}
+
+func writeDailyIPDIncomeTable(b *strings.Builder, lines []ipdCashLine, carry []ipdPrintCarryRow) {
 	openDailyPortalSection(b, "IPD")
 	b.WriteString(`<table class="daily-table"><thead><tr>`)
-	b.WriteString(`<th>Kind</th><th>Admission</th><th>Patient</th><th class="num">MMK</th>`)
+	b.WriteString(`<th>Kind</th><th>Admission</th><th>Patient</th><th>Remark</th><th class="num">MMK</th>`)
 	b.WriteString(`</tr></thead><tbody>`)
+	for _, row := range carry {
+		b.WriteString(`<tr><td>`)
+		b.WriteString(html.EscapeString(row.Kind))
+		b.WriteString(`</td><td>`)
+		b.WriteString(html.EscapeString(row.AdmissionNo))
+		b.WriteString(`</td><td>`)
+		b.WriteString(html.EscapeString(row.Patient))
+		b.WriteString(`</td><td></td><td class="num">`)
+		b.WriteString(formatMMK(row.AmountMMK))
+		b.WriteString(`</td></tr>`)
+	}
 	var subtotal int64
 	for _, line := range lines {
 		earned := ipdEarnedDisplayMMK(line)
@@ -872,12 +925,14 @@ func writeDailyIPDIncomeTable(b *strings.Builder, lines []ipdCashLine) {
 		b.WriteString(html.EscapeString(line.AdmissionNo))
 		b.WriteString(`</td><td>`)
 		b.WriteString(html.EscapeString(line.Patient))
+		b.WriteString(`</td><td>`)
+		b.WriteString(html.EscapeString(line.Note))
 		b.WriteString(`</td><td class="num">`)
 		b.WriteString(formatMMK(earned))
 		b.WriteString(`</td></tr>`)
 		subtotal += earned
 	}
-	writeDailySubtotalRow(b, 3, subtotal)
+	writeDailySubtotalRow(b, 4, subtotal)
 	b.WriteString(`</tbody></table></section>`)
 }
 
@@ -919,7 +974,7 @@ func writeDailyExpenseTables(b *strings.Builder, lines []expenseCashLine) bool {
 func writeDailyExpensePortalTable(b *strings.Builder, portal string, lines []expenseCashLine) {
 	openDailyPortalSection(b, portal)
 	b.WriteString(`<table class="daily-table"><thead><tr>`)
-	b.WriteString(`<th>Bill</th><th>Payee</th><th>Paid</th><th class="num">MMK</th>`)
+	b.WriteString(`<th>Bill</th><th>Payee</th><th>Paid</th><th>Remark</th><th class="num">MMK</th>`)
 	b.WriteString(`</tr></thead><tbody>`)
 	var subtotal int64
 	for _, line := range lines {
@@ -927,18 +982,21 @@ func writeDailyExpensePortalTable(b *strings.Builder, portal string, lines []exp
 		if line.Reversal {
 			bill += " (reversal)"
 		}
+		shown := expenseDisplayMMK(line)
 		b.WriteString(`<tr><td>`)
 		b.WriteString(html.EscapeString(bill))
 		b.WriteString(`</td><td>`)
 		b.WriteString(html.EscapeString(line.Name))
 		b.WriteString(`</td><td>`)
 		b.WriteString(html.EscapeString(line.PaidAt))
+		b.WriteString(`</td><td>`)
+		b.WriteString(html.EscapeString(line.Remark))
 		b.WriteString(`</td><td class="num">`)
-		b.WriteString(formatMMK(line.AmountMMK))
+		b.WriteString(formatMMK(shown))
 		b.WriteString(`</td></tr>`)
-		subtotal += line.AmountMMK
+		subtotal += shown
 	}
-	writeDailySubtotalRow(b, 3, subtotal)
+	writeDailySubtotalRow(b, 4, subtotal)
 	b.WriteString(`</tbody></table></section>`)
 }
 
@@ -968,6 +1026,8 @@ func dailyExpensePortalLabel(portal string) string {
 		return "Pharmacy"
 	case "lab":
 		return "Lab"
+	case "expense":
+		return "Expenses"
 	default:
 		if portal == "" {
 			return "Other"

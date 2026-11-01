@@ -51,6 +51,7 @@ export type PatientHistoryPharmacy = {
 };
 
 export type PatientHistoryOt = {
+  id?: number;
   case_no: string;
   status: string;
   bill_id?: number;
@@ -63,6 +64,7 @@ export type PatientHistoryOt = {
 };
 
 export type PatientHistoryIpd = {
+  id?: number;
   admission_no: string;
   status: string;
   admitted_at: string;
@@ -102,7 +104,7 @@ export async function updatePatient(id: number, body: PatientWrite): Promise<Pat
   });
 }
 
-/** Admin-only. Server refuses charts that have any linked voucher or IPD stay. */
+/** Admin-only. Desk bills become unassigned; server refuses charts with an IPD stay. */
 export async function deletePatient(id: number): Promise<void> {
   await apiFetch(`/api/patients/${id}`, { method: "DELETE" });
 }

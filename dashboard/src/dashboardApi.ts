@@ -10,6 +10,8 @@ export type DashOverview = {
   pharmacy_total_mmk: number;
   lab_count: number;
   lab_total_mmk: number;
+  cash_total_mmk?: number;
+  online_total_mmk?: number;
   grand_total_mmk: number;
   bill_count: number;
   avg_bill_mmk: number;
@@ -29,6 +31,8 @@ export type TrendPoint = {
   ot_total_mmk: number;
   pharmacy_total_mmk: number;
   lab_total_mmk: number;
+  cash_total_mmk?: number;
+  online_total_mmk?: number;
   grand_total_mmk: number;
   bill_count: number;
   ipd_cash_mmk: number;
@@ -178,6 +182,7 @@ export type DailyCashLine = {
   bill_no: string;
   patient: string;
   doctor: string;
+  payment_type?: string;
   total_mmk: number;
   paid_at: string;
   paid_by_name: string;
@@ -219,6 +224,8 @@ export type DailyReportResponse = {
   pharmacy_total_mmk: number;
   lab_count: number;
   lab_total_mmk: number;
+  cash_total_mmk?: number;
+  online_total_mmk?: number;
   grand_total_mmk: number;
   bill_count: number;
   voids: number;
@@ -227,6 +234,8 @@ export type DailyReportResponse = {
   prev_ot_total_mmk: number;
   prev_pharmacy_total_mmk: number;
   prev_lab_total_mmk: number;
+  prev_cash_total_mmk?: number;
+  prev_online_total_mmk?: number;
   prev_grand_total_mmk: number;
   prev_bill_count: number;
   delta_opd_mmk: number;

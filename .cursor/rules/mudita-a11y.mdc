@@ -1,0 +1,30 @@
+---
+description: Unified typography and accessibility rollout — read status before any UI change
+alwaysApply: true
+---
+
+# Accessibility rollout
+
+Source of truth: `docs/accessibility/UNIFIED_DESIGN_SYSTEM.md`  
+Inventory: `docs/accessibility/PORTAL_INVENTORY.md`  
+Status: `docs/accessibility/IMPLEMENTATION_STATUS.md`
+
+Before any visual or accessibility edit:
+
+1. Read those three files. Do not rely on chat memory.
+2. Do only the current stage in the status doc. One stage per chat.
+3. Do not restyle a portal already marked IMPLEMENTED or VERIFIED unless the task says to.
+4. Clinic desks share `client/src/shared/styles/App.css`. A token or shared-class edit affects every desk. Record that in the status doc.
+5. Dashboard tokens live only in `dashboard/src/theme.css`. Do not copy clinic action classes into the dashboard.
+6. Update `IMPLEMENTATION_STATUS.md` before finishing.
+
+## Safety
+
+A visual change must not change clinical or financial behavior.
+
+- No schema, API, billing, stock, permission, auth, or routing changes.
+- No new CSS framework, component library, or shared UI package.
+- Fonts are local `@fontsource` packages only. No Google Fonts or other network font URLs.
+- Do not edit unrelated files. Leave other uncommitted work as it is.
+
+Where this spec and `docs/standards/FRONTEND.md` disagree on type, contrast, or target size, the accessibility spec wins. Action roles, overlay class names, bill-rail class names, and F-keys stay in FRONTEND.md.

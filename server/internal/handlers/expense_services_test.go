@@ -86,12 +86,14 @@ func TestExpenseServiceCatalog(t *testing.T) {
 	}
 
 	w = doJSON(exp, http.MethodGet, "/api/expenses/catalog/services?q=Diesel", opdTok, "")
+	mustCode(t, w, http.StatusForbidden)
+	w = doJSON(exp, http.MethodGet, "/api/expenses/catalog/services?q=Diesel", adminTok, "")
 	mustCode(t, w, http.StatusOK)
 	if err := json.Unmarshal(w.Body.Bytes(), &catalog); err != nil {
 		t.Fatal(err)
 	}
 	if len(catalog.Services) != 1 || catalog.Services[0].Name != "Diesel" || catalog.Services[0].PriceMMK != nil {
-		t.Fatalf("opd catalog %+v", catalog.Services)
+		t.Fatalf("admin catalog %+v", catalog.Services)
 	}
 	w = doJSON(exp, http.MethodPost, "/api/expenses/services", opdTok, `{"name":"Not allowed"}`)
 	mustCode(t, w, http.StatusForbidden)
@@ -107,7 +109,6 @@ func TestExpenseServiceCatalog(t *testing.T) {
 func TestExpenseServiceHardDeleteKeepsBillLines(t *testing.T) {
 	sqlDB := openTestDB(t)
 	_, adminTok := insertSession(t, sqlDB, "Admin", 0)
-	_, opdTok := insertSession(t, sqlDB, "OPD", 0)
 	exp := &Expenses{DB: sqlDB}
 
 	w := doJSON(exp, http.MethodPost, "/api/expenses/services", adminTok, `{"code":"tea","name":"Ward tea","price_mmk":1500}`)
@@ -117,7 +118,7 @@ func TestExpenseServiceHardDeleteKeepsBillLines(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	w = doJSON(exp, http.MethodPost, "/api/expenses/bills", opdTok, fmt.Sprintf(
+	w = doJSON(exp, http.MethodPost, "/api/expenses/bills", adminTok, fmt.Sprintf(
 		`{"portal":"opd","name":"Break room","lines":[{"ref_id":%d,"qty":2,"unit_price_mmk":1500}]}`, svc.ID,
 	))
 	mustCode(t, w, http.StatusCreated)
@@ -137,12 +138,12 @@ func TestExpenseServiceHardDeleteKeepsBillLines(t *testing.T) {
 	w = doJSON(exp, http.MethodPost, fmt.Sprintf("/api/expenses/services/%d/delete", svc.ID), adminTok, `{}`)
 	mustCode(t, w, http.StatusNotFound)
 
-	w = doJSON(exp, http.MethodGet, fmt.Sprintf("/api/expenses/bills/%d", bill.ID), opdTok, "")
+	w = doJSON(exp, http.MethodGet, fmt.Sprintf("/api/expenses/bills/%d", bill.ID), adminTok, "")
 	mustCode(t, w, http.StatusOK)
 	if err := json.Unmarshal(w.Body.Bytes(), &bill); err != nil {
 		t.Fatal(err)
 	}
-	if len(bill.Lines) != 1 || bill.Lines[0].Description != "Ward tea" || bill.Lines[0].Code != "TEA" || bill.Lines[0].UnitPriceMMK != 1500 {
+	if len(bill.Lines) != 1 || bill.Lines[0].Description != "Ward tea" || bill.Lines[0].Code != "TEA" || bill.Lines[0].UnitPriceMMK == nil || *bill.Lines[0].UnitPriceMMK != 1500 {
 		t.Fatalf("stored line after catalog delete %+v", bill.Lines)
 	}
 	assertTableCount(t, sqlDB, "expense_services", 0)

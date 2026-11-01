@@ -223,7 +223,8 @@ export async function createUser(body: {
   username: string;
   display_name: string;
   password: string;
-  grants: string[];
+  grants?: string[];
+  admin?: boolean;
 }): Promise<ManagedUser> {
   return apiFetch<ManagedUser>("/api/users", {
     method: "POST",
@@ -238,6 +239,7 @@ export async function updateUser(
     active?: boolean;
     password?: string;
     grants?: string[];
+    admin?: boolean;
   },
 ): Promise<ManagedUser> {
   return apiFetch<ManagedUser>(`/api/users/${id}`, {

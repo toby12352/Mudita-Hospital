@@ -12,6 +12,7 @@ import {
 } from "@/features/reports/api";
 import { formatLocationLabel } from "@/features/pharmacy/api";
 import { formatMMK } from "@/shared/format";
+
 export function ReportsPage({
   canCash,
   canStock,
@@ -73,7 +74,7 @@ export function ReportsPage({
   }
 
   return (
-    <section className="settings-panel">
+    <section className="settings-panel" aria-busy={busy || undefined}>
       <div className="btn-row">
         <button type="button" className="btn ghost" onClick={onBack}>
           {t("back")}
@@ -82,11 +83,15 @@ export function ReportsPage({
           {t("print")}
         </button>
       </div>
-      <nav className="tabs" aria-label="Reports">
+      <div className="tabs" role="tablist" aria-label={t("reports")}>
         {canCash ? (
           <button
             type="button"
-            className={`tab ${tab === "cash" ? "active" : ""}`}
+            id="reports-tab-cash"
+            role="tab"
+            className={`tab${tab === "cash" ? " active" : ""}`}
+            aria-selected={tab === "cash"}
+            aria-controls="reports-panel-cash"
             onClick={() => setTab("cash")}
           >
             {t("reportDailyCash")}
@@ -95,7 +100,11 @@ export function ReportsPage({
         {canStock ? (
           <button
             type="button"
-            className={`tab ${tab === "low" ? "active" : ""}`}
+            id="reports-tab-low"
+            role="tab"
+            className={`tab${tab === "low" ? " active" : ""}`}
+            aria-selected={tab === "low"}
+            aria-controls="reports-panel-low"
             onClick={() => setTab("low")}
           >
             {t("reportLowStock")}
@@ -104,78 +113,105 @@ export function ReportsPage({
         {canStock ? (
           <button
             type="button"
-            className={`tab ${tab === "expiry" ? "active" : ""}`}
+            id="reports-tab-expiry"
+            role="tab"
+            className={`tab${tab === "expiry" ? " active" : ""}`}
+            aria-selected={tab === "expiry"}
+            aria-controls="reports-panel-expiry"
             onClick={() => setTab("expiry")}
           >
             {t("reportNearExpiry")}
           </button>
         ) : null}
-      </nav>
+      </div>
+
+      {error ? (
+        <p className="form-error" role="alert">
+          {error}
+        </p>
+      ) : null}
 
       {tab === "cash" && canCash ? (
-        <div className="btn-row report-filters">
-          <label className="field inline-field">
-            <span>{t("reportDate")}</span>
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-          </label>
-          <button type="button" className="btn ghost" disabled={busy} onClick={() => void load()}>
-            {t("load")}
-          </button>
-        </div>
-      ) : null}
-      {tab === "expiry" && canStock ? (
-        <div className="btn-row report-filters">
-          <label className="field inline-field">
-            <span>{t("daysAhead")}</span>
-            <input
-              type="number"
-              min={1}
-              max={730}
-              value={days}
-              onChange={(e) => setDays(Number(e.target.value) || 90)}
-            />
-          </label>
-          <button type="button" className="btn ghost" disabled={busy} onClick={() => void load()}>
-            {t("load")}
-          </button>
+        <div
+          id="reports-panel-cash"
+          role="tabpanel"
+          aria-labelledby="reports-tab-cash"
+        >
+          <div className="btn-row report-filters">
+            <label className="field inline-field">
+              <span>{t("reportDate")}</span>
+              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            </label>
+            <button type="button" className="btn ghost" disabled={busy} onClick={() => void load()}>
+              {t("load")}
+            </button>
+          </div>
+          {cash ? (
+            <div className="report-block">
+              <p className="hint">
+                {cash.opd_count > 0 ? (
+                  <>
+                    {t("opdBills")}: {cash.opd_count} · {formatMMK(cash.opd_total_mmk)} {t("mmk")} ·{" "}
+                  </>
+                ) : null}
+                {(cash.pharmacy_count ?? 0) > 0 ? (
+                  <>
+                    {t("pharmacyBills")}: {cash.pharmacy_count ?? 0} ·{" "}
+                    {formatMMK(cash.pharmacy_total_mmk ?? 0)} {t("mmk")} ·{" "}
+                  </>
+                ) : null}
+                {cash.ot_count > 0 ? (
+                  <>
+                    {t("otBills")}: {cash.ot_count} · {formatMMK(cash.ot_total_mmk)} {t("mmk")} ·{" "}
+                  </>
+                ) : null}
+                <strong>
+                  {t("cashBalance")}: {formatMMK(cash.cash_total_mmk ?? cash.grand_total_mmk)} {t("mmk")}
+                  {" · "}
+                  {t("onlineBalance")}: {formatMMK(cash.online_total_mmk ?? 0)} {t("mmk")}
+                  {" · "}
+                  {t("totalBalance")}: {formatMMK(cash.grand_total_mmk)} {t("mmk")}
+                </strong>
+              </p>
+              <ul className="data-list" aria-label={t("reportDailyCash")}>
+                {cash.lines.length === 0 ? <li className="empty-row">{t("noPaidBills")}</li> : null}
+                {cash.lines.map((line) => (
+                  <li key={`${line.source}-${line.bill_no}`}>
+                    <div>
+                      <p className="row-title">
+                        {line.source} {line.bill_no} · {formatMMK(line.total_mmk)} {t("mmk")} ·{" "}
+                        {line.payment_type === "online" ? t("payTypeOnline") : t("payTypeCash")}
+                      </p>
+                      <p className="row-sub">
+                        {line.patient} · {line.doctor} · {line.paid_at}
+                      </p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
-      {error ? <p className="form-error">{error}</p> : null}
-
-      {tab === "cash" && cash ? (
-        <div className="report-block">
-          <p className="hint">
-            {cash.opd_count > 0 ? (
-              <>
-                {t("opdBills")}: {cash.opd_count} · {formatMMK(cash.opd_total_mmk)} {t("mmk")} ·{" "}
-              </>
-            ) : null}
-            {(cash.pharmacy_count ?? 0) > 0 ? (
-              <>
-                {t("pharmacyBills")}: {cash.pharmacy_count ?? 0} ·{" "}
-                {formatMMK(cash.pharmacy_total_mmk ?? 0)} {t("mmk")} ·{" "}
-              </>
-            ) : null}
-            {cash.ot_count > 0 ? (
-              <>
-                {t("otBills")}: {cash.ot_count} · {formatMMK(cash.ot_total_mmk)} {t("mmk")} ·{" "}
-              </>
-            ) : null}
-            <strong>
-              {t("grandTotal")}: {formatMMK(cash.grand_total_mmk)} {t("mmk")}
-            </strong>
-          </p>
-          <ul className="data-list">
-            {cash.lines.length === 0 ? <li className="empty-row">{t("noPaidBills")}</li> : null}
-            {cash.lines.map((line) => (
-              <li key={`${line.source}-${line.bill_no}`}>
+      {tab === "low" && canStock ? (
+        <div
+          id="reports-panel-low"
+          role="tabpanel"
+          aria-labelledby="reports-tab-low"
+        >
+          <ul className="data-list" aria-label={t("reportLowStock")}>
+            {low.length === 0 ? <li className="empty-row">{t("noLowStock")}</li> : null}
+            {low.map((row) => (
+              <li key={row.id}>
                 <div>
                   <p className="row-title">
-                    {line.source} {line.bill_no} · {formatMMK(line.total_mmk)} {t("mmk")}
+                    {row.code} — {row.name}
+                    {` · ${t("lowStockLabel")}`}
                   </p>
                   <p className="row-sub">
-                    {line.patient} · {line.doctor} · {line.paid_at}
+                    {t("stock")} {row.stock_main} / {t("reorder")} {row.reorder_level} ·{" "}
+                    {t("deficit")} {row.deficit}
                   </p>
                 </div>
               </li>
@@ -184,42 +220,48 @@ export function ReportsPage({
         </div>
       ) : null}
 
-      {tab === "low" ? (
-        <ul className="data-list">
-          {low.length === 0 ? <li className="empty-row">{t("noLowStock")}</li> : null}
-          {low.map((row) => (
-            <li key={row.id}>
-              <div>
-                <p className="row-title">
-                  {row.code} — {row.name}
-                </p>
-                <p className="row-sub">
-                  {t("stock")} {row.stock_main} / {t("reorder")} {row.reorder_level} ·{" "}
-                  {t("deficit")} {row.deficit}
-                </p>
-              </div>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-
-      {tab === "expiry" ? (
-        <ul className="data-list">
-          {expiry.length === 0 ? <li className="empty-row">{t("noNearExpiry")}</li> : null}
-          {expiry.map((row) => (
-            <li key={row.batch_id} className={row.days_left < 0 ? "row-warn" : undefined}>
-              <div>
-                <p className="row-title">
-                  {row.code} — {row.name}
-                </p>
-                <p className="row-sub">
-                  {formatLocationLabel(row.location_code)} · {t("expiry")} {row.expiry_date} ·{" "}
-                  {t("daysLeft")} {row.days_left} · {t("qty")} {row.qty}
-                </p>
-              </div>
-            </li>
-          ))}
-        </ul>
+      {tab === "expiry" && canStock ? (
+        <div
+          id="reports-panel-expiry"
+          role="tabpanel"
+          aria-labelledby="reports-tab-expiry"
+        >
+          <div className="btn-row report-filters">
+            <label className="field inline-field">
+              <span>{t("daysAhead")}</span>
+              <input
+                type="number"
+                min={1}
+                max={730}
+                value={days}
+                onChange={(e) => setDays(Number(e.target.value) || 90)}
+              />
+            </label>
+            <button type="button" className="btn ghost" disabled={busy} onClick={() => void load()}>
+              {t("load")}
+            </button>
+          </div>
+          <ul className="data-list" aria-label={t("reportNearExpiry")}>
+            {expiry.length === 0 ? <li className="empty-row">{t("noNearExpiry")}</li> : null}
+            {expiry.map((row) => {
+              const expired = row.days_left < 0;
+              return (
+                <li key={row.batch_id} className={expired ? "row-warn" : undefined}>
+                  <div>
+                    <p className="row-title">
+                      {row.code} — {row.name}
+                      {expired ? ` · ${t("daysLeft")} ${row.days_left}` : ""}
+                    </p>
+                    <p className="row-sub">
+                      {formatLocationLabel(row.location_code)} · {t("expiry")} {row.expiry_date} ·{" "}
+                      {t("daysLeft")} {row.days_left} · {t("qty")} {row.qty}
+                    </p>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
       ) : null}
     </section>
   );

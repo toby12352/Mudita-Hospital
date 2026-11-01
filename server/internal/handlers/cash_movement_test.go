@@ -312,6 +312,16 @@ func TestCashMovement(t *testing.T) {
 			t.Fatalf("expense print leaked income: %s", expenseBody)
 		}
 
+		detailsPrinted := doJSON(dash, http.MethodGet, "/api/dashboard/daily-report/print?date="+printDay+"&kind=details", adminTok, "")
+		mustCode(t, detailsPrinted, http.StatusOK)
+		detailsBody := detailsPrinted.Body.String()
+		if !strings.Contains(detailsBody, "All Bill Details") || !strings.Contains(detailsBody, "OPD-PRINT") || !strings.Contains(detailsBody, "EXP-PRINT") {
+			t.Fatalf("details print missing vouchers: %s", detailsBody)
+		}
+		if strings.Contains(detailsBody, "IPD-PRINT") {
+			t.Fatalf("details print leaked IPD drawer: %s", detailsBody)
+		}
+
 		badKind := doJSON(dash, http.MethodGet, "/api/dashboard/daily-report/print?date="+printDay+"&kind=other", adminTok, "")
 		mustCode(t, badKind, http.StatusBadRequest)
 

@@ -30,9 +30,12 @@ import {
 } from "@/shared/BillPayPrint";
 import { BillTotals } from "@/shared/BillTotals";
 import { BillDateField, formatUtcAsLocal } from "@/shared/BillDateField";
+import { draftHasContent } from "@/shared/billDraft";
+import { useRegisterBillLeaveGuard } from "@/shared/billLeaveGuard";
 import { Typeahead } from "@/shared/Typeahead";
 import { useI18n } from "@/shared/i18n";
 import { useBillActionFeedback, useBillActionPending } from "@/shared/useActionLock";
+import { VoidBillConfirm } from "@/shared/VoidBillConfirm";
 import {
   PharmacyPurchaseListDialog,
   type PharmacyPurchaseListDialogMode,
@@ -386,6 +389,7 @@ export function PharmacyPurchasePage() {
   const { action: pendingAction, pending, begin, end } = useBillActionPending();
   const { pulse, isOk, isErr } = useBillActionFeedback();
   const [dialog, setDialog] = useState<PharmacyPurchaseListDialogMode | null>(null);
+  const [voidOpen, setVoidOpen] = useState(false);
   const [confirm, setConfirm] = useState<DeskConfirm | null>(null);
   const [printAfterPay, setPrintAfterPay] = useState<string | null>(null);
 
@@ -400,6 +404,13 @@ export function PharmacyPurchasePage() {
   const [nowTick, setNowTick] = useState(() => Date.now());
 
   const isDraft = billStatus === "draft";
+  const canVoid =
+    billId != null && billStatus !== "void" && billStatus !== "deleted";
+
+  function openVoidConfirm() {
+    if (!canVoid) return;
+    setVoidOpen(true);
+  }
 
   useEffect(() => {
     if (createdAt) return;
@@ -468,7 +479,7 @@ export function PharmacyPurchasePage() {
     }
   }
 
-  function blockInvalidDraft(): boolean {
+  function blockIncompletePay(): boolean {
     if (lines.length === 0) {
       setError(t("expenseNoLines"));
       return true;
@@ -491,7 +502,15 @@ export function PharmacyPurchasePage() {
   }
 
   async function saveDraft(): Promise<number | null> {
-    if (blockInvalidDraft()) return null;
+    if (
+      !draftHasContent({
+        texts: [supplierName, description],
+        lineCount: lines.length,
+      })
+    ) {
+      setError(t("errDraftEmpty"));
+      return null;
+    }
     const body = buildBody();
     const b = billId
       ? await updatePharmacyPurchaseBill(billId, body)
@@ -499,6 +518,17 @@ export function PharmacyPurchasePage() {
     applySavedBill(b);
     return b.id;
   }
+
+  useRegisterBillLeaveGuard(lines.length > 0 && billId == null, async () => {
+    try {
+      setError(null);
+      const id = await saveDraft();
+      return id != null;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Save failed");
+      return false;
+    }
+  });
 
   async function doConfirm() {
     if (!isDraft) return;
@@ -545,6 +575,7 @@ export function PharmacyPurchasePage() {
       if (!isDraft) {
         throw new Error(t("errBillFinished"));
       }
+      if (blockIncompletePay()) return;
       id = await saveDraft();
       if (id == null) return;
       const stamped = await markPharmacyPurchaseBillPrinted(id);
@@ -569,6 +600,7 @@ export function PharmacyPurchasePage() {
       if (!isDraft) {
         throw new Error(t("errBillFinished"));
       }
+      if (blockIncompletePay()) return;
       const id = await saveDraft();
       if (id == null) return;
       const paid = await payPharmacyPurchaseBill(id);
@@ -715,7 +747,7 @@ export function PharmacyPurchasePage() {
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (dialog) return;
+      if (dialog || voidOpen) return;
       if (document.querySelector(".print-preview-overlay")) return;
       if (document.querySelector(".alert-dialog-overlay")) return;
 
@@ -742,7 +774,7 @@ export function PharmacyPurchasePage() {
       }
       if (key === "F8" && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
-        if (!busy) setDialog("delete");
+        if (!busy && canVoid) openVoidConfirm();
         return;
       }
       if (key === "F10") {
@@ -760,6 +792,7 @@ export function PharmacyPurchasePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- shortcut wiring
   }, [
     dialog,
+    voidOpen,
     busy,
     isDraft,
     billId,
@@ -768,6 +801,7 @@ export function PharmacyPurchasePage() {
     lines,
     supplierName,
     description,
+    canVoid,
   ]);
 
   const total = lines.reduce((sum, l) => sum + l.line_total_mmk, 0);
@@ -935,8 +969,8 @@ export function PharmacyPurchasePage() {
           <button
             type="button"
             className={`opd-bill-rail-btn opd-bill-rail-btn--danger${isErr("void") ? " opd-bill-rail-btn--shake" : ""}`}
-            disabled={busy}
-            onClick={() => setDialog("delete")}
+            disabled={busy || !canVoid}
+            onClick={openVoidConfirm}
             data-guide="bill-void"
           >
             <span className="opd-bill-rail-btn-main">
@@ -991,8 +1025,16 @@ export function PharmacyPurchasePage() {
           mode={dialog}
           onClose={() => setDialog(null)}
           onOpen={(id) => void openBill(id)}
-          onVoid={doVoidSelected}
           onPurge={doPurgeSelected}
+        />
+      ) : null}
+      {voidOpen && billId != null ? (
+        <VoidBillConfirm
+          billNo={billNo || String(billId)}
+          identityName={supplierName}
+          defaultReason="Voided"
+          onClose={() => setVoidOpen(false)}
+          onVoid={(reason) => doVoidSelected(billId, reason)}
         />
       ) : null}
       {confirm ? (

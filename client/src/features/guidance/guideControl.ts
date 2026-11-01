@@ -36,3 +36,11 @@ export function stopGuide(): void {
   run = null;
   emit();
 }
+
+/** Keeps step index in sync while a tour is running (e.g. catalog pages that open a row mid-lesson). */
+export function setGuideStepIndex(stepIndex: number): void {
+  if (!run) return;
+  if (run.stepIndex === stepIndex) return;
+  run = { ...run, stepIndex };
+  emit();
+}

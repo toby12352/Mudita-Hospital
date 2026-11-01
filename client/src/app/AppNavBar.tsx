@@ -23,7 +23,6 @@ function sectionForView(view: View, intent: NavIntent, fallback: NavSectionId): 
   if (view === "opd") {
     const screen = intent.opdScreen ?? "bill";
     if (screen === "doctors" || screen === "services") return "opd_maintenance";
-    if (screen === "expense") return "opd_expense";
     return "opd";
   }
   if (view === "lab") {
@@ -32,12 +31,10 @@ function sectionForView(view: View, intent: NavIntent, fallback: NavSectionId): 
   if (view === "ot") {
     const mode = intent.otMode ?? "case";
     if (mode === "stock") return "ot_stock";
-    if (mode === "expense") return "ot_expense";
     return "ot_bill";
   }
-  if (view === "pharmacy_expense") return "pharmacy_expense";
+  if (view === "expense") return "expense";
   if (view === "ipd_bill") return "ipd_bill";
-  if (view === "ipd_expense") return "ipd_expense";
   if (view === "pharmacy_billing") return "pharmacy";
   if (view === "pharmacy_return") return "pharmacy_return";
   if (view === "pharmacy_purchase") return "pharmacy_purchase";
@@ -87,12 +84,6 @@ function opdEntries(): NavEntry[] {
       },
     },
     {
-      id: "opd_expense",
-      labelKey: "navExpenseBill",
-      enabled: true,
-      action: { kind: "navigate", view: "opd", intent: { opdScreen: "expense" } },
-    },
-    {
       id: "opd_maintenance",
       labelKey: "navMaintenance",
       enabled: true,
@@ -114,16 +105,21 @@ function otEntries(): NavEntry[] {
       action: { kind: "navigate", view: "ot", intent: { otMode: "case" } },
     },
     {
-      id: "ot_expense",
-      labelKey: "navExpenseBill",
-      enabled: true,
-      action: { kind: "navigate", view: "ot", intent: { otMode: "expense" } },
-    },
-    {
       id: "ot_stock",
       labelKey: "navOtCupboard",
       enabled: true,
       action: { kind: "navigate", view: "ot", intent: { otMode: "stock" } },
+    },
+  ];
+}
+
+function expenseEntries(): NavEntry[] {
+  return [
+    {
+      id: "expense",
+      labelKey: "navExpenseBill",
+      enabled: true,
+      action: { kind: "navigate", view: "expense", intent: {} },
     },
   ];
 }
@@ -190,12 +186,6 @@ function ipdEntries(): NavEntry[] {
       enabled: true,
       action: { kind: "navigate", view: "ipd_bill", intent: {} },
     },
-    {
-      id: "ipd_expense",
-      labelKey: "navExpenseBill",
-      enabled: true,
-      action: { kind: "navigate", view: "ipd_expense", intent: {} },
-    },
   ];
 }
 
@@ -232,12 +222,6 @@ function pharmacyEntries(): NavEntry[] {
       },
     },
     {
-      id: "pharmacy_expense",
-      labelKey: "navExpenseBill",
-      enabled: true,
-      action: { kind: "navigate", view: "pharmacy_expense", intent: {} },
-    },
-    {
       id: "pharmacy_transfer",
       labelKey: "navTransferToOt",
       enabled: true,
@@ -267,6 +251,7 @@ function entriesForDesk(portal: PortalId, canCreatePatients: boolean): NavEntry[
   if (portal === "ipd") return ipdEntries();
   if (portal === "pharmacy") return pharmacyEntries();
   if (portal === "lab") return labEntries();
+  if (portal === "expense") return expenseEntries();
   return [
     {
       id: "settings",
@@ -299,6 +284,7 @@ function adminEntries(
     { id: "admin_ot", module: "ot", labelKey: "ot", children: otEntries },
     { id: "admin_pharmacy", module: "pharmacy", labelKey: "pharmacy", children: pharmacyEntries },
     { id: "admin_lab", module: "lab", labelKey: "lab", children: labEntries },
+    { id: "admin_expense", module: "expense", labelKey: "expenses", children: expenseEntries },
   ];
   const entries: NavEntry[] = [
     {
@@ -678,13 +664,13 @@ const glyphs: Record<NavSectionId, ReactNode> = {
       <path d="M5.35 9.25h5.3" />
     </>
   ),
+  admin_expense: expenseGlyph(),
   opd: (
     <>
       <rect x="3.25" y="2.75" width="9.5" height="10.5" rx="1.25" />
       <path d="M5.5 5.5h5M5.5 8h5M5.5 10.5h3" />
     </>
   ),
-  opd_expense: expenseGlyph(),
   opd_maintenance: (
     <>
       <path d="M3 4.5h10M3 8h10M3 11.5h10" />
@@ -709,7 +695,6 @@ const glyphs: Record<NavSectionId, ReactNode> = {
       <path d="M5.5 5.5h5M5.5 8h5M5.5 10.5h3" />
     </>
   ),
-  ot_expense: expenseGlyph(),
   ot_stock: (
     <>
       <path d="M2.75 5.5 8 2.75l5.25 2.75L8 8.25 2.75 5.5Z" />
@@ -723,7 +708,6 @@ const glyphs: Record<NavSectionId, ReactNode> = {
       <path d="M5.5 5.5h5M5.5 8h5M5.5 10.5h3" />
     </>
   ),
-  pharmacy_expense: expenseGlyph(),
   pharmacy_return: (
     <>
       <path d="M6.4 3.6 3.3 6.2 6.4 8.8" />
@@ -768,7 +752,7 @@ const glyphs: Record<NavSectionId, ReactNode> = {
       <path d="M5.5 5.5h5M5.5 8h5M5.5 10.5h3" />
     </>
   ),
-  ipd_expense: expenseGlyph(),
+  expense: expenseGlyph(),
   stock: (
     <>
       <path d="M3 4.5h10M3 8h10M3 11.5h10" />

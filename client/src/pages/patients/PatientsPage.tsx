@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useId, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   attachPatientBill,
   createPatient,
@@ -13,34 +13,58 @@ import {
   type PatientWrite,
 } from "@/features/patients/api";
 import { useClinicActions } from "@/app/clinicActions";
+import type { ClinicModule } from "@/app/portal";
+import type { NavSectionId, View } from "@/app/types";
 import { ActionIcon } from "@/shared/ActionIcon";
 import { AlertDialog } from "@/shared/AlertDialog";
-import {
-  CatalogDateSortField,
-  CatalogFilterButton,
-  CatalogFilterPanel,
-} from "@/shared/CatalogListFilter";
+import { moneyStatusLabel } from "@/shared/BillPayPrint";
 import {
   BillHistoryTable,
   type BillHistoryTableRow,
 } from "@/shared/BillHistoryTable";
+import {
+  BillHistoryToolbar,
+  type BillHistoryQuery,
+  type BillHistoryStatusOption,
+  type BillHistorySuggestItem,
+} from "@/shared/BillHistoryToolbar";
 import { DatePicker, formatDateDisplay } from "@/shared/DatePicker";
-import { sortByDateAscDesc, type DateSortValue } from "@/shared/DateSort";
+import { sortByDateAscDesc } from "@/shared/DateSort";
 import { DialogCloseButton } from "@/shared/DialogCloseButton";
 import { fieldKeyForApiError } from "@/shared/errors";
 import { FieldError, revealField } from "@/shared/FieldError";
 import { FormSection } from "@/shared/FormSection";
 import { useI18n } from "@/shared/i18n";
 
+type HistoryKind = "ipd" | "opd" | "ot" | "pharmacy" | "lab";
+
 type HistoryRow = BillHistoryTableRow & {
+  kind: HistoryKind;
+  /** Real bill / case / admission id for desk open. */
+  openId?: number;
   print?: { kind: PatientHistoryBillKind; billId: number; title: string };
 };
 
-type HistoryKindFilter = "all" | "ipd" | "opd" | "lab" | "ot" | "pharmacy" | "addBill";
-
 type DetailTab = "info" | "history";
 
-const HISTORY_KIND_OPTIONS: HistoryKindFilter[] = ["all", "ipd", "opd", "lab", "ot", "pharmacy"];
+type OpenRecordTarget = {
+  view: View;
+  section: NavSectionId;
+  openRecordId: number;
+};
+
+function historyStampDay(iso: string): string {
+  if (!iso) return "";
+  const d = new Date(iso.includes("T") ? iso : iso.replace(" ", "T") + "Z");
+  if (Number.isNaN(d.getTime())) return "";
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${month}-${day}`;
+}
+
+function emptyHistoryQuery(): BillHistoryQuery {
+  return { q: "", money: "", category: "", unit: "", from: "", to: "", sort: "desc" };
+}
 
 const emptyHistory: PatientHistory = { opd: [], lab: [], pharmacy: [], ot: [], ipd: [] };
 
@@ -74,35 +98,34 @@ function chartBody(
   };
 }
 
-function historyIsEmpty(h: PatientHistory): boolean {
-  return h.opd.length === 0 && h.pharmacy.length === 0 && h.ot.length === 0 && h.ipd.length === 0;
+function historyHasStay(h: PatientHistory): boolean {
+  return h.ipd.length > 0;
 }
 
 export function PatientsPage({
   startCreate = false,
   focusId,
   onViewList,
+  canReadModule,
+  onOpenRecord,
 }: {
   startCreate?: boolean;
   focusId?: number;
   onViewList?: (id?: number) => void;
+  canReadModule?: (module: ClinicModule) => boolean;
+  onOpenRecord?: (target: OpenRecordTarget) => void;
 } = {}) {
   const { t } = useI18n();
   const { patientsCreate, patientsUpdate, patientsDelete } = useClinicActions();
   const [creating, setCreating] = useState(() => startCreate && patientsCreate);
   const [editing, setEditing] = useState(false);
-  const [filterOpen, setFilterOpen] = useState(false);
-  const filterPanelId = useId();
-  const historyKindsLabelId = useId();
-  const historySortLabelId = useId();
-  const historySortId = useId();
-  const [filterQ, setFilterQ] = useState("");
-  const [dateSort, setDateSort] = useState<DateSortValue>("desc");
+  const [listQuery, setListQuery] = useState<BillHistoryQuery>(emptyHistoryQuery);
   const [detailTab, setDetailTab] = useState<DetailTab>("info");
-  const [historyKind, setHistoryKind] = useState<HistoryKindFilter>("all");
-  const [historyDateSort, setHistoryDateSort] = useState<DateSortValue>("desc");
+  const [historyQuery, setHistoryQuery] = useState<BillHistoryQuery>(emptyHistoryQuery);
+  const [attachOpen, setAttachOpen] = useState(false);
   const [list, setList] = useState<PatientChart[]>([]);
-  const [selectedId, setSelectedId] = useState<number | null>(focusId ?? null);
+  const [listLoading, setListLoading] = useState(true);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
   const [createdPatient, setCreatedPatient] = useState<PatientChart | null>(null);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -120,6 +143,9 @@ export function PatientsPage({
   const [busy, setBusy] = useState(false);
   const nameInputRef = useRef<HTMLInputElement>(null);
   const formErrorRef = useRef<HTMLParagraphElement>(null);
+  const detailTitleRef = useRef<HTMLHeadingElement>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
+  const returnListFocusIdRef = useRef<number | null>(null);
   const nameErrorId = useId();
   const [printingKey, setPrintingKey] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<PatientChart | null>(null);
@@ -127,25 +153,35 @@ export function PatientsPage({
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  async function reload(search = filterQ) {
-    const data = await listPatients(search.trim());
-    setList(data);
-    return data;
+  function rememberOpener() {
+    const el = document.activeElement;
+    openerRef.current = el instanceof HTMLElement ? el : null;
   }
 
-  function runSearch(query: string) {
-    void reload(query)
-      .then((data) => {
-        if (data[0]) selectItem(data[0].id);
-        else setSelectedId(null);
-      })
-      .catch((err) => setError(err instanceof Error ? err.message : "Search failed"));
+  function restoreOpener() {
+    const prev = openerRef.current;
+    openerRef.current = null;
+    if (prev && document.contains(prev)) {
+      window.requestAnimationFrame(() => prev.focus());
+    }
   }
 
-  function resetFilters() {
-    setFilterQ("");
-    setDateSort("desc");
-    runSearch("");
+  async function reload(search = listQuery.q) {
+    setListLoading(true);
+    try {
+      const data = await listPatients(search.trim());
+      setList(data);
+      return data;
+    } finally {
+      setListLoading(false);
+    }
+  }
+
+  function runListSearch(query: BillHistoryQuery) {
+    setListQuery(query);
+    void reload(query.q).catch((err) =>
+      setError(err instanceof Error ? err.message : "Search failed"),
+    );
   }
 
   useEffect(() => {
@@ -155,14 +191,16 @@ export function PatientsPage({
         const data = await listPatients("");
         if (cancelled) return;
         setList(data);
+        setListLoading(false);
         if (creating) return;
         if (focusId != null && data.some((p) => p.id === focusId)) {
           setSelectedId(focusId);
-        } else if (data.length > 0 && selectedId == null) {
-          setSelectedId(data[0].id);
         }
       } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : "Load failed");
+        if (!cancelled) {
+          setListLoading(false);
+          setError(e instanceof Error ? e.message : "Load failed");
+        }
       }
     })();
     return () => {
@@ -201,46 +239,213 @@ export function PatientsPage({
     };
   }, [selectedId, creating, editing]);
 
-  const sortedList = useMemo(
-    () => sortByDateAscDesc(list, dateSort, (p) => p.updated_at, (p) => p.id),
-    [list, dateSort],
+  const filteredList = useMemo(() => {
+    const from = listQuery.from.trim();
+    const to = listQuery.to.trim();
+    let rows = list;
+    if (from || to) {
+      rows = rows.filter((p) => {
+        const day = historyStampDay(p.updated_at);
+        if (from && day && day < from) return false;
+        if (to && day && day > to) return false;
+        return true;
+      });
+    }
+    return sortByDateAscDesc(rows, listQuery.sort, (p) => p.updated_at, (p) => p.id);
+  }, [list, listQuery.from, listQuery.to, listQuery.sort]);
+
+  const historyKindOptions = useMemo((): BillHistoryStatusOption[] => {
+    return [
+      { value: "", label: t("all") },
+      { value: "ipd", label: t("ipd") },
+      { value: "opd", label: t("opd") },
+      { value: "ot", label: t("ot") },
+      { value: "pharmacy", label: t("pharmacy") },
+      { value: "lab", label: t("lab") },
+    ];
+  }, [t]);
+
+  const kindLabel = useCallback(
+    (kind: HistoryKind) => {
+      if (kind === "ipd") return t("ipd");
+      if (kind === "opd") return t("opd");
+      if (kind === "ot") return t("ot");
+      if (kind === "pharmacy") return t("pharmacy");
+      return t("lab");
+    },
+    [t],
   );
-  const sortedOpd = useMemo(
-    () => sortByDateAscDesc(history.opd, historyDateSort, (row) => row.created_at, (row) => row.id),
-    [history.opd, historyDateSort],
-  );
-  const sortedLab = useMemo(
-    () => sortByDateAscDesc(history.lab, historyDateSort, (row) => row.created_at, (row) => row.id),
-    [history.lab, historyDateSort],
-  );
-  const sortedPharmacy = useMemo(
-    () =>
-      sortByDateAscDesc(
-        history.pharmacy,
-        historyDateSort,
-        (row) => row.created_at,
-        (row) => row.id,
-      ),
-    [history.pharmacy, historyDateSort],
-  );
-  const sortedOt = useMemo(
-    () =>
-      sortByDateAscDesc(
-        history.ot,
-        historyDateSort,
-        (row) => row.created_at,
-        (row) => row.bill_id ?? 0,
-      ),
-    [history.ot, historyDateSort],
-  );
-  const sortedIpd = useMemo(
-    () =>
-      sortByDateAscDesc(history.ipd, historyDateSort, (row) => row.admitted_at, () => 0),
-    [history.ipd, historyDateSort],
-  );
+
+  const allHistoryRows = useMemo((): HistoryRow[] => {
+    const rows: HistoryRow[] = [];
+    let nextId = 1;
+
+    for (const [index, row] of history.ipd.entries()) {
+      rows.push({
+        id: nextId++,
+        key: `ipd-${row.admission_no}-${index}`,
+        kind: "ipd",
+        openId: row.id != null && row.id > 0 ? row.id : undefined,
+        voucher: row.admission_no,
+        name: "",
+        status: row.settled ? "settled" : "open",
+        statusLabel: row.settled ? t("ipdStatusSettled") : t("ipdStatusOpen"),
+        statusTone: row.settled ? "paid" : "ipd",
+        when: row.admitted_at,
+        priceMmk: row.balance_mmk,
+      });
+    }
+    for (const row of history.opd) {
+      rows.push({
+        id: nextId++,
+        key: `opd-${row.id}`,
+        kind: "opd",
+        openId: row.id,
+        voucher: row.bill_no,
+        name: row.doctor_name || "—",
+        status: row.status,
+        printedAt: row.printed_at,
+        collectedCash: row.collected_cash,
+        when: row.created_at,
+        priceMmk: row.total_mmk,
+        canPrint: true,
+        print: { kind: "opd", billId: row.id, title: row.bill_no },
+      });
+    }
+    for (const row of history.ot) {
+      const billId = row.bill_id != null && row.bill_id > 0 ? row.bill_id : 0;
+      rows.push({
+        id: nextId++,
+        key: `ot-${row.id ?? row.bill_id ?? row.case_no}`,
+        kind: "ot",
+        openId: row.id != null && row.id > 0 ? row.id : undefined,
+        voucher: row.case_no,
+        name: row.bill_no || "—",
+        status: row.bill_status || row.status,
+        printedAt: row.bill_printed_at,
+        collectedCash: row.bill_collected_cash,
+        when: row.created_at,
+        priceMmk: row.bill_total_mmk ?? null,
+        canPrint: billId > 0,
+        print:
+          billId > 0
+            ? { kind: "ot", billId, title: row.bill_no || row.case_no }
+            : undefined,
+      });
+    }
+    for (const row of history.pharmacy) {
+      rows.push({
+        id: nextId++,
+        key: `pharmacy-${row.id}`,
+        kind: "pharmacy",
+        openId: row.id,
+        voucher: row.bill_no,
+        name: "",
+        status: row.status,
+        printedAt: row.printed_at,
+        collectedCash: row.collected_cash,
+        when: row.created_at,
+        priceMmk: row.total_mmk,
+        canPrint: true,
+        print: { kind: "pharmacy", billId: row.id, title: row.bill_no },
+      });
+    }
+    for (const row of history.lab) {
+      rows.push({
+        id: nextId++,
+        key: `lab-${row.id}`,
+        kind: "lab",
+        openId: row.id,
+        voucher: row.bill_no,
+        name: row.doctor_name || "—",
+        status: row.status,
+        printedAt: row.printed_at,
+        collectedCash: row.collected_cash,
+        when: row.created_at,
+        priceMmk: row.total_mmk,
+      });
+    }
+    return rows;
+  }, [history, t]);
+
+  const filteredHistoryRows = useMemo(() => {
+    const q = historyQuery.q.trim().toLowerCase();
+    const kind = historyQuery.money;
+    const from = historyQuery.from.trim();
+    const to = historyQuery.to.trim();
+
+    let rows = allHistoryRows.filter((row) => {
+      if (kind && row.kind !== kind) return false;
+      const day = historyStampDay(row.when);
+      if (from && day && day < from) return false;
+      if (to && day && day > to) return false;
+      if (!q) return true;
+      const statusText = (
+        row.statusLabel ??
+        moneyStatusLabel(row.status, t, row.printedAt, row.collectedCash)
+      ).toLowerCase();
+      const haystack = [row.voucher, row.name, statusText, kindLabel(row.kind)]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(q);
+    });
+
+    rows = sortByDateAscDesc(rows, historyQuery.sort, (row) => row.when, (row) => row.id);
+
+    const showKindPrefix = !kind;
+    return rows.map((row) => ({
+      ...row,
+      name: showKindPrefix
+        ? `${kindLabel(row.kind)}${row.name && row.name !== "—" ? ` · ${row.name}` : ""}`
+        : row.name,
+    }));
+  }, [allHistoryRows, historyQuery, kindLabel, t]);
+
   const selected = list.find((p) => p.id === selectedId) ?? null;
   const showForm = (creating && patientsCreate) || (editing && patientsUpdate);
   const genderKnown = gender === "" || gender === "M" || gender === "F" || gender === "Other";
+  const showList = !showForm && selectedId == null;
+
+  useEffect(() => {
+    if (!showForm) return;
+    window.requestAnimationFrame(() => nameInputRef.current?.focus());
+  }, [showForm, creating, editing, selectedId]);
+
+  useEffect(() => {
+    if (showForm || selectedId == null) return;
+    window.requestAnimationFrame(() => detailTitleRef.current?.focus());
+  }, [selectedId, showForm]);
+
+  useEffect(() => {
+    if (!showList) return;
+    const id = returnListFocusIdRef.current;
+    if (id == null) return;
+    returnListFocusIdRef.current = null;
+    window.requestAnimationFrame(() => {
+      document.querySelector<HTMLElement>(`[data-patient-row="${id}"]`)?.focus();
+    });
+  }, [showList, filteredList]);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      if (document.querySelector(".alert-dialog-overlay, .print-preview-overlay")) return;
+      if (showForm) {
+        e.preventDefault();
+        if (creating && !editing) leaveCreatePage();
+        else closeForm();
+        return;
+      }
+      if (selectedId != null) {
+        e.preventDefault();
+        backToList();
+      }
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+    // Intentional: handlers close over latest leave/close helpers each render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Escape wiring
+  }, [showForm, creating, editing, selectedId]);
 
   function fillForm(p: PatientChart | null) {
     if (!p) {
@@ -269,11 +474,30 @@ export function PatientsPage({
     setEditing(false);
     fillForm(null);
     setError(null);
+    restoreOpener();
+  }
+
+  function backToList() {
+    returnListFocusIdRef.current = selectedId;
+    openerRef.current = null;
+    setSelectedId(null);
+    setCreating(false);
+    setEditing(false);
+    fillForm(null);
+    setDetailTab("info");
+    setAttachOpen(false);
+    setBillNo("");
+    setHistory(emptyHistory);
+    setHistoryReady(false);
+    setHistoryQuery(emptyHistoryQuery());
+    setError(null);
+    if (onViewList) onViewList();
   }
 
   function leaveCreatePage() {
     setCreatedPatient(null);
     if (onViewList) {
+      openerRef.current = null;
       onViewList();
       return;
     }
@@ -281,19 +505,33 @@ export function PatientsPage({
   }
 
   function selectItem(id: number) {
+    rememberOpener();
     setSelectedId(id);
     setCreating(false);
     setEditing(false);
     fillForm(null);
+    setDetailTab("info");
     setHistory(emptyHistory);
     setHistoryReady(false);
     setBillNo("");
-    setHistoryKind("all");
+    setAttachOpen(false);
+    setHistoryQuery(emptyHistoryQuery());
+    setError(null);
+  }
+
+  function startCreateForm() {
+    if (!patientsCreate) return;
+    rememberOpener();
+    setSelectedId(null);
+    setCreating(true);
+    setEditing(false);
+    fillForm(null);
     setError(null);
   }
 
   function openEdit(p: PatientChart) {
     if (!patientsUpdate) return;
+    rememberOpener();
     setCreating(false);
     setEditing(true);
     fillForm(p);
@@ -309,16 +547,18 @@ export function PatientsPage({
       const body = chartBody(name, phone, age, gender, dateOfBirth, nrc, fatherMotherName, notes);
       if (editing && selectedId != null) {
         const saved = await updatePatient(selectedId, body);
-        setFilterQ("");
+        openerRef.current = null;
         setCreating(false);
         setEditing(false);
         fillForm(null);
-        const data = await listPatients("");
+        const data = await listPatients(listQuery.q.trim());
         setList(data);
         setSelectedId(saved.id);
         setHistory(await fetchPatientHistory(saved.id));
+        setHistoryReady(true);
       } else {
         const saved = await createPatient(body);
+        openerRef.current = null;
         setCreatedPatient(saved);
       }
     } catch (err) {
@@ -343,7 +583,6 @@ export function PatientsPage({
       onViewList(id);
       return;
     }
-    setFilterQ("");
     setCreating(false);
     setEditing(false);
     fillForm(null);
@@ -351,7 +590,9 @@ export function PatientsPage({
       .then(async (data) => {
         setList(data);
         setSelectedId(id);
+        setDetailTab("info");
         setHistory(await fetchPatientHistory(id));
+        setHistoryReady(true);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Load failed"));
   }
@@ -369,13 +610,45 @@ export function PatientsPage({
       await attachPatientBill(selectedId, bill);
       setBillNo("");
       setHistory(await fetchPatientHistory(selectedId));
-      setHistoryKind("all");
+      setAttachOpen(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : t("errGeneric"));
     } finally {
       setBusy(false);
     }
   }
+
+  const loadHistorySuggestions = useCallback(
+    async (q: string, filters: Omit<BillHistoryQuery, "q">): Promise<BillHistorySuggestItem[]> => {
+      const needle = q.trim().toLowerCase();
+      const kind = filters.money;
+      const from = filters.from.trim();
+      const to = filters.to.trim();
+      return allHistoryRows
+        .filter((row) => {
+          if (kind && row.kind !== kind) return false;
+          const day = historyStampDay(row.when);
+          if (from && day && day < from) return false;
+          if (to && day && day > to) return false;
+          if (!needle) return true;
+          const statusText = (
+            row.statusLabel ??
+            moneyStatusLabel(row.status, t, row.printedAt, row.collectedCash)
+          ).toLowerCase();
+          const haystack = [row.voucher, row.name, statusText, kindLabel(row.kind)]
+            .join(" ")
+            .toLowerCase();
+          return haystack.includes(needle);
+        })
+        .slice(0, 8)
+        .map((row) => ({
+          id: row.id,
+          voucher: row.voucher,
+          name: `${kindLabel(row.kind)}${row.name && row.name !== "—" ? ` · ${row.name}` : ""}`,
+        }));
+    },
+    [allHistoryRows, kindLabel, t],
+  );
 
   async function printHistoryRow(row: HistoryRow) {
     if (selectedId == null || !row.print) return;
@@ -390,6 +663,59 @@ export function PatientsPage({
       setPrintingKey(null);
     }
   }
+
+  function openHistoryRecord(row: HistoryRow) {
+    if (row.openId == null || row.openId <= 0 || !onOpenRecord || !canReadModule) return;
+
+    let module: ClinicModule;
+    let target: OpenRecordTarget;
+
+    if (row.kind === "opd") {
+      module = "opd";
+      target = { view: "opd", section: "opd", openRecordId: row.openId };
+    } else if (row.kind === "lab") {
+      module = "lab";
+      target = { view: "lab", section: "lab", openRecordId: row.openId };
+    } else if (row.kind === "ot") {
+      module = "ot";
+      target = { view: "ot", section: "ot_bill", openRecordId: row.openId };
+    } else if (row.kind === "ipd") {
+      module = "ipd";
+      target = { view: "ipd", section: "ipd", openRecordId: row.openId };
+    } else if (row.kind === "pharmacy") {
+      module = "pharmacy";
+      const isReturn = row.voucher.trim().toUpperCase().startsWith("RT-");
+      target = isReturn
+        ? { view: "pharmacy_return", section: "pharmacy_return", openRecordId: row.openId }
+        : { view: "pharmacy_billing", section: "pharmacy", openRecordId: row.openId };
+    } else {
+      return;
+    }
+
+    if (!canReadModule(module)) {
+      setError(t("noAccess"));
+      return;
+    }
+    setError(null);
+    onOpenRecord(target);
+  }
+
+  function historyRowClickable(row: HistoryRow): boolean {
+    if (row.openId == null || row.openId <= 0 || !onOpenRecord || !canReadModule) return false;
+    if (row.kind === "opd") return canReadModule("opd");
+    if (row.kind === "lab") return canReadModule("lab");
+    if (row.kind === "ot") return canReadModule("ot");
+    if (row.kind === "ipd") return canReadModule("ipd");
+    if (row.kind === "pharmacy") return canReadModule("pharmacy");
+    return false;
+  }
+
+  const historyActivate = filteredHistoryRows.some(historyRowClickable)
+    ? (id: number) => {
+        const row = filteredHistoryRows.find((r) => r.id === id);
+        if (row) openHistoryRecord(row);
+      }
+    : undefined;
 
   function openDeleteConfirm(p: PatientChart) {
     setDeleteError(null);
@@ -418,11 +744,14 @@ export function PatientsPage({
       await deletePatient(p.id);
       setDeleteTarget(null);
       setDeleteStep(1);
-      if (editing && selectedId === p.id) closeForm();
-      const data = await reload();
+      await reload();
       if (selectedId === p.id) {
-        setSelectedId(data[0]?.id ?? null);
+        setSelectedId(null);
+        setEditing(false);
+        fillForm(null);
         setHistory(emptyHistory);
+        setHistoryReady(false);
+        if (onViewList) onViewList();
       }
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : "Delete failed");
@@ -440,86 +769,40 @@ export function PatientsPage({
   }
 
   const canDeleteSelected =
-    patientsDelete && selected != null && !showForm && historyReady && historyIsEmpty(history);
-  const createOnly = creating && patientsCreate && !editing;
+    patientsDelete && selected != null && !showForm && historyReady && !historyHasStay(history);
+
+  const formTitle =
+    editing && selectedId != null
+      ? `${t("editPatient")} #${selectedId}`
+      : t("createNewPatientTitle");
+
+  const detailSub = selected
+    ? [
+        `${t("chartLabel")} #${selected.id}`,
+        selected.phone || null,
+        selected.date_of_birth
+          ? formatDateDisplay(selected.date_of_birth) || selected.date_of_birth
+          : null,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : "";
 
   return (
-    <section
-      className={`drug-setup${createOnly ? " drug-setup--solo" : ""}`}
-      aria-label={t("patients")}
-    >
-      {!createOnly ? (
-        <div className="drug-setup-list-pane">
-          <div className="drug-setup-heading">
-            <h2 className="drug-setup-title">{t("patients")}</h2>
-            <div className="tabs">
-              <CatalogFilterButton
-                open={filterOpen}
-                controlsId={filterPanelId}
-                onToggle={() => setFilterOpen((v) => !v)}
-              />
-            </div>
-          </div>
-          <p className="drug-setup-selected" aria-hidden="true" />
-          <CatalogFilterPanel
-            id={filterPanelId}
-            open={filterOpen}
-            query={filterQ}
-            onQueryChange={setFilterQ}
-            queryPlaceholder={t("patientSearchPlaceholder")}
-            searchLabel={t("searchPatients")}
-            searchGuide={filterOpen ? "patient-search" : undefined}
-            onSearch={() => runSearch(filterQ)}
-            dateSort={dateSort}
-            onDateSortChange={setDateSort}
-            onReset={resetFilters}
-          />
-          {error && !showForm ? <p className="form-error">{error}</p> : null}
-          <div className="drug-setup-table" role="listbox" aria-label={t("patients")}>
-            <div className="drug-setup-table-head opd-master-cols">
-              <span title={t("name")}>{t("name")}</span>
-              <span title={t("fatherMotherName")}>{t("fatherMotherName")}</span>
-            </div>
-            {sortedList.length === 0 ? <p className="empty-row">{t("noPatientsYet")}</p> : null}
-            {sortedList.map((p) => (
-              <div
-                key={p.id}
-                role="option"
-                tabIndex={0}
-                aria-selected={p.id === selectedId && !creating && !editing}
-                className={`drug-setup-table-row opd-master-cols${
-                  p.id === selectedId && !creating && !editing ? " selected" : ""
-                }`}
-                onClick={() => selectItem(p.id)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    selectItem(p.id);
-                  }
-                }}
-              >
-                <span title={p.name}>{p.name}</span>
-                <span title={p.father_mother_name || "—"}>{p.father_mother_name || "—"}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : null}
-
-      <div className="drug-setup-detail-pane">
+    <section className="opd-bill-desk opd-bill-desk--history" aria-label={t("patients")}>
+      <div className="opd-bill-desk-main">
         {showForm ? (
           <>
-            <div className="drug-setup-title-row">
-              <h3 className="drug-setup-title" style={{ fontSize: "1.1rem" }}>
-                {editing && selectedId != null
-                  ? `${t("editPatient")} #${selectedId}`
-                  : t("createNewPatientTitle")}
-              </h3>
-              <DialogCloseButton onClick={createOnly ? leaveCreatePage : closeForm} />
+            <div className="patient-chart-title-row">
+              <h2 id="patient-form-title" className="opd-bill-desk-title">
+                {formTitle}
+              </h2>
+              <DialogCloseButton onClick={creating && !editing ? leaveCreatePage : closeForm} />
             </div>
             <form
               key={editing && selectedId != null ? `edit-${selectedId}` : "create"}
               className="card-form"
+              aria-labelledby="patient-form-title"
               onSubmit={(e) => void submit(e)}
             >
               <FormSection title={t("patientSectionDemographics")} titleId="patient-demographics">
@@ -622,9 +905,128 @@ export function PatientsPage({
               </div>
             </form>
           </>
-        ) : (
+        ) : null}
+
+        {showList ? (
           <>
-            <div className="tabs patient-detail-tabs" role="tablist" aria-label={t("patients")}>
+            <h2 className="opd-bill-desk-title">{t("patients")}</h2>
+            <BillHistoryToolbar
+              key="patient-charts"
+              searchPlaceholder={t("patientSearchPlaceholder")}
+              initialRange="all"
+              hideStatus
+              searchGuide="patient-search"
+              explicitSearch
+              onSearch={runListSearch}
+              onInvalidRange={() => setError(t("billHistoryInvalidRange"))}
+              trailing={
+                patientsCreate ? (
+                  <button
+                    type="button"
+                    className="btn action primary"
+                    disabled={busy}
+                    data-guide="patient-create"
+                    onClick={startCreateForm}
+                  >
+                    <ActionIcon name="plus" />
+                    {t("createNewPatientRecord")}
+                  </button>
+                ) : null
+              }
+            />
+            {error ? (
+              <p className="form-error" role="alert">
+                {error}
+              </p>
+            ) : null}
+            <div
+              className="bill-history-table-wrap"
+              role="region"
+              aria-label={t("patients")}
+            >
+              <div className="bill-history-table-head bill-history-table-head--charts" role="row">
+                <span className="bill-history-col bill-history-col--name" role="columnheader">
+                  {t("name")}
+                </span>
+                <span className="bill-history-col" role="columnheader">
+                  {t("fatherMotherName")}
+                </span>
+                <span className="bill-history-col" role="columnheader">
+                  {t("phone")}
+                </span>
+                <span className="bill-history-col" role="columnheader">
+                  {t("dateOfBirth")}
+                </span>
+              </div>
+              {listLoading ? <p className="hint bill-history-table-msg">{t("loading")}</p> : null}
+              {!listLoading && filteredList.length === 0 ? (
+                <p className="hint bill-history-table-msg empty-row">{t("noPatientsYet")}</p>
+              ) : null}
+              <ul className="bill-history-table-body">
+                {filteredList.map((p) => {
+                  const dob = p.date_of_birth
+                    ? formatDateDisplay(p.date_of_birth) || p.date_of_birth
+                    : "—";
+                  return (
+                    <li key={p.id}>
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        data-patient-row={p.id}
+                        aria-label={`${p.name} · ${t("chartLabel")} #${p.id}`}
+                        className="bill-history-table-row bill-history-table-row--charts bill-history-table-row--clickable"
+                        onClick={() => selectItem(p.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            selectItem(p.id);
+                          }
+                        }}
+                      >
+                        <span
+                          className="bill-history-col bill-history-col--name"
+                          title={p.name}
+                        >
+                          <span className="bill-history-name-primary">{p.name}</span>
+                          <span className="bill-history-name-detail">
+                            {t("chartLabel")} #{p.id}
+                          </span>
+                        </span>
+                        <span
+                          className="bill-history-col"
+                          title={p.father_mother_name || undefined}
+                        >
+                          {p.father_mother_name || "—"}
+                        </span>
+                        <span className="bill-history-col" title={p.phone || undefined}>
+                          {p.phone || "—"}
+                        </span>
+                        <span className="bill-history-col bill-history-col--when">{dob}</span>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          </>
+        ) : null}
+
+        {!showForm && selected ? (
+          <>
+            <div className="patient-chart-title-row">
+              <div className="patient-chart-title-block">
+                <h2
+                  ref={detailTitleRef}
+                  tabIndex={-1}
+                  className="opd-bill-desk-title"
+                >
+                  {selected.name}
+                </h2>
+                {detailSub ? <p className="patient-chart-sub">{detailSub}</p> : null}
+              </div>
+              <DialogCloseButton onClick={backToList} />
+            </div>
+            <div className="tabs patient-detail-tabs" role="tablist" aria-label={selected.name}>
               <button
                 type="button"
                 role="tab"
@@ -644,185 +1046,138 @@ export function PatientsPage({
                 {t("history")}
               </button>
             </div>
+            {error ? (
+              <p className="form-error" role="alert">
+                {error}
+              </p>
+            ) : null}
             {detailTab === "info" ? (
-              selected ? (
-                <>
-                  <div className="patient-info-detail">
-                    <div className="drug-info-fields">
-                      <div className="drug-info-field">
-                        <span className="drug-info-label">{t("chartLabel")}</span>
-                        <span>{selected.id}</span>
-                      </div>
-                    </div>
-
-                    <div className="patient-info-sections-row">
-                      <section
-                        className="patient-info-section"
-                        aria-labelledby="patient-info-demographics"
-                      >
-                        <h3 className="form-section-title" id="patient-info-demographics">
-                          {t("patientSectionDemographics")}
-                        </h3>
-                        <div className="drug-info-fields">
-                          <div className="drug-info-field">
-                            <span className="drug-info-label">{t("name")}</span>
-                            <span>{selected.name}</span>
-                          </div>
-                          <div className="drug-info-field">
-                            <span className="drug-info-label">{t("age")}</span>
-                            <span>{selected.age_years != null ? selected.age_years : "—"}</span>
-                          </div>
-                          <div className="drug-info-field">
-                            <span className="drug-info-label">{t("gender")}</span>
-                            <span>{genderLabel(selected.gender)}</span>
-                          </div>
-                          <div className="drug-info-field">
-                            <span className="drug-info-label">{t("dateOfBirth")}</span>
-                            <span>
-                              {selected.date_of_birth
-                                ? formatDateDisplay(selected.date_of_birth) ||
-                                  selected.date_of_birth
-                                : "—"}
-                            </span>
-                          </div>
-                        </div>
-                      </section>
-
-                      <section
-                        className="patient-info-section"
-                        aria-labelledby="patient-info-identity-contact"
-                      >
-                        <h3 className="form-section-title" id="patient-info-identity-contact">
-                          {t("patientSectionIdentityContact")}
-                        </h3>
-                        <div className="drug-info-fields">
-                          <div className="drug-info-field">
-                            <span className="drug-info-label">{t("phone")}</span>
-                            <span>{selected.phone || "—"}</span>
-                          </div>
-                          <div className="drug-info-field">
-                            <span className="drug-info-label">{t("nrc")}</span>
-                            <span>{selected.nrc || "—"}</span>
-                          </div>
-                          <div className="drug-info-field">
-                            <span className="drug-info-label">{t("fatherMotherName")}</span>
-                            <span>{selected.father_mother_name || "—"}</span>
-                          </div>
-                        </div>
-                      </section>
-                    </div>
-
-                    <div className="patient-info-notes">
-                      <h3 className="form-section-title" id="patient-info-notes">
-                        {t("patientSectionNotes")}
+              <>
+                <div className="patient-info-detail">
+                  <div className="patient-info-sections-row">
+                    <section
+                      className="patient-info-section"
+                      aria-labelledby="patient-info-demographics"
+                    >
+                      <h3 className="form-section-title" id="patient-info-demographics">
+                        {t("patientSectionDemographics")}
                       </h3>
                       <div className="drug-info-fields">
                         <div className="drug-info-field">
-                          <span className="drug-info-label">{t("notes")}</span>
-                          <span>{selected.notes || "—"}</span>
+                          <span className="drug-info-label">{t("name")}</span>
+                          <span>{selected.name}</span>
                         </div>
+                        <div className="drug-info-field">
+                          <span className="drug-info-label">{t("age")}</span>
+                          <span>{selected.age_years != null ? selected.age_years : "—"}</span>
+                        </div>
+                        <div className="drug-info-field">
+                          <span className="drug-info-label">{t("gender")}</span>
+                          <span>{genderLabel(selected.gender)}</span>
+                        </div>
+                        <div className="drug-info-field">
+                          <span className="drug-info-label">{t("dateOfBirth")}</span>
+                          <span>
+                            {selected.date_of_birth
+                              ? formatDateDisplay(selected.date_of_birth) ||
+                                selected.date_of_birth
+                              : "—"}
+                          </span>
+                        </div>
+                      </div>
+                    </section>
+
+                    <section
+                      className="patient-info-section"
+                      aria-labelledby="patient-info-identity-contact"
+                    >
+                      <h3 className="form-section-title" id="patient-info-identity-contact">
+                        {t("patientSectionIdentityContact")}
+                      </h3>
+                      <div className="drug-info-fields">
+                        <div className="drug-info-field">
+                          <span className="drug-info-label">{t("phone")}</span>
+                          <span>{selected.phone || "—"}</span>
+                        </div>
+                        <div className="drug-info-field">
+                          <span className="drug-info-label">{t("nrc")}</span>
+                          <span>{selected.nrc || "—"}</span>
+                        </div>
+                        <div className="drug-info-field">
+                          <span className="drug-info-label">{t("fatherMotherName")}</span>
+                          <span>{selected.father_mother_name || "—"}</span>
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+
+                  <div className="patient-info-notes" aria-labelledby="patient-info-notes">
+                    <h3 className="form-section-title" id="patient-info-notes">
+                      {t("patientSectionNotes")}
+                    </h3>
+                    <div className="drug-info-fields">
+                      <div className="drug-info-field">
+                        <span className="drug-info-label">{t("notes")}</span>
+                        <span>{selected.notes || "—"}</span>
                       </div>
                     </div>
                   </div>
-                  <div className="btn-row">
-                    {patientsUpdate ? (
-                      <button
-                        type="button"
-                        className="btn action"
-                        disabled={busy}
-                        onClick={() => openEdit(selected)}
-                      >
-                        <ActionIcon name="edit" />
-                        {t("edit")}
-                      </button>
-                    ) : null}
-                    {canDeleteSelected ? (
-                      <button
-                        type="button"
-                        className="btn action danger"
-                        disabled={busy || deleteBusy}
-                        onClick={() => openDeleteConfirm(selected)}
-                      >
-                        <ActionIcon name="trash" />
-                        {t("delete")}
-                      </button>
-                    ) : null}
-                    {patientsDelete && historyReady && !historyIsEmpty(history) ? (
-                      <p className="hint" style={{ margin: 0, alignSelf: "center" }}>
-                        {t("patientDeleteBlocked")}
-                      </p>
-                    ) : null}
-                  </div>
-                </>
-              ) : (
-                <p className="hint">{t("noPatientsYet")}</p>
-              )
-            ) : selected ? (
-              <>
-                <div className="patient-history-labels">
-                  <span className="drug-info-label" id={historyKindsLabelId}>
-                    {t("patientsAllBills")}
-                  </span>
-                  <span className="drug-info-label" id={historySortLabelId}>
-                    {t("sortByDate")}
-                  </span>
                 </div>
-                <div className="patient-history-toolbar">
-                  <div
-                    className="patient-history-kinds"
-                    role="radiogroup"
-                    aria-labelledby={historyKindsLabelId}
-                  >
-                    {HISTORY_KIND_OPTIONS.map((kind) => {
-                      const selectedKind = historyKind === kind;
-                      const kindLabel =
-                        kind === "all"
-                          ? t("all")
-                          : kind === "ipd"
-                            ? t("ipd")
-                            : kind === "opd"
-                              ? t("opd")
-                            : kind === "lab"
-                              ? t("lab")
-                              : kind === "ot"
-                                ? t("ot")
-                                : t("pharmacy");
-                      return (
-                        <button
-                          key={kind}
-                          type="button"
-                          role="radio"
-                          aria-checked={selectedKind}
-                          aria-pressed={selectedKind}
-                          className={`btn action${selectedKind ? " on" : ""}`}
-                          onClick={() => setHistoryKind(kind)}
-                        >
-                          {kindLabel}
-                        </button>
-                      );
-                    })}
-                    {patientsUpdate ? (
+                <div className="btn-row">
+                  {patientsUpdate ? (
+                    <button
+                      type="button"
+                      className="btn action"
+                      disabled={busy}
+                      onClick={() => openEdit(selected)}
+                    >
+                      <ActionIcon name="edit" />
+                      {t("edit")}
+                    </button>
+                  ) : null}
+                  {canDeleteSelected ? (
+                    <button
+                      type="button"
+                      className="btn action danger"
+                      disabled={busy || deleteBusy}
+                      onClick={() => openDeleteConfirm(selected)}
+                    >
+                      <ActionIcon name="trash" />
+                      {t("delete")}
+                    </button>
+                  ) : null}
+                  {patientsDelete && historyReady && historyHasStay(history) ? (
+                    <p className="hint" style={{ margin: 0, alignSelf: "center" }}>
+                      {t("patientDeleteBlocked")}
+                    </p>
+                  ) : null}
+                </div>
+              </>
+            ) : (
+              <>
+                <BillHistoryToolbar
+                  key={selected.id}
+                  searchPlaceholder={t("billHistorySearchPlaceholder")}
+                  initialRange="all"
+                  statusOptions={historyKindOptions}
+                  statusFieldLabel={t("patientsAllBills")}
+                  onSearch={setHistoryQuery}
+                  loadSuggestions={loadHistorySuggestions}
+                  onInvalidRange={() => setError(t("billHistoryInvalidRange"))}
+                  trailing={
+                    patientsUpdate ? (
                       <button
                         type="button"
-                        role="radio"
-                        aria-checked={historyKind === "addBill"}
-                        aria-pressed={historyKind === "addBill"}
-                        className={`btn action${historyKind === "addBill" ? " on" : ""}`}
-                        onClick={() => setHistoryKind("addBill")}
+                        className={`btn action${attachOpen ? " on" : ""}`}
+                        aria-pressed={attachOpen}
+                        onClick={() => setAttachOpen((v) => !v)}
                       >
                         {t("patientsAddBill")}
                       </button>
-                    ) : null}
-                  </div>
-                  <CatalogDateSortField
-                    id={historySortId}
-                    value={historyDateSort}
-                    onChange={setHistoryDateSort}
-                    hideLabel
-                    labelledBy={historySortLabelId}
-                  />
-                </div>
-                {historyKind === "addBill" && patientsUpdate ? (
+                    ) : null
+                  }
+                />
+                {attachOpen && patientsUpdate ? (
                   <div className="patient-history-attach">
                     <label className="field">
                       <span>{t("patientsAttachBill")}</span>
@@ -843,132 +1198,31 @@ export function PatientsPage({
                       {busy ? t("saving") : t("patientsAttach")}
                     </button>
                   </div>
-                ) : null}
-                {historyKind === "all" || historyKind === "ipd" ? (
-                  <HistoryBlock
-                    title={t("ipd")}
-                    empty={t("historyNone")}
+                ) : (
+                  <BillHistoryTable
+                    ariaLabel={t("patientsAllBills")}
+                    rows={filteredHistoryRows}
                     loading={!historyReady}
-                    rows={sortedIpd.map((row, index) => ({
-                      id: index + 1,
-                      key: `ipd-${row.admission_no}-${index}`,
-                      voucher: row.admission_no,
-                      name: "",
-                      status: row.settled ? "settled" : "open",
-                      statusLabel: row.settled ? t("ipdStatusSettled") : t("ipdStatusOpen"),
-                      statusTone: row.settled ? "paid" : "ipd",
-                      when: row.admitted_at,
-                      priceMmk: row.balance_mmk,
-                    }))}
-                  />
-                ) : null}
-                {historyKind === "all" || historyKind === "opd" ? (
-                  <HistoryBlock
-                    title={t("opd")}
-                    empty={t("historyNone")}
-                    loading={!historyReady}
-                    printingKey={printingKey}
+                    emptyLabel={t("historyNone")}
                     busy={busy}
-                    onPrint={(row) => void printHistoryRow(row)}
-                    rows={sortedOpd.map((row) => ({
-                      id: row.id,
-                      key: `opd-${row.id}`,
-                      voucher: row.bill_no,
-                      name: row.doctor_name || "—",
-                      status: row.status,
-                      printedAt: row.printed_at,
-                      collectedCash: row.collected_cash,
-                      when: row.created_at,
-                      priceMmk: row.total_mmk,
-                      canPrint: true,
-                      print: { kind: "opd" as const, billId: row.id, title: row.bill_no },
-                    }))}
+                    onActivate={historyActivate}
+                    printingId={
+                      printingKey
+                        ? (filteredHistoryRows.find(
+                            (row) => (row.key ?? String(row.id)) === printingKey,
+                          )?.id ?? null)
+                        : null
+                    }
+                    onPrint={(id) => {
+                      const row = filteredHistoryRows.find((r) => r.id === id && r.print);
+                      if (row) void printHistoryRow(row);
+                    }}
                   />
-                ) : null}
-                {historyKind === "all" || historyKind === "lab" ? (
-                  <HistoryBlock
-                    title={t("lab")}
-                    empty={t("historyNone")}
-                    loading={!historyReady}
-                    rows={sortedLab.map((row) => ({
-                      id: row.id,
-                      key: `lab-${row.id}`,
-                      voucher: row.bill_no,
-                      name: row.doctor_name || "—",
-                      status: row.status,
-                      printedAt: row.printed_at,
-                      collectedCash: row.collected_cash,
-                      when: row.created_at,
-                      priceMmk: row.total_mmk,
-                    }))}
-                  />
-                ) : null}
-                {historyKind === "all" || historyKind === "ot" ? (
-                  <HistoryBlock
-                    title={t("ot")}
-                    empty={t("historyNone")}
-                    loading={!historyReady}
-                    printingKey={printingKey}
-                    busy={busy}
-                    onPrint={(row) => void printHistoryRow(row)}
-                    rows={sortedOt.map((row, index) => {
-                      const billId = row.bill_id != null && row.bill_id > 0 ? row.bill_id : 0;
-                      return {
-                        id: billId > 0 ? billId : -(index + 1),
-                        key: `ot-${row.bill_id ?? row.case_no}-${index}`,
-                        voucher: row.case_no,
-                        name: row.bill_no || "—",
-                        status: row.bill_status || row.status,
-                        printedAt: row.bill_printed_at,
-                        collectedCash: row.bill_collected_cash,
-                        when: row.created_at,
-                        priceMmk: row.bill_total_mmk ?? null,
-                        canPrint: billId > 0,
-                        print:
-                          billId > 0
-                            ? {
-                                kind: "ot" as const,
-                                billId,
-                                title: row.bill_no || row.case_no,
-                              }
-                            : undefined,
-                      };
-                    })}
-                  />
-                ) : null}
-                {historyKind === "all" || historyKind === "pharmacy" ? (
-                  <HistoryBlock
-                    title={t("pharmacy")}
-                    empty={t("historyNone")}
-                    loading={!historyReady}
-                    printingKey={printingKey}
-                    busy={busy}
-                    onPrint={(row) => void printHistoryRow(row)}
-                    rows={sortedPharmacy.map((row) => ({
-                      id: row.id,
-                      key: `pharmacy-${row.id}`,
-                      voucher: row.bill_no,
-                      name: "",
-                      status: row.status,
-                      printedAt: row.printed_at,
-                      collectedCash: row.collected_cash,
-                      when: row.created_at,
-                      priceMmk: row.total_mmk,
-                      canPrint: true,
-                      print: {
-                        kind: "pharmacy" as const,
-                        billId: row.id,
-                        title: row.bill_no,
-                      },
-                    }))}
-                  />
-                ) : null}
+                )}
               </>
-            ) : (
-              <p className="hint">{t("noPatientsYet")}</p>
             )}
           </>
-        )}
+        ) : null}
       </div>
 
       {createdPatient ? (
@@ -1001,50 +1255,6 @@ export function PatientsPage({
           onConfirm={() => void confirmDeletePatient()}
         />
       ) : null}
-    </section>
-  );
-}
-
-function HistoryBlock({
-  title,
-  rows,
-  empty,
-  loading,
-  printingKey,
-  busy,
-  onPrint,
-}: {
-  title: string;
-  rows: HistoryRow[];
-  empty: string;
-  loading?: boolean;
-  printingKey?: string | null;
-  busy?: boolean;
-  onPrint?: (row: HistoryRow) => void;
-}) {
-  const printingRow = printingKey
-    ? rows.find((row) => (row.key ?? String(row.id)) === printingKey)
-    : null;
-
-  return (
-    <section className="patient-history-block">
-      <h3 className="section-title">{title}</h3>
-      <BillHistoryTable
-        ariaLabel={title}
-        rows={rows}
-        loading={loading}
-        emptyLabel={empty}
-        busy={busy}
-        printingId={printingRow?.id ?? null}
-        onPrint={
-          onPrint
-            ? (id) => {
-                const row = rows.find((r) => r.id === id && r.print);
-                if (row) onPrint(row);
-              }
-            : undefined
-        }
-      />
     </section>
   );
 }

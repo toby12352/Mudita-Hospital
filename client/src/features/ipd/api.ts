@@ -70,10 +70,22 @@ export async function updateIpdNotes(id: number, notes: string, roomNo: string):
   });
 }
 
+/** Admin-only. Soft-deletes an open stay (status = deleted). */
+export async function purgeIpdAdmission(id: number): Promise<void> {
+  await apiFetch(`/api/ipd/admissions/${id}`, { method: "DELETE" });
+}
+
 export async function postIpdDeposit(id: number, amountMmk: number, note: string): Promise<IpdAdmission> {
   return apiFetch<IpdAdmission>(`/api/ipd/admissions/${id}/deposits`, {
     method: "POST",
     body: JSON.stringify({ amount_mmk: amountMmk, note }),
+  });
+}
+
+/** Admin-only. Removes one deposit or leftover ward ledger row on an open stay. */
+export async function deleteIpdDeposit(admissionId: number, lineId: number): Promise<IpdAdmission> {
+  return apiFetch<IpdAdmission>(`/api/ipd/admissions/${admissionId}/ledger/${lineId}`, {
+    method: "DELETE",
   });
 }
 
@@ -122,12 +134,20 @@ export type IpdDayVoucher = {
   closing_mmk: number;
   collection_ledger_id?: number | null;
   can_unpay: boolean;
+  can_reopen: boolean;
 };
 
 function postIpdDayVoucher(id: number, date: string, action: "issue" | "pay" | "credit" | "unpay"): Promise<IpdDayVoucher> {
   return apiFetch<IpdDayVoucher>(
     `/api/ipd/admissions/${id}/vouchers/${encodeURIComponent(date)}/${action}`,
     { method: "POST" },
+  );
+}
+
+/** Reads one day voucher. Throws ApiError 404 when that date has none. */
+export function fetchIpdDayVoucher(id: number, date: string): Promise<IpdDayVoucher> {
+  return apiFetch<IpdDayVoucher>(
+    `/api/ipd/admissions/${id}/vouchers/${encodeURIComponent(date)}`,
   );
 }
 
@@ -149,6 +169,14 @@ export function creditIpdDayVoucher(id: number, date: string): Promise<IpdDayVou
 /** Removes this decision's collection while the voucher is still the latest one. */
 export function unpayIpdDayVoucher(id: number, date: string): Promise<IpdDayVoucher> {
   return postIpdDayVoucher(id, date, "unpay");
+}
+
+/** Deletes an issued day sheet so the day is open again. No cash lines change. */
+export function reopenIpdDayVoucher(id: number, date: string): Promise<void> {
+  return apiFetch(
+    `/api/ipd/admissions/${id}/vouchers/${encodeURIComponent(date)}/reopen`,
+    { method: "POST" },
+  ).then(() => undefined);
 }
 
 export type IpdCashLine = {
@@ -186,7 +214,8 @@ export type IpdChargeBillLine = {
   id?: number;
   description: string;
   qty: number;
-  unit_price_mmk: number;
+  /** Null on a draft particular with no fee yet. */
+  unit_price_mmk: number | null;
   line_total_mmk: number;
   sort_order?: number;
 };
@@ -201,11 +230,13 @@ export type IpdChargeBill = {
   patient_gender: string;
   admission_id?: number | null;
   status: string;
+  description: string;
   total_mmk: number;
   discount_value: number;
   discount_unit: string;
   discount_mmk: number;
   printed_at?: string | null;
+  billed_at?: string | null;
   void_reason?: string;
   created_at: string;
   updated_at: string;
@@ -218,9 +249,11 @@ export type IpdChargeBillWrite = {
   patient_phone: string;
   patient_age_years: number | null;
   patient_gender: string;
+  description: string;
   discount_value: number;
   discount_unit: "percent" | "mmk";
-  lines: { description: string; qty: number; unit_price_mmk: number }[];
+  billed_at?: string;
+  lines: { description: string; qty: number; unit_price_mmk: number | null }[];
 };
 
 export async function listIpdChargeBills(

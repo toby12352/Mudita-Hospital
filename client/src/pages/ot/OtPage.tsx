@@ -54,12 +54,15 @@ import {
   BillSaveDraftButton,
   moneyStatusLabel,
 } from "@/shared/BillPayPrint";
+import { draftHasContent } from "@/shared/billDraft";
+import { useRegisterBillLeaveGuard } from "@/shared/billLeaveGuard";
 import { userMessage } from "@/shared/errors";
 import { formatMMK } from "@/shared/format";
 import { Typeahead } from "@/shared/Typeahead";
 import { useClinicActions } from "@/app/clinicActions";
 import { useI18n } from "@/shared/i18n";
 import { useBillActionFeedback, useBillActionPending } from "@/shared/useActionLock";
+import { VoidBillConfirm } from "@/shared/VoidBillConfirm";
 import { OtHistoryModal, type OtHistoryModalMode } from "./OtHistoryModal";
 
 /** Client-only cart order. Not sent to the API. */
@@ -103,7 +106,7 @@ function servicesFromCase(c: OtCase): OtServiceLineFields[] {
 
 type DeskConfirm = "cancel" | "newBill";
 
-export function OtPage() {
+export function OtPage({ openRecordId }: { openRecordId?: number } = {}) {
   const { t } = useI18n();
   const { otCreate, otUpdate, otDelete, billPurge } = useClinicActions();
   const canSaveCase = otCreate || otUpdate;
@@ -113,6 +116,7 @@ export function OtPage() {
   const { action: pendingAction, pending, begin, end, isLocked } = useBillActionPending();
   const { pulse, isOk, isErr } = useBillActionFeedback();
   const [dialog, setDialog] = useState<OtHistoryModalMode | null>(null);
+  const [voidOpen, setVoidOpen] = useState(false);
   const [confirm, setConfirm] = useState<DeskConfirm | null>(null);
   const [printAfterPay, setPrintAfterPay] = useState<string | null>(null);
 
@@ -143,6 +147,7 @@ export function OtPage() {
   servicesRef.current = services;
 
   const [bill, setBill] = useState<OtBill | null>(null);
+  const [paymentType, setPaymentType] = useState<"cash" | "online">("cash");
   const [discountValue, setDiscountValue] = useState("");
   const [discountUnit, setDiscountUnit] = useState<DiscountUnit>("percent");
   const isAdmin = getStoredUser()?.role === "Admin";
@@ -202,6 +207,7 @@ export function OtPage() {
     setServices([]);
     setOtBillId(null);
     setBill(null);
+    setPaymentType("cash");
     setDiscountValue("");
     setDiscountUnit("percent");
     setCreatedAt(null);
@@ -279,12 +285,14 @@ export function OtPage() {
         const b = await getOtBill(c.ot_bill_id);
         applyCase(c, servicesFromBill(b));
         setBill(b);
+        setPaymentType(b.payment_type === "online" ? "online" : "cash");
         const discount = discountFieldsFromBill(b.discount_value, b.discount_unit);
         setDiscountValue(discount.value);
         setDiscountUnit(discount.unit);
       } else {
         applyCase(c, servicesFromCase(c));
         setBill(null);
+        setPaymentType("cash");
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Open failed");
@@ -292,6 +300,11 @@ export function OtPage() {
       setBusy(false);
     }
   }
+
+  useEffect(() => {
+    if (openRecordId != null) void openCase(openRecordId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- open once on mount from patient chart
+  }, []);
 
   function pickOtDoctor(d: OtDoctor) {
     setDoctorId(String(d.id));
@@ -518,25 +531,44 @@ export function OtPage() {
       el.reportValidity();
       return true;
     }
-    setError("Patient name required");
+    setError(t("errPatientNameRequired"));
     return true;
   }
 
-
-  async function saveDraft() {
-    if (blockMissingPatientName()) return;
-    if (!begin("saveDraft")) return;
+  async function saveDraft(): Promise<boolean> {
+    if (
+      !draftHasContent({
+        texts: [
+          patientName,
+          patientPhone,
+          patientAge,
+          patientGender,
+          doctorName,
+          procedureName,
+          notes,
+        ],
+        flags: [Boolean(doctorId), linkedChartId != null],
+        lineCount: items.length + services.length,
+        discountValue,
+      })
+    ) {
+      setError(t("errDraftEmpty"));
+      return false;
+    }
+    if (!begin("saveDraft")) return false;
     setBusy(true);
     setError(null);
     try {
       const body = buildWrite();
       const c = caseId ? await updateOtCase(caseId, body) : await createOtCase(body);
       applyCase(c, servicesFromCase(c));
-      if (otBillId && (!bill || bill.status === "draft")) {
-        if (services.some((s) => s.unit_price_mmk == null)) {
-          setError(t("servicePriceRequired"));
-          return;
-        }
+      // Push services onto the OT bill only when every fee is set. Incomplete
+      // fees stay on the case until Pay / ensureBillReady.
+      if (
+        otBillId &&
+        (!bill || bill.status === "draft") &&
+        !services.some((s) => s.unit_price_mmk == null)
+      ) {
         const serviceLines = services.map((s) => ({
           line_type: "service" as const,
           ref_id: s.ref_id,
@@ -548,21 +580,27 @@ export function OtPage() {
           foc: s.foc === 1 ? 1 : 0,
         }));
         const discount = discountWrite(discountValue, discountUnit);
-        const updated = await updateOtBill(otBillId, serviceLines, discount);
+        const updated = await updateOtBill(otBillId, serviceLines, discount, paymentType);
         setBill(updated);
+        setPaymentType(updated.payment_type === "online" ? "online" : "cash");
         setServices(stampServiceSeqs(servicesFromBill(updated)));
-        pulse("saveDraft", "ok");
-      } else {
-        pulse("saveDraft", "ok");
       }
+      pulse("saveDraft", "ok");
+      return true;
     } catch (e) {
       pulse("saveDraft", "err");
       setError(e instanceof Error ? e.message : "Save failed");
+      return false;
     } finally {
       setBusy(false);
       end();
     }
   }
+
+  useRegisterBillLeaveGuard(
+    items.length + services.length > 0 && caseId == null,
+    () => saveDraft(),
+  );
 
   async function ensureBillReady(): Promise<OtBill | null> {
     if (blockMissingPatientName()) return null;
@@ -610,14 +648,16 @@ export function OtPage() {
         setBill(existing);
         return existing;
       }
-      const updated = await updateOtBill(otBillId, serviceLines, discount);
+      const updated = await updateOtBill(otBillId, serviceLines, discount, paymentType);
       setBill(updated);
+      setPaymentType(updated.payment_type === "online" ? "online" : "cash");
       setServices(stampServiceSeqs(servicesFromBill(updated)));
       return updated;
     }
 
-    const b = await createOtBillFromCase(id!, serviceLines, discount);
+    const b = await createOtBillFromCase(id!, serviceLines, discount, paymentType);
     setBill(b);
+    setPaymentType(b.payment_type === "online" ? "online" : "cash");
     setServices(stampServiceSeqs(servicesFromBill(b)));
     setOtBillId(b.id);
     setCaseStatus("billed");
@@ -678,8 +718,9 @@ export function OtPage() {
       if (b.status !== "draft") {
         throw new Error(userMessage("Only draft bills can be paid"));
       }
-      const paid = await payOtBill(b.id);
+      const paid = await payOtBill(b.id, null, paymentType);
       setBill(paid);
+      setPaymentType(paid.payment_type === "online" ? "online" : "cash");
       pulse("markPaid", "ok");
       setPrintAfterPay(paid.bill_no);
     } catch (e) {
@@ -703,8 +744,9 @@ export function OtPage() {
       if (b.status !== "draft") {
         throw new Error(userMessage("Only draft bills can be paid"));
       }
-      const paid = await payOtBill(b.id, openAdmissionId);
+      const paid = await payOtBill(b.id, openAdmissionId, paymentType);
       setBill(paid);
+      setPaymentType(paid.payment_type === "online" ? "online" : "cash");
       pulse("chargeIpd", "ok");
     } catch (e) {
       pulse("chargeIpd", "err");
@@ -761,13 +803,10 @@ export function OtPage() {
     void doPrint();
   }
 
-  async function voidFromHistory(c: OtCase, reason: string) {
-    if (!c.ot_bill_id) {
-      throw new Error("No bill to void");
-    }
+  async function doVoidBill(billIdToVoid: number, reason: string) {
     try {
-      const b = await voidOtBill(c.ot_bill_id, reason);
-      if (otBillId === c.ot_bill_id) {
+      const b = await voidOtBill(billIdToVoid, reason);
+      if (otBillId === billIdToVoid) {
         setBill(b);
         setCaseStatus("draft");
         setOtBillId(null);
@@ -777,6 +816,17 @@ export function OtPage() {
       pulse("void", "err");
       throw e;
     }
+  }
+
+  const canVoid =
+    otBillId != null &&
+    bill != null &&
+    bill.status !== "void" &&
+    bill.status !== "deleted";
+
+  function openVoidConfirm() {
+    if (!canVoid) return;
+    setVoidOpen(true);
   }
 
   async function purgeFromHistory(caseRowId: number) {
@@ -794,7 +844,7 @@ export function OtPage() {
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (dialog) return;
+      if (dialog || voidOpen) return;
       if (document.querySelector(".print-preview-overlay")) return;
       if (document.querySelector(".alert-dialog-overlay")) return;
       const key = e.key;
@@ -821,7 +871,7 @@ export function OtPage() {
       }
       if (key === "F8" && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
-        if (!blocked && otDelete) setDialog("delete");
+        if (!blocked && otDelete && canVoid) openVoidConfirm();
         return;
       }
       if (key === "F10") {
@@ -837,7 +887,7 @@ export function OtPage() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- desk shortcuts
-  }, [dialog, busy, isDraft, caseId, caseNo, caseStatus, patientName, linkedChartId, items, services, otBillId, bill, discountValue, discountUnit, canSaveCase, otCreate, otDelete]);
+  }, [dialog, voidOpen, busy, isDraft, caseId, caseNo, caseStatus, patientName, linkedChartId, items, services, otBillId, bill, discountValue, discountUnit, canSaveCase, otCreate, otDelete, canVoid]);
 
   const itemsTotal = items.reduce((sum, it) => {
     if (it.foc === 1) return sum;
@@ -1045,6 +1095,7 @@ export function OtPage() {
                   label=""
                   value={doctorName}
                   disabled={!writable}
+                  ariaLabel={t("doctor")}
                   placeholder={t("doctorPlaceholder")}
                   onChange={(v) => {
                     setDoctorName(v);
@@ -1097,11 +1148,25 @@ export function OtPage() {
                 <span className="opd-bill-label">{t("vouNo")}</span>
                 <span className="opd-bill-readonly">{caseNo || "—"}</span>
               </div>
+              <label className="opd-bill-field">
+                <span className="opd-bill-label">{t("payType")}</span>
+                <select
+                  className="opd-bill-input"
+                  value={paymentType}
+                  disabled={!writable}
+                  onChange={(e) =>
+                    setPaymentType(e.target.value === "online" ? "online" : "cash")
+                  }
+                >
+                  <option value="cash">{t("payTypeCash")}</option>
+                  <option value="online">{t("payTypeOnline")}</option>
+                </select>
+              </label>
               <div className="opd-bill-field">
                 <span className="opd-bill-label">{t("currency")}</span>
                 <span className="opd-bill-readonly">{t("kyats")}</span>
               </div>
-              <div className="opd-bill-field">
+              <label className="opd-bill-field">
                 <span className="opd-bill-label">{t("procedure")}</span>
                 <input
                   className="opd-bill-input grow"
@@ -1110,7 +1175,7 @@ export function OtPage() {
                   onChange={(e) => setProcedureName(e.target.value)}
                   placeholder={t("procedurePlaceholder")}
                 />
-              </div>
+              </label>
               <div className="opd-bill-field">
                 <span className="opd-bill-label">{t("status")}</span>
                 <span className="opd-bill-readonly">
@@ -1342,8 +1407,8 @@ export function OtPage() {
             <button
               type="button"
               className={`opd-bill-rail-btn opd-bill-rail-btn--danger${isErr("void") ? " opd-bill-rail-btn--shake" : ""}`}
-              disabled={busy}
-              onClick={() => setDialog("delete")}
+              disabled={busy || !canVoid}
+              onClick={openVoidConfirm}
               data-guide="bill-void"
             >
               <span className="opd-bill-rail-btn-main">
@@ -1395,8 +1460,16 @@ export function OtPage() {
           mode={dialog}
           onClose={() => setDialog(null)}
           onOpen={(id) => void openCase(id)}
-          onVoid={voidFromHistory}
           onPurge={purgeFromHistory}
+        />
+      ) : null}
+      {voidOpen && otBillId != null ? (
+        <VoidBillConfirm
+          billNo={bill?.bill_no || caseNo || String(otBillId)}
+          identityName={patientName}
+          defaultReason="Voided"
+          onClose={() => setVoidOpen(false)}
+          onVoid={(reason) => doVoidBill(otBillId, reason)}
         />
       ) : null}
       {confirm ? (

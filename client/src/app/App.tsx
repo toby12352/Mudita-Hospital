@@ -18,6 +18,10 @@ import {
   storeSession,
   type User,
 } from "@/shared/auth";
+import {
+  BillLeaveGuardProvider,
+  useOptionalBillLeaveGuardApi,
+} from "@/shared/billLeaveGuard";
 import { useI18n } from "@/shared/i18n";
 import { applyUiScale, resetUiScale, zoomIn, zoomOut } from "@/shared/uiScale";
 import "@/shared/styles/App.css";
@@ -47,9 +51,8 @@ import {
 import { ServerIpButton } from "./ServerIpButton";
 import { ServerSetupForm } from "./ServerSetupForm";
 import type { ConnState, NavIntent, NavSectionId, PortalId, View } from "./types";
-import { OpdDoctorsPage } from "@/pages/opd/OpdDoctorsPage";
+import { OpdMaintenancePage } from "@/pages/opd/OpdMaintenancePage";
 import { OpdPage } from "@/pages/opd/OpdPage";
-import { OpdServicesPage } from "@/pages/opd/OpdServicesPage";
 import { LabPage } from "@/pages/lab/LabPage";
 import { LabServicesPage } from "@/pages/lab/LabServicesPage";
 import { OtMaintenancePage } from "@/pages/ot/OtMaintenancePage";
@@ -66,7 +69,16 @@ import { PatientsPage } from "@/pages/patients/PatientsPage";
 import { SettingsPage } from "@/pages/settings/SettingsPage";
 
 export default function App() {
+  return (
+    <BillLeaveGuardProvider>
+      <AppShell />
+    </BillLeaveGuardProvider>
+  );
+}
+
+function AppShell() {
   const { locale, setLocale, t } = useI18n();
+  const leaveGuard = useOptionalBillLeaveGuardApi();
   const [conn, setConn] = useState<ConnState>("checking");
   const [detail, setDetail] = useState("Checking API…");
   const [user, setUser] = useState<User | null>(getStoredUser());
@@ -167,7 +179,7 @@ export default function App() {
         setView("home");
         setNavIntent({});
         setActiveSection("home");
-        setAuthError("Locked after 15 minutes idle — please sign in again.");
+        setAuthError(t("idleLocked"));
       })();
     });
     return () => watcher.dispose();
@@ -215,7 +227,7 @@ export default function App() {
     }
   }
 
-  async function handleLogout() {
+  async function finishLogout() {
     await logout();
     clearSession();
     setUser(null);
@@ -224,6 +236,16 @@ export default function App() {
     setNavIntent({});
     setActiveSection("home");
     setAuthError(null);
+  }
+
+  async function handleLogout() {
+    if (leaveGuard) {
+      leaveGuard.requestLeave(() => {
+        void finishLogout();
+      });
+      return;
+    }
+    await finishLogout();
   }
 
   async function handlePasswordChanged(result: { token: string; user: User }) {
@@ -246,11 +268,19 @@ export default function App() {
     setAuthError(null);
   }
 
-  function navigate(next: View, intent: NavIntent = {}, section: NavSectionId = "home") {
+  function applyNavigate(next: View, intent: NavIntent, section: NavSectionId) {
     setView(next);
     setNavIntent(intent);
     setActiveSection(section);
     setNavEpoch((n) => n + 1);
+  }
+
+  function navigate(next: View, intent: NavIntent = {}, section: NavSectionId = "home") {
+    if (leaveGuard) {
+      leaveGuard.requestLeave(() => applyNavigate(next, intent, section));
+      return;
+    }
+    applyNavigate(next, intent, section);
   }
 
   function openGuideScreen(screen: GuideScreen) {
@@ -270,7 +300,7 @@ export default function App() {
     return (
       <AuthFrame
         title={t("serverIp")}
-        lede="Enter the hospital server address on this LAN (port 8080)."
+        lede={t("serverSetupLede")}
       >
         <LanguageSwitcher locale={locale} onChange={setLocale} t={t} />
         <ServerSetupForm
@@ -318,7 +348,7 @@ export default function App() {
     return (
       <AuthFrame
         title={t("changePassword")}
-        lede={`Required on first login for ${user.username}`}
+        lede={t("mustChangePasswordLede").replace("{name}", user.username)}
       >
         <ChangePasswordForm onDone={handlePasswordChanged} onCancel={handleLogout} />
       </AuthFrame>
@@ -420,12 +450,14 @@ export default function App() {
         <PharmacyBillingPage
           key={pageKey}
           initialMode={shownIntent.billingMode ?? "list"}
+          openRecordId={shownIntent.openRecordId}
         />
       ) : null}
       {portal === "pharmacy" && shownView === "pharmacy_return" ? (
         <PharmacyReturnPage
           key={pageKey}
           initialMode={shownIntent.billingMode ?? "list"}
+          openRecordId={shownIntent.openRecordId}
         />
       ) : null}
       {portal === "pharmacy" && shownView === "pharmacy_purchase" ? (
@@ -437,64 +469,67 @@ export default function App() {
           initialMode={shownIntent.billingMode ?? "list"}
         />
       ) : null}
-      {portal === "pharmacy" && shownView === "pharmacy_expense" ? (
-        <ExpenseBillPage key={pageKey} portal="pharmacy" />
-      ) : null}
       {portal === "opd" && shownView === "opd" && (opdScreen === "doctors" || opdScreen === "services") ? (
-        <section key={pageKey} className="desk-maintenance">
-          <div className="tabs" role="tablist" aria-label={t("navMaintenance")}>
-            <button
-              type="button"
-              role="tab"
-              className={`tab${opdScreen === "doctors" ? " active" : ""}`}
-              aria-selected={opdScreen === "doctors"}
-              onClick={() =>
-                navigate("opd", { opdScreen: "doctors" }, "opd_maintenance")
-              }
-            >
-              {t("maintenanceDoctors")}
-            </button>
-            <button
-              type="button"
-              role="tab"
-              className={`tab${opdScreen === "services" ? " active" : ""}`}
-              aria-selected={opdScreen === "services"}
-              onClick={() =>
-                navigate("opd", { opdScreen: "services" }, "opd_maintenance")
-              }
-            >
-              {t("maintenanceServices")}
-            </button>
-          </div>
-          {opdScreen === "doctors" ? <OpdDoctorsPage /> : <OpdServicesPage />}
-        </section>
+        <OpdMaintenancePage
+          key={pageKey}
+          screen={opdScreen}
+          onNavigateScreen={(next) =>
+            navigate("opd", { opdScreen: next }, "opd_maintenance")
+          }
+        />
       ) : null}
       {portal === "opd" && shownView === "opd" && opdScreen === "bill" ? (
-        <OpdPage key={pageKey} initialMode={shownIntent.billingMode ?? "list"} />
-      ) : null}
-      {portal === "opd" && shownView === "opd" && opdScreen === "expense" ? (
-        <ExpenseBillPage key={pageKey} portal="opd" />
+        <OpdPage
+          key={pageKey}
+          initialMode={shownIntent.billingMode ?? "list"}
+          openRecordId={shownIntent.openRecordId}
+        />
       ) : null}
       {portal === "lab" && shownView === "lab" && labScreen === "services" ? (
         <LabServicesPage key={pageKey} />
       ) : null}
       {portal === "lab" && shownView === "lab" && labScreen === "bill" ? (
-        <LabPage key={pageKey} initialMode={shownIntent.billingMode ?? "list"} />
+        <LabPage
+          key={pageKey}
+          initialMode={shownIntent.billingMode ?? "list"}
+          openRecordId={shownIntent.openRecordId}
+        />
       ) : null}
       {portal === "ot" && shownView === "ot" && shownIntent.otMode === "stock" ? (
         <OtMaintenancePage key={pageKey} />
       ) : null}
-      {portal === "ot" && shownView === "ot" && shownIntent.otMode === "expense" ? (
-        <ExpenseBillPage key={pageKey} portal="ot" />
-      ) : null}
       {portal === "ot" && shownView === "ot" && (shownIntent.otMode ?? "case") === "case" ? (
-        <OtPage key={pageKey} />
+        <OtPage key={pageKey} openRecordId={shownIntent.openRecordId} />
       ) : null}
       {portal === "patients" && shownView === "patients" ? (
         <PatientsPage
           key={pageKey}
           startCreate={shownIntent.patientsScreen === "create"}
           focusId={shownIntent.patientsFocusId}
+          canReadModule={(module) => readable.includes(module)}
+          onOpenRecord={({ view, section, openRecordId }) => {
+            if (view === "opd") {
+              navigate(
+                "opd",
+                { opdScreen: "bill", billingMode: "edit", openRecordId },
+                section,
+              );
+              return;
+            }
+            if (view === "lab") {
+              navigate(
+                "lab",
+                { labScreen: "bill", billingMode: "edit", openRecordId },
+                section,
+              );
+              return;
+            }
+            if (view === "ot") {
+              navigate("ot", { otMode: "case", openRecordId }, section);
+              return;
+            }
+            navigate(view, { billingMode: "edit", openRecordId }, section);
+          }}
           onViewList={(id) =>
             navigate(
               "patients",
@@ -506,10 +541,12 @@ export default function App() {
           }
         />
       ) : null}
-      {portal === "ipd" && shownView === "ipd" ? <IpdPage key={pageKey} /> : null}
+      {portal === "ipd" && shownView === "ipd" ? (
+        <IpdPage key={pageKey} openRecordId={shownIntent.openRecordId} />
+      ) : null}
       {portal === "ipd" && shownView === "ipd_bill" ? <IpdChargeBillPage key={pageKey} /> : null}
-      {portal === "ipd" && shownView === "ipd_expense" ? (
-        <ExpenseBillPage key={pageKey} portal="ipd" />
+      {portal === "expense" && shownView === "expense" ? (
+        <ExpenseBillPage key={pageKey} />
       ) : null}
     </>
   );
@@ -517,6 +554,16 @@ export default function App() {
   return (
     <ClinicActionsProvider value={actionFlags}>
     <main className="shell shell-wide shell-app shell-desk shell-classic">
+      <a
+        className="skip-link"
+        href="#clinic-content"
+        onClick={(e) => {
+          e.preventDefault();
+          document.getElementById("clinic-content")?.focus();
+        }}
+      >
+        {t("skipToContent")}
+      </a>
       <AppNavBar
         mode={sharedLayout ? "admin" : "desk"}
         portal={sharedLayout ? null : deskPortal}
@@ -540,7 +587,9 @@ export default function App() {
           </header>
         </div>
 
-        <div className="app-content">{pageBody}</div>
+        <div id="clinic-content" className="app-content" tabIndex={-1}>
+          {pageBody}
+        </div>
 
         <DeskStatusBar
           shortcuts={shortcutsForView(shownView, shownIntent, t).filter((s) =>

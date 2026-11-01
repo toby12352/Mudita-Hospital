@@ -18,7 +18,8 @@ import { getPatient, type PatientChart } from "@/features/patients/api";
 import { useClinicActions } from "@/app/clinicActions";
 import { AlertDialog } from "@/shared/AlertDialog";
 import { BillBtnIcon } from "@/shared/BillBtnIcon";
-import { BillDateField, formatUtcAsLocal } from "@/shared/BillDateField";
+import { getStoredUser } from "@/shared/auth";
+import { BillDateField, formatUtcAsLocal, nowDatetimeLocal } from "@/shared/BillDateField";
 import { BillLineGrid, type BillLineEntryNode } from "@/shared/BillLineGrid";
 import {
   BillChargeToIpdButton,
@@ -33,8 +34,11 @@ import {
   discountWrite,
   type DiscountUnit,
 } from "@/shared/discount";
+import { draftHasContent } from "@/shared/billDraft";
+import { useRegisterBillLeaveGuard } from "@/shared/billLeaveGuard";
 import { useI18n } from "@/shared/i18n";
 import { useBillActionFeedback, useBillActionPending } from "@/shared/useActionLock";
+import { VoidBillConfirm } from "@/shared/VoidBillConfirm";
 import {
   IpdChargeBillListDialog,
   type IpdChargeBillListDialogMode,
@@ -191,6 +195,7 @@ export function IpdChargeBillPage() {
   const { action: pendingAction, pending, begin, end } = useBillActionPending();
   const { pulse, isOk, isErr } = useBillActionFeedback();
   const [dialog, setDialog] = useState<IpdChargeBillListDialogMode | null>(null);
+  const [voidOpen, setVoidOpen] = useState(false);
   const [confirm, setConfirm] = useState<DeskConfirm | null>(null);
 
   const [billId, setBillId] = useState<number | null>(null);
@@ -202,6 +207,7 @@ export function IpdChargeBillPage() {
   const [patientPhone, setPatientPhone] = useState("");
   const [patientAge, setPatientAge] = useState("");
   const [patientGender, setPatientGender] = useState("");
+  const [description, setDescription] = useState("");
   const [openStay, setOpenStay] = useState<IpdAdmission | null>(null);
   const [stayFor, setStayFor] = useState<number | null>(null);
   const [lines, setLines] = useState<DraftLine[]>([]);
@@ -209,9 +215,19 @@ export function IpdChargeBillPage() {
   const [discountUnit, setDiscountUnit] = useState<DiscountUnit>("percent");
   const [createdAt, setCreatedAt] = useState<string | null>(null);
   const [nowTick, setNowTick] = useState(() => Date.now());
+  const [billedAtLocal, setBilledAtLocal] = useState(() => nowDatetimeLocal());
+  const isAdmin = getStoredUser()?.role === "Admin";
+  const dateEditable = isAdmin && billId == null;
 
   const isDraft = billStatus === "draft";
+  const canVoid =
+    billId != null && billStatus !== "void" && billStatus !== "deleted";
   const identityEditable = isDraft && patientId == null;
+
+  function openVoidConfirm() {
+    if (!canVoid) return;
+    setVoidOpen(true);
+  }
   const stayKnown = patientId != null && stayFor === patientId;
   const showCharge = isDraft && openStay != null;
   const showAdmitFirst = isDraft && stayKnown && openStay == null;
@@ -282,10 +298,12 @@ export function IpdChargeBillPage() {
     setPatientPhone("");
     setPatientAge("");
     setPatientGender("");
+    setDescription("");
     setLines([]);
     setDiscountValue("");
     setDiscountUnit("percent");
     setCreatedAt(null);
+    setBilledAtLocal(nowDatetimeLocal());
     setError(null);
   }
 
@@ -299,6 +317,7 @@ export function IpdChargeBillPage() {
     setPatientPhone(b.patient_phone ?? "");
     setPatientAge(b.patient_age_years != null ? String(b.patient_age_years) : "");
     setPatientGender(b.patient_gender ?? "");
+    setDescription(b.description ?? "");
     setCreatedAt(b.created_at);
     setLines(linesFromBill(b.lines));
     const discount = discountFieldsFromBill(b.discount_value, b.discount_unit);
@@ -337,7 +356,7 @@ export function IpdChargeBillPage() {
     focusPatient();
   }
 
-  function blockInvalidDraft(): boolean {
+  function blockIncompletePay(): boolean {
     if (!patientName.trim()) {
       setPatientName("");
       setError(t("errPatientNameRequired"));
@@ -372,22 +391,50 @@ export function IpdChargeBillPage() {
       patient_phone: patientPhone.trim(),
       patient_age_years: age === "invalid" ? null : age,
       patient_gender: patientGender,
+      description: description.trim(),
       ...discountWrite(discountValue, discountUnit),
+      ...(dateEditable && billedAtLocal ? { billed_at: billedAtLocal } : {}),
       lines: lines.map((l) => ({
         description: l.description.trim(),
         qty: Math.max(1, Math.floor(Number(l.qty)) || 1),
-        unit_price_mmk: l.unit_price_mmk as number,
+        unit_price_mmk: l.unit_price_mmk,
       })),
     };
   }
 
   async function saveDraft(): Promise<number | null> {
-    if (blockInvalidDraft()) return null;
+    if (
+      !draftHasContent({
+        texts: [patientName, patientPhone, patientAge, patientGender, description],
+        flags: [patientId != null],
+        lineCount: lines.length,
+        discountValue,
+      })
+    ) {
+      setError(t("errDraftEmpty"));
+      return null;
+    }
+    const age = parseAgeYears(patientAge);
+    if (patientAge.trim() && age === "invalid") {
+      setError(t("ipdAgeInvalid"));
+      return null;
+    }
     const body = buildBody();
     const b = billId ? await updateIpdChargeBill(billId, body) : await createIpdChargeBill(body);
     applySavedBill(b);
     return b.id;
   }
+
+  useRegisterBillLeaveGuard(lines.length > 0 && billId == null, async () => {
+    try {
+      setError(null);
+      const id = await saveDraft();
+      return id != null;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Save failed");
+      return false;
+    }
+  });
 
   async function doConfirm() {
     if (!isDraft) return;
@@ -424,6 +471,7 @@ export function IpdChargeBillPage() {
       if (!isDraft) {
         throw new Error(t("errBillFinished"));
       }
+      if (blockIncompletePay()) return;
       id = await saveDraft();
       if (id == null) return;
       const stamped = await markIpdChargeBillPrinted(id);
@@ -445,6 +493,7 @@ export function IpdChargeBillPage() {
     setBusy(true);
     setError(null);
     try {
+      if (blockIncompletePay()) return;
       const id = await saveDraft();
       if (id == null) return;
       const charged = await chargeIpdChargeBill(id);
@@ -565,7 +614,7 @@ export function IpdChargeBillPage() {
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (dialog) return;
+      if (dialog || voidOpen) return;
       if (document.querySelector(".print-preview-overlay")) return;
       if (document.querySelector(".alert-dialog-overlay")) return;
 
@@ -587,7 +636,7 @@ export function IpdChargeBillPage() {
       }
       if (key === "F8" && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
-        if (!busy) setDialog("delete");
+        if (!busy && canVoid) openVoidConfirm();
         return;
       }
       if (key === "F10") {
@@ -606,6 +655,7 @@ export function IpdChargeBillPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- shortcut wiring
   }, [
     dialog,
+    voidOpen,
     busy,
     isDraft,
     billId,
@@ -617,9 +667,11 @@ export function IpdChargeBillPage() {
     patientPhone,
     patientAge,
     patientGender,
+    description,
     discountValue,
     discountUnit,
     openStay,
+    canVoid,
   ]);
 
   const total = lines.reduce(
@@ -721,6 +773,16 @@ export function IpdChargeBillPage() {
                   <option value="Other">{t("genderOther")}</option>
                 </select>
               </label>
+              <label className="opd-bill-field">
+                <span className="opd-bill-label">{t("ipdDescription")}</span>
+                <input
+                  className="opd-bill-input grow"
+                  value={description}
+                  disabled={!isDraft}
+                  aria-label={t("ipdDescription")}
+                  onChange={(e) => setDescription(e.target.value)}
+                />
+              </label>
               {openStay ? (
                 <>
                   <div className="opd-bill-field">
@@ -745,10 +807,10 @@ export function IpdChargeBillPage() {
 
             <div className="opd-bill-header-col">
               <BillDateField
-                editable={false}
-                value=""
+                editable={dateEditable}
+                value={billedAtLocal}
                 displayWhen={displayWhen}
-                onChange={() => {}}
+                onChange={setBilledAtLocal}
                 disabled={busy}
               />
               <div className="opd-bill-field">
@@ -851,8 +913,8 @@ export function IpdChargeBillPage() {
           <button
             type="button"
             className={`opd-bill-rail-btn opd-bill-rail-btn--danger${isErr("void") ? " opd-bill-rail-btn--shake" : ""}`}
-            disabled={busy}
-            onClick={() => setDialog("delete")}
+            disabled={busy || !canVoid}
+            onClick={openVoidConfirm}
             data-guide="bill-void"
           >
             <span className="opd-bill-rail-btn-main">
@@ -901,8 +963,16 @@ export function IpdChargeBillPage() {
           mode={dialog}
           onClose={() => setDialog(null)}
           onOpen={(id) => void openBill(id)}
-          onVoid={doVoidSelected}
           onPurge={doPurgeSelected}
+        />
+      ) : null}
+      {voidOpen && billId != null ? (
+        <VoidBillConfirm
+          billNo={billNo || String(billId)}
+          identityName={patientName}
+          defaultReason="Voided"
+          onClose={() => setVoidOpen(false)}
+          onVoid={(reason) => doVoidSelected(billId, reason)}
         />
       ) : null}
       {confirm ? (

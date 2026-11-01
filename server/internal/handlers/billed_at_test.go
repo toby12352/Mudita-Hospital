@@ -163,6 +163,93 @@ func TestAdminBilledAtOnIpdAdmit(t *testing.T) {
 	}
 }
 
+func TestAdminBilledAtOnIpdChargeBill(t *testing.T) {
+	sqlDB := openTestDB(t)
+	_, adminTok := insertSession(t, sqlDB, auth.RoleAdmin, 0)
+	_, ipdTok := insertSession(t, sqlDB, auth.RoleIPD, 0)
+	h := &IPD{DB: sqlDB}
+	charts := &Patients{DB: sqlDB}
+
+	w := doJSON(charts, http.MethodPost, "/api/patients", adminTok, `{"name":"Charge Backdate","phone":"097"}`)
+	mustCode(t, w, http.StatusCreated)
+	chart := decodePatient(t, w)
+	w = doJSON(h, http.MethodPost, "/api/ipd/admissions", ipdTok, fmt.Sprintf(`{"patient_id":%d}`, chart.ID))
+	mustCode(t, w, http.StatusCreated)
+
+	chosen := "2026-04-02T09:15"
+	wantYangon := "2026-04-02 09:15:00"
+	wantUTC := time.Date(2026, 4, 2, 9, 15, 0, 0, yangon).UTC().Format("2006-01-02 15:04:05")
+
+	draftBody := func(billedAt string) string {
+		extra := ""
+		if billedAt != "" {
+			extra = `,"billed_at":` + fmt.Sprintf("%q", billedAt)
+		}
+		return fmt.Sprintf(`{
+			"patient_id":%d,
+			"patient_name":"Charge Backdate",
+			"patient_phone":"097",
+			"discount_value":0,
+			"discount_unit":"percent",
+			"lines":[{"description":"Nursing","qty":1,"unit_price_mmk":5000}]%s
+		}`, chart.ID, extra)
+	}
+
+	w = doJSON(h, http.MethodPost, "/api/ipd/charge-bills", ipdTok, draftBody(chosen))
+	mustCode(t, w, http.StatusForbidden)
+	var n int
+	if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM ipd_charge_bills`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatalf("non-admin create wrote %d rows", n)
+	}
+
+	w = doJSON(h, http.MethodPost, "/api/ipd/charge-bills", adminTok, draftBody("not-a-date"))
+	mustCode(t, w, http.StatusBadRequest)
+	if !strings.Contains(w.Body.String(), "invalid billed_at") {
+		t.Fatalf("body %s", w.Body.String())
+	}
+
+	w = doJSON(h, http.MethodPost, "/api/ipd/charge-bills", adminTok, draftBody(chosen))
+	mustCode(t, w, http.StatusCreated)
+	bill := decodeChargeBill(t, w)
+	if bill.BilledAt == nil || *bill.BilledAt != wantYangon {
+		t.Fatalf("billed_at %+v want %s", bill.BilledAt, wantYangon)
+	}
+	if bill.CreatedAt != wantUTC {
+		t.Fatalf("created_at %q want %q", bill.CreatedAt, wantUTC)
+	}
+
+	w = doJSON(h, http.MethodPost, fmt.Sprintf("/api/ipd/charge-bills/%d/charge", bill.ID), adminTok, `{}`)
+	mustCode(t, w, http.StatusOK)
+	charged := decodeChargeBill(t, w)
+	if charged.Status != "charged" {
+		t.Fatalf("status %s", charged.Status)
+	}
+	var ledgerAt string
+	if err := sqlDB.QueryRow(`
+		SELECT created_at FROM ipd_ledger
+		WHERE source = 'ipd' AND source_id = ? AND kind = 'charge'
+	`, bill.ID).Scan(&ledgerAt); err != nil {
+		t.Fatal(err)
+	}
+	if ledgerAt != wantUTC {
+		t.Fatalf("ledger created_at %q want %q", ledgerAt, wantUTC)
+	}
+	day, ok := yangonDateKey(ledgerAt)
+	if !ok || day != "2026-04-02" {
+		t.Fatalf("ledger day %q ok=%v", day, ok)
+	}
+
+	w = doJSON(h, http.MethodPost, "/api/ipd/charge-bills", adminTok, draftBody(""))
+	mustCode(t, w, http.StatusCreated)
+	live := decodeChargeBill(t, w)
+	if live.BilledAt != nil {
+		t.Fatalf("unexpected billed_at %+v", live.BilledAt)
+	}
+}
+
 func TestParseAdminBilledAt(t *testing.T) {
 	override, status, msg := parseAdminBilledAt(auth.RoleOPD, "2024-01-01T12:00")
 	if override != nil || status != http.StatusForbidden || msg != "admin only" {

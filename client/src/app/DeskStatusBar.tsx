@@ -109,12 +109,7 @@ export function shortcutsForView(
     ];
   }
 
-  if (
-    view === "ipd_expense" ||
-    view === "pharmacy_expense" ||
-    (view === "opd" && intent.opdScreen === "expense") ||
-    (view === "ot" && intent.otMode === "expense")
-  ) {
+  if (view === "expense") {
     return billKeys;
   }
 

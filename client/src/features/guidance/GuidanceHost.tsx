@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { driver, type Driver, type DriveStep } from "driver.js";
 import "driver.js/dist/driver.css";
 import { t, useI18n } from "@/shared/i18n";
-import { getGuideRun, stopGuide, subscribeGuide } from "./guideControl";
+import { getGuideRun, setGuideStepIndex, stopGuide, subscribeGuide } from "./guideControl";
 import { writeGuideProgress } from "./progress";
 import { findGuideLesson, guideScreensEqual, type GuideLesson, type GuideScreen } from "./registry";
 import "./guide.css";
@@ -79,9 +79,10 @@ export function GuidanceHost({
     const steps: DriveStep[] = lesson.steps.map((step, stepIndex) => {
       const prev = lesson.steps[stepIndex - 1];
       const screenChanges = step.screen != null && (stepIndex === 0 || !guideScreensEqual(prev?.screen, step.screen));
+      const waitMs = step.waitForElementMs ?? (screenChanges ? SCREEN_WAIT_MS : undefined);
       return {
         element: step.element,
-        ...(screenChanges ? { waitForElement: SCREEN_WAIT_MS } : {}),
+        ...(waitMs != null ? { waitForElement: waitMs } : {}),
         popover: {
           title: t(step.titleKey),
           description: t(step.bodyKey),
@@ -128,6 +129,7 @@ export function GuidanceHost({
         const active = tour?.getActiveIndex();
         if (typeof active !== "number") return;
         stepRef.current = active;
+        setGuideStepIndex(active);
         writeGuideProgress(userId, lessonId, active);
       },
       onDestroyed: () => {

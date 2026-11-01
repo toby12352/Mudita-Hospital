@@ -1753,6 +1753,323 @@ CREATE TABLE IF NOT EXISTS ipd_charge_bill_lines (
 CREATE INDEX IF NOT EXISTS idx_ipd_charge_bill_lines_bill ON ipd_charge_bill_lines(bill_id);
 `,
 	},
+	{
+		Name:      "039_ipd_admission_deleted",
+		DisableFK: true,
+		SQL: `
+-- Soft-delete open stays: widen status CHECK to include 'deleted'.
+-- Copy every admission row and id. Ledger, vouchers, charge bills, and desk
+-- admission_id links stay. No amounts, stock, or bill totals are rewritten.
+CREATE TABLE ipd_admissions_new (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  admission_no TEXT NOT NULL UNIQUE,
+  patient_id INTEGER NOT NULL REFERENCES patients(id),
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'settled', 'deleted')),
+  notes TEXT NOT NULL DEFAULT '',
+  admitted_at TEXT NOT NULL DEFAULT (datetime('now')),
+  discharged_at TEXT,
+  created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  room_no TEXT NOT NULL DEFAULT ''
+);
+INSERT INTO ipd_admissions_new (
+  id, admission_no, patient_id, status, notes, admitted_at, discharged_at,
+  created_by_user_id, created_at, updated_at, room_no
+)
+SELECT
+  id, admission_no, patient_id, status, notes, admitted_at, discharged_at,
+  created_by_user_id, created_at, updated_at, room_no
+FROM ipd_admissions;
+DROP TABLE ipd_admissions;
+ALTER TABLE ipd_admissions_new RENAME TO ipd_admissions;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ipd_admissions_one_open
+  ON ipd_admissions(patient_id) WHERE status = 'open';
+CREATE INDEX IF NOT EXISTS idx_ipd_admissions_patient ON ipd_admissions(patient_id);
+`,
+	},
+	{
+		Name: "040_bill_payment_type",
+		SQL: `
+-- Desk bills: Cash vs Online collection. Existing rows stay cash via DEFAULT.
+-- collected_cash is unchanged (1 = desk drawer, 0 = charged to IPD).
+ALTER TABLE opd_bills ADD COLUMN payment_type TEXT NOT NULL DEFAULT 'cash';
+ALTER TABLE lab_bills ADD COLUMN payment_type TEXT NOT NULL DEFAULT 'cash';
+ALTER TABLE ot_bills ADD COLUMN payment_type TEXT NOT NULL DEFAULT 'cash';
+ALTER TABLE pharmacy_bills ADD COLUMN payment_type TEXT NOT NULL DEFAULT 'cash';
+`,
+	},
+	{
+		Name: "041_ipd_charge_bills_billed_at",
+		SQL: `
+-- Admin-chosen IPD charge bill civil time. Nullable; existing slips stay on the real clock.
+-- Yangon wall time in billed_at; create path stores the UTC equivalent in created_at.
+-- Charge stamps the stay ledger created_at from that override so the day sheet matches.
+ALTER TABLE ipd_charge_bills ADD COLUMN billed_at TEXT;
+`,
+	},
+	{
+		Name: "042_ipd_voucher_epoch_backdate",
+		SQL: `
+-- Move the IPD cash-income cutover earlier so Oct 30+ use deposits/collections/refunds.
+-- 037 seeded started_on as the next Yangon day at first apply; installs that landed on
+-- 2026-10-31 kept Oct 30 (and often Oct 31) on the old charge-as-income rule.
+-- Ledger rows are not rewritten. Only moves started_on earlier, never later.
+UPDATE ipd_voucher_epoch
+SET started_on = '2026-10-30'
+WHERE id = 1 AND started_on > '2026-10-30';
+`,
+	},
+	{
+		Name: "043_ipd_charge_bills_description",
+		SQL: `
+-- Optional header Description on IPD charge slips (same convention as OPD Remark).
+-- Existing slips stay valid with an empty string. Line Particulars are unchanged.
+ALTER TABLE ipd_charge_bills ADD COLUMN description TEXT NOT NULL DEFAULT '';
+`,
+	},
+	{
+		Name:      "044_expense_bills_portal_lab_expense",
+		DisableFK: true,
+		SQL: `
+-- Widen expense_bills.portal CHECK so Category may be lab or expense.
+-- Copy every row and id. No portal rewrite, money, or status change.
+
+CREATE TABLE expense_bills_new (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  bill_no TEXT NOT NULL UNIQUE,
+  portal TEXT NOT NULL CHECK (portal IN ('opd', 'ot', 'ipd', 'pharmacy', 'lab', 'expense')),
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'paid', 'void', 'deleted')),
+  total_mmk INTEGER NOT NULL DEFAULT 0 CHECK (total_mmk >= 0),
+  discount_value INTEGER NOT NULL DEFAULT 0,
+  discount_unit TEXT NOT NULL DEFAULT 'percent',
+  discount_mmk INTEGER NOT NULL DEFAULT 0,
+  paid_at TEXT,
+  paid_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  printed_at TEXT,
+  voided_at TEXT,
+  voided_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  void_reason TEXT NOT NULL DEFAULT '',
+  created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  billed_at TEXT
+);
+INSERT INTO expense_bills_new (
+  id, bill_no, portal, name, description, status, total_mmk,
+  discount_value, discount_unit, discount_mmk,
+  paid_at, paid_by_user_id, printed_at, voided_at, voided_by_user_id, void_reason,
+  created_by_user_id, created_at, updated_at, billed_at
+)
+SELECT
+  id, bill_no, portal, name, description, status, total_mmk,
+  discount_value, discount_unit, discount_mmk,
+  paid_at, paid_by_user_id, printed_at, voided_at, voided_by_user_id, void_reason,
+  created_by_user_id, created_at, updated_at, billed_at
+FROM expense_bills;
+DROP TABLE expense_bills;
+ALTER TABLE expense_bills_new RENAME TO expense_bills;
+CREATE INDEX IF NOT EXISTS idx_expense_bills_portal_status ON expense_bills(portal, status);
+CREATE INDEX IF NOT EXISTS idx_expense_bills_paid_at ON expense_bills(paid_at);
+`,
+	},
+	{
+		Name:      "045_draft_bills_partial",
+		DisableFK: true,
+		SQL: `
+-- Partial drafts: expense_bills.portal may be '' until category is chosen;
+-- expense and IPD charge line fees may be NULL until entered.
+-- Copy every row and id. Existing portals and fees are unchanged.
+
+CREATE TABLE expense_bills_new (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  bill_no TEXT NOT NULL UNIQUE,
+  portal TEXT NOT NULL CHECK (portal IN ('', 'opd', 'ot', 'ipd', 'pharmacy', 'lab', 'expense')),
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'paid', 'void', 'deleted')),
+  total_mmk INTEGER NOT NULL DEFAULT 0 CHECK (total_mmk >= 0),
+  discount_value INTEGER NOT NULL DEFAULT 0,
+  discount_unit TEXT NOT NULL DEFAULT 'percent',
+  discount_mmk INTEGER NOT NULL DEFAULT 0,
+  paid_at TEXT,
+  paid_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  printed_at TEXT,
+  voided_at TEXT,
+  voided_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  void_reason TEXT NOT NULL DEFAULT '',
+  created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  billed_at TEXT
+);
+INSERT INTO expense_bills_new (
+  id, bill_no, portal, name, description, status, total_mmk,
+  discount_value, discount_unit, discount_mmk,
+  paid_at, paid_by_user_id, printed_at, voided_at, voided_by_user_id, void_reason,
+  created_by_user_id, created_at, updated_at, billed_at
+)
+SELECT
+  id, bill_no, portal, name, description, status, total_mmk,
+  discount_value, discount_unit, discount_mmk,
+  paid_at, paid_by_user_id, printed_at, voided_at, voided_by_user_id, void_reason,
+  created_by_user_id, created_at, updated_at, billed_at
+FROM expense_bills;
+DROP TABLE expense_bills;
+ALTER TABLE expense_bills_new RENAME TO expense_bills;
+CREATE INDEX IF NOT EXISTS idx_expense_bills_portal_status ON expense_bills(portal, status);
+CREATE INDEX IF NOT EXISTS idx_expense_bills_paid_at ON expense_bills(paid_at);
+
+CREATE TABLE expense_bill_lines_new (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  bill_id INTEGER NOT NULL REFERENCES expense_bills(id) ON DELETE CASCADE,
+  ref_id INTEGER,
+  code TEXT NOT NULL DEFAULT '',
+  description TEXT NOT NULL,
+  qty INTEGER NOT NULL DEFAULT 1 CHECK (qty > 0),
+  unit_price_mmk INTEGER CHECK (unit_price_mmk IS NULL OR unit_price_mmk >= 0),
+  line_total_mmk INTEGER NOT NULL DEFAULT 0 CHECK (line_total_mmk >= 0),
+  sort_order INTEGER NOT NULL DEFAULT 0
+);
+INSERT INTO expense_bill_lines_new (
+  id, bill_id, ref_id, code, description, qty, unit_price_mmk, line_total_mmk, sort_order
+)
+SELECT
+  id, bill_id, ref_id, code, description, qty, unit_price_mmk, line_total_mmk, sort_order
+FROM expense_bill_lines;
+DROP TABLE expense_bill_lines;
+ALTER TABLE expense_bill_lines_new RENAME TO expense_bill_lines;
+CREATE INDEX IF NOT EXISTS idx_expense_bill_lines_bill ON expense_bill_lines(bill_id);
+
+CREATE TABLE ipd_charge_bill_lines_new (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  bill_id INTEGER NOT NULL REFERENCES ipd_charge_bills(id) ON DELETE CASCADE,
+  description TEXT NOT NULL,
+  qty INTEGER NOT NULL DEFAULT 1 CHECK (qty > 0),
+  unit_price_mmk INTEGER CHECK (unit_price_mmk IS NULL OR unit_price_mmk >= 0),
+  line_total_mmk INTEGER NOT NULL DEFAULT 0 CHECK (line_total_mmk >= 0),
+  sort_order INTEGER NOT NULL DEFAULT 0
+);
+INSERT INTO ipd_charge_bill_lines_new (
+  id, bill_id, description, qty, unit_price_mmk, line_total_mmk, sort_order
+)
+SELECT
+  id, bill_id, description, qty, unit_price_mmk, line_total_mmk, sort_order
+FROM ipd_charge_bill_lines;
+DROP TABLE ipd_charge_bill_lines;
+ALTER TABLE ipd_charge_bill_lines_new RENAME TO ipd_charge_bill_lines;
+CREATE INDEX IF NOT EXISTS idx_ipd_charge_bill_lines_bill ON ipd_charge_bill_lines(bill_id);
+`,
+	},
+	{
+		Name: "044_pharmacy_item_codes",
+		SQL: `
+-- Rewrite items.code to PREFIX-NNNN by stock_unit (innermost unit).
+-- Stock, batches, prices, and bill-line code snapshots are left alone.
+-- item_code_counters tracks the next number per prefix for new items.
+
+CREATE TABLE IF NOT EXISTS item_code_counters (
+  prefix TEXT PRIMARY KEY,
+  last_n INTEGER NOT NULL DEFAULT 0 CHECK (last_n >= 0)
+);
+
+-- Park existing codes so the unique index cannot collide mid-rewrite.
+UPDATE items SET code = '~' || id;
+
+UPDATE items SET code = (
+  SELECT p.prefix || '-' || printf('%04d', p.rn)
+  FROM (
+    SELECT
+      id AS iid,
+      CASE TRIM(COALESCE(stock_unit, ''))
+        WHEN 'Tablet' THEN 'TAB'
+        WHEN 'Capsule' THEN 'CAP'
+        WHEN 'Vial' THEN 'VIA'
+        WHEN 'Ampoule' THEN 'AMP'
+        WHEN 'Bottle' THEN 'BTL'
+        WHEN 'Sachet' THEN 'SAC'
+        WHEN 'Tube' THEN 'TUB'
+        WHEN 'Puff' THEN 'PUF'
+        WHEN 'mL' THEN 'MLL'
+        WHEN 'g' THEN 'GRM'
+        WHEN 'oz' THEN 'ONZ'
+        WHEN 'Bag' THEN 'BAG'
+        WHEN 'Strip' THEN 'STR'
+        WHEN 'Card' THEN 'CRD'
+        WHEN 'Box' THEN 'BOX'
+        WHEN 'Carton' THEN 'CTN'
+        WHEN 'Pack' THEN 'PCK'
+        WHEN 'Piece' THEN 'PCE'
+        WHEN 'Each' THEN 'EAC'
+        WHEN 'Pairs' THEN 'PAR'
+        WHEN 'Cylinder' THEN 'CYL'
+        ELSE 'OTH'
+      END AS prefix,
+      ROW_NUMBER() OVER (
+        PARTITION BY CASE TRIM(COALESCE(stock_unit, ''))
+          WHEN 'Tablet' THEN 'TAB'
+          WHEN 'Capsule' THEN 'CAP'
+          WHEN 'Vial' THEN 'VIA'
+          WHEN 'Ampoule' THEN 'AMP'
+          WHEN 'Bottle' THEN 'BTL'
+          WHEN 'Sachet' THEN 'SAC'
+          WHEN 'Tube' THEN 'TUB'
+          WHEN 'Puff' THEN 'PUF'
+          WHEN 'mL' THEN 'MLL'
+          WHEN 'g' THEN 'GRM'
+          WHEN 'oz' THEN 'ONZ'
+          WHEN 'Bag' THEN 'BAG'
+          WHEN 'Strip' THEN 'STR'
+          WHEN 'Card' THEN 'CRD'
+          WHEN 'Box' THEN 'BOX'
+          WHEN 'Carton' THEN 'CTN'
+          WHEN 'Pack' THEN 'PCK'
+          WHEN 'Piece' THEN 'PCE'
+          WHEN 'Each' THEN 'EAC'
+          WHEN 'Pairs' THEN 'PAR'
+          WHEN 'Cylinder' THEN 'CYL'
+          ELSE 'OTH'
+        END
+        ORDER BY id
+      ) AS rn
+    FROM items
+  ) AS p
+  WHERE p.iid = items.id
+);
+
+INSERT INTO item_code_counters (prefix, last_n)
+SELECT
+  CASE TRIM(COALESCE(stock_unit, ''))
+    WHEN 'Tablet' THEN 'TAB'
+    WHEN 'Capsule' THEN 'CAP'
+    WHEN 'Vial' THEN 'VIA'
+    WHEN 'Ampoule' THEN 'AMP'
+    WHEN 'Bottle' THEN 'BTL'
+    WHEN 'Sachet' THEN 'SAC'
+    WHEN 'Tube' THEN 'TUB'
+    WHEN 'Puff' THEN 'PUF'
+    WHEN 'mL' THEN 'MLL'
+    WHEN 'g' THEN 'GRM'
+    WHEN 'oz' THEN 'ONZ'
+    WHEN 'Bag' THEN 'BAG'
+    WHEN 'Strip' THEN 'STR'
+    WHEN 'Card' THEN 'CRD'
+    WHEN 'Box' THEN 'BOX'
+    WHEN 'Carton' THEN 'CTN'
+    WHEN 'Pack' THEN 'PCK'
+    WHEN 'Piece' THEN 'PCE'
+    WHEN 'Each' THEN 'EAC'
+    WHEN 'Pairs' THEN 'PAR'
+    WHEN 'Cylinder' THEN 'CYL'
+    ELSE 'OTH'
+  END AS prefix,
+  COUNT(*) AS last_n
+FROM items
+GROUP BY prefix;
+`,
+	},
 }
 
 // Migrate applies pending migrations inside a transaction per migration.

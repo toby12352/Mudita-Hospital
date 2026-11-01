@@ -286,6 +286,7 @@ export type OtBill = {
   printed_at?: string | null;
   admission_id?: number | null;
   collected_cash?: number;
+  payment_type?: "cash" | "online" | string;
   paid_at?: string | null;
   voided_at?: string | null;
   void_reason?: string;
@@ -357,6 +358,7 @@ export async function createOtBillFromCase(
   caseId: number,
   services: OtBillLine[] = [],
   discount?: { discount_value: number; discount_unit: "percent" | "mmk" },
+  paymentType: "cash" | "online" = "cash",
 ): Promise<OtBill> {
   return apiFetch<OtBill>(`/api/ot/cases/${caseId}/bill`, {
     method: "POST",
@@ -364,6 +366,7 @@ export async function createOtBillFromCase(
       services,
       discount_value: discount?.discount_value ?? 0,
       discount_unit: discount?.discount_unit ?? "percent",
+      payment_type: paymentType,
     }),
   });
 }
@@ -372,6 +375,7 @@ export async function updateOtBill(
   id: number,
   services: OtBillLine[],
   discount?: { discount_value: number; discount_unit: "percent" | "mmk" },
+  paymentType: "cash" | "online" = "cash",
 ): Promise<OtBill> {
   return apiFetch<OtBill>(`/api/ot/bills/${id}`, {
     method: "PUT",
@@ -379,6 +383,7 @@ export async function updateOtBill(
       lines: services,
       discount_value: discount?.discount_value ?? 0,
       discount_unit: discount?.discount_unit ?? "percent",
+      payment_type: paymentType,
     }),
   });
 }
@@ -396,9 +401,19 @@ export async function getOtBill(id: number): Promise<OtBill> {
   return apiFetch<OtBill>(`/api/ot/bills/${id}`);
 }
 
-export async function payOtBill(id: number, admissionId?: number | null): Promise<OtBill> {
-  const body = admissionId != null ? JSON.stringify({ admission_id: admissionId }) : "{}";
-  return apiFetch<OtBill>(`/api/ot/bills/${id}/pay`, { method: "POST", body });
+export async function payOtBill(
+  id: number,
+  admissionId?: number | null,
+  paymentType: "cash" | "online" = "cash",
+): Promise<OtBill> {
+  const payload: { payment_type: string; admission_id?: number } = {
+    payment_type: paymentType,
+  };
+  if (admissionId != null) payload.admission_id = admissionId;
+  return apiFetch<OtBill>(`/api/ot/bills/${id}/pay`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function markOtBillPrinted(id: number): Promise<OtBill> {

@@ -2,7 +2,17 @@ import { apiFetch, getApiBase } from "@/shared/api";
 import { getStoredToken } from "@/shared/auth";
 import { fetchAndPreviewPrint } from "@/shared/print";
 
-export type ExpensePortal = "opd" | "ot" | "ipd" | "pharmacy";
+/** Desk label stored on expense_bills.portal. Report sections group on these values. */
+export type ExpenseCategory = "opd" | "ot" | "ipd" | "pharmacy" | "lab" | "expense";
+
+export const EXPENSE_CATEGORIES: ExpenseCategory[] = [
+  "opd",
+  "ot",
+  "ipd",
+  "pharmacy",
+  "lab",
+  "expense",
+];
 
 export type ExpenseBillLine = {
   id?: number;
@@ -10,7 +20,8 @@ export type ExpenseBillLine = {
   code: string;
   description: string;
   qty: number;
-  unit_price_mmk: number;
+  /** Null on a draft particular with no fee yet. */
+  unit_price_mmk: number | null;
   line_total_mmk: number;
   sort_order?: number;
 };
@@ -18,7 +29,8 @@ export type ExpenseBillLine = {
 export type ExpenseBill = {
   id: number;
   bill_no: string;
-  portal: ExpensePortal;
+  /** Empty string on a draft with no category yet. */
+  portal: ExpenseCategory | "";
   name: string;
   description: string;
   status: string;
@@ -35,30 +47,34 @@ export type ExpenseBill = {
 };
 
 export type ExpenseBillWrite = {
-  portal: ExpensePortal;
+  /** Empty string when the draft has no category yet. */
+  portal: ExpenseCategory | "";
   name: string;
   description: string;
   discount_value: number;
   discount_unit: "percent" | "mmk";
-  lines: { description: string; qty: number; unit_price_mmk: number }[];
+  lines: { description: string; qty: number; unit_price_mmk: number | null }[];
   /** Admin-only on create. Yangon wall time as `YYYY-MM-DDTHH:mm`. */
   billed_at?: string;
 };
 
 export async function listExpenseBills(
-  portal: ExpensePortal,
   q = "",
   status = "",
-  opts?: { money?: string; from?: string; to?: string; sort?: string },
+  opts?: { portal?: ExpenseCategory; money?: string; from?: string; to?: string; sort?: string },
 ): Promise<ExpenseBill[]> {
-  const params = new URLSearchParams({ portal });
+  const params = new URLSearchParams();
+  if (opts?.portal) params.set("portal", opts.portal);
   if (q.trim()) params.set("q", q.trim());
   if (status) params.set("status", status);
   if (opts?.money?.trim()) params.set("money", opts.money.trim());
   if (opts?.from?.trim()) params.set("from", opts.from.trim());
   if (opts?.to?.trim()) params.set("to", opts.to.trim());
   if (opts?.sort?.trim()) params.set("sort", opts.sort.trim());
-  const res = await apiFetch<{ bills: ExpenseBill[] }>(`/api/expenses/bills?${params}`);
+  const qs = params.toString();
+  const res = await apiFetch<{ bills: ExpenseBill[] }>(
+    `/api/expenses/bills${qs ? `?${qs}` : ""}`,
+  );
   return res.bills ?? [];
 }
 

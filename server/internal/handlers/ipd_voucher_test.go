@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"mudita-hospital/server/internal/auth"
 )
@@ -124,12 +125,15 @@ func TestIpdVoucherPayCreditUnpay(t *testing.T) {
 		t.Fatal("collection income did not follow its day")
 	}
 	page := statementHTML(t, ipd, token, stay, "2026-04-11")
-	if strings.Contains(page, ">Collection<") || !strings.Contains(page, ">ပိုငွေ</td><td>0 MMK</td>") {
+	if strings.Contains(page, ">Patient Paid<") || strings.Contains(page, ">Collection<") || !strings.Contains(page, ">ပိုငွေ</td><td>0 MMK</td>") {
 		t.Fatalf("pay collection leaked onto the next sheet:\n%s", page)
 	}
 	finalHTML := statementHTML(t, ipd, token, stay, "")
-	if !strings.Contains(finalHTML, ">Collection<") || !strings.Contains(finalHTML, "IPD FINAL STATEMENT") {
+	if !strings.Contains(finalHTML, ">Patient Paid<") || !strings.Contains(finalHTML, "IPD Final Bill") {
 		t.Fatalf("final statement dropped the collection:\n%s", finalHTML)
+	}
+	if strings.Contains(finalHTML, ">Collection<") {
+		t.Fatalf("final statement still says Collection:\n%s", finalHTML)
 	}
 
 	if _, err := sqlDB.Exec(`UPDATE ipd_ledger SET created_at = datetime('now') WHERE id = ?`, *paid.CollectionLedgerID); err != nil {
@@ -151,8 +155,8 @@ func TestIpdVoucherPayCreditUnpay(t *testing.T) {
 		t.Fatal("unpay left collection income")
 	}
 	carried := statementHTML(t, ipd, token, stay, "2026-04-11")
-	opening := `>လိုငွေ</td><td></td><td class="a4-time"></td><td class="col-amt"></td><td class="col-amt">30,000</td><td class="col-amt">-30,000</td>`
-	if !strings.Contains(carried, opening) {
+	opening := `<td class="col-no">1</td><td></td><td></td><td class="col-amt"></td><td class="col-amt">30,000</td><td class="col-amt"></td>`
+	if !strings.Contains(carried, opening) || !strings.Contains(carried, `>Total</td><td class="col-amt">0</td><td class="col-amt">30,000</td><td class="col-amt">-30,000</td>`) {
 		t.Fatalf("carried sheet missing လိုငွေ opening:\n%s", carried)
 	}
 
@@ -185,6 +189,93 @@ func TestIpdVoucherPayCreditUnpay(t *testing.T) {
 	mustCode(t, w, http.StatusForbidden)
 }
 
+func TestIpdVoucherReopen(t *testing.T) {
+	sqlDB := openTestDB(t)
+	setVoucherEpochDate(t, sqlDB, "2026-04-01")
+	_, token := insertSession(t, sqlDB, auth.RoleAdmin, 0)
+	ipd := &IPD{DB: sqlDB}
+
+	stay := insertStay(t, sqlDB, "IPD-REOPEN")
+	insertLedger(t, sqlDB, stay, "ward", -20000, "2026-04-12 03:00:00")
+	w := postVoucher(ipd, token, stay, "2026-04-12", "issue")
+	mustCode(t, w, http.StatusCreated)
+	issued := decodeDayVoucher(t, w)
+	if !issued.CanReopen || issued.CanUnpay {
+		t.Fatalf("issued flags %+v", issued)
+	}
+	if ledgerCount(t, sqlDB, stay, "ward") != 1 {
+		t.Fatal("issue changed ledger")
+	}
+
+	w = postVoucher(ipd, token, stay, "2026-04-12", "reopen")
+	mustCode(t, w, http.StatusOK)
+	var left int
+	if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM ipd_day_vouchers WHERE admission_id = ? AND civil_date = '2026-04-12'`, stay).Scan(&left); err != nil {
+		t.Fatal(err)
+	}
+	if left != 0 {
+		t.Fatalf("reopen left %d voucher rows", left)
+	}
+	if ledgerCount(t, sqlDB, stay, "ward") != 1 {
+		t.Fatal("reopen changed ledger")
+	}
+	var audits int
+	if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM audit_logs WHERE action = 'reopen' AND entity = 'ipd_day_voucher' AND entity_id = ?`, issued.ID).Scan(&audits); err != nil {
+		t.Fatal(err)
+	}
+	if audits != 1 {
+		t.Fatalf("reopen audits %d", audits)
+	}
+
+	w = postVoucher(ipd, token, stay, "2026-04-12", "reopen")
+	mustCode(t, w, http.StatusNotFound)
+
+	w = postVoucher(ipd, token, stay, "2026-04-12", "issue")
+	mustCode(t, w, http.StatusCreated)
+	w = postVoucher(ipd, token, stay, "2026-04-12", "pay")
+	mustCode(t, w, http.StatusOK)
+	paid := decodeDayVoucher(t, w)
+	if paid.CanReopen {
+		t.Fatal("paid voucher should not reopen")
+	}
+	w = postVoucher(ipd, token, stay, "2026-04-12", "reopen")
+	mustCode(t, w, http.StatusConflict)
+	if ledgerCount(t, sqlDB, stay, "collection") != 1 {
+		t.Fatal("refused reopen removed collection")
+	}
+
+	w = postVoucher(ipd, token, stay, "2026-04-12", "unpay")
+	mustCode(t, w, http.StatusOK)
+	if decodeDayVoucher(t, w).CanReopen {
+		t.Fatal("credit voucher should not reopen")
+	}
+
+	stay2 := insertStay(t, sqlDB, "IPD-REOPEN-LATER")
+	insertLedger(t, sqlDB, stay2, "ward", -1000, "2026-04-14 03:00:00")
+	w = postVoucher(ipd, token, stay2, "2026-04-14", "issue")
+	mustCode(t, w, http.StatusCreated)
+	if !decodeDayVoucher(t, w).CanReopen {
+		t.Fatal("latest issued day should reopen")
+	}
+	// Insert a later row without issue(), which would auto-credit yesterday.
+	if _, err := sqlDB.Exec(`
+		INSERT INTO ipd_day_vouchers (admission_id, civil_date, status, closing_mmk)
+		VALUES (?, '2026-04-15', 'issued', 0)
+	`, stay2); err != nil {
+		t.Fatal(err)
+	}
+	w = postVoucher(ipd, token, stay2, "2026-04-14", "issue")
+	mustCode(t, w, http.StatusOK)
+	if decodeDayVoucher(t, w).CanReopen {
+		t.Fatal("issued day with a later sheet should not reopen")
+	}
+	w = postVoucher(ipd, token, stay2, "2026-04-14", "reopen")
+	mustCode(t, w, http.StatusConflict)
+	if !strings.Contains(w.Body.String(), "later day voucher") {
+		t.Fatalf("later voucher body %s", w.Body.String())
+	}
+}
+
 func TestIpdVoucherCreditAndAutoCredit(t *testing.T) {
 	sqlDB := openTestDB(t)
 	setVoucherEpochDate(t, sqlDB, "2026-04-01")
@@ -212,8 +303,8 @@ func TestIpdVoucherCreditAndAutoCredit(t *testing.T) {
 	w = postVoucher(ipd, token, stay, "2026-04-04", "credit")
 	mustCode(t, w, http.StatusOK)
 	page := statementHTML(t, ipd, token, stay, "2026-04-05")
-	opening := `>လိုငွေ</td><td></td><td class="a4-time"></td><td class="col-amt"></td><td class="col-amt">30,000</td><td class="col-amt">-30,000</td>`
-	if !strings.Contains(page, opening) {
+	opening := `<td class="col-no">1</td><td></td><td></td><td class="col-amt"></td><td class="col-amt">30,000</td><td class="col-amt"></td>`
+	if !strings.Contains(page, opening) || !strings.Contains(page, `>Total</td><td class="col-amt">0</td><td class="col-amt">30,000</td><td class="col-amt">-30,000</td>`) {
 		t.Fatalf("credit next sheet missing လိုငွေ:\n%s", page)
 	}
 
@@ -267,8 +358,8 @@ func TestIpdVoucherCreditAndAutoCredit(t *testing.T) {
 		t.Fatalf("auto credit status=%s close=%d", prevStatus, prevClose)
 	}
 	autoPage := statementHTML(t, ipd, token, skipped, "2026-04-16")
-	autoOpen := `>လိုငွေ</td><td></td><td class="a4-time"></td><td class="col-amt"></td><td class="col-amt">8,000</td><td class="col-amt">-8,000</td>`
-	if !strings.Contains(autoPage, autoOpen) {
+	autoOpen := `<td class="col-no">1</td><td></td><td></td><td class="col-amt"></td><td class="col-amt">8,000</td><td class="col-amt"></td>`
+	if !strings.Contains(autoPage, autoOpen) || !strings.Contains(autoPage, `>Total</td><td class="col-amt">0</td><td class="col-amt">8,000</td><td class="col-amt">-8,000</td>`) {
 		t.Fatalf("auto-credit opening missing:\n%s", autoPage)
 	}
 }
@@ -331,9 +422,9 @@ func TestIpdVoucherDischargeAndGuards(t *testing.T) {
 	}
 
 	w = postVoucher(ipd, token, stay, localToday(), "issue")
-	mustCode(t, w, http.StatusBadRequest)
-	if !strings.Contains(w.Body.String(), "still open") {
-		t.Fatalf("today issue %s", w.Body.String())
+	mustCode(t, w, http.StatusConflict)
+	if !strings.Contains(w.Body.String(), "stay is not open") {
+		t.Fatalf("today issue after discharge %s", w.Body.String())
 	}
 	w = postVoucher(ipd, token, 99999, "2026-04-01", "issue")
 	mustCode(t, w, http.StatusNotFound)
@@ -345,6 +436,158 @@ func TestIpdVoucherDischargeAndGuards(t *testing.T) {
 	}
 	w = postVoucher(ipd, token, stay, "nope", "issue")
 	mustCode(t, w, http.StatusBadRequest)
+}
+
+func TestIpdVoucherCloseTodayAndGet(t *testing.T) {
+	sqlDB := openTestDB(t)
+	setVoucherEpochDate(t, sqlDB, "2026-04-01")
+	_, token := insertSession(t, sqlDB, auth.RoleAdmin, 0)
+	ipd := &IPD{DB: sqlDB}
+	today := localToday()
+	tomorrow, ok := nextCivilDate(today)
+	if !ok {
+		t.Fatal("tomorrow")
+	}
+
+	stay := insertStay(t, sqlDB, "IPD-CLOSE-TODAY")
+	insertLedger(t, sqlDB, stay, "ward", -15000, "2026-04-20 03:00:00")
+	w := postVoucher(ipd, token, stay, "2026-04-20", "issue")
+	mustCode(t, w, http.StatusCreated)
+	w = postVoucher(ipd, token, stay, "2026-04-20", "credit")
+	mustCode(t, w, http.StatusOK)
+
+	getPath := fmt.Sprintf("/api/ipd/admissions/%d/vouchers/%s", stay, today)
+	w = doJSON(ipd, http.MethodGet, getPath, token, "")
+	mustCode(t, w, http.StatusNotFound)
+	if !strings.Contains(w.Body.String(), "voucher not found") {
+		t.Fatalf("missing today get %s", w.Body.String())
+	}
+
+	w = postVoucher(ipd, token, stay, today, "issue")
+	mustCode(t, w, http.StatusCreated)
+	issued := decodeDayVoucher(t, w)
+	if issued.Status != "issued" || issued.CivilDate != today {
+		t.Fatalf("today issue %+v", issued)
+	}
+
+	w = doJSON(ipd, http.MethodGet, getPath, token, "")
+	mustCode(t, w, http.StatusOK)
+	got := decodeDayVoucher(t, w)
+	if got.ID != issued.ID || got.Status != "issued" {
+		t.Fatalf("today get %+v", got)
+	}
+
+	w = postVoucher(ipd, token, stay, tomorrow, "issue")
+	mustCode(t, w, http.StatusBadRequest)
+	if !strings.Contains(w.Body.String(), "has not started") {
+		t.Fatalf("tomorrow issue %s", w.Body.String())
+	}
+}
+
+func TestIpdVoucherEpochBackdateMigration(t *testing.T) {
+	sqlDB := openTestDB(t)
+
+	var applied int
+	if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM schema_migrations WHERE name = '042_ipd_voucher_epoch_backdate'`).Scan(&applied); err != nil {
+		t.Fatal(err)
+	}
+	if applied != 1 {
+		t.Fatalf("042 not recorded: %d", applied)
+	}
+
+	var startedOn string
+	if err := sqlDB.QueryRow(`SELECT started_on FROM ipd_voucher_epoch WHERE id = 1`).Scan(&startedOn); err != nil {
+		t.Fatal(err)
+	}
+	tomorrow := time.Now().In(yangon).AddDate(0, 0, 1).Format("2006-01-02")
+	if tomorrow > "2026-10-30" && startedOn != "2026-10-30" {
+		t.Fatalf("after 042 started_on=%q want 2026-10-30", startedOn)
+	}
+
+	setVoucherEpochDate(t, sqlDB, "2026-11-01")
+	if _, err := sqlDB.Exec(`
+		UPDATE ipd_voucher_epoch
+		SET started_on = '2026-10-30'
+		WHERE id = 1 AND started_on > '2026-10-30'
+	`); err != nil {
+		t.Fatal(err)
+	}
+	if err := sqlDB.QueryRow(`SELECT started_on FROM ipd_voucher_epoch WHERE id = 1`).Scan(&startedOn); err != nil {
+		t.Fatal(err)
+	}
+	if startedOn != "2026-10-30" {
+		t.Fatalf("backdate from Nov 1 got %q", startedOn)
+	}
+
+	setVoucherEpochDate(t, sqlDB, "2026-10-01")
+	if _, err := sqlDB.Exec(`
+		UPDATE ipd_voucher_epoch
+		SET started_on = '2026-10-30'
+		WHERE id = 1 AND started_on > '2026-10-30'
+	`); err != nil {
+		t.Fatal(err)
+	}
+	if err := sqlDB.QueryRow(`SELECT started_on FROM ipd_voucher_epoch WHERE id = 1`).Scan(&startedOn); err != nil {
+		t.Fatal(err)
+	}
+	if startedOn != "2026-10-01" {
+		t.Fatalf("must not move epoch later: got %q", startedOn)
+	}
+}
+
+func TestIpdOct30ChargesIncomeOnPayDay(t *testing.T) {
+	sqlDB := openTestDB(t)
+	setVoucherEpochDate(t, sqlDB, "2026-10-30")
+	_, token := insertSession(t, sqlDB, auth.RoleAdmin, 0)
+	ipd := &IPD{DB: sqlDB}
+	today := localToday()
+
+	stay := insertStay(t, sqlDB, "IPD-OCT30-PAY")
+	insertLedger(t, sqlDB, stay, "ward", -30000, "2026-10-30 03:00:00")
+	insertLedger(t, sqlDB, stay, "charge", -20000, "2026-10-30 04:00:00")
+
+	oct30 := mustMove(t, sqlDB, "2026-10-30")
+	if oct30.IncomeMMK != 0 || oct30.IPDEarned.EarnedMMK != 0 {
+		t.Fatalf("unpaid Oct 30 charges counted as income: income=%d earned=%d lines=%+v",
+			oct30.IncomeMMK, oct30.IPDEarned.EarnedMMK, oct30.IPDEarned.Lines)
+	}
+	for _, line := range oct30.IPDEarned.Lines {
+		if line.Kind == "ward" || line.Kind == "charge" {
+			t.Fatalf("Oct 30 earned still has charge %+v", line)
+		}
+	}
+
+	w := postVoucher(ipd, token, stay, "2026-10-30", "issue")
+	mustCode(t, w, http.StatusCreated)
+	issued := decodeDayVoucher(t, w)
+	if issued.ClosingMMK != -50000 {
+		t.Fatalf("closing %+v", issued)
+	}
+
+	before := mustMove(t, sqlDB, today).IncomeMMK
+	w = postVoucher(ipd, token, stay, "2026-10-30", "pay")
+	mustCode(t, w, http.StatusOK)
+	paid := decodeDayVoucher(t, w)
+	if paid.Status != "paid" || paid.CollectionLedgerID == nil {
+		t.Fatalf("paid %+v", paid)
+	}
+	if got := mustMove(t, sqlDB, today).IncomeMMK; got-before != 50000 {
+		t.Fatalf("pay-day income delta %d want 50000", got-before)
+	}
+	if mustMove(t, sqlDB, "2026-10-30").IncomeMMK != 0 {
+		t.Fatal("pay booked income on the voucher day")
+	}
+	payDay := mustMove(t, sqlDB, today)
+	found := false
+	for _, line := range payDay.IPDEarned.Lines {
+		if line.Kind == "collection" && line.AmountMMK == 50000 {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("pay-day earned missing collection: %+v", payDay.IPDEarned.Lines)
+	}
 }
 
 func setVoucherEpochDate(t *testing.T, db *sql.DB, startedOn string) {

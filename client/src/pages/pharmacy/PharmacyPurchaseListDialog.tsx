@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   listPharmacyPurchaseBills,
   type PharmacyPurchaseBill,
@@ -8,150 +8,163 @@ import { AlertDialog } from "@/shared/AlertDialog";
 import {
   BillHistoryToolbar,
   type BillHistoryQuery,
+  type BillHistoryStatusOption,
   type BillHistorySuggestItem,
 } from "@/shared/BillHistoryToolbar";
 import { BillHistoryTable } from "@/shared/BillHistoryTable";
-import { moneyStatusLabel } from "@/shared/BillPayPrint";
 import { DialogCloseButton } from "@/shared/DialogCloseButton";
-import { formatMMK } from "@/shared/format";
 import { useI18n } from "@/shared/i18n";
 
-export type PharmacyPurchaseListDialogMode = "history" | "delete" | "purge";
+export type PharmacyPurchaseListDialogMode = "history" | "purge";
 
 type Props = {
   mode: PharmacyPurchaseListDialogMode;
   onClose: () => void;
   onOpen: (id: number) => void;
-  onVoid: (id: number, reason: string) => Promise<void>;
   onPurge?: (id: number) => Promise<void>;
 };
 
-function formatBillWhen(iso: string): string {
-  const d = new Date(iso.includes("T") ? iso : iso.replace(" ", "T") + "Z");
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString();
+function listOpts(query: BillHistoryQuery) {
+  return {
+    money: query.money || undefined,
+    from: query.from || undefined,
+    to: query.to || undefined,
+    sort: query.sort,
+  };
+}
+
+function focusableIn(root: ParentNode): HTMLElement[] {
+  return Array.from(
+    root.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), iframe, [tabindex]:not([tabindex="-1"])',
+    ),
+  );
 }
 
 export function PharmacyPurchaseListDialog({
   mode,
   onClose,
   onOpen,
-  onVoid,
   onPurge,
 }: Props) {
   const { t } = useI18n();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   const [bills, setBills] = useState<PharmacyPurchaseBill[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [voidReason, setVoidReason] = useState("Voided");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [purgeStep, setPurgeStep] = useState<0 | 1 | 2>(0);
   const [purgeError, setPurgeError] = useState<string | null>(null);
 
-  const loadPurgeList = useCallback(async () => {
-    const [drafts, voids] = await Promise.all([
-      listPharmacyPurchaseBills("", "draft"),
-      listPharmacyPurchaseBills("", "void"),
-    ]);
-    const byId = new Map<number, PharmacyPurchaseBill>();
-    for (const b of [...drafts, ...voids]) byId.set(b.id, b);
-    return [...byId.values()].sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
-  }, []);
+  const statusOptions = useMemo((): BillHistoryStatusOption[] | undefined => {
+    if (mode === "history") return undefined;
+    return [
+      { value: "", label: t("all") },
+      { value: "draft", label: t("draft") },
+      { value: "void", label: t("voidStatus") },
+    ];
+  }, [mode, t]);
 
-  const reload = useCallback(async (query: BillHistoryQuery) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const list = await listPharmacyPurchaseBills(query.q, "", {
-        money: query.money || undefined,
-        from: query.from || undefined,
-        to: query.to || undefined,
-        sort: query.sort,
-      });
-      setBills(list);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Load failed");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const supplierName = useCallback(
+    (b: PharmacyPurchaseBill) => b.supplier_name || t("pharmacyPurchaseDefaultName"),
+    [t],
+  );
+
+  const reload = useCallback(
+    async (query: BillHistoryQuery) => {
+      setLoading(true);
+      setError(null);
+      setSelectedId(null);
+      try {
+        let list = await listPharmacyPurchaseBills(query.q, "", listOpts(query));
+        if (mode === "purge") {
+          list = list.filter((b) => b.status === "draft" || b.status === "void");
+        }
+        setBills(list);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Load failed");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [mode],
+  );
 
   const loadSuggestions = useCallback(
     async (q: string, filters: Omit<BillHistoryQuery, "q">): Promise<BillHistorySuggestItem[]> => {
-      const list = await listPharmacyPurchaseBills(q, "", {
+      let list = await listPharmacyPurchaseBills(q, "", {
         money: filters.money || undefined,
         from: filters.from || undefined,
         to: filters.to || undefined,
         sort: filters.sort,
       });
+      if (mode === "purge") {
+        list = list.filter((b) => b.status === "draft" || b.status === "void");
+      }
       return list.map((b) => ({
         id: b.id,
         voucher: b.bill_no,
         name: b.supplier_name || t("pharmacyPurchaseDefaultName"),
       }));
     },
-    [t],
+    [mode, t],
   );
 
   useEffect(() => {
-    if (mode === "history") return;
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const list =
-          mode === "purge"
-            ? await loadPurgeList()
-            : (await listPharmacyPurchaseBills()).filter((b) => b.status !== "deleted");
-        if (!cancelled) setBills(list);
-      } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : "Load failed");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
+    const opener = document.activeElement;
+    openerRef.current = opener instanceof HTMLElement ? opener : null;
+    dialogRef.current?.focus();
     return () => {
-      cancelled = true;
+      const prev = openerRef.current;
+      openerRef.current = null;
+      const active = document.activeElement;
+      const dialog = dialogRef.current;
+      const stillInside = dialog != null && active instanceof Node && dialog.contains(active);
+      const nothingFocused =
+        active == null || active === document.body || active === document.documentElement;
+      if ((stillInside || nothingFocused) && prev && document.contains(prev)) prev.focus();
     };
-  }, [mode, loadPurgeList]);
+  }, []);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key !== "Escape") return;
-      if (document.querySelector(".alert-dialog-overlay")) return;
-      e.preventDefault();
-      onClose();
+      if (document.querySelector(".alert-dialog-overlay, .print-preview-overlay")) return;
+      const root = dialogRef.current;
+      if (!root) return;
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        onCloseRef.current();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const focusable = focusableIn(root);
+      if (focusable.length === 0) return;
+      const active = document.activeElement;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const inside = active instanceof Node && root.contains(active) && active !== root;
+      if (e.shiftKey) {
+        if (!inside || active === first) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else if (!inside || active === last) {
+        e.preventDefault();
+        first.focus();
+      }
     }
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, []);
 
   const selected = bills.find((b) => b.id === selectedId) ?? null;
-  const canVoid =
-    selected != null && selected.status !== "void" && selected.status !== "deleted";
   const canPurge =
     selected != null && (selected.status === "draft" || selected.status === "void");
-
-  async function handleDelete() {
-    if (!selected || !canVoid) return;
-    const reason = voidReason.trim();
-    if (!reason) {
-      setError(t("voidReasonRequired"));
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      await onVoid(selected.id, reason);
-      onClose();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Delete failed");
-    } finally {
-      setBusy(false);
-    }
-  }
 
   function openPurgeConfirm() {
     if (!selected || !canPurge || !onPurge) return;
@@ -184,18 +197,8 @@ export function PharmacyPurchaseListDialog({
     }
   }
 
-  function handleRowActivate(b: PharmacyPurchaseBill) {
-    if (mode === "history") {
-      onOpen(b.id);
-      onClose();
-      return;
-    }
-    setSelectedId(b.id);
-  }
-
-  const title =
-    mode === "history" ? t("billHistory") : mode === "purge" ? t("billPurge") : t("billDelete");
-  const selectMode = mode === "delete" || mode === "purge";
+  const title = mode === "history" ? t("billHistory") : t("billPurge");
+  const selectMode = mode === "purge";
 
   return (
     <div
@@ -206,108 +209,52 @@ export function PharmacyPurchaseListDialog({
       }}
     >
       <div
-        className={`clinic-overlay-panel opd-bill-dialog${mode === "history" ? " opd-bill-dialog--history" : ""}`}
+        ref={dialogRef}
+        tabIndex={-1}
+        className="clinic-overlay-panel opd-bill-dialog opd-bill-dialog--history"
         role="dialog"
         aria-modal="true"
-        aria-labelledby="pharmacy-purchase-dialog-title"
+        aria-labelledby="opd-bill-dialog-title"
       >
         <div className="opd-bill-dialog-head">
-          <h2 id="pharmacy-purchase-dialog-title" className="opd-bill-dialog-title">
+          <h2 id="opd-bill-dialog-title" className="opd-bill-dialog-title">
             {title}
           </h2>
           <DialogCloseButton onClick={onClose} />
         </div>
 
-        {mode === "history" ? (
-          <BillHistoryToolbar
-            searchPlaceholder={t("billHistorySearchNamePlaceholder")}
-            onSearch={(query) => void reload(query)}
-            loadSuggestions={loadSuggestions}
-            onInvalidRange={() => setError(t("billHistoryInvalidRange"))}
-          />
-        ) : null}
+        <BillHistoryToolbar
+          searchPlaceholder={t("billHistorySearchPlaceholder")}
+          onSearch={(query) => void reload(query)}
+          loadSuggestions={loadSuggestions}
+          onInvalidRange={() => setError(t("billHistoryInvalidRange"))}
+          statusOptions={statusOptions}
+        />
 
         {mode === "purge" ? <p className="hint">{t("billPurgeHint")}</p> : null}
 
-        {mode === "history" ? (
-          <BillHistoryTable
-            loading={loading}
-            emptyLabel={t("noBillsYet")}
-            onActivate={(id) => {
+        <BillHistoryTable
+          loading={loading}
+          emptyLabel={t("noBillsYet")}
+          selectedId={selectMode ? selectedId : null}
+          onActivate={(id) => {
+            if (mode === "history") {
               onOpen(id);
               onClose();
-            }}
-            rows={bills.map((b) => ({
-              id: b.id,
-              voucher: b.bill_no,
-              name: b.supplier_name || t("pharmacyPurchaseDefaultName"),
-              status: b.status,
-              printedAt: b.printed_at,
-              when: b.created_at,
-              priceMmk: b.total_mmk,
-            }))}
-          />
-        ) : (
-          <>
-            {loading ? <p className="hint">{t("loading")}</p> : null}
-            <ul className="opd-bill-dialog-list">
-              {!loading && bills.length === 0 ? (
-                <li className="empty-row">{t("noBillsYet")}</li>
-              ) : null}
-              {bills.map((b) => {
-                const active = selectedId === b.id;
-                const name = b.supplier_name || t("pharmacyPurchaseDefaultName");
-                return (
-                  <li key={b.id}>
-                    <button
-                      type="button"
-                      className={
-                        selectMode && active
-                          ? "opd-bill-dialog-row opd-bill-dialog-row--selected"
-                          : "opd-bill-dialog-row"
-                      }
-                      onClick={() => handleRowActivate(b)}
-                    >
-                      <span className="opd-bill-dialog-row-main">
-                        <span className="row-title">
-                          {b.bill_no} · {name}
-                        </span>
-                        <span className="row-sub">
-                          {moneyStatusLabel(b.status, t, b.printed_at)} · {formatMMK(b.total_mmk)}{" "}
-                          {t("mmk")}
-                          {b.created_at ? ` · ${formatBillWhen(b.created_at)}` : ""}
-                        </span>
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          </>
-        )}
-
-        {mode === "delete" ? (
-          <div className="opd-bill-dialog-footer">
-            <label className="field grow">
-              {t("voidReason")}
-              <input
-                value={voidReason}
-                onChange={(e) => setVoidReason(e.target.value)}
-                placeholder={t("voidReasonRequired")}
-                disabled={busy}
-              />
-            </label>
-            <button
-              type="button"
-              className="btn action danger"
-              disabled={busy || !canVoid}
-              onClick={() => void handleDelete()}
-            >
-              <ActionIcon name="trash" />
-              {busy ? "…" : t("voidStatus")}
-            </button>
-          </div>
-        ) : null}
+              return;
+            }
+            setSelectedId(id);
+          }}
+          rows={bills.map((b) => ({
+            id: b.id,
+            voucher: b.bill_no,
+            name: supplierName(b),
+            status: b.status,
+            printedAt: b.printed_at,
+            when: b.created_at,
+            priceMmk: b.total_mmk,
+          }))}
+        />
 
         {mode === "purge" ? (
           <div className="opd-bill-dialog-footer">
@@ -330,7 +277,7 @@ export function PharmacyPurchaseListDialog({
         <AlertDialog
           tone="warning"
           title={t("delete")}
-          identity={`${selected.bill_no} · ${selected.supplier_name || t("pharmacyPurchaseDefaultName")}`}
+          identity={`${selected.bill_no} · ${supplierName(selected)}`}
           message={
             purgeStep === 1
               ? t("confirmPurgeBill").replace("{bill}", selected.bill_no)

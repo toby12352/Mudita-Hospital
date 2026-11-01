@@ -18,6 +18,7 @@ const MODULES = [
   { id: "ot", labelKey: "roleOT" },
   { id: "pharmacy", labelKey: "rolePharmacy" },
   { id: "lab", labelKey: "roleLab" },
+  { id: "expense", labelKey: "roleExpenses" },
 ] as const;
 
 const ACTIONS = ["read", "create", "update", "delete"] as const;
@@ -122,14 +123,31 @@ export function UsersTab() {
   const [busy, setBusy] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const usernameInputRef = useRef<HTMLInputElement>(null);
+  const displayNameInputRef = useRef<HTMLInputElement>(null);
   const formErrorRef = useRef<HTMLParagraphElement>(null);
+  const formOpenerRef = useRef<HTMLElement | null>(null);
   const usernameErrorId = useId();
+  const formTitleId = useId();
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [password, setPassword] = useState("");
   const [cells, setCells] = useState<Record<string, boolean>>(emptyCells);
   const [dashboard, setDashboard] = useState(false);
+  const [admin, setAdmin] = useState(false);
   const [portalWarning, setPortalWarning] = useState(false);
+
+  function rememberFormOpener() {
+    const el = document.activeElement;
+    formOpenerRef.current = el instanceof HTMLElement ? el : null;
+  }
+
+  function restoreFormOpener() {
+    const prev = formOpenerRef.current;
+    formOpenerRef.current = null;
+    if (prev && document.contains(prev)) {
+      window.requestAnimationFrame(() => prev.focus());
+    }
+  }
 
   async function reload(search = q) {
     setList(await listUsers(search.trim()));
@@ -150,6 +168,26 @@ export function UsersTab() {
     };
   }, []);
 
+  useEffect(() => {
+    if (editingId == null) return;
+    window.requestAnimationFrame(() => displayNameInputRef.current?.focus());
+  }, [editingId]);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      if (document.querySelector(".alert-dialog-overlay, .print-preview-overlay")) return;
+      if (editingId == null) return;
+      e.preventDefault();
+      clearForm();
+      restoreFormOpener();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+    // Intentional: clearForm closes over latest helpers each render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Escape wiring
+  }, [editingId]);
+
   function clearForm() {
     setEditingId(null);
     setUsername("");
@@ -157,6 +195,7 @@ export function UsersTab() {
     setPassword("");
     setCells(emptyCells());
     setDashboard(false);
+    setAdmin(false);
     setPortalWarning(false);
     setUsernameError(null);
     setError(null);
@@ -190,10 +229,12 @@ export function UsersTab() {
 
   function loadEdit(u: ManagedUser) {
     if (u.role === "Admin") return;
+    rememberFormOpener();
     setEditingId(u.id);
     setUsername(u.username);
     setDisplayName(u.display_name);
     setPassword("");
+    setAdmin(false);
     setError(null);
     if (u.access_mode === "unified") {
       setCells(cellsFromGrants(u.grants ?? []));
@@ -214,10 +255,25 @@ export function UsersTab() {
     const grants = grantsFromCells(cells, dashboard);
     try {
       if (editingId != null) {
-        await updateUser(editingId, {
+        if (admin) {
+          await updateUser(editingId, {
+            display_name: displayName.trim(),
+            admin: true,
+            ...(password ? { password } : {}),
+          });
+        } else {
+          await updateUser(editingId, {
+            display_name: displayName.trim(),
+            grants,
+            ...(password ? { password } : {}),
+          });
+        }
+      } else if (admin) {
+        await createUser({
+          username: username.trim(),
           display_name: displayName.trim(),
-          grants,
-          ...(password ? { password } : {}),
+          password,
+          admin: true,
         });
       } else {
         await createUser({
@@ -227,8 +283,10 @@ export function UsersTab() {
           grants,
         });
       }
+      const wasEditing = editingId != null;
       clearForm();
       await reload();
+      if (wasEditing) restoreFormOpener();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Save failed";
       if (fieldKeyForApiError(err) === "username") {
@@ -258,8 +316,14 @@ export function UsersTab() {
 
   return (
     <div className="settings-stack">
-      <form className="card-form" onSubmit={(e) => void submit(e)}>
-        <h2 className="section-title">{editingId != null ? t("editUserTitle") : t("createUserTitle")}</h2>
+      <form
+        className="card-form"
+        aria-labelledby={formTitleId}
+        onSubmit={(e) => void submit(e)}
+      >
+        <h2 id={formTitleId} className="section-title">
+          {editingId != null ? t("editUserTitle") : t("createUserTitle")}
+        </h2>
         <div className="field-row">
           <label className={`field${usernameError ? " is-invalid" : ""}`}>
             <span>{t("username")}</span>
@@ -280,6 +344,7 @@ export function UsersTab() {
           <label className="field">
             <span>{t("displayName")}</span>
             <input
+              ref={displayNameInputRef}
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               required
@@ -299,6 +364,17 @@ export function UsersTab() {
           />
         </label>
         {editingId != null ? <p className="hint">{t("passwordKeep")}</p> : null}
+
+        <label className="grant-dashboard">
+          <input
+            type="checkbox"
+            checked={admin}
+            disabled={busy}
+            onChange={(e) => setAdmin(e.target.checked)}
+          />
+          <span>{t("adminAccess")}</span>
+        </label>
+        {admin ? <p className="hint">{t("adminAccessHint")}</p> : null}
 
         <div className="grant-matrix-wrap">
           <table className="grant-matrix">
@@ -321,7 +397,7 @@ export function UsersTab() {
                       <button
                         type="button"
                         className="grant-all"
-                        disabled={busy}
+                        disabled={busy || admin}
                         onClick={() => checkAll(mod.id)}
                       >
                         {t("grantAll")}
@@ -335,7 +411,7 @@ export function UsersTab() {
                         <input
                           type="checkbox"
                           checked={enabled && !!cells[cellKey(mod.id, action)]}
-                          disabled={busy || !enabled}
+                          disabled={busy || admin || !enabled}
                           aria-label={`${t(mod.labelKey)} ${t(ACTION_KEY[action])}`}
                           onChange={(e) => setCell(mod.id, action, e.target.checked)}
                         />
@@ -352,13 +428,13 @@ export function UsersTab() {
           <input
             type="checkbox"
             checked={dashboard}
-            disabled={busy}
+            disabled={busy || admin}
             onChange={(e) => setDashboard(e.target.checked)}
           />
           <span>{t("dashboardAccess")}</span>
         </label>
         {portalWarning ? <p className="hint">{t("portalSwitchWarning")}</p> : null}
-        <p className="hint">{t("grantHint")}</p>
+        {!admin ? <p className="hint">{t("grantHint")}</p> : null}
         <p className="hint">{t("usersHint")}</p>
         {error ? (
           <p ref={formErrorRef} className="form-error" role="alert">
@@ -370,7 +446,15 @@ export function UsersTab() {
             {busy ? t("saving") : editingId != null ? t("saveUser") : t("createUser")}
           </button>
           {editingId != null ? (
-            <button type="button" className="btn ghost" disabled={busy} onClick={clearForm}>
+            <button
+              type="button"
+              className="btn ghost"
+              disabled={busy}
+              onClick={() => {
+                clearForm();
+                restoreFormOpener();
+              }}
+            >
               {t("cancel")}
             </button>
           ) : null}
@@ -421,7 +505,7 @@ export function UsersTab() {
             {t("search")}
           </button>
         </div>
-        <ul className="data-list">
+        <ul className="data-list" aria-label={t("users")}>
           {list.map((u) => (
             <li key={u.id} className={!u.active ? "inactive" : undefined}>
               <div>
@@ -455,7 +539,17 @@ export function UsersTab() {
                   </button>
                 </div>
               ) : (
-                <span className="row-sub">{t("fullAccess")}</span>
+                <div className="row-actions">
+                  <span className="row-sub">{t("fullAccess")}</span>
+                  <button
+                    type="button"
+                    className={`btn action${u.active ? " danger" : ""}`}
+                    disabled={busy}
+                    onClick={() => void toggleActive(u)}
+                  >
+                    {u.active ? t("deactivate") : t("activate")}
+                  </button>
+                </div>
               )}
             </li>
           ))}

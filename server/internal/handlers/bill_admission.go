@@ -9,10 +9,26 @@ import (
 	"strings"
 )
 
-// payBody is optional on desk pay. Omitting admission_id is today's cash pay.
+// payBody is optional on desk pay. Omitting admission_id is today's desk pay.
+// payment_type is cash (default) or online; ignored for IPD charges in reports.
 type payBody struct {
 	AdmissionID  *int64 `json:"admission_id"`
 	SourceBillID *int64 `json:"source_bill_id"`
+	PaymentType  string `json:"payment_type"`
+}
+
+var errInvalidPaymentType = errors.New("invalid payment_type")
+
+// normalizePaymentType returns cash or online. Blank means cash.
+func normalizePaymentType(s string) (string, error) {
+	s = strings.TrimSpace(strings.ToLower(s))
+	if s == "" {
+		return "cash", nil
+	}
+	if s == "cash" || s == "online" {
+		return s, nil
+	}
+	return "", errInvalidPaymentType
 }
 
 type stayBind struct {
@@ -44,6 +60,11 @@ func decodePayBody(r *http.Request) (payBody, error) {
 	if body.SourceBillID != nil && *body.SourceBillID <= 0 {
 		return body, errInvalidSource
 	}
+	pt, err := normalizePaymentType(body.PaymentType)
+	if err != nil {
+		return body, err
+	}
+	body.PaymentType = pt
 	return body, nil
 }
 
@@ -52,7 +73,7 @@ func rejectPayBody(w http.ResponseWriter, err error) bool {
 		return false
 	}
 	msg := "invalid json"
-	if errors.Is(err, errInvalidAdmission) || errors.Is(err, errInvalidSource) {
+	if errors.Is(err, errInvalidAdmission) || errors.Is(err, errInvalidSource) || errors.Is(err, errInvalidPaymentType) {
 		msg = err.Error()
 	}
 	writeJSON(w, http.StatusBadRequest, map[string]string{"error": msg})
@@ -189,10 +210,24 @@ func ensureOpenStay(tx *sql.Tx, admissionID int64) stayBind {
 }
 
 func postLedgerTx(tx *sql.Tx, admissionID int64, kind string, amount int64, source string, sourceID int64, note string, actor int64) error {
+	return postLedgerTxAt(tx, admissionID, kind, amount, source, sourceID, note, actor, "")
+}
+
+// postLedgerTxAt posts a ledger row. createdAtUTC empty uses SQLite datetime('now').
+// A non-empty value is a UTC stamp (Admin billed_at override on IPD charge).
+func postLedgerTxAt(tx *sql.Tx, admissionID int64, kind string, amount int64, source string, sourceID int64, note string, actor int64, createdAtUTC string) error {
+	createdAtUTC = strings.TrimSpace(createdAtUTC)
+	if createdAtUTC == "" {
+		_, err := tx.Exec(`
+			INSERT INTO ipd_ledger (admission_id, kind, amount_mmk, source, source_id, note, actor_user_id)
+			VALUES (?, ?, ?, ?, ?, ?, ?)
+		`, admissionID, kind, amount, source, sourceID, note, actor)
+		return err
+	}
 	_, err := tx.Exec(`
-		INSERT INTO ipd_ledger (admission_id, kind, amount_mmk, source, source_id, note, actor_user_id)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-	`, admissionID, kind, amount, source, sourceID, note, actor)
+		INSERT INTO ipd_ledger (admission_id, kind, amount_mmk, source, source_id, note, actor_user_id, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`, admissionID, kind, amount, source, sourceID, note, actor, createdAtUTC)
 	return err
 }
 

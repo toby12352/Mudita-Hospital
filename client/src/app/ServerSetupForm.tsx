@@ -1,6 +1,7 @@
 import { FormEvent, useState } from "react";
 import { fetchHealth, markApiConfigured, setApiBase } from "@/shared/api";
 import { userMessage } from "@/shared/errors";
+import { FieldError } from "@/shared/FieldError";
 import { useI18n } from "@/shared/i18n";
 
 export function ServerSetupForm({
@@ -80,7 +81,7 @@ export function ServerSetupForm({
       <p className="hint">
         {t("serverExamples")} <code>192.168.1.10</code> or <code>http://192.168.1.10:8080</code>
       </p>
-      {error ? <p className="form-error">{error}</p> : null}
+      <FieldError>{error}</FieldError>
       {hint ? <p className="form-ok">{hint}</p> : null}
       <div className="btn-row">
         <button type="submit" className="btn primary" disabled={busy}>

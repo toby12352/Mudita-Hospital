@@ -75,7 +75,7 @@ func insertGrants(t *testing.T, sqlDB *sql.DB, userID int64, perms ...string) {
 }
 
 func TestGrantableKeys(t *testing.T) {
-	if !Grantable(GrantPharmacyRead) || !Grantable(GrantDashboard) || !Grantable(GrantIPDRead) || !Grantable(GrantLabRead) {
+	if !Grantable(GrantPharmacyRead) || !Grantable(GrantDashboard) || !Grantable(GrantIPDRead) || !Grantable(GrantLabRead) || !Grantable(GrantExpenseRead) {
 		t.Fatal("expected clinic and dashboard keys to be grantable")
 	}
 	rejected := []string{GrantIPDDelete, PermSettings, PermManageUsers, PermPharmacy, "pharmacy.adjust", ""}
@@ -96,6 +96,16 @@ func TestGrantableKeys(t *testing.T) {
 	}
 	if len(lab) != 2 || lab[0] != GrantLabRead || lab[1] != GrantLabDelete {
 		t.Fatalf("lab grants %v", lab)
+	}
+	if _, err := NormalizeGrants([]string{GrantExpenseCreate}); !errors.Is(err, ErrGrantNeedsRead) {
+		t.Fatalf("expense create without read: %v", err)
+	}
+	expense, err := NormalizeGrants([]string{GrantExpenseRead, GrantExpenseCreate, GrantExpenseDelete})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(expense) != 3 || expense[0] != GrantExpenseRead || expense[1] != GrantExpenseCreate || expense[2] != GrantExpenseDelete {
+		t.Fatalf("expense grants %v", expense)
 	}
 }
 

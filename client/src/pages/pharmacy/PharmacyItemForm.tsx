@@ -3,7 +3,6 @@ import {
   FormEvent,
   KeyboardEvent,
   useEffect,
-  useId,
   useMemo,
   useRef,
   useState,
@@ -12,11 +11,13 @@ import {
   MAX_PACK_DEPTH,
   PHARMACY_UNITS,
   createPharmacyItem,
+  formatItemCode,
   formatPackLevelsPreview,
   itemPackFromRelations,
   itemStockUnitLabel,
   packFromItem,
   packLevelsFromItemPack,
+  peekNextItemCode,
   relationsFromItemPack,
   saleUnitsFromPack,
   updatePharmacyItem,
@@ -25,7 +26,6 @@ import {
   type SaleUnit,
 } from "@/features/pharmacy/api";
 import { DatePicker } from "@/shared/DatePicker";
-import { fieldKeyForApiError } from "@/shared/errors";
 import { FieldError, revealField } from "@/shared/FieldError";
 import { useI18n } from "@/shared/i18n";
 import { FormSection } from "@/shared/FormSection";
@@ -87,13 +87,10 @@ function parseInitialQty(raw: string): number | null {
 export function PharmacyItemForm({
   editing,
   onSaved,
-  onCancel,
-  existingCodes = [],
 }: {
   editing: PharmacyItem | null;
   onSaved: (item: PharmacyItem) => void;
-  onCancel: () => void;
-  /** Codes already on the loaded list (may be search-filtered). Fast-path only. */
+  /** @deprecated Codes are server-assigned; kept for call-site compatibility. */
   existingCodes?: string[];
 }) {
   const { t } = useI18n();
@@ -102,11 +99,10 @@ export function PharmacyItemForm({
     : { smallest: "Tablet", relations: [] as PackRelation[] };
 
   const [formError, setFormError] = useState<string | null>(null);
-  const [codeError, setCodeError] = useState<string | null>(null);
   const [quantityError, setQuantityError] = useState<string | null>(null);
   const [attempted, setAttempted] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [code, setCode] = useState(editing?.code ?? "");
+  const [previewCode, setPreviewCode] = useState(editing?.code ?? "");
   const [name, setName] = useState(editing?.name ?? "");
   const [dosage, setDosage] = useState(editing?.dosage ?? "");
   const [smallestUnit, setSmallestUnit] = useState(initial.smallest);
@@ -127,8 +123,6 @@ export function PharmacyItemForm({
   const [sellSmallest, setSellSmallest] = useState(editing?.sell_price_mmk ?? 0);
   const [active, setActive] = useState(editing?.active ?? true);
 
-  const codeInputRef = useRef<HTMLInputElement>(null);
-  const codeErrorId = useId();
   const quantityInputRef = useRef<HTMLInputElement>(null);
   const formErrorRef = useRef<HTMLParagraphElement>(null);
   const pricesErrorRef = useRef<HTMLParagraphElement>(null);
@@ -146,6 +140,25 @@ export function PharmacyItemForm({
   quantityRef.current = quantity;
   quantityUnitIdRef.current = quantityUnitId;
   relationsRef.current = relations;
+
+  useEffect(() => {
+    if (editing) {
+      setPreviewCode(editing.code);
+      return;
+    }
+    let cancelled = false;
+    const unit = smallestUnit.trim() || "Tablet";
+    void peekNextItemCode(unit)
+      .then((next) => {
+        if (!cancelled) setPreviewCode(next);
+      })
+      .catch(() => {
+        if (!cancelled) setPreviewCode("");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [editing, smallestUnit]);
 
   function unitLabel(u: string): string {
     const key = UNIT_I18N[u];
@@ -384,21 +397,8 @@ export function PharmacyItemForm({
     e.preventDefault();
     setAttempted(true);
     setFormError(null);
-    setCodeError(null);
     setQuantityError(null);
     setQuantityUnitError(null);
-
-    const trimmedCode = code.trim();
-    let codeFailed = false;
-    if (!editing && trimmedCode) {
-      const taken = existingCodes.some(
-        (c) => c.trim().toLowerCase() === trimmedCode.toLowerCase(),
-      );
-      if (taken) {
-        setCodeError(t("errItemCodeExists"));
-        codeFailed = true;
-      }
-    }
 
     let packingFailed = false;
     if (packingRequired && !packingFilled) {
@@ -418,7 +418,7 @@ export function PharmacyItemForm({
     let stockQty = 0;
     let quantityFailed = false;
     let quantityUnitFailed = false;
-    if (!editing && pack && !packingFailed && !codeFailed) {
+    if (!editing && pack && !packingFailed) {
       const entered = parseInitialQty(quantity);
       if (entered == null) {
         setQuantityError(t("fieldNeedsFilled"));
@@ -445,14 +445,9 @@ export function PharmacyItemForm({
       }
     }
 
-    const localFailed =
-      codeFailed || packingFailed || pricesFailed || quantityFailed || quantityUnitFailed;
+    const localFailed = packingFailed || pricesFailed || quantityFailed || quantityUnitFailed;
     if (localFailed) {
       window.setTimeout(() => {
-        if (codeFailed) {
-          revealField(codeInputRef.current);
-          return;
-        }
         if (packingFailed) {
           revealField(packingRowRefs.current[0] ?? packErrorRef.current);
           return;
@@ -478,7 +473,6 @@ export function PharmacyItemForm({
     setBusy(true);
     try {
       const body = {
-        code: trimmedCode,
         name: name.trim(),
         dosage: dosage.trim(),
         category: "Other",
@@ -513,13 +507,8 @@ export function PharmacyItemForm({
       onSaved(saved);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (fieldKeyForApiError(err) === "code") {
-        setCodeError(t("errItemCodeExists"));
-        window.setTimeout(() => revealField(codeInputRef.current), 0);
-      } else {
-        setFormError(msg);
-        window.setTimeout(() => revealField(formErrorRef.current), 0);
-      }
+      setFormError(msg);
+      window.setTimeout(() => revealField(formErrorRef.current), 0);
     } finally {
       setBusy(false);
     }
@@ -547,22 +536,14 @@ export function PharmacyItemForm({
     <form className="card-form" onSubmit={submit}>
       <FormSection title={t("identity")} titleId="pharmacy-item-identity">
         <div className="field-row cols-3">
-          <label className={`field${codeError ? " is-invalid" : ""}`}>
+          <label className="field">
             <span>{t("idCode")}</span>
             <input
-              ref={codeInputRef}
-              value={code}
-              onChange={(e) => {
-                setCode(e.target.value);
-                setCodeError(null);
-              }}
-              placeholder={t("idCodePlaceholder")}
-              required
-              disabled={busy || !!editing}
-              aria-invalid={codeError ? true : undefined}
-              aria-describedby={codeError ? codeErrorId : undefined}
+              value={previewCode ? formatItemCode(previewCode) : "—"}
+              readOnly
+              disabled
+              aria-readonly="true"
             />
-            <FieldError id={codeErrorId}>{codeError}</FieldError>
           </label>
           <label className="field">
             <span>{t("name")}</span>
@@ -860,9 +841,6 @@ export function PharmacyItemForm({
       <div className="btn-row">
         <button type="submit" className="btn primary" disabled={busy}>
           {editing ? t("save") : t("create")}
-        </button>
-        <button type="button" className="btn ghost" onClick={onCancel} disabled={busy}>
-          {t("cancel")}
         </button>
       </div>
     </form>

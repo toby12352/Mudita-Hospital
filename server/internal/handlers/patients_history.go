@@ -43,6 +43,7 @@ type patientHistoryLab struct {
 }
 
 type patientHistoryOT struct {
+	ID                int64  `json:"id,omitempty"`
 	CaseNo            string `json:"case_no"`
 	Status            string `json:"status"`
 	BillID            int64  `json:"bill_id,omitempty"`
@@ -55,6 +56,7 @@ type patientHistoryOT struct {
 }
 
 type patientHistoryIPD struct {
+	ID          int64  `json:"id,omitempty"`
 	AdmissionNo string `json:"admission_no"`
 	Status      string `json:"status"`
 	AdmittedAt  string `json:"admitted_at"`
@@ -157,7 +159,7 @@ func (h *Patients) history(w http.ResponseWriter, _ *http.Request, path string) 
 	}
 
 	otRows, err := h.DB.Query(`
-		SELECT c.case_no, c.status,
+		SELECT c.id, c.case_no, c.status,
 		       COALESCE(b.id, 0), COALESCE(b.bill_no, ''), COALESCE(b.status, ''),
 		       b.total_mmk, b.printed_at, b.collected_cash,
 		       c.created_at
@@ -179,7 +181,7 @@ func (h *Patients) history(w http.ResponseWriter, _ *http.Request, path string) 
 		var printedAt sql.NullString
 		var collected sql.NullInt64
 		if err := otRows.Scan(
-			&row.CaseNo, &row.Status, &row.BillID, &row.BillNo, &row.BillStatus,
+			&row.ID, &row.CaseNo, &row.Status, &row.BillID, &row.BillNo, &row.BillStatus,
 			&billTotal, &printedAt, &collected, &row.CreatedAt,
 		); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "history failed"})
@@ -244,10 +246,10 @@ func (h *Patients) history(w http.ResponseWriter, _ *http.Request, path string) 
 	}
 
 	ipdRows, err := h.DB.Query(`
-		SELECT a.admission_no, a.status, a.admitted_at,
+		SELECT a.id, a.admission_no, a.status, a.admitted_at,
 		       COALESCE((SELECT SUM(l.amount_mmk) FROM ipd_ledger l WHERE l.admission_id = a.id), 0)
 		FROM ipd_admissions a
-		WHERE a.patient_id = ?
+		WHERE a.patient_id = ? AND a.status != 'deleted'
 		ORDER BY a.admitted_at DESC, a.id DESC
 	`, id)
 	if err != nil {
@@ -258,7 +260,7 @@ func (h *Patients) history(w http.ResponseWriter, _ *http.Request, path string) 
 	ipd := make([]patientHistoryIPD, 0)
 	for ipdRows.Next() {
 		var row patientHistoryIPD
-		if err := ipdRows.Scan(&row.AdmissionNo, &row.Status, &row.AdmittedAt, &row.BalanceMMK); err != nil {
+		if err := ipdRows.Scan(&row.ID, &row.AdmissionNo, &row.Status, &row.AdmittedAt, &row.BalanceMMK); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "history failed"})
 			return
 		}

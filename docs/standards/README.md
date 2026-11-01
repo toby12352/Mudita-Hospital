@@ -20,6 +20,7 @@ Start here when joining the codebase or opening a new Agent chat. Read only the 
 | Deploy / LAN install | [DEPLOY.md](../DEPLOY.md) |
 | Staff cheat sheet / field FAQ | [docs/README.md](../README.md) |
 | Staff workflow truth and tour scripts | Staff workflow truth is [docs/guidance/WORKFLOWS.md](../guidance/WORKFLOWS.md); tour scripts are [docs/guidance/tours/](../guidance/tours/) |
+| Typography, contrast, and portal accessibility rollout | [UNIFIED_DESIGN_SYSTEM.md](../accessibility/UNIFIED_DESIGN_SYSTEM.md) · inventory [PORTAL_INVENTORY.md](../accessibility/PORTAL_INVENTORY.md) · status [IMPLEMENTATION_STATUS.md](../accessibility/IMPLEMENTATION_STATUS.md) |
 | Full API table | [README.md](../../README.md) |
 
 ## Standards index
@@ -32,12 +33,14 @@ Start here when joining the codebase or opening a new Agent chat. Read only the 
 | [CONVENTIONS.md](./CONVENTIONS.md) | Naming, money, errors, roles, bill prefixes |
 | [ADDING_A_FEATURE.md](./ADDING_A_FEATURE.md) | Step-by-step playbook for a new domain |
 | [UPGRADES.md](./UPGRADES.md) | Live production upgrades: data preservation, migrations, `install-server.ps1`, billing/inventory protection, test checklist |
+| [../accessibility/UNIFIED_DESIGN_SYSTEM.md](../accessibility/UNIFIED_DESIGN_SYSTEM.md) | Cross-portal type, contrast, focus, and control sizes. Read the status file before editing UI |
 
 ## Ops vs engineering docs
 
 - **Engineering standards** live in this folder (`docs/standards/`).
+- **Accessibility rollout** lives in `docs/accessibility/` (design system, portal inventory, implementation status). It is not a field-ops guide.
 - **Field / ops** docs live in `docs/` root (DEPLOY, FAQ, cheat sheet, crash card). Edit those only for install/runbook changes — do not treat them as coding guides.
 
 ## Cursor
 
-Project rules in `.cursor/rules/` point here. Always-on context is a short map plus the live-production gate (`mudita-production.mdc` → [UPGRADES.md](./UPGRADES.md)). Detailed frontend/backend standards load when you work under `client/`, `dashboard/`, or `server/`.
+Project rules in `.cursor/rules/` point here. Always-on context is a short map, the live-production gate (`mudita-production.mdc` → [UPGRADES.md](./UPGRADES.md)), and the accessibility rollout (`mudita-a11y.mdc` → `docs/accessibility/`). Detailed frontend/backend standards load when you work under `client/`, `dashboard/`, or `server/`.

@@ -3,7 +3,7 @@
 - Id: ipd-discharge
 - Roles: Admin and IPD. Patients, OPD, OT, Pharmacy do not open Stays.
 - Depends on: ipd-stay
-- Opens: view `ipd`, with an open stay already on screen. NavIntent none. Do not open view `ipd_expense`. If Discharge is not on screen, skip every step. Do not open a stay in order to discharge it.
+- Opens: view `ipd`, with an open stay already on screen. NavIntent none. Do not open view `expense`. If Discharge is not on screen, skip every step. Do not open a stay in order to discharge it.
 - Mode: point and explain. Clicks on the highlighted control stay off. This lesson does not tell the reader to press Discharge on a real stay.
 - Entry: Help, not automatic
 

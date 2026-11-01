@@ -3,7 +3,7 @@
 - Id: ot-cupboard
 - Roles: Admin and OT. Pharmacy, OPD, Patients, and IPD do not open this OT Maintenance screen.
 - Depends on: pharmacy-transfer
-- Opens: view `ot`, NavIntent `otMode: "stock"`. Sidebar Maintenance. Do not open OT Bill (`ot` with `otMode: "case"`), the OT expense bill (`otMode: "expense"`), Pharmacy Return in (`pharmacy_return`), or Transfer to OT (`pharmacy_transfer`).
+- Opens: view `ot`, NavIntent `otMode: "stock"`. Sidebar Maintenance. Do not open OT Bill (`ot` with `otMode: "case"`), the Expenses portal (`expense`), Pharmacy Return in (`pharmacy_return`), or Transfer to OT (`pharmacy_transfer`).
 - Mode: point and explain. Clicks on the highlighted control stay off. This lesson does not tell staff to press Return to pharmacy, and it does not run a transfer.
 - Entry: Help, not automatic
 

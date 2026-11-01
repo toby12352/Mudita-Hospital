@@ -53,6 +53,11 @@ const (
 	GrantLabUpdate = "lab.update"
 	GrantLabDelete = "lab.delete"
 
+	GrantExpenseRead   = "expense.read"
+	GrantExpenseCreate = "expense.create"
+	GrantExpenseUpdate = "expense.update"
+	GrantExpenseDelete = "expense.delete"
+
 	// GrantDashboard is the single dashboard checkbox, not a clinic module.
 	GrantDashboard = "dashboard"
 )
@@ -89,6 +94,11 @@ var grantablePerms = map[string]struct{}{
 	GrantLabUpdate: {},
 	GrantLabDelete: {},
 
+	GrantExpenseRead:   {},
+	GrantExpenseCreate: {},
+	GrantExpenseUpdate: {},
+	GrantExpenseDelete: {},
+
 	GrantDashboard: {},
 }
 
@@ -119,6 +129,7 @@ var grantCanon = []string{
 	GrantOTRead, GrantOTCreate, GrantOTUpdate, GrantOTDelete,
 	GrantPharmacyRead, GrantPharmacyCreate, GrantPharmacyUpdate, GrantPharmacyDelete,
 	GrantLabRead, GrantLabCreate, GrantLabUpdate, GrantLabDelete,
+	GrantExpenseRead, GrantExpenseCreate, GrantExpenseUpdate, GrantExpenseDelete,
 	GrantDashboard,
 }
 
@@ -134,6 +145,7 @@ var grantModules = []struct {
 	{GrantOTRead, []string{GrantOTCreate, GrantOTUpdate, GrantOTDelete}},
 	{GrantPharmacyRead, []string{GrantPharmacyCreate, GrantPharmacyUpdate, GrantPharmacyDelete}},
 	{GrantLabRead, []string{GrantLabCreate, GrantLabUpdate, GrantLabDelete}},
+	{GrantExpenseRead, []string{GrantExpenseCreate, GrantExpenseUpdate, GrantExpenseDelete}},
 }
 
 // NormalizeGrants checks a client grant list.
@@ -282,6 +294,8 @@ func moduleGrants(perm string) []string {
 		return []string{GrantPharmacyRead, GrantPharmacyCreate, GrantPharmacyUpdate, GrantPharmacyDelete}
 	case PermLab:
 		return []string{GrantLabRead, GrantLabCreate, GrantLabUpdate, GrantLabDelete}
+	case PermExpense:
+		return []string{GrantExpenseRead, GrantExpenseCreate, GrantExpenseUpdate, GrantExpenseDelete}
 	default:
 		return nil
 	}
@@ -442,23 +456,3 @@ func PatientsCell(db *sql.DB, userID int64, perm string) (bool, error) {
 	}
 }
 
-// ExpenseAction is one expense-bill call for a desk portal.
-// Portal uses the desk role. Unified uses module.action. The catalog stays
-// on settings and does not come through here.
-func ExpenseAction(db *sql.DB, userID int64, coarse, action string) (bool, error) {
-	role, mode, err := LoadAccess(db, userID)
-	if err != nil {
-		return false, err
-	}
-	if role == RoleAdmin {
-		return true, nil
-	}
-	switch mode {
-	case AccessPortal:
-		return HasPermission(role, coarse), nil
-	case AccessUnified:
-		return grantHeld(db, userID, coarse+"."+action)
-	default:
-		return false, nil
-	}
-}

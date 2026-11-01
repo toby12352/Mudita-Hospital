@@ -16,6 +16,7 @@ const browse: GuideScreen = {
  * Drug Setup lesson. Opens the create form, then the item list.
  * Does not press Create, Save, Edit, Restock, or F5. F5 on this screen reloads the window.
  * The edit step looks for the edit form only, so it skips while Create New Item is open.
+ * On browse, PharmacyPage opens the first item while this lesson runs so Restock is on screen.
  */
 export const pharmacyItemLesson: GuideLesson = {
   id: "pharmacy-item",
@@ -30,7 +31,7 @@ export const pharmacyItemLesson: GuideLesson = {
     },
     {
       id: "create-stock",
-      element: '.drug-setup-detail-pane [data-guide="pharmacy-pack"]',
+      element: '.pharmacy-item-create-page [data-guide="pharmacy-pack"]',
       side: "bottom",
       titleKey: "guidePharmacyCreateStockTitle",
       bodyKey: "guidePharmacyCreateStockBody",
@@ -38,7 +39,7 @@ export const pharmacyItemLesson: GuideLesson = {
     },
     {
       id: "edit-item",
-      element: '.drug-setup-form-wrap [data-guide="pharmacy-pack"]',
+      element: '.pharmacy-item-edit-page [data-guide="pharmacy-pack"]',
       side: "bottom",
       titleKey: "guidePharmacyEditTitle",
       bodyKey: "guidePharmacyEditBody",

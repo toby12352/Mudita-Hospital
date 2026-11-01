@@ -15,6 +15,9 @@ export type ClinicActionFlags = {
   labCreate: boolean;
   labUpdate: boolean;
   labDelete: boolean;
+  expenseCreate: boolean;
+  expenseUpdate: boolean;
+  expenseDelete: boolean;
   patientsCreate: boolean;
   patientsUpdate: boolean;
   /** Unused-chart delete. The server still requires Admin, so the grant does not show it. */
@@ -51,6 +54,9 @@ export function clinicActionFlags(input: ClinicActionInput): ClinicActionFlags {
     labCreate: allowGrant(input, "lab.create", true),
     labUpdate: allowGrant(input, "lab.update", true),
     labDelete: allowGrant(input, "lab.delete", true),
+    expenseCreate: allowGrant(input, "expense.create", true),
+    expenseUpdate: allowGrant(input, "expense.update", true),
+    expenseDelete: allowGrant(input, "expense.delete", true),
     patientsCreate: allowGrant(input, "patients.create", true),
     patientsUpdate: allowGrant(input, "patients.update", true),
     patientsDelete: input.fullAdmin,
@@ -83,7 +89,6 @@ export function useClinicActions(): ClinicActionFlags {
 
 /** Footer hints for actions this account cannot use. */
 export function shortcutVisible(view: string, key: string, actions: ClinicActionFlags): boolean {
-  if (view.endsWith("_expense")) return true;
   const deleteKey = key === "F8" || key === "^F8";
   if (view === "pharmacy") {
     if (key === "F5") return actions.pharmacyUpdate;
@@ -114,6 +119,11 @@ export function shortcutVisible(view: string, key: string, actions: ClinicAction
   if (view === "lab") {
     if (key === "F2" || key === "F5" || key === "F7") return actions.labCreate;
     if (deleteKey) return actions.labDelete;
+    return true;
+  }
+  if (view === "expense") {
+    if (key === "F2" || key === "F5" || key === "F7") return actions.expenseCreate;
+    if (deleteKey) return actions.expenseDelete;
     return true;
   }
   return true;

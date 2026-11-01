@@ -12,7 +12,7 @@ There is no URL router. A screen is a `View` plus a `NavIntent` from `client/src
 
 The code moved past a few names in the guidance plan. These are the ones that matter:
 
-- The bill-rail void control renders `vDelete` (“Void Bills” / “ဘေလ်ပယ်ဖျက်”), not `voidBill` (“Void bill”). The history dialog’s confirm button is `delete` (“Delete” / “ဖျက်ရန်”). The reason field is `voidReason` (“Void reason” / “ပယ်ဖျက်အကြောင်း”). `voidBill` and `voidBillRestore` are not on the rail.
+- The bill-rail void control renders `vDelete` (“Void Bills” / “ဘေလ်ပယ်ဖျက်”), not `voidBill` (“Void bill”). It voids the open bill through `VoidBillConfirm` (reason, then two confirms labeled `voidStatus`). The reason field is `voidReason` (“Void reason” / “ပယ်ဖျက်အကြောင်း”). `voidBill` and `voidBillRestore` are not on the rail.
 - The OT stock sidebar item is `navOtCupboard` (“Maintenance” / “ထိန်းသိမ်းရေး”). The page heading is `maintenanceInventory` (“Inventory” / “စာရင်း”). The key `otCupboard` (“OT Stock” / “OT လက်ကျန်”) is not the sidebar label.
 - Pharmacy Return in can show `creditToIpd` (“Credit to IPD” / “IPD သို့ ပြန်ထည့်”) when the linked chart has an open stay and at least one charged sale. That is not Charge to IPD and it is not desk cash.
 - `patientsAttachHint` and `ipdBalanceHint` exist in i18n and are not rendered. Attach shows the field and the button. Discharge shows its own subtitle (`ipdWillRefund`, `ipdWillCollect`, or `ipdWillZero`).
@@ -43,7 +43,7 @@ Sidebar labels, from `client/src/app/AppNavBar.tsx`:
 | Return in | `navReturnIn` | Return in | ပြန်သွင်း | `pharmacy_return` | `billingMode: "edit"` |
 | Purchase Bills | `navPurchaseBills` | Purchase Bills | ဝယ်ယူမှု ဘေလ် | `pharmacy_purchase` | `billingMode: "edit"` |
 | Transfer to OT | `navTransferToOt` | Transfer to OT | OT သို့ လွှဲ | `pharmacy_transfer` | `billingMode: "edit"` |
-| Expense bill | `navExpenseBill` | Expense bill | အသုံးစရိတ် ဘေလ် | desk’s expense view | see Expense bills |
+| Expense bill | `navExpenseBill` | Expense bill | အသုံးစရိတ် ဘေလ် | `expense` | none |
 | Patient Charts | `navPatients` | Patient Charts | လူနာမှတ်တမ်း | `patients` | `patientsScreen: "list"` |
 | Create New Patient | `navCreatePatient` | Create New Patient | လူနာအသစ် ဖန်တီးရန် | `patients` | `patientsScreen: "create"` |
 | Stays | `navIpd` | Stays | တက်ရောက်မှု | `ipd` | none |
@@ -103,7 +103,7 @@ Charge to IPD locks the bill onto that open stay. It is not desk cash. The stay 
 
 ### Void
 
-Ctrl+F8 or Cmd+F8 opens the history dialog in delete mode. The reason field must not be empty (`voidReasonRequired`, “Required to void” / “ပယ်ဖျက်ရန် လိုအပ်သည်”). The dialog confirm button says Delete, not Void bill. OPD’s reason box starts as the English word “Deleted”. Pharmacy, OT, and expense start as “Voided”.
+Ctrl+F8 or Cmd+F8 voids the bill already open on the form. It does nothing when no saved bill is open or the bill is already void. The first confirm requires a void reason (`voidReasonRequired`, “Required to void” / “ပယ်ဖျက်ရန် လိုအပ်သည်”). The second confirm is final. Both confirms use `voidStatus` (“Void” / “ပယ်ဖျက်”). OPD and Lab reason boxes start as the English word “Deleted”. Pharmacy, OT, expense, IPD, and purchase start as “Voided”. History (F9) still opens the bill list; permanent delete stays a separate list.
 
 Void of a paid pharmacy sale restores MAIN quantity. Void of a paid OT bill restores cupboard quantity (`restoreOtBillStock` in `server/internal/handlers/ot_stock.go`). Void of a paid return removes the quantity that return had put back. Void of a confirmed transfer reverses the stock move. A bill that was charged to a stay can be voided only while that stay is still open.
 
@@ -195,8 +195,8 @@ On an open stay the rail shows:
 | Take deposit | `ipdTakeDeposit` | Take deposit | အပ်ငွေ လက်ခံ | `IpdPage.tsx` |
 | Save notes | `ipdSaveNotes` | Save notes | မှတ်ချက်သိမ်း | `IpdPage.tsx` |
 | Discharge | `ipdDischarge` | Discharge | ဆင်းခွင့်ရှင်း | `IpdPage.tsx` |
-| Print Daily Statement | `ipdPrintDailyStatement` | Print Daily Statement | နေ့စဉ်စာရင်းထုတ် | `IpdPage.tsx` |
-| Print Final Statement | `ipdPrintStatement` | Print Final Statement | နောက်ဆုံးစာရင်းထုတ် | `IpdPage.tsx` |
+| Print Daily Bill | `ipdPrintDailyStatement` | Print Daily Bill | နေ့စဉ်ဘေလ်ထုတ် | `IpdPage.tsx` |
+| Print Final Bill | `ipdPrintStatement` | Print Final Bill | နောက်ဆုံးဘေလ်ထုတ် | `IpdPage.tsx` |
 
 No F-keys. Room and nursing are not posted on this page. They are free-text lines on **IPD Bill** (`navIpdBill`, “IPD Bill” / “IPD ဘေလ်”), view `ipd_bill`, `client/src/pages/ipd/IpdChargeBillPage.tsx`. That rail starts with Charge to IPD (transfer icon, subtitle Not desk cash). Then Print (F6), Save draft (F5), History (F9), Void Bills (^F8), Cancel (F10), and New bill (F2). There is no Mark Paid and no F7. F7 does not charge the stay. The charge slip is A4 and is not the daily voucher.
 
@@ -206,16 +206,18 @@ The list rail also has `ipdDailyCash` (“IPD daily cash” / “IPD နေ့�
 
 ### Morning sheet
 
-Print Daily Statement opens `IpdDailyStatementPreview`. When the stay has any ledger line before today, the date starts at yesterday in Yangon. Today can still be picked. The sheet for a past date is issued when the preview opens. Printing does not choose pay or carry.
+Print Daily Bill opens `IpdDailyStatementPreview`. When the stay has any ledger line before today, the date starts at yesterday in Yangon. Today can still be picked. The date and pay panel sit on the right of the sheet, like a billing rail. A day stays Still open until **Close the Bill**. Opening the preview does not create a voucher. Printing does not choose pay or carry. Previous / Next step the date beside the picker; Next stops at today.
 
-Beside the date:
+The status chip (Still open, Awaiting, Paid, Carried) sits in the header beside Print. Beside the date, all four actions stay visible:
 
 | On screen | Key | When |
 |---|---|---|
-| Still open / မပိတ်ရသေး, Awaiting / ဆုံးဖြတ်ရန် ကျန်, Paid / ပေးပြီး, Carried / လိုငွေ လွှဲထား | `ipdVoucherStillOpen`, `ipdVoucherAwaiting`, `ipdVoucherPaid`, `ipdVoucherCarried` | Today or later is Still open. A past sheet is Awaiting (`issued`), Paid, or Carried (`credit`) |
-| Pay this day / ဤနေ့ ပေးမည် | `ipdPayThisDay` | Accent, check icon. Subtitle is `ipdDueAmount` (“လိုငွေ {amount} MMK”) when the close is လိုငွေ. Confirm asks `confirmIpdPayDay` (“Collect {amount} MMK for this day?” / “ဤနေ့အတွက် {amount} MMK ကောက်မည်လား?”). Off for today or later, and when the day is already Paid |
-| Pay later / နောက်မှ ပေးမည် | `ipdPayLater` | Outline. Shown only for လိုငွေ while the status is Awaiting |
-| Mark unpaid / ပေးထားမှု ပြန်ဖြုတ် | `ipdMarkUnpaid` | Shown on Paid only when this voucher can still be undone. If tomorrow’s sheet exists, the API error is shown |
+| Still open / မပိတ်ရသေး, Awaiting / ဆုံးဖြတ်ရန် ကျန်, Paid / ပေးပြီး, Carried / လိုငွေ လွှဲထား | `ipdVoucherStillOpen`, `ipdVoucherAwaiting`, `ipdVoucherPaid`, `ipdVoucherCarried` | Header beside Print. A date with no voucher is Still open. After Close the Bill the day is Awaiting (`issued`), Paid, or Carried (`credit`) |
+| Close the Bill / ဘေလ် ပိတ်မည် | `ipdCloseBill` | Top of the right rail. Enabled while the stay is open, the date is today or earlier, and that date has no voucher yet. Issues the day sheet; does not take cash |
+| Reopen the bill / ဘေလ် ပြန်ဖွင့်မည် | `ipdReopenBill` | Same button while the day is Awaiting. Deletes the issued voucher so the day is Still open again. Disabled when a later day sheet exists. Paid and Carried stay on Mark unpaid |
+| Pay this day / ဤနေ့ ပေးမည် | `ipdPayThisDay` | Accent, check icon. Subtitle is `ipdDueAmount` (“လိုငွေ {amount} MMK”) when the close is လိုငွေ. Confirm asks `confirmIpdPayDay` (“Collect {amount} MMK for this day?” / “ဤနေ့အတွက် {amount} MMK ကောက်မည်လား?”). Off until the day is closed, and when the day is already Paid |
+| Pay later / နောက်မှ ပေးမည် | `ipdPayLater` | Outline. Enabled for လိုငွေ while the status is Awaiting |
+| Mark unpaid / ပေးထားမှု ပြန်ဖြုတ် | `ipdMarkUnpaid` | Enabled on Paid only when this voucher can still be undone. If tomorrow’s sheet exists, the API error is shown |
 
 ### Why discharge is final
 
@@ -229,7 +231,7 @@ Discharge asks first. The message is `confirmIpdDischarge` (“The final stateme
 
 ## Expense bills
 
-Each desk has an Expense bill (`navExpenseBill`): OPD `opd` with `opdScreen: "expense"`, OT `ot` with `otMode: "expense"`, pharmacy `pharmacy_expense`, IPD `ipd_expense` (next to Stays and IPD Bill). The form is `client/src/pages/expenses/ExpenseBillPage.tsx`. It uses the same F5 Save draft, F6 Print (still editable), and F7 Mark Paid (desk cash, bill locked). There is no Charge to IPD and no stock movement. Expense bill is money out. It is not IPD Bill.
+The Expenses portal has Expense bill (`navExpenseBill`): view `expense`. Admin and unified accounts with `expense.read` see it. The form is `client/src/pages/expenses/ExpenseBillPage.tsx`. A required Category (OPD, OT, IPD, Pharmacy, Lab, or Expenses) is stored on `expense_bills.portal` so admin expense reports still group by desk. It uses the same F5 Save draft, F6 Print (still editable), and F7 Mark Paid (desk cash, bill locked). There is no Charge to IPD and no stock movement. Expense bill is money out. It is not IPD Bill.
 
 ## Training seed
 

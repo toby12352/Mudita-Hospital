@@ -22,6 +22,12 @@ func TestIpdChargeBills(t *testing.T) {
 	if applied != 1 {
 		t.Fatalf("038 not recorded: %d", applied)
 	}
+	if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM schema_migrations WHERE name = '043_ipd_charge_bills_description'`).Scan(&applied); err != nil {
+		t.Fatal(err)
+	}
+	if applied != 1 {
+		t.Fatalf("043 not recorded: %d", applied)
+	}
 	for _, table := range []string{"ipd_charge_bills", "ipd_charge_bill_lines", "ipd_charge_bill_number_seq"} {
 		var n int
 		if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM sqlite_master WHERE type = 'table' AND name = ?`, table).Scan(&n); err != nil {
@@ -86,6 +92,7 @@ func TestIpdChargeBills(t *testing.T) {
 		"patient_phone":"09123",
 		"patient_age_years":44,
 		"patient_gender":"F",
+		"description":"  Morning dressing  ",
 		"discount_value":10,
 		"discount_unit":"percent",
 		"lines":[{"description":"Dressing","qty":2,"unit_price_mmk":2000}]
@@ -98,6 +105,9 @@ func TestIpdChargeBills(t *testing.T) {
 	}
 	if strings.HasPrefix(bill.BillNo, "IPD-") || bill.BillNo == stay.AdmissionNo {
 		t.Fatalf("charge number shared the admission sequence: %s %s", bill.BillNo, stay.AdmissionNo)
+	}
+	if bill.Description != "Morning dressing" {
+		t.Fatalf("description %q", bill.Description)
 	}
 	if bill.TotalMMK != 4000 || bill.DiscountMMK != 400 || bill.DiscountUnit != "percent" {
 		t.Fatalf("amounts total=%d discount=%d unit=%s", bill.TotalMMK, bill.DiscountMMK, bill.DiscountUnit)
@@ -118,6 +128,7 @@ func TestIpdChargeBills(t *testing.T) {
 		"patient_phone":"09123",
 		"patient_age_years":44,
 		"patient_gender":"F",
+		"description":"Evening redress",
 		"discount_value":500,
 		"discount_unit":"mmk",
 		"lines":[{"description":"Dressing","qty":1,"unit_price_mmk":5000}]
@@ -127,6 +138,9 @@ func TestIpdChargeBills(t *testing.T) {
 	bill = decodeChargeBill(t, w)
 	if bill.TotalMMK != 5000 || bill.DiscountMMK != 500 || bill.DiscountUnit != "mmk" || bill.Lines[0].Qty != 1 {
 		t.Fatalf("updated %+v", bill)
+	}
+	if bill.Description != "Evening redress" {
+		t.Fatalf("updated description %q", bill.Description)
 	}
 	const net = int64(4500)
 
@@ -143,12 +157,12 @@ func TestIpdChargeBills(t *testing.T) {
 		t.Fatalf("content type %s", ct)
 	}
 	draftHTML := w.Body.String()
-	for _, want := range []string{"IPD CHARGE BILL", "Particular", "Qty", "Fee", "Dressing", "Daw Fee", "DRAFT", "@page{size:A4"} {
+	for _, want := range []string{"IPD CHARGE BILL", "Particular", "Qty", "Fee", "Dressing", "Daw Fee", "DRAFT", "Description", "Evening redress", "@page{size:A4"} {
 		if !strings.Contains(draftHTML, want) {
 			t.Fatalf("draft slip missing %q", want)
 		}
 	}
-	for _, absent := range []string{"Charged to IPD", "Deposited Fee", "IPD DAILY STATEMENT", "To Pay"} {
+	for _, absent := range []string{"Charged to IPD", "Deposited Fee", "IPD Daily Bill", "To Pay"} {
 		if strings.Contains(draftHTML, absent) {
 			t.Fatalf("draft slip includes %q", absent)
 		}
@@ -177,6 +191,9 @@ func TestIpdChargeBills(t *testing.T) {
 		t.Fatalf("no stay: %s", w.Body.String())
 	}
 
+	// Keep this section on the pre-epoch charge-as-income rule. The closing
+	// block below moves started_on to 2000-01-01 to assert the voucher path.
+	setVoucherEpochDate(t, sqlDB, "2099-01-01")
 	before := mustMove(t, sqlDB, localToday())
 	w = doJSON(h, http.MethodPost, "/api/ipd/charge-bills/"+strconv.FormatInt(bill.ID, 10)+"/charge", ipdTok, "")
 	mustCode(t, w, http.StatusOK)
@@ -224,7 +241,7 @@ func TestIpdChargeBills(t *testing.T) {
 			t.Fatalf("charged slip missing %q", want)
 		}
 	}
-	for _, absent := range []string{"Deposited Fee", "IPD DAILY STATEMENT", "To Pay", "Difference"} {
+	for _, absent := range []string{"Deposited Fee", "IPD Daily Bill", "To Pay", "Difference"} {
 		if strings.Contains(chargedHTML, absent) {
 			t.Fatalf("charged slip includes %q", absent)
 		}
@@ -249,8 +266,12 @@ func TestIpdChargeBills(t *testing.T) {
 	}
 	w = doJSON(h, http.MethodGet, "/api/ipd/admissions/"+strconv.FormatInt(stay.ID, 10)+"/statement?date="+chargeDay, ipdTok, "")
 	mustCode(t, w, http.StatusOK)
-	if !strings.Contains(w.Body.String(), "IPD charge") || !strings.Contains(w.Body.String(), bill.BillNo) {
-		t.Fatalf("daily sheet missing the charge: %s", w.Body.String())
+	dailyHTML := w.Body.String()
+	if !strings.Contains(dailyHTML, bill.BillNo) || !strings.Contains(dailyHTML, "Evening redress") {
+		t.Fatalf("daily sheet missing the charge: %s", dailyHTML)
+	}
+	if strings.Contains(dailyHTML, ">Detail</th>") || strings.Contains(dailyHTML, `class="a4-time"`) {
+		t.Fatalf("daily sheet kept Detail/Time: %s", dailyHTML)
 	}
 
 	if _, err := sqlDB.Exec(`

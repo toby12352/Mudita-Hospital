@@ -10,8 +10,7 @@ import (
 )
 
 // Expenses serves the hospital expense catalog and expense bills.
-// The mount is not wrapped in PermSettings: desk users must be able to read the catalog,
-// and each bill route checks the portal's own desk permission.
+// Catalog routes stay on settings. Bill routes use the expense portal grants.
 type Expenses struct {
 	DB *sql.DB
 }
@@ -47,35 +46,35 @@ func (h *Expenses) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.deactivateExpenseService(w, r, path)
 		})
 	case path == "/bills" && r.Method == http.MethodGet:
-		h.withAuth(w, r, h.listExpenseBills)
+		h.withExpenseBill(w, r, path, h.listExpenseBills)
 	case path == "/bills" && r.Method == http.MethodPost:
-		h.withAuth(w, r, h.createExpenseBill)
+		h.withExpenseBill(w, r, path, h.createExpenseBill)
 	case strings.HasPrefix(path, "/bills/") && strings.HasSuffix(path, "/pay") && r.Method == http.MethodPost:
-		h.withAuth(w, r, func(w http.ResponseWriter, r *http.Request) {
+		h.withExpenseBill(w, r, path, func(w http.ResponseWriter, r *http.Request) {
 			h.payExpenseBill(w, r, path)
 		})
 	case strings.HasPrefix(path, "/bills/") && strings.HasSuffix(path, "/printed") && r.Method == http.MethodPost:
-		h.withAuth(w, r, func(w http.ResponseWriter, r *http.Request) {
+		h.withExpenseBill(w, r, path, func(w http.ResponseWriter, r *http.Request) {
 			h.markExpenseBillPrinted(w, r, path)
 		})
 	case strings.HasPrefix(path, "/bills/") && strings.HasSuffix(path, "/void") && r.Method == http.MethodPost:
-		h.withAuth(w, r, func(w http.ResponseWriter, r *http.Request) {
+		h.withExpenseBill(w, r, path, func(w http.ResponseWriter, r *http.Request) {
 			h.voidExpenseBill(w, r, path)
 		})
 	case strings.HasPrefix(path, "/bills/") && strings.HasSuffix(path, "/print") && r.Method == http.MethodGet:
-		h.withAuth(w, r, func(w http.ResponseWriter, r *http.Request) {
+		h.withExpenseBill(w, r, path, func(w http.ResponseWriter, r *http.Request) {
 			h.printExpenseBill(w, r, path)
 		})
 	case strings.HasPrefix(path, "/bills/") && r.Method == http.MethodGet:
-		h.withAuth(w, r, func(w http.ResponseWriter, r *http.Request) {
+		h.withExpenseBill(w, r, path, func(w http.ResponseWriter, r *http.Request) {
 			h.getExpenseBill(w, r, path)
 		})
 	case strings.HasPrefix(path, "/bills/") && r.Method == http.MethodDelete:
-		h.withAuth(w, r, func(w http.ResponseWriter, r *http.Request) {
+		h.withExpenseBill(w, r, path, func(w http.ResponseWriter, r *http.Request) {
 			h.purgeExpenseBill(w, r, path)
 		})
 	case strings.HasPrefix(path, "/bills/") && r.Method == http.MethodPut:
-		h.withAuth(w, r, func(w http.ResponseWriter, r *http.Request) {
+		h.withExpenseBill(w, r, path, func(w http.ResponseWriter, r *http.Request) {
 			h.updateExpenseBill(w, r, path)
 		})
 	default:
@@ -89,16 +88,18 @@ func (h *Expenses) withSettings(w http.ResponseWriter, r *http.Request, next htt
 	middleware.RequirePermission(h.DB, auth.PermSettings, next).ServeHTTP(w, r)
 }
 
-func (h *Expenses) withAuth(w http.ResponseWriter, r *http.Request, next http.HandlerFunc) {
-	middleware.RequireAuth(h.DB, next).ServeHTTP(w, r)
+func (h *Expenses) withExpenseBill(w http.ResponseWriter, r *http.Request, path string, next http.HandlerFunc) {
+	middleware.RequirePermission(h.DB, auth.PermExpense, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !allowCell(h.DB, w, r, expenseGrant(r.Method, path)) {
+			return
+		}
+		next(w, r)
+	})).ServeHTTP(w, r)
 }
 
 func (h *Expenses) withCatalogRead(w http.ResponseWriter, r *http.Request, next http.HandlerFunc) {
 	middleware.RequireAnyPermission(h.DB, []string{
 		auth.PermSettings,
-		auth.PermOPD,
-		auth.PermOT,
-		auth.PermIPD,
-		auth.PermPharmacy,
+		auth.PermExpense,
 	}, next).ServeHTTP(w, r)
 }

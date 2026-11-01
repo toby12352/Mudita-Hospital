@@ -52,8 +52,8 @@ export type GuideDesk = {
   patientsScreen?: "list" | "create";
   pharmacyScreen?: "browse" | "form" | "history";
   billingMode?: "list" | "edit";
-  otMode?: "case" | "stock" | "expense";
-  opdScreen?: "doctors" | "services" | "bill" | "expense";
+  otMode?: "case" | "stock";
+  opdScreen?: "doctors" | "services" | "bill";
 };
 
 export type GuideLessonStep = {
@@ -65,6 +65,8 @@ export type GuideLessonStep = {
   bodyKey: string;
   /** When set, open this screen if it is not already showing. Does not remount a matching screen. */
   screen?: GuideScreen;
+  /** Extra ms to wait for the anchor (e.g. catalog row opened mid-lesson). */
+  waitForElementMs?: number;
 };
 
 function isChargeSaleDesk(desk: GuideDesk): boolean {

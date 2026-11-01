@@ -11,6 +11,7 @@ alwaysApply: false
 | Location | Purpose |
 |----------|---------|
 | `docs/standards/` | Engineering: architecture, frontend/backend rules, feature playbook |
+| `docs/accessibility/` | Typography and accessibility rollout. Not field ops |
 | `docs/` root (DEPLOY, FAQ, CHEATSHEET, RISK, CRASH card) | Field install and staff ops |
 
 ## Must follow

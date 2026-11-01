@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   createExpenseBill,
+  EXPENSE_CATEGORIES,
   getExpenseBill,
   markExpenseBillPrinted,
   payExpenseBill,
@@ -10,7 +11,7 @@ import {
   voidExpenseBill,
   type ExpenseBill,
   type ExpenseBillLine,
-  type ExpensePortal,
+  type ExpenseCategory,
 } from "@/features/expenses/api";
 import { AlertDialog } from "@/shared/AlertDialog";
 import { BillBtnIcon } from "@/shared/BillBtnIcon";
@@ -31,9 +32,12 @@ import {
   discountWrite,
   type DiscountUnit,
 } from "@/shared/discount";
+import { draftHasContent } from "@/shared/billDraft";
+import { useRegisterBillLeaveGuard } from "@/shared/billLeaveGuard";
 import { useClinicActions } from "@/app/clinicActions";
 import { useI18n } from "@/shared/i18n";
 import { useBillActionFeedback, useBillActionPending } from "@/shared/useActionLock";
+import { VoidBillConfirm } from "@/shared/VoidBillConfirm";
 import {
   ExpenseBillListDialog,
   type ExpenseBillListDialogMode,
@@ -171,8 +175,8 @@ function ExpenseFreeTextEntry({
   );
 }
 
-/** One expense desk for OPD, OT, IPD, and Pharmacy. Lists only this portal. */
-export function ExpenseBillPage({ portal }: { portal: ExpensePortal }) {
+/** Unified expense bill desk. Category writes expense_bills.portal for report grouping. */
+export function ExpenseBillPage() {
   const { t } = useI18n();
   const { billPurge } = useClinicActions();
   const nameRef = useRef<HTMLInputElement>(null);
@@ -182,6 +186,7 @@ export function ExpenseBillPage({ portal }: { portal: ExpensePortal }) {
   const { action: pendingAction, pending, begin, end } = useBillActionPending();
   const { pulse, isOk, isErr } = useBillActionFeedback();
   const [dialog, setDialog] = useState<ExpenseBillListDialogMode | null>(null);
+  const [voidOpen, setVoidOpen] = useState(false);
   const [confirm, setConfirm] = useState<DeskConfirm | null>(null);
   const [printAfterPay, setPrintAfterPay] = useState<string | null>(null);
 
@@ -189,6 +194,7 @@ export function ExpenseBillPage({ portal }: { portal: ExpensePortal }) {
   const [billNo, setBillNo] = useState("");
   const [billStatus, setBillStatus] = useState("draft");
   const [printedAt, setPrintedAt] = useState<string | null>(null);
+  const [category, setCategory] = useState<ExpenseCategory | "">("");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [lines, setLines] = useState<DraftLine[]>([]);
@@ -201,6 +207,13 @@ export function ExpenseBillPage({ portal }: { portal: ExpensePortal }) {
   const dateEditable = isAdmin && billId == null;
 
   const isDraft = billStatus === "draft";
+  const canVoid =
+    billId != null && billStatus !== "void" && billStatus !== "deleted";
+
+  function openVoidConfirm() {
+    if (!canVoid) return;
+    setVoidOpen(true);
+  }
 
   useEffect(() => {
     if (createdAt) return;
@@ -227,6 +240,7 @@ export function ExpenseBillPage({ portal }: { portal: ExpensePortal }) {
     setPrintedAt(null);
     setBillNo("");
     setBillStatus("draft");
+    setCategory("");
     setName("");
     setDescription("");
     setLines([]);
@@ -242,6 +256,7 @@ export function ExpenseBillPage({ portal }: { portal: ExpensePortal }) {
     setBillNo(b.bill_no);
     setBillStatus(b.status);
     setPrintedAt(b.printed_at ?? null);
+    setCategory(b.portal);
     setName(b.name);
     setDescription(b.description ?? "");
     setCreatedAt(b.created_at);
@@ -264,7 +279,11 @@ export function ExpenseBillPage({ portal }: { portal: ExpensePortal }) {
     }
   }
 
-  function blockInvalidDraft(): boolean {
+  function blockIncompletePay(): boolean {
+    if (!category) {
+      setError(t("expenseCategoryRequired"));
+      return true;
+    }
     if (!name.trim()) {
       if (name !== "") setName("");
       setError(t("expenseNameRequired"));
@@ -288,7 +307,7 @@ export function ExpenseBillPage({ portal }: { portal: ExpensePortal }) {
 
   function buildBody() {
     return {
-      portal,
+      portal: category,
       name: name.trim(),
       description: description.trim(),
       ...discountWrite(discountValue, discountUnit),
@@ -296,18 +315,39 @@ export function ExpenseBillPage({ portal }: { portal: ExpensePortal }) {
       lines: lines.map((l) => ({
         description: l.description.trim(),
         qty: Math.max(1, Math.floor(Number(l.qty)) || 1),
-        unit_price_mmk: l.unit_price_mmk as number,
+        unit_price_mmk: l.unit_price_mmk,
       })),
     };
   }
 
   async function saveDraft(): Promise<number | null> {
-    if (blockInvalidDraft()) return null;
+    if (
+      !draftHasContent({
+        texts: [name, description],
+        flags: [Boolean(category)],
+        lineCount: lines.length,
+        discountValue,
+      })
+    ) {
+      setError(t("errDraftEmpty"));
+      return null;
+    }
     const body = buildBody();
     const b = billId ? await updateExpenseBill(billId, body) : await createExpenseBill(body);
     applySavedBill(b);
     return b.id;
   }
+
+  useRegisterBillLeaveGuard(lines.length > 0 && billId == null, async () => {
+    try {
+      setError(null);
+      const id = await saveDraft();
+      return id != null;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Save failed");
+      return false;
+    }
+  });
 
   async function doConfirm() {
     if (!isDraft) return;
@@ -354,6 +394,7 @@ export function ExpenseBillPage({ portal }: { portal: ExpensePortal }) {
       if (!isDraft) {
         throw new Error(t("errBillFinished"));
       }
+      if (blockIncompletePay()) return;
       id = await saveDraft();
       if (id == null) return;
       const stamped = await markExpenseBillPrinted(id);
@@ -378,6 +419,7 @@ export function ExpenseBillPage({ portal }: { portal: ExpensePortal }) {
       if (!isDraft) {
         throw new Error(t("errBillFinished"));
       }
+      if (blockIncompletePay()) return;
       const id = await saveDraft();
       if (id == null) return;
       const paid = await payExpenseBill(id);
@@ -503,7 +545,7 @@ export function ExpenseBillPage({ portal }: { portal: ExpensePortal }) {
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (dialog) return;
+      if (dialog || voidOpen) return;
       if (document.querySelector(".print-preview-overlay")) return;
       if (document.querySelector(".alert-dialog-overlay")) return;
 
@@ -530,7 +572,7 @@ export function ExpenseBillPage({ portal }: { portal: ExpensePortal }) {
       }
       if (key === "F8" && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
-        if (!busy) setDialog("delete");
+        if (!busy && canVoid) openVoidConfirm();
         return;
       }
       if (key === "F10") {
@@ -547,7 +589,7 @@ export function ExpenseBillPage({ portal }: { portal: ExpensePortal }) {
     return () => window.removeEventListener("keydown", onKey);
     // Intentional: handlers close over latest state each render.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- shortcut wiring
-  }, [dialog, busy, isDraft, billId, billStatus, billNo, lines, name, description, discountValue, discountUnit, portal]);
+  }, [dialog, voidOpen, busy, isDraft, billId, billStatus, billNo, lines, name, description, discountValue, discountUnit, category, canVoid]);
 
   const total = lines.reduce(
     (sum, l) => sum + l.qty * (l.unit_price_mmk == null ? 0 : l.unit_price_mmk),
@@ -579,13 +621,30 @@ export function ExpenseBillPage({ portal }: { portal: ExpensePortal }) {
           <div className="opd-bill-header">
             <div className="opd-bill-header-col">
               <label className="opd-bill-field">
+                <span className="opd-bill-label">{t("category")}</span>
+                <select
+                  className="opd-bill-input"
+                  data-focus="expense-category"
+                  value={category}
+                  disabled={!isDraft}
+                  aria-label={t("category")}
+                  onChange={(e) => setCategory(e.target.value as ExpenseCategory | "")}
+                >
+                  <option value="">{t("selectCategory")}</option>
+                  {EXPENSE_CATEGORIES.map((id) => (
+                    <option key={id} value={id}>
+                      {t(id)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="opd-bill-field">
                 <span className="opd-bill-label">{t("name")}</span>
                 <input
                   ref={nameRef}
                   className="opd-bill-input"
                   data-focus="expense-name"
                   value={name}
-                  required
                   disabled={!isDraft}
                   aria-label={t("name")}
                   onChange={(e) => setName(e.target.value)}
@@ -705,8 +764,8 @@ export function ExpenseBillPage({ portal }: { portal: ExpensePortal }) {
           <button
             type="button"
             className={`opd-bill-rail-btn opd-bill-rail-btn--danger${isErr("void") ? " opd-bill-rail-btn--shake" : ""}`}
-            disabled={busy}
-            onClick={() => setDialog("delete")}
+            disabled={busy || !canVoid}
+            onClick={openVoidConfirm}
             data-guide="bill-void"
           >
             <span className="opd-bill-rail-btn-main">
@@ -752,12 +811,19 @@ export function ExpenseBillPage({ portal }: { portal: ExpensePortal }) {
 
       {dialog ? (
         <ExpenseBillListDialog
-          portal={portal}
           mode={dialog}
           onClose={() => setDialog(null)}
           onOpen={(id) => void openBill(id)}
-          onVoid={doVoidSelected}
           onPurge={doPurgeSelected}
+        />
+      ) : null}
+      {voidOpen && billId != null ? (
+        <VoidBillConfirm
+          billNo={billNo || String(billId)}
+          identityName={name}
+          defaultReason="Voided"
+          onClose={() => setVoidOpen(false)}
+          onVoid={(reason) => doVoidSelected(billId, reason)}
         />
       ) : null}
       {confirm ? (

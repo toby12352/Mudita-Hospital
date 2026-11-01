@@ -25,7 +25,22 @@ export function CategoriesTab() {
   const [pendingDelete, setPendingDelete] = useState<ServiceCategory | null>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
   const formErrorRef = useRef<HTMLParagraphElement>(null);
+  const formOpenerRef = useRef<HTMLElement | null>(null);
   const nameErrorId = useId();
+  const formTitleId = useId();
+
+  function rememberFormOpener() {
+    const el = document.activeElement;
+    formOpenerRef.current = el instanceof HTMLElement ? el : null;
+  }
+
+  function restoreFormOpener() {
+    const prev = formOpenerRef.current;
+    formOpenerRef.current = null;
+    if (prev && document.contains(prev)) {
+      window.requestAnimationFrame(() => prev.focus());
+    }
+  }
 
   async function reload(search = q) {
     setList(await listServiceCategories(search.trim()));
@@ -46,6 +61,27 @@ export function CategoriesTab() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!editing) return;
+    window.requestAnimationFrame(() => nameInputRef.current?.focus());
+  }, [editing]);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      if (document.querySelector(".alert-dialog-overlay, .print-preview-overlay")) return;
+      if (pendingDelete) return;
+      if (!editing) return;
+      e.preventDefault();
+      startCreate();
+      restoreFormOpener();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+    // Intentional: startCreate closes over latest helpers each render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Escape wiring
+  }, [editing, pendingDelete]);
+
   function startCreate() {
     setEditing(null);
     setName("");
@@ -54,6 +90,7 @@ export function CategoriesTab() {
   }
 
   function startEdit(c: ServiceCategory) {
+    rememberFormOpener();
     setEditing(c);
     setName(c.name);
     setNameError(null);
@@ -72,8 +109,10 @@ export function CategoriesTab() {
       } else {
         await createServiceCategory(body);
       }
+      const wasEditing = editing != null;
       startCreate();
       await reload();
+      if (wasEditing) restoreFormOpener();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Save failed";
       if (fieldKeyForApiError(err) === "name") {
@@ -111,8 +150,12 @@ export function CategoriesTab() {
 
   return (
     <div className="settings-stack">
-      <form className="card-form" onSubmit={(e) => void submit(e)}>
-        <h2 className="section-title">
+      <form
+        className="card-form"
+        aria-labelledby={formTitleId}
+        onSubmit={(e) => void submit(e)}
+      >
+        <h2 id={formTitleId} className="section-title">
           {editing ? `${t("editCategory")} #${editing.id}` : t("addCategory")}
         </h2>
         <label className={`field${nameError ? " is-invalid" : ""}`}>
@@ -142,7 +185,15 @@ export function CategoriesTab() {
             {busy ? t("saving") : editing ? t("updateCategory") : t("addCategory")}
           </button>
           {editing ? (
-            <button type="button" className="btn action" disabled={busy} onClick={startCreate}>
+            <button
+              type="button"
+              className="btn action"
+              disabled={busy}
+              onClick={() => {
+                startCreate();
+                restoreFormOpener();
+              }}
+            >
               {t("cancelEdit")}
             </button>
           ) : null}
@@ -184,7 +235,7 @@ export function CategoriesTab() {
             {t("search")}
           </button>
         </div>
-        <ul className="data-list">
+        <ul className="data-list" aria-label={t("categories")}>
           {list.length === 0 ? <li className="empty-row">{t("noCategoriesYet")}</li> : null}
           {list.map((c) => (
             <li key={c.id}>

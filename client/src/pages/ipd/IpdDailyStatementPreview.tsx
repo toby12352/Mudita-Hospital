@@ -1,14 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import {
   creditIpdDayVoucher,
+  fetchIpdDayVoucher,
   fetchIpdStatementHtml,
   issueIpdDayVoucher,
   payIpdDayVoucher,
+  reopenIpdDayVoucher,
   unpayIpdDayVoucher,
   type IpdDayVoucher,
 } from "@/features/ipd/api";
-import { yangonToday } from "@/pages/ipd/ipdStatementDate";
+import { yangonAddDays, yangonToday } from "@/pages/ipd/ipdStatementDate";
 import { ActionIcon } from "@/shared/ActionIcon";
+import { BillBtnIcon } from "@/shared/BillBtnIcon";
 import { ApiError } from "@/shared/errors";
 import { AlertDialog } from "@/shared/AlertDialog";
 import { DatePicker } from "@/shared/DatePicker";
@@ -31,8 +34,19 @@ function loadDaySheet(stayId: number, date: string, stayOpen: boolean): Promise<
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         let voucher: IpdDayVoucher | null = null;
-        if (stayOpen && date < yangonToday()) {
-          voucher = await issueIpdDayVoucher(stayId, date);
+        const today = yangonToday();
+        if (date <= today) {
+          try {
+            voucher = await fetchIpdDayVoucher(stayId, date);
+          } catch (e: unknown) {
+            if (!(e instanceof ApiError) || e.status !== 404) throw e;
+            voucher = null;
+          }
+          // Refresh closing while Awaiting. Do not create a voucher on open —
+          // a reopened day stays open until Close the Bill.
+          if (stayOpen && voucher?.status === "issued") {
+            voucher = await issueIpdDayVoucher(stayId, date);
+          }
         }
         const html = await fetchIpdStatementHtml(stayId, date);
         return { voucher, html };
@@ -69,6 +83,10 @@ export function IpdDailyStatementPreview({
   onDecided?: () => void;
 }) {
   const { t } = useI18n();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   const frameRef = useRef<HTMLIFrameElement>(null);
   const onDecidedRef = useRef(onDecided);
   onDecidedRef.current = onDecided;
@@ -79,6 +97,9 @@ export function IpdDailyStatementPreview({
   const [loading, setLoading] = useState(false);
   const [printing, setPrinting] = useState(false);
   const [deciding, setDeciding] = useState(false);
+  const [pendingAction, setPendingAction] = useState<
+    "close" | "reopen" | "pay" | "credit" | "unpay" | null
+  >(null);
   const [confirmPay, setConfirmPay] = useState(false);
   const { tryAcquire, release } = useActionLock();
   const printPending = useDelayedFlag(printing);
@@ -86,21 +107,89 @@ export function IpdDailyStatementPreview({
   const tRef = useRef(t);
   tRef.current = t;
   const today = yangonToday();
-  const dayClosed = date < today;
   const dueMmk = voucher && voucher.closing_mmk < 0 ? -voucher.closing_mmk : 0;
+  const canCloseBill =
+    stayOpen && date <= today && !loading && !deciding && !voucher;
+  const canReopenBill =
+    stayOpen &&
+    !loading &&
+    !deciding &&
+    voucher?.status === "issued" &&
+    voucher.can_reopen !== false;
+  const closeOrReopenDisabled = voucher?.status === "issued" ? !canReopenBill : !canCloseBill;
   const payDisabled =
-    !stayOpen || !dayClosed || loading || deciding || !voucher || voucher.status === "paid";
-  const showPayLater =
-    stayOpen && dayClosed && voucher?.status === "issued" && voucher.closing_mmk < 0;
-  const showUnpay = stayOpen && dayClosed && voucher?.status === "paid" && voucher.can_unpay !== false;
+    !stayOpen || loading || deciding || !voucher || voucher.status === "paid";
+  const payLaterDisabled =
+    !stayOpen ||
+    loading ||
+    deciding ||
+    !voucher ||
+    voucher.status !== "issued" ||
+    voucher.closing_mmk >= 0;
+  const unpayDisabled =
+    !stayOpen ||
+    loading ||
+    deciding ||
+    !voucher ||
+    voucher.status !== "paid" ||
+    voucher.can_unpay === false;
+  const nextDisabled = date >= today;
 
   useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+    const opener = document.activeElement;
+    openerRef.current = opener instanceof HTMLElement ? opener : null;
+    dialogRef.current?.focus();
+    return () => {
+      const prev = openerRef.current;
+      openerRef.current = null;
+      const active = document.activeElement;
+      const dialog = dialogRef.current;
+      const stillInside = dialog != null && active instanceof Node && dialog.contains(active);
+      const nothingFocused =
+        active == null || active === document.body || active === document.documentElement;
+      if ((stillInside || nothingFocused) && prev && document.contains(prev)) prev.focus();
+    };
+  }, []);
+
+  useEffect(() => {
+    function focusableIn(root: ParentNode): HTMLElement[] {
+      return Array.from(
+        root.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), iframe, [tabindex]:not([tabindex="-1"])',
+        ),
+      );
     }
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+    function onKey(e: KeyboardEvent) {
+      // This overlay is itself `.print-preview-overlay`; only yield to alerts.
+      if (document.querySelector(".alert-dialog-overlay")) return;
+      const root = dialogRef.current;
+      if (!root) return;
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        onCloseRef.current();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const focusable = focusableIn(root);
+      if (focusable.length === 0) return;
+      const active = document.activeElement;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const inside = active instanceof Node && root.contains(active) && active !== root;
+      if (e.shiftKey) {
+        if (!inside || active === first) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else if (!inside || active === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -115,7 +204,7 @@ export function IpdDailyStatementPreview({
         if (cancelled) return;
         setVoucher(loaded.voucher);
         setHtml(loaded.html);
-        if (loaded.voucher) onDecidedRef.current?.();
+        if (loaded.voucher && date < yangonToday()) onDecidedRef.current?.();
       } catch (e: unknown) {
         if (!cancelled) {
           setVoucher(null);
@@ -145,9 +234,51 @@ export function IpdDailyStatementPreview({
     }
   }
 
+  async function closeBill() {
+    if (!tryAcquire()) return;
+    setDeciding(true);
+    setPendingAction("close");
+    setError(null);
+    try {
+      const next = await issueIpdDayVoucher(stayId, date);
+      setVoucher(next);
+      setHtml(await fetchIpdStatementHtml(stayId, date));
+      onDecidedRef.current?.();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : t("errGeneric"));
+    } finally {
+      setDeciding(false);
+      setPendingAction(null);
+      release();
+    }
+  }
+
+  async function reopenBill() {
+    if (!tryAcquire()) return;
+    setDeciding(true);
+    setPendingAction("reopen");
+    setError(null);
+    try {
+      await reopenIpdDayVoucher(stayId, date);
+      setVoucher(null);
+      setHtml(await fetchIpdStatementHtml(stayId, date));
+      onDecidedRef.current?.();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : t("errGeneric"));
+      if (e instanceof ApiError && /later/i.test(e.raw)) {
+        setVoucher((current) => (current ? { ...current, can_reopen: false } : current));
+      }
+    } finally {
+      setDeciding(false);
+      setPendingAction(null);
+      release();
+    }
+  }
+
   async function decide(action: "pay" | "credit" | "unpay") {
     if (!tryAcquire()) return;
     setDeciding(true);
+    setPendingAction(action);
     setError(null);
     try {
       const next =
@@ -167,14 +298,19 @@ export function IpdDailyStatementPreview({
       }
     } finally {
       setDeciding(false);
+      setPendingAction(null);
       release();
     }
   }
 
   const chip = statusChip(date, today, voucher, loading, t);
+  const closeOrReopenPending =
+    decidePending && (pendingAction === "close" || pendingAction === "reopen");
 
   return (
     <div
+      ref={dialogRef}
+      tabIndex={-1}
       className="clinic-overlay clinic-overlay--fixed print-preview-overlay"
       role="dialog"
       aria-modal="true"
@@ -190,6 +326,11 @@ export function IpdDailyStatementPreview({
             {error && !confirmPay ? <p className="print-preview-note">{error}</p> : null}
           </div>
           <div className="print-preview-actions">
+            {chip ? (
+              <span className="ipd-voucher-chip ipd-voucher-chip--toolbar" role="status">
+                {chip}
+              </span>
+            ) : null}
             <button
               type="button"
               className="btn primary"
@@ -206,68 +347,6 @@ export function IpdDailyStatementPreview({
           </div>
         </div>
         <div className="print-preview-body">
-          <aside className="print-preview-aside">
-            <label className="field field-compact">
-              <span>{t("ipdStatementDate")}</span>
-              <DatePicker
-                value={date}
-                onChange={(iso) => {
-                  if (iso) setDate(iso);
-                }}
-              />
-            </label>
-            {chip ? (
-              <p className="ipd-voucher-chip" role="status">
-                {chip}
-              </p>
-            ) : null}
-            {stayOpen ? (
-              <div className="ipd-day-actions">
-                <button
-                  type="button"
-                  className="btn action primary ipd-day-action"
-                  disabled={payDisabled}
-                  aria-busy={(decidePending && confirmPay) || undefined}
-                  onClick={() => {
-                    setError(null);
-                    setConfirmPay(true);
-                  }}
-                >
-                  <ActionIcon name="check" />
-                  <span className="ipd-day-action-text">
-                    <span>{t("ipdPayThisDay")}</span>
-                    {voucher && voucher.status !== "paid" && voucher.closing_mmk < 0 ? (
-                      <span className="ipd-day-action-sub">
-                        {t("ipdDueAmount").replace("{amount}", formatMMK(dueMmk))}
-                      </span>
-                    ) : null}
-                  </span>
-                </button>
-                {showPayLater ? (
-                  <button
-                    type="button"
-                    className="btn action ipd-day-action"
-                    disabled={deciding || loading}
-                    aria-busy={decidePending || undefined}
-                    onClick={() => void decide("credit")}
-                  >
-                    {t("ipdPayLater")}
-                  </button>
-                ) : null}
-                {showUnpay ? (
-                  <button
-                    type="button"
-                    className="btn action ipd-day-action"
-                    disabled={deciding || loading}
-                    aria-busy={decidePending || undefined}
-                    onClick={() => void decide("unpay")}
-                  >
-                    {t("ipdMarkUnpaid")}
-                  </button>
-                ) : null}
-              </div>
-            ) : null}
-          </aside>
           <div className="print-preview-frame-wrap" aria-busy={loading}>
             <iframe
               ref={frameRef}
@@ -277,6 +356,120 @@ export function IpdDailyStatementPreview({
               srcDoc={html}
             />
           </div>
+          <aside className="print-preview-aside">
+            <label className="field field-compact">
+              <span>{t("ipdStatementDate")}</span>
+              <div className="ipd-date-stepper">
+                <button
+                  type="button"
+                  className="btn ghost ipd-date-step"
+                  aria-label={t("ipdPrevDay")}
+                  disabled={loading || deciding}
+                  onClick={() => setDate((current) => yangonAddDays(current, -1))}
+                >
+                  <span className="ipd-date-step-icon ipd-date-step-icon--prev" aria-hidden="true">
+                    <ActionIcon name="chevron" />
+                  </span>
+                </button>
+                <DatePicker
+                  value={date}
+                  onChange={(iso) => {
+                    if (iso) setDate(iso);
+                  }}
+                />
+                <button
+                  type="button"
+                  className="btn ghost ipd-date-step"
+                  aria-label={t("ipdNextDay")}
+                  disabled={loading || deciding || nextDisabled}
+                  onClick={() =>
+                    setDate((current) => {
+                      const next = yangonAddDays(current, 1);
+                      return next > today ? current : next;
+                    })
+                  }
+                >
+                  <span className="ipd-date-step-icon ipd-date-step-icon--next" aria-hidden="true">
+                    <ActionIcon name="chevron" />
+                  </span>
+                </button>
+              </div>
+            </label>
+            <div className="ipd-day-actions">
+              <button
+                type="button"
+                className="opd-bill-rail-btn opd-bill-rail-btn--accent"
+                disabled={closeOrReopenDisabled}
+                aria-busy={closeOrReopenPending || undefined}
+                onClick={() => {
+                  if (voucher?.status === "issued") void reopenBill();
+                  else void closeBill();
+                }}
+              >
+                <span className="opd-bill-rail-btn-main">
+                  <BillBtnIcon
+                    name="check"
+                    pending={closeOrReopenPending}
+                  />
+                  <span className="opd-bill-rail-btn-text">
+                    <span className="opd-bill-rail-btn-label">
+                      {voucher?.status === "issued" ? t("ipdReopenBill") : t("ipdCloseBill")}
+                    </span>
+                  </span>
+                </span>
+              </button>
+              <button
+                type="button"
+                className="opd-bill-rail-btn opd-bill-rail-btn--accent"
+                disabled={payDisabled}
+                aria-busy={(decidePending && pendingAction === "pay") || undefined}
+                onClick={() => {
+                  setError(null);
+                  setConfirmPay(true);
+                }}
+              >
+                <span className="opd-bill-rail-btn-main">
+                  <BillBtnIcon name="check" pending={decidePending && pendingAction === "pay"} />
+                  <span className="opd-bill-rail-btn-text">
+                    <span className="opd-bill-rail-btn-label">{t("ipdPayThisDay")}</span>
+                    {voucher && voucher.status !== "paid" && voucher.closing_mmk < 0 ? (
+                      <span className="opd-bill-rail-btn-sub">
+                        {t("ipdDueAmount").replace("{amount}", formatMMK(dueMmk))}
+                      </span>
+                    ) : null}
+                  </span>
+                </span>
+              </button>
+              <button
+                type="button"
+                className="opd-bill-rail-btn"
+                disabled={payLaterDisabled}
+                aria-busy={(decidePending && pendingAction === "credit") || undefined}
+                onClick={() => void decide("credit")}
+              >
+                <span className="opd-bill-rail-btn-main">
+                  <BillBtnIcon name="check" pending={decidePending && pendingAction === "credit"} />
+                  <span className="opd-bill-rail-btn-text">
+                    <span className="opd-bill-rail-btn-label">{t("ipdPayLater")}</span>
+                  </span>
+                </span>
+              </button>
+              <button
+                type="button"
+                className="opd-bill-rail-btn"
+                disabled={unpayDisabled}
+                aria-busy={(decidePending && pendingAction === "unpay") || undefined}
+                onClick={() => void decide("unpay")}
+              >
+                <span className="opd-bill-rail-btn-main">
+                  <BillBtnIcon name="check" pending={decidePending && pendingAction === "unpay"} />
+                  <span className="opd-bill-rail-btn-text">
+                    <span className="opd-bill-rail-btn-label">{t("ipdMarkUnpaid")}</span>
+                  </span>
+                </span>
+              </button>
+            </div>
+          </aside>
         </div>
       </div>
       {confirmPay ? (
@@ -307,9 +500,10 @@ function statusChip(
   loading: boolean,
   t: (key: string) => string,
 ): string {
-  if (date >= today) return t("ipdVoucherStillOpen");
   if (loading && !voucher) return "";
-  if (!voucher) return "";
+  if (!voucher) {
+    return date <= today ? t("ipdVoucherStillOpen") : "";
+  }
   if (voucher.status === "paid") return t("ipdVoucherPaid");
   if (voucher.status === "credit") return t("ipdVoucherCarried");
   return t("ipdVoucherAwaiting");

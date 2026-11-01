@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import {
   createBackup,
   formatBytes,
@@ -18,6 +18,8 @@ export function BackupTab() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [pendingRestore, setPendingRestore] = useState<string | null>(null);
+  const backupTitleId = useId();
+  const restoreTitleId = useId();
 
   async function reload() {
     const data = await listBackups();
@@ -49,7 +51,7 @@ export function BackupTab() {
     setMessage(null);
     try {
       const info = await createBackup();
-      setMessage(`Backup created: ${info.name}`);
+      setMessage(t("backupCreated").replace("{name}", info.name));
       await reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Backup failed");
@@ -67,7 +69,7 @@ export function BackupTab() {
     try {
       const res = await restoreBackup(name);
       setPendingRestore(null);
-      setMessage(res.message || "Restore queued — wait a few seconds, then Retry connection.");
+      setMessage(res.message || t("backupRestoreQueued"));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Restore failed");
       setPendingRestore(null);
@@ -78,27 +80,32 @@ export function BackupTab() {
 
   return (
     <div className="settings-split settings-backup">
-      <div className="card-form">
-        <h2 className="section-title">Database backup</h2>
-        <p className="hint">
-          Copies <code>mudita.db</code> on the server. Also runs automatically on a schedule.
-          Copy files from the backup folder to a USB weekly.
-        </p>
+      <div className="card-form" aria-labelledby={backupTitleId}>
+        <h2 id={backupTitleId} className="section-title">
+          {t("backupTitle")}
+        </h2>
+        <p className="hint">{t("backupHint")}</p>
         {dir ? (
           <p className="status-meta">
-            Server folder: <code>{dir}</code>
+            {t("backupServerFolder")}: <code>{dir}</code>
           </p>
         ) : null}
-        {error ? <p className="form-error">{error}</p> : null}
+        {error ? (
+          <p className="form-error" role="alert">
+            {error}
+          </p>
+        ) : null}
         {message ? <p className="form-ok">{message}</p> : null}
         <button type="button" className="btn primary" disabled={busy} onClick={() => void doBackup()}>
-          {busy ? "Working…" : "Backup now"}
+          {busy ? t("busy") : t("backupNow")}
         </button>
       </div>
-      <div className="card-form settings-backup-restore">
-        <h2 className="section-title">Restore</h2>
-        <ul className="data-list">
-          {list.length === 0 ? <li className="empty-row">No backups yet</li> : null}
+      <div className="card-form settings-backup-restore" aria-labelledby={restoreTitleId}>
+        <h2 id={restoreTitleId} className="section-title">
+          {t("restore")}
+        </h2>
+        <ul className="data-list" aria-label={t("restore")}>
+          {list.length === 0 ? <li className="empty-row">{t("noBackupsYet")}</li> : null}
           {list.map((b) => (
             <li key={b.name}>
               <div>

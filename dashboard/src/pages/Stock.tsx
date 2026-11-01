@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import {
   Bar,
   BarChart,
@@ -21,17 +21,86 @@ type Props = {
   t: (k: string) => string;
 };
 
-const ACCENT = "#1b6bc7";
-const WARN = "#c47a00";
-const DANGER = "#c62828";
-const MUTED = "#6b7280";
-const GRID = "rgba(26, 31, 46, 0.08)";
-const BUCKET_COLORS: Record<string, string> = {
-  expired: DANGER,
-  d30: WARN,
-  d60: "#d4a017",
-  d90: ACCENT,
-};
+const FALLBACK = {
+  accent: "#2563eb",
+  warn: "#8a6508",
+  danger: "#c62828",
+  expiry60: "#6b4fa0",
+  muted: "#6d6d68",
+  grid: "rgba(26, 31, 46, 0.08)",
+} as const;
+
+function readToken(name: string, fallback: string): string {
+  if (typeof document === "undefined") return fallback;
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+}
+
+function chartColors() {
+  return {
+    accent: readToken("--accent", FALLBACK.accent),
+    warn: readToken("--warn", FALLBACK.warn),
+    danger: readToken("--danger", FALLBACK.danger),
+    // 60-day bar. Old #d4a017 is 2.38:1 on white. A darker gold matches --warn (the 30-day bar).
+    expiry60: readToken("--series-ipd", FALLBACK.expiry60),
+    muted: readToken("--muted", FALLBACK.muted),
+    // No grid token. Same faint stroke Revenue kept.
+    grid: FALLBACK.grid,
+  };
+}
+
+function bucketFill(key: string, colors: ReturnType<typeof chartColors>): string {
+  if (key === "expired") return colors.danger;
+  if (key === "d30") return colors.warn;
+  if (key === "d60") return colors.expiry60;
+  if (key === "d90") return colors.accent;
+  return colors.accent;
+}
+
+function bucketLabel(key: string, fallback: string, t: (k: string) => string): string {
+  if (key === "expired") return t("expired");
+  if (key === "d30") return `≤ 30 ${t("daysUnit")}`;
+  if (key === "d60") return `31–60 ${t("daysUnit")}`;
+  if (key === "d90") return `61–90 ${t("daysUnit")}`;
+  return fallback;
+}
+
+function attentionSub(base: string, warn: boolean, t: (k: string) => string): string {
+  return warn ? `${base} · ${t("attentionNeeded")}` : base;
+}
+
+type TipEntry = { value?: unknown };
+
+function ExpiryTooltip({
+  active,
+  payload,
+  label,
+  t,
+}: {
+  active?: boolean;
+  payload?: readonly TipEntry[];
+  label?: unknown;
+  t: (k: string) => string;
+}) {
+  if (!active || !payload?.length) return null;
+  const value = Number(payload[0]?.value ?? 0);
+  return (
+    <div
+      style={{
+        background: "#fff",
+        border: "1px solid rgba(26,31,46,0.12)",
+        borderRadius: 8,
+        padding: "0.45rem 0.6rem",
+        fontSize: 14,
+        lineHeight: 1.45,
+      }}
+    >
+      <p style={{ margin: "0 0 0.25rem", fontWeight: 600 }}>{String(label ?? "")}</p>
+      <p style={{ margin: 0, fontVariantNumeric: "tabular-nums" }}>
+        {t("value")}: {formatMMK(value)} {t("mmk")}
+      </p>
+    </div>
+  );
+}
 
 function locLabel(code: string, t: (k: string) => string): string {
   if (code === "MAIN") return t("locMain");
@@ -48,6 +117,11 @@ export function StockPage({ t }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [epoch, setEpoch] = useState(0);
+  const expiryTitleId = useId();
+  const locationTitleId = useId();
+  const lowTitleId = useId();
+  const slowTitleId = useId();
+  const colors = chartColors();
 
   useEffect(() => {
     let cancelled = false;
@@ -73,11 +147,14 @@ export function StockPage({ t }: Props) {
   const chartData =
     data?.expiry_buckets.map((b) => ({
       ...b,
-      chartLabel: b.key === "expired" ? t("expired") : b.label,
+      chartLabel: bucketLabel(b.key, b.label, t),
     })) ?? [];
+  const valueAtRisk = (data?.value_at_risk_mmk ?? 0) > 0;
+  const lowStockWarn = (data?.low_stock_count ?? 0) > 0;
+  const slowWarn = (data?.slow_mover_count ?? 0) > 0;
 
   return (
-    <div className="page page-frame">
+    <div className="page page-frame stock-page">
       <div className="page-header">
         <p className="lede muted">{t("stockLede")}</p>
         <div className="page-actions">
@@ -87,6 +164,7 @@ export function StockPage({ t }: Props) {
                 key={d}
                 type="button"
                 className={`btn ghost${slowDays === d ? " active" : ""}`}
+                aria-pressed={slowDays === d}
                 onClick={() => setSlowDays(d)}
               >
                 {d === 60 ? t("slow60") : d === 90 ? t("slow90") : t("slow180")}
@@ -99,6 +177,7 @@ export function StockPage({ t }: Props) {
                 key={d}
                 type="button"
                 className={`btn ghost${cogsDays === d ? " active" : ""}`}
+                aria-pressed={cogsDays === d}
                 onClick={() => setCogsDays(d)}
               >
                 {d === 7 ? t("days7") : t("days30")}
@@ -111,12 +190,20 @@ export function StockPage({ t }: Props) {
         </div>
       </div>
 
-      {error ? <p className="form-error">{error}</p> : null}
-      {loading && !data ? <p className="muted">{t("loading")}</p> : null}
+      {error ? (
+        <p className="form-error" role="alert">
+          {error}
+        </p>
+      ) : null}
+      {loading && !data ? (
+        <p className="muted" aria-live="polite">
+          {t("loading")}
+        </p>
+      ) : null}
 
       {data ? (
         <>
-          <div className="kpi-strip">
+          <div className="kpi-strip" aria-label={t("stock")}>
             <KpiCard
               label={t("inventoryValue")}
               value={formatMMK(data.total_value_mmk)}
@@ -126,25 +213,33 @@ export function StockPage({ t }: Props) {
             <KpiCard
               label={t("valueAtRisk")}
               value={formatMMK(data.value_at_risk_mmk)}
-              sub={`${data.near_expiry_count} ${t("batchesNearExpiry")}`}
-              tone={data.value_at_risk_mmk > 0 ? "warn" : undefined}
+              sub={attentionSub(
+                `${data.near_expiry_count} ${t("batchesNearExpiry")}`,
+                valueAtRisk,
+                t,
+              )}
+              tone={valueAtRisk ? "warn" : undefined}
             />
             <KpiCard
               label={t("lowStock")}
               value={String(data.low_stock_count)}
-              sub={t("mainVsReorder")}
-              tone={data.low_stock_count > 0 ? "warn" : undefined}
+              sub={attentionSub(t("mainVsReorder"), lowStockWarn, t)}
+              tone={lowStockWarn ? "warn" : undefined}
             />
             <KpiCard
               label={t("turnsEstimate")}
               value={data.turns_estimate.toFixed(2)}
-              sub={`${t("cogs")} ${data.cogs_days}d · ${formatMMK(data.cogs_period_mmk)}`}
+              sub={`${t("cogs")} ${data.cogs_days} ${t("daysUnit")} · ${formatMMK(data.cogs_period_mmk)}`}
             />
             <KpiCard
               label={t("slowMovers")}
               value={String(data.slow_mover_count)}
-              sub={`${t("noSaleIn")} ${data.slow_days}d`}
-              tone={data.slow_mover_count > 0 ? "warn" : undefined}
+              sub={attentionSub(
+                `${t("noSaleIn")} ${data.slow_days} ${t("daysUnit")}`,
+                slowWarn,
+                t,
+              )}
+              tone={slowWarn ? "warn" : undefined}
             />
           </div>
 
@@ -154,29 +249,32 @@ export function StockPage({ t }: Props) {
           </div>
 
           <div className="split-panels">
-            <section className="panel">
-              <h3>{t("expiryBuckets")}</h3>
+            <section className="panel" aria-labelledby={expiryTitleId}>
+              <h2 id={expiryTitleId}>{t("expiryBuckets")}</h2>
               {chartData.some((b) => b.value_mmk > 0 || b.batches > 0) ? (
-                <div className="chart-box" style={{ minHeight: 220 }}>
+                <div className="chart-box" style={{ minHeight: 220 }} role="img" aria-label={t("expiryBuckets")}>
                   <ResponsiveContainer width="100%" height={220}>
                     <BarChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                      <CartesianGrid stroke={GRID} vertical={false} />
-                      <XAxis dataKey="chartLabel" tick={{ fill: MUTED, fontSize: 12 }} />
+                      <CartesianGrid stroke={colors.grid} vertical={false} />
+                      <XAxis dataKey="chartLabel" tick={{ fill: colors.muted, fontSize: 14 }} />
                       <YAxis
-                        tick={{ fill: MUTED, fontSize: 11 }}
+                        tick={{ fill: colors.muted, fontSize: 11 }}
                         tickFormatter={(v: number) => formatMMK(v)}
                         width={72}
                       />
                       <Tooltip
-                        formatter={(value) => [
-                          `${formatMMK(Number(value ?? 0))} ${t("mmk")}`,
-                          t("value"),
-                        ]}
-                        labelFormatter={(label) => String(label)}
+                        content={(props) => (
+                          <ExpiryTooltip
+                            active={props.active}
+                            payload={props.payload}
+                            label={props.label}
+                            t={t}
+                          />
+                        )}
                       />
                       <Bar dataKey="value_mmk" radius={[4, 4, 0, 0]}>
                         {chartData.map((b) => (
-                          <Cell key={b.key} fill={BUCKET_COLORS[b.key] ?? ACCENT} />
+                          <Cell key={b.key} fill={bucketFill(b.key, colors)} />
                         ))}
                       </Bar>
                     </BarChart>
@@ -186,7 +284,7 @@ export function StockPage({ t }: Props) {
                 <p className="empty-state">{t("noNearExpiry")}</p>
               )}
               <div className="table-scroll">
-                <table className="data-table">
+                <table className="data-table" aria-labelledby={expiryTitleId}>
                   <thead>
                     <tr>
                       <th>{t("bucket")}</th>
@@ -198,7 +296,7 @@ export function StockPage({ t }: Props) {
                   <tbody>
                     {data.expiry_buckets.map((b) => (
                       <tr key={b.key}>
-                        <td>{b.key === "expired" ? t("expired") : b.label}</td>
+                        <td>{bucketLabel(b.key, b.label, t)}</td>
                         <td className="num">{b.batches}</td>
                         <td className="num">{formatMMK(b.qty)}</td>
                         <td className="num">{formatMMK(b.value_mmk)}</td>
@@ -209,11 +307,11 @@ export function StockPage({ t }: Props) {
               </div>
             </section>
 
-            <section className="panel">
-              <h3>{t("byLocation")}</h3>
+            <section className="panel" aria-labelledby={locationTitleId}>
+              <h2 id={locationTitleId}>{t("byLocation")}</h2>
               {data.by_location.length ? (
                 <div className="table-scroll">
-                  <table className="data-table">
+                  <table className="data-table" aria-labelledby={locationTitleId}>
                     <thead>
                       <tr>
                         <th>{t("location")}</th>
@@ -239,13 +337,13 @@ export function StockPage({ t }: Props) {
           </div>
 
           <div className="split-panels">
-            <section className="panel">
-              <h3>
+            <section className="panel" aria-labelledby={lowTitleId}>
+              <h2 id={lowTitleId}>
                 {t("lowStock")} ({data.low_stock_count})
-              </h3>
+              </h2>
               {data.low_stock.length ? (
                 <div className="table-scroll">
-                  <table className="data-table">
+                  <table className="data-table" aria-labelledby={lowTitleId}>
                     <thead>
                       <tr>
                         <th>{t("item")}</th>
@@ -273,13 +371,13 @@ export function StockPage({ t }: Props) {
               )}
             </section>
 
-            <section className="panel">
-              <h3>
+            <section className="panel" aria-labelledby={slowTitleId}>
+              <h2 id={slowTitleId}>
                 {t("slowMovers")} ({data.slow_mover_count})
-              </h3>
+              </h2>
               {data.slow_movers.length ? (
                 <div className="table-scroll">
-                  <table className="data-table">
+                  <table className="data-table" aria-labelledby={slowTitleId}>
                     <thead>
                       <tr>
                         <th>{t("item")}</th>
@@ -300,7 +398,7 @@ export function StockPage({ t }: Props) {
                             {row.last_sale_date
                               ? `${row.last_sale_date}${
                                   row.days_since_sale != null
-                                    ? ` (${row.days_since_sale}d)`
+                                    ? ` (${row.days_since_sale} ${t("daysUnit")})`
                                     : ""
                                 }`
                               : t("neverSold")}

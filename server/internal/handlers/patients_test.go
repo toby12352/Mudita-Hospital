@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -176,20 +177,6 @@ func TestPatientChartAPI(t *testing.T) {
 	}
 	opdPatientID := *bill.PatientID
 
-	w = doJSON(h, http.MethodDelete, "/api/patients/"+strconv.FormatInt(opdPatientID, 10), adminTok, "")
-	mustCode(t, w, http.StatusConflict)
-	var stillThere int
-	var stillLinked int64
-	if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM patients WHERE id = ?`, opdPatientID).Scan(&stillThere); err != nil {
-		t.Fatal(err)
-	}
-	if err := sqlDB.QueryRow(`SELECT patient_id FROM opd_bills WHERE id = ?`, bill.ID).Scan(&stillLinked); err != nil {
-		t.Fatal(err)
-	}
-	if stillThere != 1 || stillLinked != opdPatientID {
-		t.Fatalf("served chart detached: patients=%d bill.patient_id=%d", stillThere, stillLinked)
-	}
-
 	w = doJSON(opd, http.MethodPost, "/api/opd/bills", opdTok, `{
 		"patient_name":"U Mya","patient_phone":"099988877","patient_age_years":60,"patient_gender":"M",
 		"save_patient":true,"lines":[]
@@ -233,6 +220,84 @@ func TestPatientChartAPI(t *testing.T) {
 	}
 	if movements != 0 {
 		t.Fatalf("stock movements %d", movements)
+	}
+
+	w = doJSON(h, http.MethodDelete, "/api/patients/"+strconv.FormatInt(opdPatientID, 10), adminTok, "")
+	mustCode(t, w, http.StatusOK)
+	var billedGone int
+	if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM patients WHERE id = ?`, opdPatientID).Scan(&billedGone); err != nil {
+		t.Fatal(err)
+	}
+	if billedGone != 0 {
+		t.Fatalf("billed chart still present after delete")
+	}
+	var unassignedName string
+	var unassignedTotal int64
+	var unassignedPatient sql.NullInt64
+	if err := sqlDB.QueryRow(`
+		SELECT patient_name, total_mmk, patient_id FROM opd_bills WHERE id = ?
+	`, bill.ID).Scan(&unassignedName, &unassignedTotal, &unassignedPatient); err != nil {
+		t.Fatal(err)
+	}
+	if unassignedName != "U Mya" || unassignedTotal != 0 || unassignedPatient.Valid {
+		t.Fatalf("unassign name=%s total=%d patient=%v", unassignedName, unassignedTotal, unassignedPatient)
+	}
+	var bill2Patient sql.NullInt64
+	if err := sqlDB.QueryRow(`SELECT patient_id FROM opd_bills WHERE id = ?`, bill2.ID).Scan(&bill2Patient); err != nil {
+		t.Fatal(err)
+	}
+	if bill2Patient.Valid {
+		t.Fatalf("second bill still linked %v", bill2Patient)
+	}
+	if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM stock_movements`).Scan(&movements); err != nil {
+		t.Fatal(err)
+	}
+	if movements != 0 {
+		t.Fatalf("stock movements after delete %d", movements)
+	}
+
+	w = doJSON(h, http.MethodPost, "/api/patients", adminTok, `{"name":"U Reattach","phone":"099900011"}`)
+	mustCode(t, w, http.StatusCreated)
+	reattach := decodePatient(t, w)
+	w = doJSON(h, http.MethodPost, "/api/patients/"+strconv.FormatInt(reattach.ID, 10)+"/attach", adminTok,
+		`{"bill_no":"`+bill.BillNo+`"}`)
+	mustCode(t, w, http.StatusOK)
+	var attachedName string
+	var attachedTotal int64
+	var attachedPatient int64
+	if err := sqlDB.QueryRow(`
+		SELECT patient_name, total_mmk, patient_id FROM opd_bills WHERE id = ?
+	`, bill.ID).Scan(&attachedName, &attachedTotal, &attachedPatient); err != nil {
+		t.Fatal(err)
+	}
+	if attachedName != "U Mya" || attachedTotal != 0 || attachedPatient != reattach.ID {
+		t.Fatalf("reattach name=%s total=%d patient=%d want %d", attachedName, attachedTotal, attachedPatient, reattach.ID)
+	}
+
+	w = doJSON(h, http.MethodPost, "/api/patients", adminTok, `{"name":"Daw Stay","phone":"091122334"}`)
+	mustCode(t, w, http.StatusCreated)
+	stayChart := decodePatient(t, w)
+	if _, err := sqlDB.Exec(`
+		INSERT INTO ipd_admissions (admission_no, patient_id, status, notes)
+		VALUES ('IPD-TEST001', ?, 'open', '')
+	`, stayChart.ID); err != nil {
+		t.Fatalf("admit: %v", err)
+	}
+	w = doJSON(h, http.MethodDelete, "/api/patients/"+strconv.FormatInt(stayChart.ID, 10), adminTok, "")
+	mustCode(t, w, http.StatusConflict)
+	var stayErr map[string]string
+	if err := json.Unmarshal(w.Body.Bytes(), &stayErr); err != nil {
+		t.Fatalf("stay conflict json: %v", err)
+	}
+	if stayErr["error"] != "patient has an inpatient stay" {
+		t.Fatalf("stay conflict %q", stayErr["error"])
+	}
+	var stayPatient int64
+	if err := sqlDB.QueryRow(`SELECT patient_id FROM ipd_admissions WHERE admission_no = 'IPD-TEST001'`).Scan(&stayPatient); err != nil {
+		t.Fatal(err)
+	}
+	if stayPatient != stayChart.ID {
+		t.Fatalf("stay detached patient=%d", stayPatient)
 	}
 
 	// first was updated but never billed — admin may delete

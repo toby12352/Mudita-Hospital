@@ -25,6 +25,7 @@ type dayVoucher struct {
 	DecidedAt          *string `json:"decided_at,omitempty"`
 	DecidedByUserID    *int64  `json:"decided_by_user_id,omitempty"`
 	CanUnpay           bool    `json:"can_unpay"`
+	CanReopen          bool    `json:"can_reopen"`
 }
 
 type voucherOutcome struct {
@@ -110,11 +111,51 @@ func parseDayVoucherPath(path string) (admissionID int64, civilDate, action stri
 		return 0, "", "", false
 	}
 	switch parts[3] {
-	case "issue", "pay", "credit", "unpay":
+	case "issue", "pay", "credit", "unpay", "reopen":
 	default:
 		return 0, "", "", false
 	}
 	return id, parts[2], parts[3], true
+}
+
+// parseDayVoucherGetPath is GET /admissions/{id}/vouchers/{date} (no action).
+func parseDayVoucherGetPath(path string) (admissionID int64, civilDate string, ok bool) {
+	const prefix = "/admissions/"
+	if !strings.HasPrefix(path, prefix) {
+		return 0, "", false
+	}
+	parts := strings.Split(strings.TrimPrefix(path, prefix), "/")
+	if len(parts) != 3 || parts[1] != "vouchers" {
+		return 0, "", false
+	}
+	id, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil || id < 1 {
+		return 0, "", false
+	}
+	return id, parts[2], true
+}
+
+func (h *IPD) getDayVoucher(w http.ResponseWriter, r *http.Request, path string) {
+	id, date, ok := parseDayVoucherGetPath(path)
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return
+	}
+	date, dateOK := normalizeCivilDate(date)
+	if !dateOK {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid date"})
+		return
+	}
+	v, err := loadDayVoucher(h.DB, id, date)
+	if err == sql.ErrNoRows {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "voucher not found"})
+		return
+	}
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "voucher failed"})
+		return
+	}
+	h.writeDayVoucher(w, http.StatusOK, v)
 }
 
 func normalizeCivilDate(date string) (string, bool) {
@@ -145,14 +186,16 @@ func (h *IPD) dayVoucher(w http.ResponseWriter, r *http.Request, path string) {
 		h.creditDayVoucher(w, r, id, date)
 	case "unpay":
 		h.unpayDayVoucher(w, r, id, date)
+	case "reopen":
+		h.reopenDayVoucher(w, r, id, date)
 	default:
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 	}
 }
 
 func (h *IPD) issueDayVoucher(w http.ResponseWriter, r *http.Request, admissionID int64, civilDate string) {
-	if civilDate >= localToday() {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "this day is still open"})
+	if civilDate > localToday() {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "this day has not started"})
 		return
 	}
 	actor, auditActor := actorFromRequest(r)
@@ -256,9 +299,31 @@ func (h *IPD) unpayDayVoucher(w http.ResponseWriter, r *http.Request, admissionI
 	h.writeDayVoucher(w, http.StatusOK, out.Voucher)
 }
 
+// reopenDayVoucher removes an issued day sheet so staff can edit the day again.
+// It does not touch paid or carried vouchers and never deletes ledger cash.
+func (h *IPD) reopenDayVoucher(w http.ResponseWriter, r *http.Request, admissionID int64, civilDate string) {
+	_, auditActor := actorFromRequest(r)
+	out, ok := h.commitVoucher(w, func(tx *sql.Tx) (voucherOutcome, error) {
+		return reopenDayVoucherTx(tx, admissionID, civilDate)
+	})
+	if !ok {
+		return
+	}
+	id := out.Voucher.ID
+	audit.WriteAudit(h.DB, auditActor, "reopen", "ipd_day_voucher", &id, map[string]any{
+		"admission_id": admissionID,
+		"civil_date":   civilDate,
+		"closing_mmk":  out.Voucher.ClosingMMK,
+	})
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
 func (h *IPD) writeDayVoucher(w http.ResponseWriter, code int, v dayVoucher) {
 	if err := setVoucherCanUnpay(h.DB, &v); err != nil {
 		v.CanUnpay = false
+	}
+	if err := setVoucherCanReopen(h.DB, &v); err != nil {
+		v.CanReopen = false
 	}
 	writeJSON(w, code, v)
 }
@@ -306,6 +371,35 @@ func setVoucherCanUnpay(db sqlQuery, v *dayVoucher) error {
 		}
 	}
 	v.CanUnpay = true
+	return nil
+}
+
+// setVoucherCanReopen reports whether reopen would succeed: the voucher is
+// still issued, the stay is open, and no later day sheet exists.
+func setVoucherCanReopen(db sqlQuery, v *dayVoucher) error {
+	if v == nil || v.Status != "issued" {
+		if v != nil {
+			v.CanReopen = false
+		}
+		return nil
+	}
+	var status string
+	err := db.QueryRow(`SELECT status FROM ipd_admissions WHERE id = ?`, v.AdmissionID).Scan(&status)
+	if err != nil {
+		return err
+	}
+	if status != "open" {
+		v.CanReopen = false
+		return nil
+	}
+	var later int
+	if err := db.QueryRow(`
+		SELECT COUNT(1) FROM ipd_day_vouchers
+		WHERE admission_id = ? AND civil_date > ?
+	`, v.AdmissionID, v.CivilDate).Scan(&later); err != nil {
+		return err
+	}
+	v.CanReopen = later == 0
 	return nil
 }
 
@@ -497,6 +591,44 @@ func creditDayVoucherTx(tx *sql.Tx, admissionID int64, civilDate string, actor a
 	v, err = loadDayVoucher(tx, admissionID, civilDate)
 	if err != nil {
 		return voucherOutcome{}, err
+	}
+	return voucherOutcome{Voucher: v, Changed: true}, nil
+}
+
+func reopenDayVoucherTx(tx *sql.Tx, admissionID int64, civilDate string) (voucherOutcome, error) {
+	if err := requireOpenAdmission(tx, admissionID); err != nil {
+		return voucherOutcome{}, err
+	}
+	v, err := loadDayVoucher(tx, admissionID, civilDate)
+	if err == sql.ErrNoRows {
+		return voucherOutcome{}, voucherErr(http.StatusNotFound, "voucher not found")
+	}
+	if err != nil {
+		return voucherOutcome{}, err
+	}
+	if v.Status != "issued" {
+		return voucherOutcome{}, voucherErr(http.StatusConflict, "voucher is not issued")
+	}
+	var later int
+	if err := tx.QueryRow(`
+		SELECT COUNT(1) FROM ipd_day_vouchers
+		WHERE admission_id = ? AND civil_date > ?
+	`, admissionID, civilDate).Scan(&later); err != nil {
+		return voucherOutcome{}, err
+	}
+	if later > 0 {
+		return voucherOutcome{}, voucherErr(http.StatusConflict, "a later day voucher exists")
+	}
+	res, err := tx.Exec(`
+		DELETE FROM ipd_day_vouchers
+		WHERE id = ? AND admission_id = ? AND status = 'issued'
+	`, v.ID, admissionID)
+	if err != nil {
+		return voucherOutcome{}, err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return voucherOutcome{}, voucherErr(http.StatusConflict, "voucher is not issued")
 	}
 	return voucherOutcome{Voucher: v, Changed: true}, nil
 }

@@ -1002,6 +1002,7 @@ export type PharmacyBill = {
   printed_at?: string | null;
   admission_id?: number | null;
   collected_cash?: number;
+  payment_type?: "cash" | "online" | string;
   paid_at?: string | null;
   void_reason?: string;
   created_at: string;
@@ -1035,7 +1036,8 @@ export async function getPharmacyItem(id: number): Promise<PharmacyItem> {
 }
 
 export type PharmacyItemWrite = {
-  code: string;
+  /** Ignored on create — server assigns PREFIX-NNNN from smallest unit. */
+  code?: string;
   name: string;
   dosage?: string;
   category?: string;
@@ -1059,6 +1061,15 @@ export type PharmacyItemWrite = {
   expiry_date?: string;
   active?: boolean;
 };
+
+/** Preview next catalog code for a smallest unit (does not allocate). */
+export async function peekNextItemCode(unit: string): Promise<string> {
+  const u = unit.trim() || "Tablet";
+  const res = await apiFetch<{ code: string }>(
+    `/api/pharmacy/items/next-code?unit=${encodeURIComponent(u)}`,
+  );
+  return res.code;
+}
 
 export async function createPharmacyItem(body: PharmacyItemWrite): Promise<PharmacyItem> {
   return apiFetch<PharmacyItem>("/api/pharmacy/items", {
@@ -1194,6 +1205,7 @@ export async function createPharmacyBill(body: {
   discount_unit?: "percent" | "mmk";
   /** Admin-only on create. Yangon wall time as `YYYY-MM-DDTHH:mm`. */
   billed_at?: string;
+  payment_type?: "cash" | "online";
 }): Promise<PharmacyBill> {
   return apiFetch<PharmacyBill>("/api/pharmacy/bills", {
     method: "POST",
@@ -1213,6 +1225,9 @@ export async function updatePharmacyBill(
     save_patient?: boolean;
     patient_id?: number | null;
     kind?: PharmacyBillKind;
+    discount_value?: number;
+    discount_unit?: "percent" | "mmk";
+    payment_type?: "cash" | "online";
   },
 ): Promise<PharmacyBill> {
   return apiFetch<PharmacyBill>(`/api/pharmacy/bills/${id}`, {
@@ -1223,13 +1238,25 @@ export async function updatePharmacyBill(
 
 export async function payPharmacyBill(
   id: number,
-  charge?: { admission_id?: number; source_bill_id?: number },
+  charge?: {
+    admission_id?: number;
+    source_bill_id?: number;
+    payment_type?: "cash" | "online";
+  },
 ): Promise<PharmacyBill> {
-  const body =
-    charge != null && (charge.admission_id != null || charge.source_bill_id != null)
-      ? JSON.stringify(charge)
-      : "{}";
-  return apiFetch<PharmacyBill>(`/api/pharmacy/bills/${id}/pay`, { method: "POST", body });
+  const payload: {
+    payment_type: string;
+    admission_id?: number;
+    source_bill_id?: number;
+  } = {
+    payment_type: charge?.payment_type ?? "cash",
+  };
+  if (charge?.admission_id != null) payload.admission_id = charge.admission_id;
+  if (charge?.source_bill_id != null) payload.source_bill_id = charge.source_bill_id;
+  return apiFetch<PharmacyBill>(`/api/pharmacy/bills/${id}/pay`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function markPharmacyBillPrinted(id: number): Promise<PharmacyBill> {

@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import {
   bulkUpdateDoctors,
   bulkUpdateItems,
@@ -21,6 +21,14 @@ type Props = {
 };
 
 type Tab = "items" | "services" | "doctors";
+
+function focusableIn(root: ParentNode): HTMLElement[] {
+  return Array.from(
+    root.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    ),
+  );
+}
 
 export function MasterDataPage({ t }: Props) {
   const [tab, setTab] = useState<Tab>("items");
@@ -53,6 +61,11 @@ export function MasterDataPage({ t }: Props) {
   const [importResult, setImportResult] = useState<CsvImportResult | null>(null);
   const [importReason, setImportReason] = useState("");
   const [importConfirm, setImportConfirm] = useState("");
+
+  const tabRef = useRef(tab);
+  tabRef.current = tab;
+  const bulkDialogRef = useRef<HTMLDivElement>(null);
+  const bulkFirstRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -88,12 +101,64 @@ export function MasterDataPage({ t }: Props) {
     setOkMsg(null);
   }, [tab]);
 
+  useEffect(() => {
+    if (!bulkOpen) return;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const frame = window.requestAnimationFrame(() => {
+      const field = bulkFirstRef.current;
+      if (field) field.focus();
+      else bulkDialogRef.current?.focus();
+    });
+
+    function onKey(e: KeyboardEvent) {
+      if (document.querySelector(".print-preview-overlay")) return;
+      const root = bulkDialogRef.current;
+      if (!root) return;
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        setBulkOpen(false);
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const focusable = focusableIn(root);
+      if (focusable.length === 0) return;
+      const active = document.activeElement;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const inside = active instanceof Node && root.contains(active) && active !== root;
+      if (e.shiftKey) {
+        if (!inside || active === first) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else if (!inside || active === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+    document.addEventListener("keydown", onKey, true);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      document.removeEventListener("keydown", onKey, true);
+      const prev = opener;
+      const active = document.activeElement;
+      const dialog = bulkDialogRef.current;
+      const stillInside = dialog != null && active instanceof Node && dialog.contains(active);
+      const nothingFocused =
+        active == null || active === document.body || active === document.documentElement;
+      if (!(stillInside || nothingFocused) || !prev || !document.contains(prev)) return;
+      if (prev instanceof HTMLButtonElement && prev.disabled) {
+        document.getElementById(`master-tab-${tabRef.current}`)?.focus();
+        return;
+      }
+      prev.focus();
+    };
+  }, [bulkOpen]);
+
   const rowsCount = tab === "items" ? items.length : tab === "services" ? services.length : doctors.length;
-  const allIds = useMemo(() => {
-    if (tab === "items") return items.map((r) => r.id);
-    if (tab === "services") return services.map((r) => r.id);
-    return doctors.map((r) => r.id);
-  }, [tab, items, services, doctors]);
+  const allIds =
+    tab === "items" ? items.map((r) => r.id) : tab === "services" ? services.map((r) => r.id) : doctors.map((r) => r.id);
 
   function toggle(id: number) {
     setSelected((prev) => {
@@ -237,8 +302,36 @@ export function MasterDataPage({ t }: Props) {
     setEpoch((n) => n + 1);
   }
 
+  const tabs: { id: Tab; label: string }[] = [
+    { id: "items", label: t("items") },
+    { id: "services", label: t("services") },
+    { id: "doctors", label: t("doctors") },
+  ];
+  const tabLabel = tabs.find((item) => item.id === tab)?.label ?? t("items");
+
+  function selectHeading() {
+    return (
+      <th>
+        <span className="sr-only">{t("select")}</span>
+      </th>
+    );
+  }
+
+  function selectCell(id: number, name: string) {
+    return (
+      <td>
+        <input
+          type="checkbox"
+          aria-label={name ? `${t("select")} ${name}` : t("select")}
+          checked={selected.has(id)}
+          onChange={() => toggle(id)}
+        />
+      </td>
+    );
+  }
+
   return (
-    <div className="page page-frame">
+    <div className="page page-frame master-page">
       <div className="page-header">
         <p className="lede muted">{t("masterLede")}</p>
         <div className="page-actions">
@@ -256,238 +349,249 @@ export function MasterDataPage({ t }: Props) {
         </div>
       </div>
 
-      <div className="range-toggle" role="tablist">
-        {(["items", "services", "doctors"] as Tab[]).map((id) => (
+      <div className="range-toggle" role="tablist" aria-label={t("masterData")}>
+        {tabs.map((item) => (
           <button
-            key={id}
+            key={item.id}
             type="button"
-            className={`btn ghost${tab === id ? " active" : ""}`}
-            onClick={() => setTab(id)}
+            id={`master-tab-${item.id}`}
+            role="tab"
+            className={`btn ghost${tab === item.id ? " active" : ""}`}
+            aria-selected={tab === item.id}
+            aria-controls={`master-panel-${item.id}`}
+            onClick={() => setTab(item.id)}
           >
-            {id === "items" ? t("items") : id === "services" ? t("services") : t("doctors")}
+            {item.label}
           </button>
         ))}
       </div>
 
-      <form className="inline-search" onSubmit={runSearch}>
-        <input
-          className="input"
-          type="search"
-          placeholder={t("search")}
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-        />
-        <button type="submit" className="btn ghost">
-          {t("refresh")}
-        </button>
-      </form>
-
-      {error ? <p className="form-error">{error}</p> : null}
-      {okMsg ? <p className="form-ok">{okMsg}</p> : null}
-      {loading ? <p className="muted">{t("loading")}</p> : null}
-
-      <div className="panel">
-        <div className="panel-subhead">
-          <span>
-            {rowsCount} {t("rows")} · {selected.size} {t("selected")}
-          </span>
-          <label className="check-inline">
-            <input
-              type="checkbox"
-              checked={allIds.length > 0 && selected.size === allIds.length}
-              onChange={toggleAll}
-            />
-            {t("selectAll")}
-          </label>
-        </div>
-
-        {tab === "items" ? (
-          <div className="table-scroll">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th />
-                  <th>{t("code")}</th>
-                  <th>{t("name")}</th>
-                  <th className="num">{t("buyPrice")}</th>
-                  <th className="num">{t("sellPrice")}</th>
-                  <th className="num">{t("reorder")}</th>
-                  <th className="num">{t("onHand")}</th>
-                  <th>{t("active")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((row) => (
-                  <tr key={row.id} className={row.low_stock ? "row-warn" : undefined}>
-                    <td>
-                      <input
-                        type="checkbox"
-                        checked={selected.has(row.id)}
-                        onChange={() => toggle(row.id)}
-                      />
-                    </td>
-                    <td>
-                      <code>{row.code}</code>
-                    </td>
-                    <td>{row.name}</td>
-                    <td className="num">{formatMMK(row.buy_price_mmk)}</td>
-                    <td className="num">{formatMMK(row.sell_price_mmk)}</td>
-                    <td className="num">{row.reorder_level}</td>
-                    <td className="num">{row.stock_main}</td>
-                    <td>{row.active ? t("yes") : t("no")}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : null}
-
-        {tab === "services" ? (
-          <div className="table-scroll">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th />
-                  <th>{t("code")}</th>
-                  <th>{t("name")}</th>
-                  <th className="num">{t("price")}</th>
-                  <th>{t("active")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {services.map((row) => (
-                  <tr key={row.id}>
-                    <td>
-                      <input
-                        type="checkbox"
-                        checked={selected.has(row.id)}
-                        onChange={() => toggle(row.id)}
-                      />
-                    </td>
-                    <td>
-                      <code>{row.code}</code>
-                    </td>
-                    <td>{row.name}</td>
-                    <td className="num">{formatMMK(row.price_mmk)}</td>
-                    <td>{row.active ? t("yes") : t("no")}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : null}
-
-        {tab === "doctors" ? (
-          <div className="table-scroll">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th />
-                  <th className="num">ID</th>
-                  <th>{t("name")}</th>
-                  <th>{t("specialty")}</th>
-                  <th className="num">{t("consultFee")}</th>
-                  <th className="num">{t("otFee")}</th>
-                  <th>{t("active")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {doctors.map((row) => (
-                  <tr key={row.id}>
-                    <td>
-                      <input
-                        type="checkbox"
-                        checked={selected.has(row.id)}
-                        onChange={() => toggle(row.id)}
-                      />
-                    </td>
-                    <td className="num">{row.id}</td>
-                    <td>{row.name}</td>
-                    <td>{row.specialty || "—"}</td>
-                    <td className="num">{formatMMK(row.fees.consultation_mmk)}</td>
-                    <td className="num">{formatMMK(row.fees.ot_mmk)}</td>
-                    <td>{row.active ? t("yes") : t("no")}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : null}
-
-        {!loading && rowsCount === 0 ? <p className="empty-state">{t("noRows")}</p> : null}
-      </div>
-
-      <div className="panel">
-        <h3>{t("csvImport")}</h3>
-        <p className="muted tiny">{t("csvImportHint")}</p>
-        <textarea
-          className="input textarea"
-          rows={5}
-          value={importText}
-          onChange={(e) => setImportText(e.target.value)}
-          placeholder={t("pasteCsv")}
-        />
-        <div className="page-actions">
-          <button type="button" className="btn ghost" disabled={busy} onClick={() => void onDryRun()}>
-            {t("dryRun")}
+      <div id={`master-panel-${tab}`} role="tabpanel" aria-labelledby={`master-tab-${tab}`}>
+        <form className="inline-search" onSubmit={runSearch}>
+          <label htmlFor="master-search">{t("search")}</label>
+          <input
+            id="master-search"
+            className="input"
+            type="search"
+            placeholder={t("search")}
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
+          <button type="submit" className="btn ghost">
+            {t("refresh")}
           </button>
-        </div>
-        {importResult ? (
-          <div className="import-result">
-            <p className="muted">
-              {t("validRows")}: {importResult.valid}
-              {importResult.would_ok ? ` · ${t("readyToApply")}` : ""}
-              {importResult.applied ? ` · ${t("importApplied")} ${importResult.applied}` : ""}
-            </p>
-            {importResult.errors?.length ? (
-              <ul className="error-list">
-                {importResult.errors.slice(0, 20).map((e, i) => (
-                  <li key={`${e.line}-${i}`}>
-                    {importLineMessage(e.line, e.message)}
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-            {importResult.would_ok && importResult.dry_run ? (
-              <div className="bulk-fields">
-                <label>
-                  {t("reason")}
-                  <input
-                    className="input"
-                    value={importReason}
-                    onChange={(e) => setImportReason(e.target.value)}
-                  />
-                </label>
-                <label>
-                  {t("typeImport")}
-                  <input
-                    className="input"
-                    value={importConfirm}
-                    onChange={(e) => setImportConfirm(e.target.value)}
-                    placeholder="IMPORT"
-                    autoComplete="off"
-                  />
-                </label>
-                <button
-                  type="button"
-                  className="btn danger"
-                  disabled={busy}
-                  onClick={() => void onApplyImport()}
-                >
-                  {busy ? t("busy") : t("applyImport")}
-                </button>
-              </div>
-            ) : null}
-          </div>
+        </form>
+
+        {error && !bulkOpen ? (
+          <p className="form-error" role="alert">
+            {error}
+          </p>
         ) : null}
+        {okMsg ? (
+          <p className="form-ok" role="status">
+            {okMsg}
+          </p>
+        ) : null}
+        {loading ? (
+          <p className="muted" aria-live="polite">
+            {t("loading")}
+          </p>
+        ) : null}
+
+        <section className="panel" aria-labelledby="master-list-title">
+          <h2 id="master-list-title">{tabLabel}</h2>
+          <div className="panel-subhead">
+            <span>
+              {rowsCount} {t("rows")} · {selected.size} {t("selected")}
+            </span>
+            <label className="check-inline">
+              <input
+                type="checkbox"
+                checked={allIds.length > 0 && selected.size === allIds.length}
+                onChange={toggleAll}
+              />
+              {t("selectAll")}
+            </label>
+          </div>
+
+          {tab === "items" ? (
+            <div className="table-scroll">
+              <table className="data-table" aria-labelledby="master-list-title">
+                <thead>
+                  <tr>
+                    {selectHeading()}
+                    <th>{t("code")}</th>
+                    <th>{t("name")}</th>
+                    <th className="num">{t("buyPrice")}</th>
+                    <th className="num">{t("sellPrice")}</th>
+                    <th className="num">{t("reorder")}</th>
+                    <th className="num">{t("onHand")}</th>
+                    <th>{t("active")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((row) => (
+                    <tr key={row.id} className={row.low_stock ? "row-warn" : undefined}>
+                      {selectCell(row.id, row.name)}
+                      <td>
+                        <code>{row.code}</code>
+                      </td>
+                      <td>
+                        {row.name}
+                        {row.low_stock ? ` · ${t("lowStock")}` : ""}
+                      </td>
+                      <td className="num">{formatMMK(row.buy_price_mmk)}</td>
+                      <td className="num">{formatMMK(row.sell_price_mmk)}</td>
+                      <td className="num">{row.reorder_level}</td>
+                      <td className="num">{row.stock_main}</td>
+                      <td>{row.active ? t("yes") : t("no")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+
+          {tab === "services" ? (
+            <div className="table-scroll">
+              <table className="data-table" aria-labelledby="master-list-title">
+                <thead>
+                  <tr>
+                    {selectHeading()}
+                    <th>{t("code")}</th>
+                    <th>{t("name")}</th>
+                    <th className="num">{t("price")}</th>
+                    <th>{t("active")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {services.map((row) => (
+                    <tr key={row.id}>
+                      {selectCell(row.id, row.name)}
+                      <td>
+                        <code>{row.code}</code>
+                      </td>
+                      <td>{row.name}</td>
+                      <td className="num">{formatMMK(row.price_mmk)}</td>
+                      <td>{row.active ? t("yes") : t("no")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+
+          {tab === "doctors" ? (
+            <div className="table-scroll">
+              <table className="data-table" aria-labelledby="master-list-title">
+                <thead>
+                  <tr>
+                    {selectHeading()}
+                    <th className="num">{t("idLabel")}</th>
+                    <th>{t("name")}</th>
+                    <th>{t("specialty")}</th>
+                    <th className="num">{t("consultFee")}</th>
+                    <th className="num">{t("otFee")}</th>
+                    <th>{t("active")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {doctors.map((row) => (
+                    <tr key={row.id}>
+                      {selectCell(row.id, row.name)}
+                      <td className="num">{row.id}</td>
+                      <td>{row.name}</td>
+                      <td>{row.specialty || "—"}</td>
+                      <td className="num">{formatMMK(row.fees.consultation_mmk)}</td>
+                      <td className="num">{formatMMK(row.fees.ot_mmk)}</td>
+                      <td>{row.active ? t("yes") : t("no")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+
+          {!loading && rowsCount === 0 ? <p className="empty-state">{t("noRows")}</p> : null}
+        </section>
+
+        <section className="panel" aria-labelledby="master-csv-title">
+          <h2 id="master-csv-title">{t("csvImport")}</h2>
+          <p className="muted tiny">{t("csvImportHint")}</p>
+          <label className="csv-paste" htmlFor="master-csv">
+            {t("csvPasteLabel")}
+            <textarea
+              id="master-csv"
+              className="input textarea"
+              rows={5}
+              value={importText}
+              onChange={(e) => setImportText(e.target.value)}
+              placeholder={t("pasteCsv")}
+            />
+          </label>
+          <div className="page-actions">
+            <button type="button" className="btn ghost" disabled={busy} onClick={() => void onDryRun()}>
+              {t("dryRun")}
+            </button>
+          </div>
+          {importResult ? (
+            <div className="import-result">
+              <p className="muted">
+                {t("validRows")}: {importResult.valid}
+                {importResult.would_ok ? ` · ${t("readyToApply")}` : ""}
+                {importResult.applied ? ` · ${t("importApplied")} ${importResult.applied}` : ""}
+              </p>
+              {importResult.errors?.length ? (
+                <ul className="error-list" role="alert">
+                  {importResult.errors.slice(0, 20).map((e, i) => (
+                    <li key={`${e.line}-${i}`}>{importLineMessage(e.line, e.message)}</li>
+                  ))}
+                </ul>
+              ) : null}
+              {importResult.would_ok && importResult.dry_run ? (
+                <div className="bulk-fields">
+                  <label>
+                    {t("reason")}
+                    <input
+                      className="input"
+                      value={importReason}
+                      onChange={(e) => setImportReason(e.target.value)}
+                    />
+                  </label>
+                  <label>
+                    {t("typeImport")}
+                    <input
+                      className="input"
+                      value={importConfirm}
+                      onChange={(e) => setImportConfirm(e.target.value)}
+                      placeholder="IMPORT"
+                      autoComplete="off"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="btn danger"
+                    disabled={busy}
+                    onClick={() => void onApplyImport()}
+                  >
+                    {busy ? t("busy") : t("applyImport")}
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </section>
       </div>
 
       {bulkOpen ? (
         <div className="modal-backdrop" role="presentation" onClick={() => setBulkOpen(false)}>
           <div
+            ref={bulkDialogRef}
             className="modal panel"
             role="dialog"
+            aria-modal="true"
             aria-labelledby="bulk-title"
+            tabIndex={-1}
             onClick={(e) => e.stopPropagation()}
           >
             <h3 id="bulk-title">
@@ -495,11 +599,23 @@ export function MasterDataPage({ t }: Props) {
             </h3>
             <p className="muted tiny">{t("bulkWarn")}</p>
             <form className="bulk-fields" onSubmit={(e) => void onBulk(e)}>
+              {error ? (
+                <p className="form-error" role="alert">
+                  {error}
+                </p>
+              ) : null}
               {tab === "items" ? (
                 <>
                   <label>
                     {t("sellPrice")} ({t("mmk")})
-                    <input className="input" type="number" min={0} value={sell} onChange={(e) => setSell(e.target.value)} />
+                    <input
+                      ref={bulkFirstRef}
+                      className="input"
+                      type="number"
+                      min={0}
+                      value={sell}
+                      onChange={(e) => setSell(e.target.value)}
+                    />
                   </label>
                   <label>
                     {t("buyPrice")} ({t("mmk")})
@@ -521,6 +637,7 @@ export function MasterDataPage({ t }: Props) {
                 <label>
                   {t("price")} ({t("mmk")})
                   <input
+                    ref={bulkFirstRef}
                     className="input"
                     type="number"
                     min={0}
@@ -535,6 +652,7 @@ export function MasterDataPage({ t }: Props) {
                   <label>
                     {t("consultFee")} ({t("mmk")})
                     <input
+                      ref={bulkFirstRef}
                       className="input"
                       type="number"
                       min={0}

@@ -67,6 +67,7 @@ type pharmacyBill struct {
 	PrintedAt       *string            `json:"printed_at,omitempty"`
 	AdmissionID     *int64             `json:"admission_id,omitempty"`
 	CollectedCash   int                `json:"collected_cash"`
+	PaymentType     string             `json:"payment_type"`
 	PaidAt          *string            `json:"paid_at,omitempty"`
 	PaidByUserID    *int64             `json:"paid_by_user_id,omitempty"`
 	VoidedAt        *string            `json:"voided_at,omitempty"`
@@ -94,6 +95,7 @@ type pharmacyBillWriteRequest struct {
 	DiscountUnit  string `json:"discount_unit"`
 	PatientID     *int64 `json:"patient_id,omitempty"`
 	BilledAt      string `json:"billed_at,omitempty"`
+	PaymentType   string `json:"payment_type"`
 }
 
 func isPharmacyReturnBillNo(billNo string) bool {
@@ -112,7 +114,7 @@ func (h *Pharmacy) listPharmacyBills(w http.ResponseWriter, r *http.Request) {
 		SELECT id, bill_no, patient_id, patient_name, patient_phone, patient_age_years, patient_gender,
 		       description, status, total_mmk, paid_at, paid_by_user_id, voided_at, voided_by_user_id,
 		       void_reason, created_by_user_id, created_at, updated_at,
-		       discount_value, discount_unit, discount_mmk, printed_at, admission_id, collected_cash, billed_at
+		       discount_value, discount_unit, discount_mmk, printed_at, admission_id, collected_cash, payment_type, billed_at
 		FROM pharmacy_bills
 	`
 	args := make([]any, 0)
@@ -209,8 +211,9 @@ func (h *Pharmacy) createPharmacyBill(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "kind must be sale, return, or transfer"})
 		return
 	}
-	if req.PatientName == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "patient_name required"})
+	paymentType, err := normalizePaymentType(req.PaymentType)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 	override, status, errMsg := parseAdminBilledAt(user.Role, req.BilledAt)
@@ -223,8 +226,19 @@ func (h *Pharmacy) createPharmacyBill(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": errMsg})
 		return
 	}
-	if len(lines) == 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "at least one item line required"})
+	// Transfer always fills patient_name "OT"; require some other desk content.
+	nameForEmpty := req.PatientName
+	if kind == "transfer" {
+		nameForEmpty = ""
+	}
+	if !draftBillHasContent(
+		[]string{nameForEmpty, req.PatientPhone, req.PatientGender, req.Description},
+		len(lines),
+		req.DiscountValue,
+		ageSet(req.PatientAgeYears),
+		req.PatientID != nil && *req.PatientID > 0,
+	) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bill is empty"})
 		return
 	}
 	discountValue, discountUnit, discountMMK, net, errMsg := pharmacyDiscount(kind, total, req.DiscountValue, req.DiscountUnit)
@@ -265,21 +279,21 @@ func (h *Pharmacy) createPharmacyBill(w http.ResponseWriter, r *http.Request) {
 			INSERT INTO pharmacy_bills (
 				bill_no, patient_id, patient_name, patient_phone, patient_age_years, patient_gender,
 				description, status, total_mmk, created_by_user_id,
-				discount_value, discount_unit, discount_mmk, billed_at, created_at, updated_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?)
+				discount_value, discount_unit, discount_mmk, payment_type, billed_at, created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`, billNo, patientID, req.PatientName, strings.TrimSpace(req.PatientPhone), req.PatientAgeYears,
 			strings.TrimSpace(req.PatientGender), strings.TrimSpace(req.Description), net, uid,
-			discountValue, discountUnit, discountMMK, override.Yangon, override.UTC, override.UTC)
+			discountValue, discountUnit, discountMMK, paymentType, override.Yangon, override.UTC, override.UTC)
 	} else {
 		res, err = tx.Exec(`
 			INSERT INTO pharmacy_bills (
 				bill_no, patient_id, patient_name, patient_phone, patient_age_years, patient_gender,
 				description, status, total_mmk, created_by_user_id,
-				discount_value, discount_unit, discount_mmk
-			) VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?)
+				discount_value, discount_unit, discount_mmk, payment_type
+			) VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?)
 		`, billNo, patientID, req.PatientName, strings.TrimSpace(req.PatientPhone), req.PatientAgeYears,
 			strings.TrimSpace(req.PatientGender), strings.TrimSpace(req.Description), net, uid,
-			discountValue, discountUnit, discountMMK)
+			discountValue, discountUnit, discountMMK, paymentType)
 	}
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "create failed"})
@@ -343,13 +357,14 @@ func (h *Pharmacy) updatePharmacyBill(w http.ResponseWriter, r *http.Request, pa
 		return
 	}
 	req.PatientName = strings.TrimSpace(req.PatientName)
+	paymentType, err := normalizePaymentType(req.PaymentType)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
 	lines, total, errMsg := normalizePharmacyBillLines(h.DB, req.Lines)
 	if errMsg != "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": errMsg})
-		return
-	}
-	if len(lines) == 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "at least one item line required"})
 		return
 	}
 
@@ -380,15 +395,26 @@ func (h *Pharmacy) updatePharmacyBill(w http.ResponseWriter, r *http.Request, pa
 		}
 		req.SavePatient = false
 		req.PatientID = nil
-	} else if req.PatientName == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "patient_name required"})
-		return
 	}
 	kind := "sale"
 	if isPharmacyReturnBillNo(billNo) {
 		kind = "return"
 	} else if isPharmacyTransferBillNo(billNo) {
 		kind = "transfer"
+	}
+	nameForEmpty := req.PatientName
+	if kind == "transfer" {
+		nameForEmpty = ""
+	}
+	if !draftBillHasContent(
+		[]string{nameForEmpty, req.PatientPhone, req.PatientGender, req.Description},
+		len(lines),
+		req.DiscountValue,
+		ageSet(req.PatientAgeYears),
+		req.PatientID != nil && *req.PatientID > 0,
+	) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bill is empty"})
+		return
 	}
 	discountValue, discountUnit, discountMMK, net, errMsg := pharmacyDiscount(kind, total, req.DiscountValue, req.DiscountUnit)
 	if errMsg != "" {
@@ -411,12 +437,12 @@ func (h *Pharmacy) updatePharmacyBill(w http.ResponseWriter, r *http.Request, pa
 	if _, err := tx.Exec(`
 		UPDATE pharmacy_bills SET patient_id = ?, patient_name = ?, patient_phone = ?,
 			patient_age_years = ?, patient_gender = ?, description = ?, total_mmk = ?,
-			discount_value = ?, discount_unit = ?, discount_mmk = ?,
+			discount_value = ?, discount_unit = ?, discount_mmk = ?, payment_type = ?,
 			updated_at = datetime('now')
 		WHERE id = ?
 	`, patientID, req.PatientName, strings.TrimSpace(req.PatientPhone), req.PatientAgeYears,
 		strings.TrimSpace(req.PatientGender), strings.TrimSpace(req.Description), net,
-		discountValue, discountUnit, discountMMK, id); err != nil {
+		discountValue, discountUnit, discountMMK, paymentType, id); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "update failed"})
 		return
 	}
@@ -517,10 +543,10 @@ func (h *Pharmacy) payPharmacyBill(w http.ResponseWriter, r *http.Request, path 
 	}
 	defer tx.Rollback()
 
-	var status, billNo string
+	var status, billNo, patientName string
 	var patientID sql.NullInt64
 	var total int64
-	err = tx.QueryRow(`SELECT status, bill_no, patient_id, total_mmk FROM pharmacy_bills WHERE id = ?`, id).Scan(&status, &billNo, &patientID, &total)
+	err = tx.QueryRow(`SELECT status, bill_no, patient_id, patient_name, total_mmk FROM pharmacy_bills WHERE id = ?`, id).Scan(&status, &billNo, &patientID, &patientName, &total)
 	if err == sql.ErrNoRows {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		return
@@ -535,6 +561,10 @@ func (h *Pharmacy) payPharmacyBill(w http.ResponseWriter, r *http.Request, path 
 	}
 	if status != "draft" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "only draft bills can be paid"})
+		return
+	}
+	if strings.TrimSpace(patientName) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "patient_name required"})
 		return
 	}
 	isReturn := isPharmacyReturnBillNo(billNo)
@@ -573,7 +603,7 @@ func (h *Pharmacy) payPharmacyBill(w http.ResponseWriter, r *http.Request, path 
 		}
 	}
 
-	n, err := execPayDraft(tx, "pharmacy_bills", id, uid, charge.AdmissionID)
+	n, err := execPayDraft(tx, "pharmacy_bills", id, uid, charge.AdmissionID, body.PaymentType)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "pay failed"})
 		return
@@ -601,7 +631,7 @@ func (h *Pharmacy) payPharmacyBill(w http.ResponseWriter, r *http.Request, path 
 	if isReturn {
 		payAction = "return"
 	}
-	detail := map[string]any{"method": "cash", "bill_no": billNo}
+	detail := map[string]any{"method": body.PaymentType, "bill_no": billNo}
 	if charge.AdmissionID != nil {
 		detail["method"] = "ipd"
 		detail["admission_id"] = *charge.AdmissionID
@@ -669,7 +699,7 @@ func (h *Pharmacy) transferPharmacyBill(w http.ResponseWriter, r *http.Request, 
 		}
 	}
 
-	n, err := execPayDraft(tx, "pharmacy_bills", id, uid, nil)
+	n, err := execPayDraft(tx, "pharmacy_bills", id, uid, nil, "cash")
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "transfer failed"})
 		return
@@ -1224,7 +1254,7 @@ func loadPharmacyBill(db *sql.DB, id int64) (pharmacyBill, error) {
 		SELECT id, bill_no, patient_id, patient_name, patient_phone, patient_age_years, patient_gender,
 		       description, status, total_mmk, paid_at, paid_by_user_id, voided_at, voided_by_user_id,
 		       void_reason, created_by_user_id, created_at, updated_at,
-		       discount_value, discount_unit, discount_mmk, printed_at, admission_id, collected_cash, billed_at
+		       discount_value, discount_unit, discount_mmk, printed_at, admission_id, collected_cash, payment_type, billed_at
 		FROM pharmacy_bills WHERE id = ?
 	`, id)
 	bill, err := scanPharmacyBill(row)
@@ -1252,10 +1282,13 @@ func scanPharmacyBill(s scanner) (pharmacyBill, error) {
 		&b.ID, &b.BillNo, &patientID, &b.PatientName, &b.PatientPhone, &age, &b.PatientGender,
 		&b.Description, &b.Status, &b.TotalMMK, &paidAt, &paidBy, &voidedAt, &voidedBy,
 		&b.VoidReason, &createdBy, &b.CreatedAt, &b.UpdatedAt,
-		&b.DiscountValue, &b.DiscountUnit, &b.DiscountMMK, &printedAt, &admissionID, &b.CollectedCash, &billedAt,
+		&b.DiscountValue, &b.DiscountUnit, &b.DiscountMMK, &printedAt, &admissionID, &b.CollectedCash, &b.PaymentType, &billedAt,
 	)
 	if err != nil {
 		return b, err
+	}
+	if b.PaymentType == "" {
+		b.PaymentType = "cash"
 	}
 	if patientID.Valid {
 		v := patientID.Int64

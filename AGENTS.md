@@ -12,6 +12,7 @@ Engineering standards live in **[docs/standards/README.md](docs/standards/README
 | Naming / contracts | everywhere | [CONVENTIONS.md](docs/standards/CONVENTIONS.md) |
 | New domain checklist | — | [ADDING_A_FEATURE.md](docs/standards/ADDING_A_FEATURE.md) |
 | Live upgrades / migrations | `server/internal/db/migrate.go` | [UPGRADES.md](docs/standards/UPGRADES.md) |
+| Typography and accessibility rollout | `docs/accessibility/` | [UNIFIED_DESIGN_SYSTEM.md](docs/accessibility/UNIFIED_DESIGN_SYSTEM.md) |
 | Deploy / field ops | `docs/*.md` (not standards) | [docs/README.md](docs/README.md) |
 
 ## Cursor project rules
@@ -21,6 +22,7 @@ Engineering standards live in **[docs/standards/README.md](docs/standards/README
 | `.cursor/rules/mudita-core.mdc` | Always |
 | `.cursor/rules/mudita-production.mdc` | Always — live production / upgrade safety |
 | `.cursor/rules/mudita-dev-processes.mdc` | Always — reuse a server, clinic, or dashboard already running in a terminal |
+| `.cursor/rules/mudita-a11y.mdc` | Always — read `docs/accessibility/` before any visual change |
 | `.cursor/rules/mudita-frontend.mdc` | `client/**`, `dashboard/**` |
 | `.cursor/rules/mudita-backend.mdc` | `server/**` |
 | `.cursor/rules/mudita-docs.mdc` | `docs/**` |

@@ -32,6 +32,7 @@ import { MasterDataPage } from "./pages/MasterData";
 import { OverviewPage } from "./pages/Overview";
 import { RevenuePage } from "./pages/Revenue";
 import { StockPage } from "./pages/Stock";
+import { applyUiScale, resetUiScale, zoomIn, zoomOut } from "./uiScale";
 import "./theme.css";
 
 function App() {
@@ -45,6 +46,29 @@ function App() {
   const [authError, setAuthError] = useState<string | null>(null);
   const [needsServerSetup, setNeedsServerSetup] = useState(!isApiConfigured());
   const [apiEpoch, setApiEpoch] = useState(0);
+
+  useEffect(() => {
+    applyUiScale();
+  }, []);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const mod = e.ctrlKey || e.metaKey;
+      if (!mod) return;
+      if (e.key === "=" || e.key === "+") {
+        e.preventDefault();
+        zoomIn();
+      } else if (e.key === "-" || e.key === "_") {
+        e.preventDefault();
+        zoomOut();
+      } else if (e.key === "0") {
+        e.preventDefault();
+        resetUiScale();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   useEffect(() => {
     if (needsServerSetup) return;

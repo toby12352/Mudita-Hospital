@@ -148,13 +148,12 @@ func TestPharmacyPackDepthMigrationColumns(t *testing.T) {
 	}
 }
 
-func TestCreatePharmacyItemDuplicateCode(t *testing.T) {
+func TestCreatePharmacyItemAutoCodeByUnit(t *testing.T) {
 	sqlDB := openTestDB(t)
 	_, token := insertSession(t, sqlDB, "Admin", 0)
 	h := &Pharmacy{DB: sqlDB}
 
-	body := `{
-		"code":"PARA",
+	tabletBody := `{
 		"name":"Paracetamol",
 		"pack_l1_qty":1,
 		"pack_l1_unit":"Box",
@@ -165,36 +164,61 @@ func TestCreatePharmacyItemDuplicateCode(t *testing.T) {
 		"buy_price_mmk":1000,
 		"sell_price_mmk":100
 	}`
-	w := doJSON(h, http.MethodPost, "/api/pharmacy/items", token, body)
+	w := doJSON(h, http.MethodPost, "/api/pharmacy/items", token, tabletBody)
 	mustCode(t, w, http.StatusCreated)
+	var first pharmacyItem
+	if err := json.Unmarshal(w.Body.Bytes(), &first); err != nil {
+		t.Fatal(err)
+	}
+	if first.Code != "TAB-0001" {
+		t.Fatalf("first code %q, want TAB-0001", first.Code)
+	}
+
+	w = doJSON(h, http.MethodGet, "/api/pharmacy/items/next-code?unit=Tablet", token, "")
+	mustCode(t, w, http.StatusOK)
+	var peek map[string]string
+	if err := json.Unmarshal(w.Body.Bytes(), &peek); err != nil {
+		t.Fatal(err)
+	}
+	if peek["code"] != "TAB-0002" {
+		t.Fatalf("peek %q, want TAB-0002", peek["code"])
+	}
+	var lastN int64
+	if err := sqlDB.QueryRow(`SELECT last_n FROM item_code_counters WHERE prefix = 'TAB'`).Scan(&lastN); err != nil {
+		t.Fatal(err)
+	}
+	if lastN != 1 {
+		t.Fatalf("counter after peek = %d, want 1", lastN)
+	}
+
+	w = doJSON(h, http.MethodPost, "/api/pharmacy/items", token, tabletBody)
+	mustCode(t, w, http.StatusCreated)
+	var second pharmacyItem
+	if err := json.Unmarshal(w.Body.Bytes(), &second); err != nil {
+		t.Fatal(err)
+	}
+	if second.Code != "TAB-0002" {
+		t.Fatalf("second code %q, want TAB-0002", second.Code)
+	}
 
 	w = doJSON(h, http.MethodPost, "/api/pharmacy/items", token, `{
-		"code":"para",
-		"name":"Duplicate",
+		"name":"Ceftriaxone",
 		"pack_l1_qty":1,
 		"pack_l1_unit":"Box",
-		"pack_l2_qty":10,
-		"pack_l2_unit":"Strip",
-		"pack_l3_qty":10,
-		"pack_l3_unit":"Tablet",
-		"buy_price_mmk":500,
-		"sell_price_mmk":50
+		"pack_l2_qty":1,
+		"pack_l2_unit":"Vial",
+		"pack_l3_qty":1,
+		"pack_l3_unit":"Vial",
+		"buy_price_mmk":5000,
+		"sell_price_mmk":500
 	}`)
-	mustCode(t, w, http.StatusConflict)
-	var errBody map[string]string
-	if err := json.Unmarshal(w.Body.Bytes(), &errBody); err != nil {
+	mustCode(t, w, http.StatusCreated)
+	var vial pharmacyItem
+	if err := json.Unmarshal(w.Body.Bytes(), &vial); err != nil {
 		t.Fatal(err)
 	}
-	if errBody["error"] != "code already exists" {
-		t.Fatalf("error %q, want code already exists", errBody["error"])
-	}
-
-	var n int
-	if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM items WHERE code = 'PARA'`).Scan(&n); err != nil {
-		t.Fatal(err)
-	}
-	if n != 1 {
-		t.Fatalf("items with PARA = %d, want 1", n)
+	if vial.Code != "VIA-0001" || vial.StockUnit != "Vial" {
+		t.Fatalf("vial code=%q stock=%s", vial.Code, vial.StockUnit)
 	}
 }
 

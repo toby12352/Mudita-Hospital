@@ -137,13 +137,17 @@ func payAtForBill(tx *sql.Tx, table string, id int64) (string, error) {
 
 // execPayDraft marks a draft bill paid only if it is still draft.
 // n is 0 when another request already paid or voided it.
-// admissionID nil is cash (collected_cash 1). A set id is an account charge (collected_cash 0).
-// paid_at uses billed_at when the bill was created with an Admin override.
-func execPayDraft(tx *sql.Tx, table string, id, userID int64, admissionID *int64) (int64, error) {
+// admissionID nil is desk pay (collected_cash 1). A set id is an account charge (collected_cash 0).
+// paymentType is cash or online (blank → cash). paid_at uses billed_at when Admin override.
+func execPayDraft(tx *sql.Tx, table string, id, userID int64, admissionID *int64, paymentType string) (int64, error) {
 	switch table {
 	case "opd_bills", "pharmacy_bills", "ot_bills", "lab_bills":
 	default:
 		return 0, fmt.Errorf("unknown bill table")
+	}
+	pt, err := normalizePaymentType(paymentType)
+	if err != nil {
+		return 0, err
 	}
 	paidAt, err := payAtForBill(tx, table, id)
 	if err != nil {
@@ -156,8 +160,8 @@ func execPayDraft(tx *sql.Tx, table string, id, userID int64, admissionID *int64
 		admission = *admissionID
 	}
 	res, err := tx.Exec(
-		`UPDATE `+table+` SET status = 'paid', paid_at = ?, paid_by_user_id = ?, collected_cash = ?, admission_id = ?, updated_at = datetime('now') WHERE id = ? AND status = 'draft'`,
-		paidAt, userID, collected, admission, id,
+		`UPDATE `+table+` SET status = 'paid', paid_at = ?, paid_by_user_id = ?, collected_cash = ?, admission_id = ?, payment_type = ?, updated_at = datetime('now') WHERE id = ? AND status = 'draft'`,
+		paidAt, userID, collected, admission, pt, id,
 	)
 	if err != nil {
 		return 0, err

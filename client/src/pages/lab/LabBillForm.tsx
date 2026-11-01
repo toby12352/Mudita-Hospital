@@ -28,6 +28,8 @@ type Props = {
   billStatus: string;
   printedAt: string | null;
   collectedCash?: number | null;
+  paymentType: "cash" | "online";
+  onPaymentType: (v: "cash" | "online") => void;
   patientId: number | null;
   patientName: string;
   patientPhone: string;
@@ -76,6 +78,7 @@ type Props = {
   onConfirm: () => void;
   onHistory: () => void;
   onDelete: () => void;
+  canVoid: boolean;
   onPurge?: () => void;
   onCancel: () => void;
   onNewBill: () => void;
@@ -214,6 +217,7 @@ export function LabBillForm(props: Props) {
                 <Typeahead
                   value={doctorName}
                   disabled={!writable}
+                  ariaLabel={t("doctor")}
                   placeholder={t("doctorPlaceholder")}
                   onChange={(v) => {
                     props.onDoctorName(v);
@@ -264,6 +268,20 @@ export function LabBillForm(props: Props) {
               <span className="opd-bill-label">{t("vouNo")}</span>
               <span className="opd-bill-readonly">{billNo || "—"}</span>
             </div>
+            <label className="opd-bill-field">
+              <span className="opd-bill-label">{t("payType")}</span>
+              <select
+                className="opd-bill-input"
+                value={props.paymentType}
+                disabled={!writable}
+                onChange={(e) =>
+                  props.onPaymentType(e.target.value === "online" ? "online" : "cash")
+                }
+              >
+                <option value="cash">{t("payTypeCash")}</option>
+                <option value="online">{t("payTypeOnline")}</option>
+              </select>
+            </label>
             <div className="opd-bill-field">
               <span className="opd-bill-label">{t("currency")}</span>
               <span className="opd-bill-readonly">{t("kyats")}</span>
@@ -404,7 +422,7 @@ export function LabBillForm(props: Props) {
           <button
             type="button"
             className={`opd-bill-rail-btn opd-bill-rail-btn--danger${err("void") ? " opd-bill-rail-btn--shake" : ""}`}
-            disabled={busy}
+            disabled={busy || !props.canVoid}
             onClick={props.onDelete}
             data-guide="bill-void"
           >

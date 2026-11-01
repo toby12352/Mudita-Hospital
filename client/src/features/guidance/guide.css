@@ -13,7 +13,7 @@ body:has(.driver-overlay) .lang-switch .btn {
 }
 
 .driver-popover.mudita-guide-popover {
-  font-family: "Noto Sans Myanmar", "Segoe UI Variable", "Segoe UI", "Noto Sans", sans-serif;
+  font-family: "Roboto", "Noto Sans Myanmar", Arial, sans-serif;
   color: var(--ink);
   background-color: var(--bg-panel);
   border: 1px solid var(--border);
@@ -29,7 +29,7 @@ body:has(.driver-overlay) .lang-switch .btn {
 .driver-popover.mudita-guide-popover .driver-popover-progress-text,
 .driver-popover.mudita-guide-popover .driver-popover-footer-btn,
 .driver-popover.mudita-guide-popover .driver-popover-close-btn {
-  font-family: "Noto Sans Myanmar", "Segoe UI Variable", "Segoe UI", "Noto Sans", sans-serif;
+  font-family: "Roboto", "Noto Sans Myanmar", Arial, sans-serif;
 }
 
 .driver-popover.mudita-guide-popover .driver-popover-title {

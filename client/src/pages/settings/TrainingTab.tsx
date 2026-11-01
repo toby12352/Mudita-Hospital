@@ -72,7 +72,11 @@ export function TrainingTab({ t }: { t: (k: string) => string }) {
           {status.training_doctors}
         </p>
       ) : null}
-      {error ? <p className="form-error">{error}</p> : null}
+      {error ? (
+        <p className="form-error" role="alert">
+          {error}
+        </p>
+      ) : null}
       {message ? <p className="form-ok">{message}</p> : null}
       {status?.enabled ? (
         <div className="btn-row">

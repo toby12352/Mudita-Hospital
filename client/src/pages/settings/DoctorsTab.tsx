@@ -23,9 +23,24 @@ export function DoctorsTab() {
   const [specialty, setSpecialty] = useState("");
   const nameInputRef = useRef<HTMLInputElement>(null);
   const formErrorRef = useRef<HTMLParagraphElement>(null);
+  const formOpenerRef = useRef<HTMLElement | null>(null);
   const nameErrorId = useId();
+  const formTitleId = useId();
   const [consult, setConsult] = useState("0");
   const [ot, setOt] = useState("0");
+
+  function rememberFormOpener() {
+    const el = document.activeElement;
+    formOpenerRef.current = el instanceof HTMLElement ? el : null;
+  }
+
+  function restoreFormOpener() {
+    const prev = formOpenerRef.current;
+    formOpenerRef.current = null;
+    if (prev && document.contains(prev)) {
+      window.requestAnimationFrame(() => prev.focus());
+    }
+  }
 
   async function reload(search = q) {
     const data = await listDoctors(search.trim());
@@ -47,6 +62,26 @@ export function DoctorsTab() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!editing) return;
+    window.requestAnimationFrame(() => nameInputRef.current?.focus());
+  }, [editing]);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      if (document.querySelector(".alert-dialog-overlay, .print-preview-overlay")) return;
+      if (!editing) return;
+      e.preventDefault();
+      startCreate();
+      restoreFormOpener();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+    // Intentional: startCreate closes over latest helpers each render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Escape wiring
+  }, [editing]);
+
   function startCreate() {
     setEditing(null);
     setName("");
@@ -56,6 +91,7 @@ export function DoctorsTab() {
   }
 
   function startEdit(d: Doctor) {
+    rememberFormOpener();
     setEditing(d);
     setName(d.name);
     setSpecialty(d.specialty);
@@ -81,8 +117,10 @@ export function DoctorsTab() {
       } else {
         await createDoctor(body);
       }
+      const wasEditing = editing != null;
       startCreate();
       await reload();
+      if (wasEditing) restoreFormOpener();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Save failed";
       if (fieldKeyForApiError(err) === "name") {
@@ -113,8 +151,12 @@ export function DoctorsTab() {
 
   return (
     <div className="settings-stack">
-      <form className="card-form" onSubmit={(e) => void submit(e)}>
-        <h2 className="section-title">
+      <form
+        className="card-form"
+        aria-labelledby={formTitleId}
+        onSubmit={(e) => void submit(e)}
+      >
+        <h2 id={formTitleId} className="section-title">
           {editing ? `${t("editDoctor")} #${editing.id}` : t("addDoctor")}
         </h2>
         <label className={`field${nameError ? " is-invalid" : ""}`}>
@@ -163,7 +205,15 @@ export function DoctorsTab() {
             {busy ? t("saving") : editing ? t("updateDoctor") : t("addDoctor")}
           </button>
           {editing ? (
-            <button type="button" className="btn action" disabled={busy} onClick={startCreate}>
+            <button
+              type="button"
+              className="btn action"
+              disabled={busy}
+              onClick={() => {
+                startCreate();
+                restoreFormOpener();
+              }}
+            >
               {t("cancelEdit")}
             </button>
           ) : null}
@@ -218,7 +268,7 @@ export function DoctorsTab() {
             {t("search")}
           </button>
         </div>
-        <ul className="data-list">
+        <ul className="data-list" aria-label={t("doctors")}>
           {list.length === 0 ? <li className="empty-row">{t("noDoctorsYet")}</li> : null}
           {list.map((d) => (
             <li key={d.id} className={!d.active ? "inactive" : undefined}>

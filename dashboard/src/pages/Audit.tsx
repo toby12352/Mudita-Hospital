@@ -46,11 +46,13 @@ export function AuditPage({ t }: Props) {
   }, [entity, epoch, t]);
 
   return (
-    <div className="page page-frame">
+    <div className="page page-frame audit-page">
       <div className="page-header">
         <p className="lede muted">{t("auditLede")}</p>
         <div className="page-actions">
+          <label htmlFor="audit-search">{t("search")}</label>
           <input
+            id="audit-search"
             className="input"
             type="search"
             placeholder={t("search")}
@@ -60,15 +62,21 @@ export function AuditPage({ t }: Props) {
               if (e.key === "Enter") setEpoch((n) => n + 1);
             }}
           />
-          <select className="input" value={entity} onChange={(e) => setEntity(e.target.value)}>
+          <label htmlFor="audit-entity">{t("entity")}</label>
+          <select
+            id="audit-entity"
+            className="input"
+            value={entity}
+            onChange={(e) => setEntity(e.target.value)}
+          >
             <option value="">{t("allEntities")}</option>
-            <option value="item">item</option>
-            <option value="service">service</option>
-            <option value="doctor">doctor</option>
-            <option value="user">user</option>
-            <option value="bill">bill</option>
-            <option value="settings">settings</option>
-            <option value="backup">backup</option>
+            <option value="item">{t("item")}</option>
+            <option value="service">{t("service")}</option>
+            <option value="doctor">{t("doctor")}</option>
+            <option value="user">{t("user")}</option>
+            <option value="bill">{t("bill")}</option>
+            <option value="settings">{t("settings")}</option>
+            <option value="backup">{t("backup")}</option>
           </select>
           <button type="button" className="btn ghost" onClick={() => setEpoch((n) => n + 1)}>
             {t("refresh")}
@@ -76,22 +84,31 @@ export function AuditPage({ t }: Props) {
         </div>
       </div>
 
-      {error ? <p className="form-error">{error}</p> : null}
-      {loading && logs.length === 0 ? <p className="muted">{t("loading")}</p> : null}
+      {error ? (
+        <p className="form-error" role="alert">
+          {error}
+        </p>
+      ) : null}
+      {loading && logs.length === 0 ? (
+        <p className="muted" aria-live="polite">
+          {t("loading")}
+        </p>
+      ) : null}
 
-      <div className="panel">
+      <section className="panel" aria-labelledby="audit-list-title">
+        <h2 id="audit-list-title">{t("audit")}</h2>
         {logs.length === 0 && !loading ? (
           <p className="empty-state">{t("noAudit")}</p>
         ) : (
           <div className="table-scroll">
-            <table className="data-table">
+            <table className="data-table" aria-labelledby="audit-list-title">
               <thead>
                 <tr>
                   <th>{t("when")}</th>
                   <th>{t("actor")}</th>
                   <th>{t("action")}</th>
                   <th>{t("entity")}</th>
-                  <th className="num">ID</th>
+                  <th className="num">{t("idLabel")}</th>
                   <th>{t("detail")}</th>
                 </tr>
               </thead>
@@ -110,6 +127,7 @@ export function AuditPage({ t }: Props) {
                         type="button"
                         className="linkish"
                         title={row.detail || ""}
+                        aria-expanded={expanded === row.id}
                         onClick={() => setExpanded(expanded === row.id ? null : row.id)}
                       >
                         {expanded === row.id ? row.detail || "—" : shortDetail(row.detail)}
@@ -121,7 +139,7 @@ export function AuditPage({ t }: Props) {
             </table>
           </div>
         )}
-      </div>
+      </section>
     </div>
   );
 }

@@ -15,17 +15,24 @@
   --offline-glow: rgba(198, 40, 40, 0.18);
   --checking: #b8860b;
   --checking-glow: rgba(184, 134, 11, 0.2);
-  --accent: #1b6bc7;
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-pressed: #1e40af;
   --accent-ink: #ffffff;
-  --accent-soft: rgba(27, 107, 199, 0.1);
-  --accent-border: rgba(27, 107, 199, 0.4);
+  --accent-soft: rgba(37, 99, 235, 0.1);
+  --accent-border: rgba(37, 99, 235, 0.4);
+  --focus-ring: 0 0 0 3px rgba(37, 99, 235, 0.28);
   --danger: #c62828;
   --danger-border: rgba(198, 40, 40, 0.35);
-  --warn: #c47a00;
-  --warn-soft: rgba(196, 122, 0, 0.12);
-  font-family: "Noto Sans Myanmar", "Segoe UI", "Noto Sans", sans-serif;
+  --warn: #8a6508;
+  --warn-soft: rgba(138, 101, 8, 0.12);
+  --series-ot: #4a90c8;
+  --series-pharmacy: #1f7a4d;
+  --series-lab: #a16207;
+  --series-ipd: #6b4fa0;
+  font-family: "Roboto", "Noto Sans Myanmar", Arial, sans-serif;
   font-size: 16px;
-  line-height: 1.45;
+  line-height: 1.5;
   color: var(--ink);
   background: var(--bg);
   font-synthesis: none;
@@ -33,7 +40,13 @@
   -webkit-font-smoothing: antialiased;
 }
 
-html[data-locale="my"] {
+body {
+  font-size: 17px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+html[data-locale="my"] body {
   line-height: 1.55;
 }
 
@@ -77,7 +90,9 @@ body {
 }
 
 .auth-card .brand h1 {
-  font-size: 1.6rem;
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.25;
   letter-spacing: -0.03em;
 }
 
@@ -101,22 +116,25 @@ body {
 
 .eyebrow {
   margin: 0 0 0.35rem;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.45;
   color: var(--muted);
 }
 
 .brand h1,
 .title-sm {
   margin: 0;
-  font-size: 2rem;
-  font-weight: 650;
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.25;
   letter-spacing: -0.02em;
 }
 
 .title-sm {
-  font-size: 1.35rem;
+  font-size: 22px;
+  line-height: 1.3;
 }
 
 .lede {
@@ -163,13 +181,16 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
-  font-size: 0.92rem;
+  font-size: 14px;
   color: var(--muted);
 }
 
 .field input,
 .field select {
   font: inherit;
+  font-size: 17px;
+  font-weight: 400;
+  line-height: 1.4;
   color: var(--ink);
   background: var(--bg-input);
   border: 1px solid var(--border-strong);
@@ -177,16 +198,19 @@ body {
   padding: 0.65rem 0.75rem;
 }
 
-.field input:focus,
-.field select:focus {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
+.field input:focus-visible,
+.field select:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
   background: var(--bg-panel);
 }
 
 .btn {
   font: inherit;
+  font-size: 16px;
   font-weight: 600;
+  line-height: 1.25;
   border-radius: 10px;
   padding: 0.55rem 0.9rem;
   cursor: pointer;
@@ -194,8 +218,14 @@ body {
 }
 
 .btn:disabled {
-  opacity: 0.45;
+  opacity: 0.5;
   cursor: not-allowed;
+}
+
+.btn:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
 }
 
 .btn.primary {
@@ -204,7 +234,18 @@ body {
 }
 
 .btn.primary:hover:not(:disabled) {
-  filter: brightness(1.05);
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+.btn.primary:active:not(:disabled) {
+  background: var(--accent-pressed);
+  border-color: var(--accent-pressed);
+}
+
+.btn.primary:focus-visible {
+  border-color: var(--accent-hover);
+  box-shadow: var(--focus-ring);
 }
 
 .btn.ghost {
@@ -250,7 +291,7 @@ body {
 .hint {
   margin: 0;
   color: var(--muted);
-  font-size: 0.85rem;
+  font-size: 14px;
 }
 
 .hint code,
@@ -288,7 +329,7 @@ body {
 
 .lang-compact .btn {
   padding: 0.4rem 0.65rem;
-  font-size: 0.85rem;
+  font-size: 14px;
 }
 
 .lang-active {
@@ -345,6 +386,15 @@ body {
   }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .status-ok .status-dot,
+  .status-dot.status-ok,
+  .status-checking .status-dot,
+  .status-dot.status-checking {
+    animation: none;
+  }
+}
+
 .status-label {
   margin: 0;
   font-size: 1.05rem;
@@ -363,7 +413,7 @@ body {
 .status-meta {
   margin: 0.25rem 0 0;
   color: var(--muted);
-  font-size: 0.88rem;
+  font-size: 14px;
 }
 
 .status-body {
@@ -443,7 +493,7 @@ body {
   width: 100%;
   text-align: left;
   font: inherit;
-  font-weight: 550;
+  font-weight: 400;
   font-size: 0.94rem;
   padding: 0.55rem 0.7rem;
   border: none;
@@ -451,6 +501,11 @@ body {
   background: transparent;
   color: #3a3a3a;
   cursor: pointer;
+}
+
+.dash-nav-item:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--accent), var(--focus-ring);
 }
 
 .dash-nav-icon {
@@ -467,7 +522,7 @@ body {
 .dash-nav-item[aria-current="page"] {
   background: #e8e8e6;
   color: #1c1c1c;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .dash-workspace {
@@ -490,8 +545,9 @@ body {
 
 .dash-workspace-title {
   margin: 0;
-  font-size: 1.6rem;
-  font-weight: 650;
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.25;
   letter-spacing: -0.03em;
   color: var(--ink);
 }
@@ -518,13 +574,18 @@ body {
   background: #1c1c1c;
   color: #fff;
   font: inherit;
-  font-size: 0.75rem;
-  font-weight: 650;
+  font-size: 14px;
+  font-weight: 600;
   letter-spacing: 0.02em;
   cursor: pointer;
   display: grid;
   place-items: center;
   padding: 0;
+}
+
+.account-avatar:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--accent), var(--focus-ring);
 }
 
 .account-avatar:hover,
@@ -557,14 +618,14 @@ body {
 
 .account-name {
   margin: 0;
-  font-weight: 650;
+  font-weight: 600;
   color: #1c1c1c;
 }
 
 .account-role {
   margin: 0;
   color: var(--muted);
-  font-size: 0.85rem;
+  font-size: 14px;
 }
 
 .account-dropdown .status-panel {
@@ -623,8 +684,9 @@ body {
 
 .page-header h2 {
   margin: 0;
-  font-size: 1.45rem;
-  font-weight: 650;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.3;
   letter-spacing: -0.02em;
 }
 
@@ -643,7 +705,7 @@ body {
 }
 
 .kpi-strip--seven .kpi-value {
-  font-size: clamp(1.05rem, 1.35vw, 1.45rem);
+  font-size: clamp(20px, 1.35vw, 22px);
   overflow-wrap: anywhere;
 }
 
@@ -666,24 +728,26 @@ body {
 
 .kpi-label {
   margin: 0;
-  font-size: 0.75rem;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  line-height: 1.45;
   color: var(--muted);
 }
 
 .kpi-value {
   margin: 0;
-  font-size: 1.65rem;
-  font-weight: 650;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.3;
   letter-spacing: -0.03em;
   color: var(--ink);
+  font-variant-numeric: tabular-nums;
 }
 
 .kpi-sub {
   margin: 0;
-  font-size: 0.82rem;
+  font-size: 14px;
   color: var(--muted);
 }
 
@@ -711,7 +775,7 @@ body {
   gap: 0.4rem;
   padding: 0.45rem 0.8rem;
   border-radius: 12px;
-  font-size: 0.88rem;
+  font-size: 14px;
   font-weight: 600;
   border: 1px solid var(--border);
   background: var(--bg-panel);
@@ -721,7 +785,7 @@ body {
 
 .alert-chip.warn {
   background: var(--warn-soft);
-  border-color: rgba(196, 122, 0, 0.35);
+  border-color: rgba(138, 101, 8, 0.35);
   color: var(--warn);
 }
 
@@ -750,8 +814,9 @@ body {
 
 .panel h3 {
   margin: 0;
-  font-size: 1.02rem;
-  font-weight: 650;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.35;
   letter-spacing: -0.02em;
   color: var(--ink);
 }
@@ -759,7 +824,9 @@ body {
 .data-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.9rem;
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.45;
   color: var(--ink);
 }
 
@@ -777,9 +844,8 @@ body {
 .data-table th {
   color: var(--muted);
   font-weight: 600;
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  font-size: 16px;
+  letter-spacing: 0.02em;
 }
 
 .data-table td.num {
@@ -853,10 +919,14 @@ body {
   white-space: nowrap;
 }
 
-.print-menu-item:hover,
-.print-menu-item:focus-visible {
+.print-menu-item:hover {
   background: rgba(0, 0, 0, 0.05);
+}
+
+.print-menu-item:focus-visible {
   outline: none;
+  background: rgba(0, 0, 0, 0.05);
+  box-shadow: inset 0 0 0 2px var(--accent), var(--focus-ring);
 }
 
 .range-field {
@@ -901,12 +971,15 @@ body {
   outline: none;
   padding: 0.55rem 0.65rem;
   font: inherit;
+  font-size: 17px;
+  font-weight: 400;
+  line-height: 1.4;
   color: var(--ink);
 }
 
 .date-picker-input-wrap:focus-within {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(27, 107, 199, 0.18);
+  box-shadow: var(--focus-ring);
 }
 
 .date-picker-icon-btn {
@@ -929,7 +1002,7 @@ body {
 
 .date-picker-icon-btn:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px rgba(27, 107, 199, 0.18);
+  box-shadow: var(--focus-ring);
 }
 
 .date-picker-icon-btn:disabled {
@@ -984,7 +1057,7 @@ body {
 
 .date-picker-nav:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px rgba(27, 107, 199, 0.18);
+  box-shadow: var(--focus-ring);
 }
 
 .date-picker-weekdays {
@@ -1024,13 +1097,13 @@ body {
 
 .date-picker-cell:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px rgba(27, 107, 199, 0.18);
+  box-shadow: var(--focus-ring);
 }
 
 .date-picker-cell.selected {
   background: var(--accent);
   color: var(--accent-ink);
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .date-picker-cell.empty {
@@ -1061,7 +1134,7 @@ body {
 .range-toggle .btn.active {
   background: var(--accent-soft);
   color: var(--accent);
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .split-panels {
@@ -1082,9 +1155,241 @@ body {
   gap: 1rem;
 }
 
+/* Revenue page only — keep the Overview toolbar size unchanged. */
+.revenue-page .page-actions .btn {
+  min-height: 44px;
+}
+
+/* The shared range group clips box-shadow. Visible so the 3px focus ring can paint. */
+.revenue-page .range-toggle {
+  overflow: visible;
+}
+
+/* Active preset was accent on accent-soft (~4.49:1). Pressed ink clears 4.5:1. */
+.revenue-page .range-toggle .btn.active {
+  color: var(--accent-pressed);
+}
+
+/* Panel titles are card headings under the workspace h1. Keep 18px; do not use the 22px section size.
+   Subheads stay 16px. `.panel h3` is 18px and would otherwise match the title. */
+.revenue-page .panel > h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+.revenue-page .panel > h3.panel-subhead {
+  font-size: 16px;
+  letter-spacing: normal;
+}
+
+.revenue-page .date-picker-input-wrap {
+  min-height: 44px;
+}
+
+.revenue-page .date-picker-icon-btn {
+  width: 44px;
+  height: 44px;
+}
+
+.revenue-page .date-picker-cell {
+  font-size: 14px;
+}
+
+.revenue-page .print-menu-item {
+  min-height: 44px;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+/* Stock page only. Overview and Revenue rules above stay as they are. */
+.stock-page .page-actions .btn {
+  min-height: 44px;
+}
+
+/* The shared range group clips box-shadow. Visible so the 3px focus ring can paint. */
+.stock-page .range-toggle {
+  overflow: visible;
+}
+
+/* Active preset was accent on accent-soft (~4.49:1). Pressed ink clears 4.5:1. */
+.stock-page .range-toggle .btn.active {
+  color: var(--accent-pressed);
+}
+
+/* Panel titles are card headings under the workspace h1. Keep 18px; do not use the 22px section size. */
+.stock-page .panel > h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+/* Daily report only. Revenue and Stock rules above stay as they are. Global .btn stays. */
+.daily-page .page-actions .btn {
+  min-height: 44px;
+}
+
+.daily-page .date-field input[type="date"] {
+  min-height: 44px;
+}
+
+.daily-page .print-menu-item {
+  min-height: 44px;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+/* Panel titles are card headings under the workspace h1. Keep 18px; do not use the 22px section size. */
+.daily-page .panel > h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+/* Preview is portaled on document.body, so it cannot use .daily-page / .revenue-page. */
+.print-preview-shell .print-preview-actions .btn,
+.print-preview-shell .print-preview-scope {
+  min-height: 44px;
+}
+
+.print-preview-shell .print-preview-scope:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+
+.print-preview-shell .print-preview-lang {
+  display: inline-flex;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.print-preview-shell .print-preview-lang .btn.active {
+  color: var(--accent-pressed);
+  background: var(--accent-soft);
+}
+
+/* Master data only. Revenue, Stock, and Daily report rules above stay as they are. Global .btn stays.
+   The tabpanel is the flex child; it keeps the page gap so search, alerts, and panels do not collapse. */
+.master-page [role="tabpanel"] {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  min-width: 0;
+}
+
+.master-page .page-actions .btn,
+.master-page .inline-search .btn,
+.master-page .bulk-fields .btn,
+.master-page .range-toggle .btn {
+  min-height: 44px;
+}
+
+.master-page .inline-search .input,
+.master-page .bulk-fields .input {
+  min-height: 44px;
+}
+
+/* The shared range group clips box-shadow. Visible so the 3px focus ring can paint. */
+.master-page .range-toggle {
+  overflow: visible;
+}
+
+/* Active tab was accent on accent-soft (~4.49:1). Pressed ink clears 4.5:1. */
+.master-page .range-toggle .btn.active {
+  color: var(--accent-pressed);
+}
+
+.master-page .inline-search label,
+.master-page .csv-paste {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.master-page .inline-search label {
+  white-space: nowrap;
+}
+
+.master-page .csv-paste {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+/* Panel titles are card headings under the workspace h1. Keep 18px; do not use the 22px section size.
+   The bulk dialog title stays h3 and keeps the shared .panel h3 size. */
+.master-page .panel > h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+/* The paste area is a code surface. 0.85rem sits under the 14px floor. */
+.master-page .input.textarea {
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+/* Audit page only. Revenue, Stock, Daily report, and Master data rules above stay as they are. Global .btn stays.
+   Row detail buttons stay .linkish (padding 0). Do not raise them to 44px.
+   Inside .data-table they inherit 16px / 1.45 (23.2px), under the 24px floor. */
+.audit-page .page-actions .btn,
+.audit-page .page-actions .input {
+  min-height: 44px;
+}
+
+.audit-page .linkish {
+  line-height: 1.5;
+  min-height: 24px;
+}
+
+.audit-page .page-actions .input {
+  min-width: 12rem;
+}
+
+.audit-page .page-actions label {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* Accent on the chip fill (--bg-soft) is 4.44:1 at 14px/600. Pressed ink clears 4.5:1.
+   The shared .code-chip color stays accent so Stock's chips are not restyled. */
+.audit-page .code-chip {
+  color: var(--accent-pressed);
+}
+
+/* Panel title is a card heading under the workspace h1. Keep 18px; do not use the 22px section size. */
+.audit-page .panel > h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
 .estimate-note {
   margin: 0;
-  font-size: 0.88rem;
+  font-size: 14px;
 }
 
 .kpi-strip.tight {
@@ -1092,7 +1397,7 @@ body {
 }
 
 .muted.tiny {
-  font-size: 0.82rem;
+  font-size: 14px;
 }
 
 .bar-track {
@@ -1109,23 +1414,32 @@ body {
 }
 
 .bar-ot {
-  background: #4a90c8;
+  background: var(--series-ot);
   height: 100%;
   opacity: 0.75;
 }
 
 .bar-pharmacy {
-  background: #1f7a4d;
+  background: var(--series-pharmacy);
   height: 100%;
 }
 
 .date-field input[type="date"] {
   font: inherit;
+  font-size: 17px;
+  font-weight: 400;
+  line-height: 1.4;
   padding: 0.45rem 0.65rem;
   border: 1px solid var(--border-strong);
   border-radius: 10px;
   background: var(--bg-panel);
   color: var(--ink);
+}
+
+.date-field input[type="date"]:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
 }
 
 .sr-only {
@@ -1141,8 +1455,8 @@ body {
 
 .code-chip {
   display: inline-block;
-  font-size: 0.78rem;
-  font-weight: 650;
+  font-size: 14px;
+  font-weight: 600;
   color: var(--accent);
   margin-right: 0.35rem;
 }
@@ -1155,8 +1469,9 @@ body {
 
 .delta-val {
   margin: 0.25rem 0 0;
-  font-size: 1.2rem;
-  font-weight: 650;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.3;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1208,13 +1523,25 @@ body {
 .print-preview-title {
   margin: 0;
   font-size: 1rem;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .print-preview-actions {
   display: flex;
+  align-items: center;
   gap: 0.5rem;
   flex-shrink: 0;
+}
+
+.print-preview-scope {
+  font: inherit;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  padding: 0.55rem 0.7rem;
+  cursor: pointer;
 }
 
 .print-preview-frame-wrap {
@@ -1250,6 +1577,9 @@ body {
 
 .input {
   font: inherit;
+  font-size: 17px;
+  font-weight: 400;
+  line-height: 1.4;
   padding: 0.5rem 0.7rem;
   border-radius: 10px;
   border: 1px solid var(--border-strong);
@@ -1258,9 +1588,10 @@ body {
   min-width: 0;
 }
 
-.input:focus {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
+.input:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
   background: var(--bg-panel);
 }
 
@@ -1294,17 +1625,18 @@ body {
   gap: 0.75rem;
   flex-wrap: wrap;
   margin: 0;
-  font-size: 0.92rem;
-  font-weight: 650;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.35;
 }
 
 .check-inline {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  font-weight: 500;
+  font-weight: 400;
   color: var(--muted);
-  font-size: 0.88rem;
+  font-size: 14px;
   cursor: pointer;
 }
 
@@ -1322,7 +1654,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
-  font-size: 0.88rem;
+  font-size: 14px;
   font-weight: 600;
   color: var(--muted);
 }
@@ -1349,11 +1681,10 @@ body {
   margin: 0.35rem 0 0;
   padding-left: 1.2rem;
   color: var(--danger);
-  font-size: 0.88rem;
+  font-size: 14px;
 }
 
 .code-chip {
-  font-size: 0.82em;
   background: var(--bg-soft);
   padding: 0.15rem 0.4rem;
   border-radius: 4px;
@@ -1372,6 +1703,12 @@ body {
 
 .linkish:hover {
   color: var(--accent);
+}
+
+.linkish:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--accent), var(--focus-ring);
+  border-radius: 2px;
 }
 
 .nowrap {

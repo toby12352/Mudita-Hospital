@@ -45,7 +45,7 @@ func TestIpdStatementDaysAndDaily(t *testing.T) {
 	mustCode(t, w, http.StatusOK)
 	finalHTML := w.Body.String()
 	for _, want := range []string{
-		"IPD FINAL STATEMENT",
+		"IPD Final Bill",
 		"Verify Hospital",
 		"1 Lane",
 		"Tel: 091000 / 092000",
@@ -57,10 +57,10 @@ func TestIpdStatementDaysAndDaily(t *testing.T) {
 		"12A",
 		`class="a4-day">01 Jan 2026`,
 		`class="a4-day">02 Jan 2026`,
-		"day-one",
-		"boundary",
-		"08:30",
-		"00:30",
+		">Voucher Number</th>",
+		">Description/Remark</th>",
+		">Deposit</td>",
+		">Ward</td>",
 		"Day total",
 		">ပိုငွေ</td><td>600 MMK</td>",
 	} {
@@ -71,27 +71,33 @@ func TestIpdStatementDaysAndDaily(t *testing.T) {
 	if strings.Contains(finalHTML, "18:00:00") {
 		t.Fatalf("raw UTC timestamp leaked onto the sheet:\n%s", finalHTML)
 	}
+	for _, absent := range []string{">Kind</th>", ">Detail</th>", `class="a4-time"`, "08:30", "00:30"} {
+		if strings.Contains(finalHTML, absent) {
+			t.Fatalf("final statement kept removed column %q:\n%s", absent, finalHTML)
+		}
+	}
 	dayOne := strings.Index(finalHTML, `class="a4-day">01 Jan 2026`)
-	noteOne := strings.Index(finalHTML, "day-one")
+	deposit := strings.Index(finalHTML, ">Deposit</td>")
 	dayTwo := strings.Index(finalHTML, `class="a4-day">02 Jan 2026`)
-	noteTwo := strings.Index(finalHTML, "boundary")
-	if !(dayOne >= 0 && dayOne < noteOne && noteOne < dayTwo && dayTwo < noteTwo) {
-		t.Fatalf("day sections out of order: day1 %d note1 %d day2 %d note2 %d", dayOne, noteOne, dayTwo, noteTwo)
+	ward := strings.Index(finalHTML, ">Ward</td>")
+	if !(dayOne >= 0 && dayOne < deposit && deposit < dayTwo && dayTwo < ward) {
+		t.Fatalf("day sections out of order: day1 %d deposit %d day2 %d ward %d", dayOne, deposit, dayTwo, ward)
 	}
 
 	w = doJSON(ipd, http.MethodGet, path+"?date=2026-01-01", token, "")
 	mustCode(t, w, http.StatusOK)
 	jan1 := w.Body.String()
 	for _, want := range []string{
-		"IPD DAILY STATEMENT",
+		"IPD Daily Bill",
 		"Room no.",
 		"12A",
-		"day-one",
-		"08:30",
+		">Voucher Number</th>",
+		">Description/Remark</th>",
 		">Deposited Fee</th>",
 		">To Pay</th>",
 		">Difference</th>",
-		`>Deposit</td><td>day-one</td><td class="a4-time">08:30</td><td class="col-amt">1,000</td><td class="col-amt"></td><td class="col-amt">1,000</td>`,
+		`>Deposit</td><td></td><td class="col-amt">1,000</td><td class="col-amt"></td><td class="col-amt"></td>`,
+		`>Total</td><td class="col-amt">1,000</td><td class="col-amt">0</td><td class="col-amt">1,000</td>`,
 		">Day deposited</td><td>1,000 MMK</td>",
 		">Day to pay</td><td>0 MMK</td>",
 		">ပိုငွေ</td><td>1,000 MMK</td>",
@@ -100,21 +106,22 @@ func TestIpdStatementDaysAndDaily(t *testing.T) {
 			t.Fatalf("1 Jan daily missing %q:\n%s", want, jan1)
 		}
 	}
-	if strings.Contains(jan1, ">MMK</th>") || strings.Contains(jan1, "Day total") {
+	if strings.Contains(jan1, ">MMK</th>") || strings.Contains(jan1, "Day total") || strings.Contains(jan1, ">Kind</th>") {
 		t.Fatalf("1 Jan daily kept the single MMK column:\n%s", jan1)
 	}
-	if strings.Contains(jan1, "boundary") || strings.Contains(jan1, "00:30") || strings.Contains(jan1, `class="a4-day"`) {
-		t.Fatalf("1 Jan daily included the next Yangon day:\n%s", jan1)
+	for _, absent := range []string{">Detail</th>", `class="a4-time"`, ">Ward</td>", `class="a4-day"`} {
+		if strings.Contains(jan1, absent) {
+			t.Fatalf("1 Jan daily kept removed content %q:\n%s", absent, jan1)
+		}
 	}
 
 	w = doJSON(ipd, http.MethodGet, path+"?date=2026-01-02", token, "")
 	mustCode(t, w, http.StatusOK)
 	jan2 := w.Body.String()
 	for _, want := range []string{
-		"IPD DAILY STATEMENT",
-		"boundary",
-		"00:30",
-		`>Ward</td><td>boundary</td><td class="a4-time">00:30</td><td class="col-amt"></td><td class="col-amt">400</td><td class="col-amt">-400</td>`,
+		"IPD Daily Bill",
+		`>Ward</td><td></td><td class="col-amt"></td><td class="col-amt">400</td><td class="col-amt"></td>`,
+		`>Total</td><td class="col-amt">0</td><td class="col-amt">400</td><td class="col-amt">-400</td>`,
 		">Day deposited</td><td>0 MMK</td>",
 		">Day to pay</td><td>400 MMK</td>",
 		">လိုငွေ</td><td>400 MMK</td>",
@@ -123,7 +130,7 @@ func TestIpdStatementDaysAndDaily(t *testing.T) {
 			t.Fatalf("2 Jan daily missing %q:\n%s", want, jan2)
 		}
 	}
-	if strings.Contains(jan2, "day-one") || strings.Contains(jan2, "ပိုငွေ") {
+	if strings.Contains(jan2, ">Deposit</td>") || strings.Contains(jan2, "ပိုငွေ") {
 		t.Fatalf("2 Jan daily included 1 Jan or a carry without a stored voucher:\n%s", jan2)
 	}
 
@@ -132,6 +139,7 @@ func TestIpdStatementDaysAndDaily(t *testing.T) {
 	emptyDay := w.Body.String()
 	for _, want := range []string{
 		"No lines on this date.",
+		">Voucher Number</th>",
 		">Deposited Fee</th>",
 		">To Pay</th>",
 		">Difference</th>",
@@ -143,7 +151,7 @@ func TestIpdStatementDaysAndDaily(t *testing.T) {
 			t.Fatalf("empty day missing %q:\n%s", want, emptyDay)
 		}
 	}
-	if strings.Contains(emptyDay, "day-one") || strings.Contains(emptyDay, "boundary") || strings.Contains(emptyDay, "600") {
+	if strings.Contains(emptyDay, ">Deposit</td>") || strings.Contains(emptyDay, ">Ward</td>") || strings.Contains(emptyDay, "600") {
 		t.Fatalf("empty day listed lines or a carry without a stored voucher:\n%s", emptyDay)
 	}
 
@@ -171,10 +179,19 @@ func TestIpdStatementDaysAndDaily(t *testing.T) {
 	w = doJSON(ipd, http.MethodGet, "/api/ipd/admissions/"+strconv.FormatInt(one.ID, 10)+"/statement", token, "")
 	mustCode(t, w, http.StatusOK)
 	oneDay := w.Body.String()
-	for _, want := range []string{"IPD FINAL STATEMENT", "01 Mar 2026", "only-day", "10:30", ">ပိုငွေ</td><td>2,500 MMK</td>"} {
+	for _, want := range []string{
+		"IPD Final Bill",
+		"01 Mar 2026",
+		">Description/Remark</th>",
+		">Deposit</td>",
+		">ပိုငွေ</td><td>2,500 MMK</td>",
+	} {
 		if !strings.Contains(oneDay, want) {
 			t.Fatalf("one-day statement missing %q:\n%s", want, oneDay)
 		}
+	}
+	if strings.Contains(oneDay, ">Detail</th>") || strings.Contains(oneDay, `class="a4-time"`) {
+		t.Fatalf("one-day statement kept Detail/Time:\n%s", oneDay)
 	}
 	if strings.Contains(oneDay, `class="a4-day"`) || strings.Contains(oneDay, "Day total") {
 		t.Fatalf("one-day statement added day sections:\n%s", oneDay)
@@ -226,6 +243,9 @@ func TestIpdStatementDaysAndDaily(t *testing.T) {
 	if strings.Contains(owingHTML, "Deposited Fee") || strings.Contains(owingHTML, ">To Pay</th>") {
 		t.Fatalf("final statement picked up the daily columns:\n%s", owingHTML)
 	}
+	if !strings.Contains(owingHTML, ">Description/Remark</th>") {
+		t.Fatalf("final statement missing Description/Remark:\n%s", owingHTML)
+	}
 }
 
 func TestIpdDailyStatementOpeningDue(t *testing.T) {
@@ -256,15 +276,19 @@ func TestIpdDailyStatementOpeningDue(t *testing.T) {
 	w = doJSON(ipd, http.MethodGet, "/api/ipd/admissions/"+strconv.FormatInt(stay.ID, 10)+"/statement?date=2026-06-02", token, "")
 	mustCode(t, w, http.StatusOK)
 	page := w.Body.String()
-	opening := `>လိုငွေ</td><td></td><td class="a4-time"></td><td class="col-amt"></td><td class="col-amt">30,000</td><td class="col-amt">-30,000</td>`
-	ward := `>Ward</td><td>nursing</td><td class="a4-time">08:30</td><td class="col-amt"></td><td class="col-amt">10,000</td><td class="col-amt">-40,000</td>`
+	opening := `<td class="col-no">1</td><td></td><td></td><td class="col-amt"></td><td class="col-amt">30,000</td><td class="col-amt"></td>`
+	ward := `>Ward</td><td></td><td class="col-amt"></td><td class="col-amt">10,000</td><td class="col-amt"></td>`
+	total := `>Total</td><td class="col-amt">0</td><td class="col-amt">40,000</td><td class="col-amt">-40,000</td>`
 	for _, want := range []string{
-		"IPD DAILY STATEMENT",
+		"IPD Daily Bill",
+		">Voucher Number</th>",
+		">Description/Remark</th>",
 		">Deposited Fee</th>",
 		">To Pay</th>",
 		">Difference</th>",
 		opening,
 		ward,
+		total,
 		">Day deposited</td><td>0 MMK</td>",
 		">Day to pay</td><td>40,000 MMK</td>",
 		`class="emph"><td>လိုငွေ</td><td>40,000 MMK</td>`,
@@ -286,8 +310,114 @@ func TestIpdDailyStatementOpeningDue(t *testing.T) {
 	if !strings.Contains(finalHTML, ">MMK</th>") || strings.Contains(finalHTML, "Deposited Fee") {
 		t.Fatalf("final statement changed:\n%s", finalHTML)
 	}
+	if !strings.Contains(finalHTML, ">Description/Remark</th>") {
+		t.Fatalf("final statement missing Description/Remark:\n%s", finalHTML)
+	}
+	if strings.Contains(finalHTML, ">Detail</th>") || strings.Contains(finalHTML, `class="a4-time"`) {
+		t.Fatalf("final statement kept Detail/Time:\n%s", finalHTML)
+	}
 	if !strings.Contains(finalHTML, ">လိုငွေ</td><td>10,000 MMK</td>") {
 		t.Fatalf("final statement should keep the stay balance:\n%s", finalHTML)
+	}
+}
+
+func TestIpdDailyStatementRemarks(t *testing.T) {
+	sqlDB := openTestDB(t)
+	_, token := insertSession(t, sqlDB, "Admin", 0)
+	charts := &Patients{DB: sqlDB}
+	ipd := &IPD{DB: sqlDB}
+
+	w := doJSON(charts, http.MethodPost, "/api/patients", token, `{"name":"Daw Remark","phone":"097777"}`)
+	mustCode(t, w, http.StatusCreated)
+	chart := decodePatient(t, w)
+	w = doJSON(ipd, http.MethodPost, "/api/ipd/admissions", token, fmt.Sprintf(`{"patient_id":%d}`, chart.ID))
+	mustCode(t, w, http.StatusCreated)
+	stay := decodeAdmission(t, w)
+
+	opdRes, err := sqlDB.Exec(`
+		INSERT INTO opd_bills (bill_no, patient_id, patient_name, description, status, total_mmk, admission_id, collected_cash, created_at)
+		VALUES ('OPD-REM-1', ?, 'Daw Remark', 'Fever follow-up', 'paid', 2000, ?, 0, '2026-08-01 02:00:00')
+	`, chart.ID, stay.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opdID, _ := opdRes.LastInsertId()
+
+	caseRes, err := sqlDB.Exec(`
+		INSERT INTO ot_cases (case_no, patient_name, notes, status)
+		VALUES ('OT-REM-1', 'Daw Remark', 'Post-op check', 'billed')
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caseID, _ := caseRes.LastInsertId()
+	otRes, err := sqlDB.Exec(`
+		INSERT INTO ot_bills (bill_no, case_id, case_no, patient_name, status, total_mmk, created_at)
+		VALUES ('OTB-REM-1', ?, 'OT-REM-1', 'Daw Remark', 'paid', 5000, '2026-08-01 03:00:00')
+	`, caseID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	otID, _ := otRes.LastInsertId()
+
+	ipdRes, err := sqlDB.Exec(`
+		INSERT INTO ipd_charge_bills (
+			bill_no, patient_id, patient_name, status, description, total_mmk, admission_id, created_at, updated_at
+		) VALUES ('IPB-REM-1', ?, 'Daw Remark', 'charged', 'Ward dressing note', 1500, ?, '2026-08-01 04:00:00', '2026-08-01 04:00:00')
+	`, chart.ID, stay.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ipdBillID, _ := ipdRes.LastInsertId()
+
+	if _, err := sqlDB.Exec(`
+		INSERT INTO ipd_ledger (admission_id, kind, amount_mmk, source, source_id, note, created_at) VALUES
+			(?, 'charge', -2000, 'opd', ?, 'OPD-REM-1', '2026-08-01 02:10:00'),
+			(?, 'charge', -5000, 'ot', ?, 'OTB-REM-1', '2026-08-01 03:10:00'),
+			(?, 'charge', -1500, 'ipd', ?, 'IPB-REM-1', '2026-08-01 04:10:00'),
+			(?, 'deposit', 1000, '', NULL, 'cash-in', '2026-08-01 05:10:00')
+	`, stay.ID, opdID, stay.ID, otID, stay.ID, ipdBillID, stay.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	w = doJSON(ipd, http.MethodGet, "/api/ipd/admissions/"+strconv.FormatInt(stay.ID, 10)+"/statement?date=2026-08-01", token, "")
+	mustCode(t, w, http.StatusOK)
+	page := w.Body.String()
+	for _, want := range []string{
+		">Voucher Number</th>",
+		">Description/Remark</th>",
+		"Fever follow-up",
+		"Post-op check",
+		"Ward dressing note",
+		">OPD-REM-1</td>",
+		">OTB-REM-1</td>",
+		">IPB-REM-1</td>",
+		`>Deposit</td><td></td><td class="col-amt">1,000</td>`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("remark sheet missing %q:\n%s", want, page)
+		}
+	}
+	for _, absent := range []string{">Kind</th>", ">Detail</th>", `class="a4-time"`, "OPD charge", "OT charge", "IPD charge"} {
+		if strings.Contains(page, absent) {
+			t.Fatalf("remark sheet kept removed column %q:\n%s", absent, page)
+		}
+	}
+	w = doJSON(ipd, http.MethodGet, "/api/ipd/admissions/"+strconv.FormatInt(stay.ID, 10)+"/statement", token, "")
+	mustCode(t, w, http.StatusOK)
+	finalHTML := w.Body.String()
+	for _, want := range []string{
+		">Description/Remark</th>",
+		"Fever follow-up",
+		"Post-op check",
+		"Ward dressing note",
+	} {
+		if !strings.Contains(finalHTML, want) {
+			t.Fatalf("final remark sheet missing %q:\n%s", want, finalHTML)
+		}
+	}
+	if strings.Contains(finalHTML, ">Detail</th>") || strings.Contains(finalHTML, `class="a4-time"`) {
+		t.Fatalf("final remark sheet kept Detail/Time:\n%s", finalHTML)
 	}
 }
 
@@ -315,7 +445,7 @@ func TestIpdDailyStatementRefusesIssuedPrior(t *testing.T) {
 	if !strings.Contains(w.Body.String(), "still issued") {
 		t.Fatalf("issued prior body %s", w.Body.String())
 	}
-	if strings.Contains(w.Body.String(), "IPD DAILY STATEMENT") {
+	if strings.Contains(w.Body.String(), "IPD Daily Bill") {
 		t.Fatalf("issued prior still printed a sheet:\n%s", w.Body.String())
 	}
 }

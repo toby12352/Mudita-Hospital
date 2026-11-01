@@ -23,6 +23,9 @@ export function ServerIpButton({
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const returnFocusRef = useRef(false);
 
   const label =
     conn === "ok" ? t("serverConnected") : conn === "checking" ? t("checking") : t("serverOffline");
@@ -32,6 +35,7 @@ export function ServerIpButton({
 
     function onPointerDown(e: MouseEvent) {
       if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+        returnFocusRef.current = false;
         setOpen(false);
         setEditing(false);
       }
@@ -39,6 +43,7 @@ export function ServerIpButton({
 
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
+        returnFocusRef.current = true;
         setOpen(false);
         setEditing(false);
       }
@@ -52,14 +57,30 @@ export function ServerIpButton({
     };
   }, [open]);
 
+  useEffect(() => {
+    if (!open) return;
+    const pop = popoverRef.current;
+    const focusable = pop?.querySelector<HTMLElement>("button:not([disabled]), input:not([disabled])");
+    if (focusable) focusable.focus({ focusVisible: true });
+    else pop?.focus();
+    return () => {
+      if (!returnFocusRef.current) return;
+      returnFocusRef.current = false;
+      const opener = buttonRef.current;
+      if (opener && document.contains(opener)) opener.focus();
+    };
+  }, [open]);
+
   function handleSave(base: string) {
     onSave(base);
+    returnFocusRef.current = true;
     setEditing(false);
     setOpen(false);
   }
 
   function handleUseLocal() {
     onUseLocal();
+    returnFocusRef.current = true;
     setEditing(false);
     setOpen(false);
   }
@@ -67,20 +88,33 @@ export function ServerIpButton({
   return (
     <div className={`server-ip${open ? " open" : ""}`} ref={rootRef}>
       <button
+        ref={buttonRef}
         type="button"
         className={`btn ghost server-ip-btn${compact ? " compact" : ""}`}
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => {
-          setOpen((v) => !v);
-          if (open) setEditing(false);
+          if (open) {
+            returnFocusRef.current = true;
+            setEditing(false);
+            setOpen(false);
+            return;
+          }
+          setOpen(true);
         }}
       >
         <span className={`status-dot status-dot-inline status-${conn}`} aria-hidden="true" />
         {t("serverIp")}
+        <span className="visually-hidden">{label}</span>
       </button>
       {open ? (
-        <div className="server-ip-popover" role="dialog" aria-label={t("serverIp")}>
+        <div
+          ref={popoverRef}
+          className="server-ip-popover"
+          role="dialog"
+          aria-label={t("serverIp")}
+          tabIndex={-1}
+        >
           {editing ? (
             <ServerSetupForm
               initial={getApiBase()}
@@ -95,7 +129,7 @@ export function ServerIpButton({
                   <p className="status-label">{label}</p>
                   <p className="status-detail">{detail}</p>
                   <p className="status-meta">
-                    Endpoint: <code>{getApiBase()}</code>
+                    {t("serverEndpoint")} <code>{getApiBase()}</code>
                   </p>
                 </div>
               </div>

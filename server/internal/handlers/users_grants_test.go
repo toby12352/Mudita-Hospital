@@ -160,6 +160,86 @@ func TestUserGrantSaveAndMe(t *testing.T) {
 		}
 	})
 
+	t.Run("create admin flag", func(t *testing.T) {
+		w := doJSON(users, http.MethodPost, "/api/users", adminTok, `{
+			"username":"secondadmin","display_name":"Second Admin","password":"secret1",
+			"admin":true,"grants":["opd.update","settings","manage_users"]
+		}`)
+		mustCode(t, w, http.StatusCreated)
+		var u userListItem
+		if err := json.Unmarshal(w.Body.Bytes(), &u); err != nil {
+			t.Fatal(err)
+		}
+		if u.Role != auth.RoleAdmin || u.AccessMode != auth.AccessPortal {
+			t.Fatalf("admin create %+v", u)
+		}
+		if len(u.Grants) != 0 {
+			t.Fatalf("admin grants %#v", u.Grants)
+		}
+		if !u.MustChangePassword || !u.Active {
+			t.Fatalf("admin flags %+v", u)
+		}
+		var grantCount int
+		if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM user_grants WHERE user_id = ?`, u.ID).Scan(&grantCount); err != nil {
+			t.Fatal(err)
+		}
+		if grantCount != 0 {
+			t.Fatalf("stored grants %d", grantCount)
+		}
+	})
+
+	t.Run("desk cannot create admin", func(t *testing.T) {
+		w := doJSON(users, http.MethodPost, "/api/users", pharmacyTok, `{
+			"username":"sneakyadmin","display_name":"Nope","password":"secret1","admin":true
+		}`)
+		mustCode(t, w, http.StatusForbidden)
+	})
+
+	t.Run("promote clerk to admin", func(t *testing.T) {
+		clerkID, clerkTok := insertModeSession(t, sqlDB, auth.RolePharmacy, auth.AccessUnified,
+			auth.GrantPharmacyRead, auth.GrantDashboard)
+		w := doJSON(users, http.MethodPut, "/api/users/"+strconv.FormatInt(clerkID, 10), adminTok, `{
+			"display_name":"Now Admin","admin":true,"grants":["opd.update","settings"]
+		}`)
+		mustCode(t, w, http.StatusOK)
+		var u userListItem
+		if err := json.Unmarshal(w.Body.Bytes(), &u); err != nil {
+			t.Fatal(err)
+		}
+		if u.Role != auth.RoleAdmin || u.AccessMode != auth.AccessPortal {
+			t.Fatalf("promoted %+v", u)
+		}
+		if u.DisplayName != "Now Admin" || len(u.Grants) != 0 {
+			t.Fatalf("promoted fields %+v", u)
+		}
+		var grantCount int
+		if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM user_grants WHERE user_id = ?`, clerkID).Scan(&grantCount); err != nil {
+			t.Fatal(err)
+		}
+		if grantCount != 0 {
+			t.Fatalf("grants left %d", grantCount)
+		}
+		if _, err := auth.LookupSession(sqlDB, clerkTok); err == nil {
+			t.Fatal("old clerk session still valid")
+		}
+	})
+
+	t.Run("cannot promote existing admin", func(t *testing.T) {
+		adminID, _ := insertSession(t, sqlDB, auth.RoleAdmin, 0)
+		w := doJSON(users, http.MethodPut, "/api/users/"+strconv.FormatInt(adminID, 10), adminTok, `{
+			"display_name":"Still Admin","admin":true
+		}`)
+		mustCode(t, w, http.StatusBadRequest)
+	})
+
+	t.Run("desk cannot promote admin", func(t *testing.T) {
+		id, _ := insertSession(t, sqlDB, auth.RoleOPD, 0)
+		w := doJSON(users, http.MethodPut, "/api/users/"+strconv.FormatInt(id, 10), pharmacyTok, `{
+			"display_name":"Nope","admin":true
+		}`)
+		mustCode(t, w, http.StatusForbidden)
+	})
+
 	t.Run("me keys", func(t *testing.T) {
 		w := doJSON(authH, http.MethodGet, "/api/auth/me", pharmacyTok, "")
 		mustCode(t, w, http.StatusOK)

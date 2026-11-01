@@ -229,3 +229,214 @@ func TestIPDLedger(t *testing.T) {
 		t.Fatalf("ledger audit rows %d", auditN)
 	}
 }
+
+func TestIPDDeleteDeposit(t *testing.T) {
+	sqlDB := openTestDB(t)
+	_, ipdTok := insertSession(t, sqlDB, auth.RoleIPD, 0)
+	_, adminTok := insertSession(t, sqlDB, auth.RoleAdmin, 0)
+	h := &IPD{DB: sqlDB}
+	charts := &Patients{DB: sqlDB}
+
+	w := doJSON(charts, http.MethodPost, "/api/patients", adminTok, `{"name":"U Deposit Delete","phone":"094444","age_years":40,"gender":"M"}`)
+	mustCode(t, w, http.StatusCreated)
+	chart := decodePatient(t, w)
+
+	w = doJSON(h, http.MethodPost, "/api/ipd/admissions", adminTok, `{"patient_id":`+strconv.FormatInt(chart.ID, 10)+`}`)
+	mustCode(t, w, http.StatusCreated)
+	stay := decodeAdmission(t, w)
+	stayPath := "/api/ipd/admissions/" + strconv.FormatInt(stay.ID, 10)
+
+	w = doJSON(h, http.MethodPost, stayPath+"/deposits", adminTok, `{"amount_mmk":20000,"note":"keep"}`)
+	mustCode(t, w, http.StatusCreated)
+	withKeep := decodeAdmission(t, w)
+	keepID := withKeep.Ledger[0].ID
+
+	w = doJSON(h, http.MethodPost, stayPath+"/deposits", adminTok, `{"amount_mmk":8000,"note":"drop"}`)
+	mustCode(t, w, http.StatusCreated)
+	withBoth := decodeAdmission(t, w)
+	var dropID int64
+	for _, line := range withBoth.Ledger {
+		if line.Note == "drop" {
+			dropID = line.ID
+		}
+	}
+	if dropID < 1 {
+		t.Fatal("drop deposit missing")
+	}
+
+	w = doJSON(h, http.MethodPost, stayPath+"/ward-charges", adminTok, `{"description":"Nursing","amount_mmk":1000}`)
+	mustCode(t, w, http.StatusCreated)
+
+	res, err := sqlDB.Exec(`
+		INSERT INTO ipd_ledger (admission_id, kind, amount_mmk, source, note)
+		VALUES (?, 'charge', -500, 'ipd', 'desk')
+	`, stay.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chargeID, err := res.LastInsertId()
+	if err != nil || chargeID < 1 {
+		t.Fatalf("charge id %d %v", chargeID, err)
+	}
+
+	if _, err := sqlDB.Exec(`
+		INSERT INTO ipd_day_vouchers (admission_id, civil_date, status, closing_mmk)
+		VALUES (?, '2026-04-20', 'issued', 27000)
+	`, stay.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	linePath := stayPath + "/ledger/" + strconv.FormatInt(dropID, 10)
+	w = doJSON(h, http.MethodDelete, linePath, ipdTok, "")
+	mustCode(t, w, http.StatusForbidden)
+
+	w = doJSON(h, http.MethodDelete, stayPath+"/ledger/"+strconv.FormatInt(chargeID, 10), adminTok, "")
+	mustCode(t, w, http.StatusBadRequest)
+	if _, err := sqlDB.Exec(`DELETE FROM ipd_ledger WHERE id = ?`, chargeID); err != nil {
+		t.Fatal(err)
+	}
+
+	w = doJSON(h, http.MethodDelete, linePath, adminTok, "")
+	mustCode(t, w, http.StatusOK)
+	after := decodeAdmission(t, w)
+	if after.BalanceMMK == nil || *after.BalanceMMK != 19000 {
+		t.Fatalf("balance after delete %+v", after.BalanceMMK)
+	}
+	if len(after.Ledger) != 2 {
+		t.Fatalf("ledger lines %d", len(after.Ledger))
+	}
+	for _, line := range after.Ledger {
+		if line.ID == dropID {
+			t.Fatal("deleted deposit still listed")
+		}
+	}
+	var dropLeft int
+	if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM ipd_ledger WHERE id = ?`, dropID).Scan(&dropLeft); err != nil {
+		t.Fatal(err)
+	}
+	if dropLeft != 0 {
+		t.Fatalf("deposit row still in db %d", dropLeft)
+	}
+	var closing int64
+	if err := sqlDB.QueryRow(`
+		SELECT closing_mmk FROM ipd_day_vouchers WHERE admission_id = ? AND civil_date = '2026-04-20'
+	`, stay.ID).Scan(&closing); err != nil {
+		t.Fatal(err)
+	}
+	if closing != 27000 {
+		t.Fatalf("voucher closing rewritten to %d", closing)
+	}
+	var deleteAudit int
+	if err := sqlDB.QueryRow(`
+		SELECT COUNT(1) FROM audit_logs WHERE entity = 'ipd_ledger' AND action = 'delete' AND entity_id = ?
+	`, dropID).Scan(&deleteAudit); err != nil {
+		t.Fatal(err)
+	}
+	if deleteAudit != 1 {
+		t.Fatalf("delete audit rows %d", deleteAudit)
+	}
+
+	if _, err := sqlDB.Exec(`UPDATE ipd_admissions SET status = 'settled' WHERE id = ?`, stay.ID); err != nil {
+		t.Fatal(err)
+	}
+	w = doJSON(h, http.MethodDelete, stayPath+"/ledger/"+strconv.FormatInt(keepID, 10), adminTok, "")
+	mustCode(t, w, http.StatusConflict)
+}
+
+func TestIPDDeleteWardCharge(t *testing.T) {
+	sqlDB := openTestDB(t)
+	_, ipdTok := insertSession(t, sqlDB, auth.RoleIPD, 0)
+	_, adminTok := insertSession(t, sqlDB, auth.RoleAdmin, 0)
+	h := &IPD{DB: sqlDB}
+	charts := &Patients{DB: sqlDB}
+
+	w := doJSON(charts, http.MethodPost, "/api/patients", adminTok, `{"name":"U Ward Delete","phone":"095555","age_years":41,"gender":"F"}`)
+	mustCode(t, w, http.StatusCreated)
+	chart := decodePatient(t, w)
+
+	w = doJSON(h, http.MethodPost, "/api/ipd/admissions", adminTok, `{"patient_id":`+strconv.FormatInt(chart.ID, 10)+`}`)
+	mustCode(t, w, http.StatusCreated)
+	stay := decodeAdmission(t, w)
+	stayPath := "/api/ipd/admissions/" + strconv.FormatInt(stay.ID, 10)
+
+	w = doJSON(h, http.MethodPost, stayPath+"/deposits", adminTok, `{"amount_mmk":5000,"note":"keep"}`)
+	mustCode(t, w, http.StatusCreated)
+
+	w = doJSON(h, http.MethodPost, stayPath+"/ward-charges", adminTok, `{"description":"Room night","amount_mmk":1000}`)
+	mustCode(t, w, http.StatusCreated)
+	charged := decodeAdmission(t, w)
+	var wardID int64
+	for _, line := range charged.Ledger {
+		if line.Kind == "ward" {
+			wardID = line.ID
+		}
+	}
+	if wardID < 1 {
+		t.Fatal("ward line missing")
+	}
+	if charged.BalanceMMK == nil || *charged.BalanceMMK != 4000 {
+		t.Fatalf("balance before delete %+v", charged.BalanceMMK)
+	}
+
+	if _, err := sqlDB.Exec(`
+		INSERT INTO ipd_day_vouchers (admission_id, civil_date, status, closing_mmk)
+		VALUES (?, '2026-04-21', 'issued', 4000)
+	`, stay.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	linePath := stayPath + "/ledger/" + strconv.FormatInt(wardID, 10)
+	w = doJSON(h, http.MethodDelete, linePath, ipdTok, "")
+	mustCode(t, w, http.StatusForbidden)
+
+	w = doJSON(h, http.MethodDelete, linePath, adminTok, "")
+	mustCode(t, w, http.StatusOK)
+	after := decodeAdmission(t, w)
+	if after.BalanceMMK == nil || *after.BalanceMMK != 5000 {
+		t.Fatalf("balance after delete %+v", after.BalanceMMK)
+	}
+	if len(after.Ledger) != 1 {
+		t.Fatalf("ledger lines %d", len(after.Ledger))
+	}
+	for _, line := range after.Ledger {
+		if line.ID == wardID {
+			t.Fatal("deleted ward still listed")
+		}
+	}
+	var wardLeft int
+	if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM ipd_ledger WHERE id = ?`, wardID).Scan(&wardLeft); err != nil {
+		t.Fatal(err)
+	}
+	if wardLeft != 0 {
+		t.Fatalf("ward row still in db %d", wardLeft)
+	}
+	var closing int64
+	if err := sqlDB.QueryRow(`
+		SELECT closing_mmk FROM ipd_day_vouchers WHERE admission_id = ? AND civil_date = '2026-04-21'
+	`, stay.ID).Scan(&closing); err != nil {
+		t.Fatal(err)
+	}
+	if closing != 4000 {
+		t.Fatalf("voucher closing rewritten to %d", closing)
+	}
+	var deleteAudit int
+	if err := sqlDB.QueryRow(`
+		SELECT COUNT(1) FROM audit_logs WHERE entity = 'ipd_ledger' AND action = 'delete' AND entity_id = ?
+	`, wardID).Scan(&deleteAudit); err != nil {
+		t.Fatal(err)
+	}
+	if deleteAudit != 1 {
+		t.Fatalf("delete audit rows %d", deleteAudit)
+	}
+
+	w = doJSON(h, http.MethodPost, stayPath+"/ward-charges", adminTok, `{"description":"Late","amount_mmk":200}`)
+	mustCode(t, w, http.StatusCreated)
+	late := decodeAdmission(t, w)
+	lateID := late.Ledger[len(late.Ledger)-1].ID
+
+	if _, err := sqlDB.Exec(`UPDATE ipd_admissions SET status = 'settled' WHERE id = ?`, stay.ID); err != nil {
+		t.Fatal(err)
+	}
+	w = doJSON(h, http.MethodDelete, stayPath+"/ledger/"+strconv.FormatInt(lateID, 10), adminTok, "")
+	mustCode(t, w, http.StatusConflict)
+}

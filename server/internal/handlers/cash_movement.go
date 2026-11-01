@@ -28,6 +28,7 @@ type expenseCashLine struct {
 	BillNo    string `json:"bill_no"`
 	Portal    string `json:"portal"`
 	Name      string `json:"name"`
+	Remark    string `json:"remark,omitempty"`
 	AmountMMK int64  `json:"amount_mmk"`
 	PaidAt    string `json:"paid_at"`
 	Reversal  bool   `json:"reversal,omitempty"`
@@ -76,7 +77,8 @@ func buildExpenseCash(db *sql.DB, date string) ([]expenseCashLine, int64, error)
 		return lines, 0, nil
 	}
 	rows, err := db.Query(`
-		SELECT bill_no, portal, name, -(total_mmk - discount_mmk), COALESCE(paid_at, '')
+		SELECT bill_no, portal, name, COALESCE(description, ''),
+		       -(total_mmk - discount_mmk), COALESCE(paid_at, '')
 		FROM expense_bills
 		WHERE paid_at IS NOT NULL AND TRIM(paid_at) != ''
 		  AND date(paid_at) = date(?)
@@ -94,7 +96,8 @@ func buildExpenseCash(db *sql.DB, date string) ([]expenseCashLine, int64, error)
 		return nil, 0, err
 	}
 	rows, err = db.Query(`
-		SELECT bill_no, portal, name, (total_mmk - discount_mmk), COALESCE(paid_at, '')
+		SELECT bill_no, portal, name, COALESCE(description, ''),
+		       (total_mmk - discount_mmk), COALESCE(paid_at, '')
 		FROM expense_bills
 		WHERE paid_at IS NOT NULL AND TRIM(paid_at) != ''
 		  AND status = 'void'
@@ -114,6 +117,7 @@ func buildExpenseCash(db *sql.DB, date string) ([]expenseCashLine, int64, error)
 	rows, err = db.Query(`
 		SELECT bill_no, 'pharmacy',
 		       CASE WHEN TRIM(supplier_name) = '' THEN 'Pharmacy purchase' ELSE supplier_name END,
+		       COALESCE(description, ''),
 		       -total_mmk, COALESCE(paid_at, '')
 		FROM pharmacy_purchase_bills
 		WHERE paid_at IS NOT NULL AND TRIM(paid_at) != ''
@@ -134,6 +138,7 @@ func buildExpenseCash(db *sql.DB, date string) ([]expenseCashLine, int64, error)
 	rows, err = db.Query(`
 		SELECT bill_no, 'pharmacy',
 		       CASE WHEN TRIM(supplier_name) = '' THEN 'Pharmacy purchase' ELSE supplier_name END,
+		       COALESCE(description, ''),
 		       total_mmk, COALESCE(paid_at, '')
 		FROM pharmacy_purchase_bills
 		WHERE paid_at IS NOT NULL AND TRIM(paid_at) != ''
@@ -158,7 +163,7 @@ func scanExpenseRows(rows *sql.Rows, lines *[]expenseCashLine, reversal bool) (i
 	for rows.Next() {
 		var line expenseCashLine
 		line.Reversal = reversal
-		if err := rows.Scan(&line.BillNo, &line.Portal, &line.Name, &line.AmountMMK, &line.PaidAt); err != nil {
+		if err := rows.Scan(&line.BillNo, &line.Portal, &line.Name, &line.Remark, &line.AmountMMK, &line.PaidAt); err != nil {
 			return 0, err
 		}
 		sum += line.AmountMMK

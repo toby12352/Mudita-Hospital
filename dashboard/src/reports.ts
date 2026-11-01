@@ -5,6 +5,7 @@ export type CashLine = {
   bill_no: string;
   patient: string;
   doctor: string;
+  payment_type?: string;
   total_mmk: number;
   paid_at: string;
   paid_by_name: string;
@@ -18,6 +19,8 @@ export type CashReport = {
   ot_total_mmk: number;
   pharmacy_count: number;
   pharmacy_total_mmk: number;
+  cash_total_mmk?: number;
+  online_total_mmk?: number;
   grand_total_mmk: number;
   lines: CashLine[];
 };

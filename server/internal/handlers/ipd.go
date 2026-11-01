@@ -105,12 +105,18 @@ func (h *IPD) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.postWardCharge(w, r, path)
 		case r.Method == http.MethodPost && strings.Contains(path, "/vouchers/"):
 			h.dayVoucher(w, r, path)
+		case r.Method == http.MethodGet && strings.Contains(path, "/vouchers/"):
+			h.getDayVoucher(w, r, path)
 		case r.Method == http.MethodGet && strings.HasSuffix(path, "/print"):
 			h.printDeposit(w, r, path)
+		case r.Method == http.MethodDelete && strings.Contains(path, "/ledger/"):
+			h.deleteDeposit(w, r, path)
 		case strings.HasPrefix(path, "/admissions/") && r.Method == http.MethodGet:
 			h.get(w, r, path)
 		case strings.HasPrefix(path, "/admissions/") && r.Method == http.MethodPut:
 			h.updateNotes(w, r, path)
+		case strings.HasPrefix(path, "/admissions/") && r.Method == http.MethodDelete:
+			h.purgeAdmission(w, r, path)
 		default:
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		}
@@ -119,15 +125,19 @@ func (h *IPD) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (h *IPD) list(w http.ResponseWriter, r *http.Request) {
 	status := strings.TrimSpace(r.URL.Query().Get("status"))
-	if status != "" && status != "open" && status != "settled" {
+	if status != "" && status != "open" && status != "settled" && status != "deleted" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid status"})
 		return
 	}
+	// Empty status = working list (open + settled). Deleted stays only via status=deleted.
 	rows, err := h.DB.Query(`
 		SELECT `+ipdAdmissionCols+`
 		FROM ipd_admissions a
 		JOIN patients p ON p.id = a.patient_id
-		WHERE (? = '' OR a.status = ?)
+		WHERE CASE
+		  WHEN ? = '' THEN a.status IN ('open', 'settled')
+		  ELSE a.status = ?
+		END
 		ORDER BY a.admitted_at DESC, a.id DESC
 	`, status, status)
 	if err != nil {
@@ -370,6 +380,63 @@ func (h *IPD) updateNotes(w http.ResponseWriter, r *http.Request, path string) {
 		return
 	}
 	writeJSON(w, http.StatusOK, row)
+}
+
+// purgeAdmission soft-deletes an open stay. Admin only. Ledger rows stay;
+// lists, patient chart, open-stay totals, and IPD cash skip the deleted status.
+func (h *IPD) purgeAdmission(w http.ResponseWriter, r *http.Request, path string) {
+	user, ok := requireAdminUser(w, r)
+	if !ok {
+		return
+	}
+	id, ok := admissionPathID(path)
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid id"})
+		return
+	}
+
+	tx, err := h.DB.Begin()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "tx failed"})
+		return
+	}
+	defer tx.Rollback()
+
+	var status, admissionNo string
+	err = tx.QueryRow(`SELECT status, admission_no FROM ipd_admissions WHERE id = ?`, id).Scan(&status, &admissionNo)
+	if err == sql.ErrNoRows {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return
+	}
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "load failed"})
+		return
+	}
+	if status != "open" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "only open stays can be deleted"})
+		return
+	}
+	res, err := tx.Exec(`
+		UPDATE ipd_admissions SET status = 'deleted', updated_at = datetime('now') WHERE id = ?
+	`, id)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "delete failed"})
+		return
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "commit failed"})
+		return
+	}
+	uid := user.ID
+	audit.WriteAudit(h.DB, &uid, "delete", "ipd_admission", &id, map[string]any{
+		"admission_no": admissionNo, "was_status": status, "status": "deleted",
+	})
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 const ipdAdmissionCols = `

@@ -37,6 +37,8 @@ type Props = {
   billStatus: string;
   printedAt: string | null;
   collectedCash?: number | null;
+  paymentType?: "cash" | "online";
+  onPaymentType?: (v: "cash" | "online") => void;
   chargedSales?: { id: number; bill_no: string }[];
   returnSaleId?: number | null;
   patientId: number | null;
@@ -92,6 +94,7 @@ type Props = {
   onConfirm: () => void;
   onHistory: () => void;
   onDelete: () => void;
+  canVoid: boolean;
   onPurge?: () => void;
   onCancel: () => void;
   onNewBill: () => void;
@@ -168,14 +171,27 @@ export function PharmacyBillForm(props: Props) {
               <span className="opd-bill-label">{t("vouNo")}</span>
               <span className="opd-bill-readonly">{billNo || "—"}</span>
             </div>
-            <div className="opd-bill-field">
-              <span className="opd-bill-label">
-                {isTransfer ? t("destination") : t("payType")}
-              </span>
-              <span className="opd-bill-readonly">
-                {isTransfer ? t("transferDestination") : t("payTypeCash")}
-              </span>
-            </div>
+            {isTransfer ? (
+              <div className="opd-bill-field">
+                <span className="opd-bill-label">{t("destination")}</span>
+                <span className="opd-bill-readonly">{t("transferDestination")}</span>
+              </div>
+            ) : (
+              <label className="opd-bill-field">
+                <span className="opd-bill-label">{t("payType")}</span>
+                <select
+                  className="opd-bill-input"
+                  value={props.paymentType ?? "cash"}
+                  disabled={!writable}
+                  onChange={(e) =>
+                    props.onPaymentType?.(e.target.value === "online" ? "online" : "cash")
+                  }
+                >
+                  <option value="cash">{t("payTypeCash")}</option>
+                  <option value="online">{t("payTypeOnline")}</option>
+                </select>
+              </label>
+            )}
             {isTransfer ? null : (
             <div className="opd-bill-field opd-bill-field--typeahead">
               <span className="opd-bill-label">{t("patientName")}</span>
@@ -534,7 +550,7 @@ export function PharmacyBillForm(props: Props) {
           <button
             type="button"
             className={`opd-bill-rail-btn opd-bill-rail-btn--danger${err("void") ? " opd-bill-rail-btn--shake" : ""}`}
-            disabled={busy}
+            disabled={busy || !props.canVoid}
             onClick={props.onDelete}
             data-guide="bill-void"
           >

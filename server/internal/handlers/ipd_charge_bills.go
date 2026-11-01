@@ -28,11 +28,13 @@ type ipdChargeBill struct {
 	PatientGender   string              `json:"patient_gender"`
 	AdmissionID     *int64              `json:"admission_id,omitempty"`
 	Status          string              `json:"status"`
+	Description     string              `json:"description"`
 	TotalMMK        int64               `json:"total_mmk"`
 	DiscountValue   int64               `json:"discount_value"`
 	DiscountUnit    string              `json:"discount_unit"`
 	DiscountMMK     int64               `json:"discount_mmk"`
 	PrintedAt       *string             `json:"printed_at,omitempty"`
+	BilledAt        *string             `json:"billed_at,omitempty"`
 	VoidedAt        *string             `json:"voided_at,omitempty"`
 	VoidedByUserID  *int64              `json:"voided_by_user_id,omitempty"`
 	VoidReason      string              `json:"void_reason,omitempty"`
@@ -46,7 +48,7 @@ type ipdChargeBillLine struct {
 	ID           int64  `json:"id,omitempty"`
 	Description  string `json:"description"`
 	Qty          int64  `json:"qty"`
-	UnitPriceMMK int64  `json:"unit_price_mmk"`
+	UnitPriceMMK *int64 `json:"unit_price_mmk"`
 	LineTotalMMK int64  `json:"line_total_mmk"`
 	SortOrder    int    `json:"sort_order"`
 }
@@ -57,8 +59,10 @@ type ipdChargeBillWrite struct {
 	PatientPhone    string                   `json:"patient_phone"`
 	PatientAgeYears *int64                   `json:"patient_age_years"`
 	PatientGender   string                   `json:"patient_gender"`
+	Description     string                   `json:"description"`
 	DiscountValue   int64                    `json:"discount_value"`
 	DiscountUnit    string                   `json:"discount_unit"`
+	BilledAt        string                   `json:"billed_at,omitempty"`
 	Lines           []ipdChargeBillLineInput `json:"lines"`
 }
 
@@ -72,8 +76,8 @@ type ipdChargeBillLineInput struct {
 
 const ipdChargeBillColumns = `
 	id, bill_no, patient_id, patient_name, patient_phone, patient_age_years, patient_gender,
-	admission_id, status, total_mmk, discount_value, discount_unit, discount_mmk,
-	printed_at, voided_at, voided_by_user_id, void_reason,
+	admission_id, status, description, total_mmk, discount_value, discount_unit, discount_mmk,
+	printed_at, billed_at, voided_at, voided_by_user_id, void_reason,
 	created_by_user_id, created_at, updated_at`
 
 func (h *IPD) listChargeBills(w http.ResponseWriter, r *http.Request) {
@@ -158,11 +162,12 @@ func (h *IPD) createChargeBill(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req.PatientName = strings.TrimSpace(req.PatientName)
-	if req.PatientName == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "patient_name required"})
+	user := middleware.UserFromContext(r.Context())
+	override, status, errMsg := parseAdminBilledAt(user.Role, req.BilledAt)
+	if errMsg != "" {
+		writeJSON(w, status, map[string]string{"error": errMsg})
 		return
 	}
-	user := middleware.UserFromContext(r.Context())
 
 	tx, err := h.DB.Begin()
 	if err != nil {
@@ -176,6 +181,16 @@ func (h *IPD) createChargeBill(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, code, map[string]string{"error": errMsg})
 		return
 	}
+	if !draftBillHasContent(
+		[]string{prepared.Name, prepared.Phone, prepared.Gender, prepared.Description},
+		len(prepared.Lines),
+		req.DiscountValue,
+		prepared.Age != nil,
+		prepared.PatientID != nil,
+	) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bill is empty"})
+		return
+	}
 
 	billNo, err := nextIpdChargeBillNo(tx)
 	if err != nil {
@@ -184,13 +199,26 @@ func (h *IPD) createChargeBill(w http.ResponseWriter, r *http.Request) {
 	}
 
 	uid := user.ID
-	res, err := tx.Exec(`
-		INSERT INTO ipd_charge_bills (
-			bill_no, patient_id, patient_name, patient_phone, patient_age_years, patient_gender,
-			status, total_mmk, discount_value, discount_unit, discount_mmk, created_by_user_id
-		) VALUES (?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?)
-	`, billNo, prepared.PatientID, prepared.Name, prepared.Phone, prepared.Age, prepared.Gender,
-		prepared.Gross, req.DiscountValue, prepared.DiscountUnit, prepared.DiscountMMK, uid)
+	var res sql.Result
+	if override != nil {
+		res, err = tx.Exec(`
+			INSERT INTO ipd_charge_bills (
+				bill_no, patient_id, patient_name, patient_phone, patient_age_years, patient_gender,
+				status, description, total_mmk, discount_value, discount_unit, discount_mmk, created_by_user_id,
+				billed_at, created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`, billNo, prepared.PatientID, prepared.Name, prepared.Phone, prepared.Age, prepared.Gender,
+			prepared.Description, prepared.Gross, req.DiscountValue, prepared.DiscountUnit, prepared.DiscountMMK, uid,
+			override.Yangon, override.UTC, override.UTC)
+	} else {
+		res, err = tx.Exec(`
+			INSERT INTO ipd_charge_bills (
+				bill_no, patient_id, patient_name, patient_phone, patient_age_years, patient_gender,
+				status, description, total_mmk, discount_value, discount_unit, discount_mmk, created_by_user_id
+			) VALUES (?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?)
+		`, billNo, prepared.PatientID, prepared.Name, prepared.Phone, prepared.Age, prepared.Gender,
+			prepared.Description, prepared.Gross, req.DiscountValue, prepared.DiscountUnit, prepared.DiscountMMK, uid)
+	}
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "create failed"})
 		return
@@ -205,9 +233,13 @@ func (h *IPD) createChargeBill(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	audit.WriteAudit(h.DB, &uid, "create", "ipd_charge_bill", &billID, map[string]any{
+	auditPayload := map[string]any{
 		"bill_no": billNo, "total_mmk": prepared.Gross, "discount_mmk": prepared.DiscountMMK,
-	})
+	}
+	if override != nil {
+		auditPayload["billed_at"] = override.Yangon
+	}
+	audit.WriteAudit(h.DB, &uid, "create", "ipd_charge_bill", &billID, auditPayload)
 
 	bill, err := loadIpdChargeBill(h.DB, billID)
 	if err != nil {
@@ -247,10 +279,6 @@ func (h *IPD) updateChargeBill(w http.ResponseWriter, r *http.Request, path stri
 		return
 	}
 	req.PatientName = strings.TrimSpace(req.PatientName)
-	if req.PatientName == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "patient_name required"})
-		return
-	}
 	user := middleware.UserFromContext(r.Context())
 
 	tx, err := h.DB.Begin()
@@ -283,15 +311,25 @@ func (h *IPD) updateChargeBill(w http.ResponseWriter, r *http.Request, path stri
 		writeJSON(w, code, map[string]string{"error": errMsg})
 		return
 	}
+	if !draftBillHasContent(
+		[]string{prepared.Name, prepared.Phone, prepared.Gender, prepared.Description},
+		len(prepared.Lines),
+		req.DiscountValue,
+		prepared.Age != nil,
+		prepared.PatientID != nil,
+	) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bill is empty"})
+		return
+	}
 
 	res, err := tx.Exec(`
 		UPDATE ipd_charge_bills SET
 			patient_id = ?, patient_name = ?, patient_phone = ?, patient_age_years = ?, patient_gender = ?,
-			total_mmk = ?, discount_value = ?, discount_unit = ?, discount_mmk = ?,
+			description = ?, total_mmk = ?, discount_value = ?, discount_unit = ?, discount_mmk = ?,
 			updated_at = datetime('now')
 		WHERE id = ? AND status = 'draft'
 	`, prepared.PatientID, prepared.Name, prepared.Phone, prepared.Age, prepared.Gender,
-		prepared.Gross, req.DiscountValue, prepared.DiscountUnit, prepared.DiscountMMK, id)
+		prepared.Description, prepared.Gross, req.DiscountValue, prepared.DiscountUnit, prepared.DiscountMMK, id)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "update failed"})
 		return
@@ -417,13 +455,14 @@ func (h *IPD) chargeBillToIPD(w http.ResponseWriter, r *http.Request, path strin
 	}
 	defer tx.Rollback()
 
-	var status, billNo string
+	var status, billNo, patientName string
 	var patientID sql.NullInt64
+	var billedAt sql.NullString
 	var total, discount int64
 	err = tx.QueryRow(`
-		SELECT status, bill_no, patient_id, total_mmk, discount_mmk
+		SELECT status, bill_no, patient_id, patient_name, total_mmk, discount_mmk, billed_at
 		FROM ipd_charge_bills WHERE id = ?
-	`, id).Scan(&status, &billNo, &patientID, &total, &discount)
+	`, id).Scan(&status, &billNo, &patientID, &patientName, &total, &discount, &billedAt)
 	if err == sql.ErrNoRows {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		return
@@ -439,18 +478,32 @@ func (h *IPD) chargeBillToIPD(w http.ResponseWriter, r *http.Request, path strin
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "only draft bills can be charged"})
 		return
 	}
+	if strings.TrimSpace(patientName) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "patient_name required"})
+		return
+	}
 	if !patientID.Valid {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "patient chart required"})
 		return
 	}
-	var lineCount int
-	if err := tx.QueryRow(`SELECT COUNT(1) FROM ipd_charge_bill_lines WHERE bill_id = ?`, id).Scan(&lineCount); err != nil {
+	chargeLines, err := queryIpdChargeBillLines(tx, id)
+	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "lines load failed"})
 		return
 	}
-	if lineCount == 0 {
+	if len(chargeLines) == 0 {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bill has no lines"})
 		return
+	}
+	for _, line := range chargeLines {
+		if strings.TrimSpace(line.Description) == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "description required"})
+			return
+		}
+		if line.UnitPriceMMK == nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unit_price_mmk required"})
+			return
+		}
 	}
 	net := total - discount
 	if net < 0 {
@@ -471,6 +524,34 @@ func (h *IPD) chargeBillToIPD(w http.ResponseWriter, r *http.Request, path strin
 		return
 	}
 
+	ledgerCreatedUTC := ""
+	if billedAt.Valid && strings.TrimSpace(billedAt.String) != "" {
+		t, ok := parseBilledAtInput(billedAt.String)
+		if !ok {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "invalid billed_at"})
+			return
+		}
+		ledgerCreatedUTC = t.UTC().Format("2006-01-02 15:04:05")
+		day, dayOK := yangonDateKey(ledgerCreatedUTC)
+		if dayOK {
+			var voucherStatus string
+			err = tx.QueryRow(`
+				SELECT status FROM ipd_day_vouchers
+				WHERE admission_id = ? AND civil_date = ?
+			`, admissionID, day).Scan(&voucherStatus)
+			if err == sql.ErrNoRows {
+				voucherStatus = ""
+			} else if err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "load failed"})
+				return
+			}
+			if voucherStatus == "paid" {
+				writeJSON(w, http.StatusConflict, map[string]string{"error": "day is already paid"})
+				return
+			}
+		}
+	}
+
 	uid := user.ID
 	res, err := tx.Exec(`
 		UPDATE ipd_charge_bills
@@ -486,7 +567,7 @@ func (h *IPD) chargeBillToIPD(w http.ResponseWriter, r *http.Request, path strin
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "only draft bills can be charged"})
 		return
 	}
-	if err := postLedgerTx(tx, admissionID, "charge", -net, "ipd", id, billNo, uid); err != nil {
+	if err := postLedgerTxAt(tx, admissionID, "charge", -net, "ipd", id, billNo, uid, ledgerCreatedUTC); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "charge failed"})
 		return
 	}
@@ -763,6 +844,7 @@ type chargeBillPrepared struct {
 	Phone        string
 	Age          any
 	Gender       string
+	Description  string
 }
 
 func prepareChargeBillWrite(tx *sql.Tx, req ipdChargeBillWrite) (chargeBillPrepared, int, string) {
@@ -793,6 +875,7 @@ func prepareChargeBillWrite(tx *sql.Tx, req ipdChargeBillWrite) (chargeBillPrepa
 		Phone:        strings.TrimSpace(req.PatientPhone),
 		Age:          age,
 		Gender:       strings.TrimSpace(req.PatientGender),
+		Description:  strings.TrimSpace(req.Description),
 	}
 	return prepared, 0, ""
 }
@@ -826,7 +909,7 @@ func chargeAgeValue(age *int64) (any, string) {
 
 func normalizeIpdChargeLines(in []ipdChargeBillLineInput) ([]ipdChargeBillLine, int64, string) {
 	if len(in) == 0 {
-		return nil, 0, "at least one line"
+		return []ipdChargeBillLine{}, 0, ""
 	}
 	out := make([]ipdChargeBillLine, 0, len(in))
 	var total int64
@@ -839,14 +922,17 @@ func normalizeIpdChargeLines(in []ipdChargeBillLineInput) ([]ipdChargeBillLine, 
 		if errMsg != "" {
 			return nil, 0, errMsg
 		}
-		price, errMsg := parseExpenseUnitPrice(raw.UnitPriceMMK)
+		price, errMsg := parseOptionalExpenseUnitPrice(raw.UnitPriceMMK)
 		if errMsg != "" {
 			return nil, 0, errMsg
 		}
-		if qty > 1 && price > math.MaxInt64/qty {
-			return nil, 0, "line total too large"
+		var lineTotal int64
+		if price != nil {
+			if qty > 1 && *price > math.MaxInt64/qty {
+				return nil, 0, "line total too large"
+			}
+			lineTotal = qty * *price
 		}
-		lineTotal := qty * price
 		out = append(out, ipdChargeBillLine{
 			Description:  desc,
 			Qty:          qty,
@@ -910,8 +996,13 @@ func queryIpdChargeBillLines(db sqlQuery, billID int64) ([]ipdChargeBillLine, er
 	out := make([]ipdChargeBillLine, 0)
 	for rows.Next() {
 		var l ipdChargeBillLine
-		if err := rows.Scan(&l.ID, &l.Description, &l.Qty, &l.UnitPriceMMK, &l.LineTotalMMK, &l.SortOrder); err != nil {
+		var price sql.NullInt64
+		if err := rows.Scan(&l.ID, &l.Description, &l.Qty, &price, &l.LineTotalMMK, &l.SortOrder); err != nil {
 			return nil, err
+		}
+		if price.Valid {
+			v := price.Int64
+			l.UnitPriceMMK = &v
 		}
 		out = append(out, l)
 	}
@@ -921,11 +1012,11 @@ func queryIpdChargeBillLines(db sqlQuery, billID int64) ([]ipdChargeBillLine, er
 func scanIpdChargeBill(row scannable) (ipdChargeBill, error) {
 	var b ipdChargeBill
 	var patientID, age, admissionID, voidedBy, createdBy sql.NullInt64
-	var printedAt, voidedAt sql.NullString
+	var printedAt, billedAt, voidedAt sql.NullString
 	err := row.Scan(
 		&b.ID, &b.BillNo, &patientID, &b.PatientName, &b.PatientPhone, &age, &b.PatientGender,
-		&admissionID, &b.Status, &b.TotalMMK, &b.DiscountValue, &b.DiscountUnit, &b.DiscountMMK,
-		&printedAt, &voidedAt, &voidedBy, &b.VoidReason,
+		&admissionID, &b.Status, &b.Description, &b.TotalMMK, &b.DiscountValue, &b.DiscountUnit, &b.DiscountMMK,
+		&printedAt, &billedAt, &voidedAt, &voidedBy, &b.VoidReason,
 		&createdBy, &b.CreatedAt, &b.UpdatedAt,
 	)
 	if err != nil {
@@ -946,6 +1037,10 @@ func scanIpdChargeBill(row scannable) (ipdChargeBill, error) {
 	if printedAt.Valid && printedAt.String != "" {
 		v := printedAt.String
 		b.PrintedAt = &v
+	}
+	if billedAt.Valid && strings.TrimSpace(billedAt.String) != "" {
+		v := billedAt.String
+		b.BilledAt = &v
 	}
 	if voidedAt.Valid && voidedAt.String != "" {
 		v := voidedAt.String
@@ -988,10 +1083,10 @@ func chargeBillDateLabel(db *sql.DB, bill ipdChargeBill) string {
 			ORDER BY id DESC LIMIT 1
 		`, bill.ID).Scan(&created)
 		if err == nil && strings.TrimSpace(created) != "" {
-			return receiptDateLabel(created, nil, nil)
+			return receiptDateLabel(created, bill.BilledAt, nil)
 		}
 	}
-	return receiptDateLabel(bill.CreatedAt, nil, nil)
+	return receiptDateLabel(bill.CreatedAt, bill.BilledAt, nil)
 }
 
 func chargeBillAdmissionNo(db *sql.DB, admissionID *int64) string {
@@ -1047,6 +1142,13 @@ func renderIpdChargeBillHTML(hosp *hospitalSettings, bill ipdChargeBill, dateLab
 	writeA4KV(&b, "Date", dateLabel)
 	writeA4KV(&b, "Status", chargeBillStatusLine(bill))
 	b.WriteString(`</div></div>`)
+
+	if note := strings.TrimSpace(bill.Description); note != "" {
+		b.WriteString(`<p class="a4-meta-heading">Description</p>`)
+		b.WriteString(`<p>`)
+		b.WriteString(html.EscapeString(note))
+		b.WriteString(`</p>`)
+	}
 
 	if len(bill.Lines) > 0 {
 		b.WriteString(`<table class="a4-items"><thead><tr>`)

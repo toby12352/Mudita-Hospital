@@ -298,7 +298,7 @@ func (h *Patients) delete(w http.ResponseWriter, r *http.Request, path string) {
 		return
 	}
 
-	if blocked, reason := patientHasRecordedService(tx, id); blocked {
+	if blocked, reason := patientHasInpatientStay(tx, id); blocked {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": reason})
 		return
 	}
@@ -326,30 +326,18 @@ func (h *Patients) delete(w http.ResponseWriter, r *http.Request, path string) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// patientHasRecordedService is true when any voucher or stay is linked to the chart.
-// OPD/pharmacy/OT use ON DELETE SET NULL, so the app must refuse before DELETE.
-func patientHasRecordedService(tx *sql.Tx, patientID int64) (bool, string) {
-	checks := []struct {
-		query  string
-		reason string
-	}{
-		{`SELECT 1 FROM opd_bills WHERE patient_id = ? AND status != 'deleted' LIMIT 1`, "patient has recorded vouchers"},
-		{`SELECT 1 FROM pharmacy_bills WHERE patient_id = ? AND bill_no NOT LIKE 'TO-%' AND status != 'deleted' LIMIT 1`, "patient has recorded vouchers"},
-		{`SELECT 1 FROM ot_cases WHERE patient_id = ? AND status != 'deleted' LIMIT 1`, "patient has recorded vouchers"},
-		{`SELECT 1 FROM ipd_admissions WHERE patient_id = ? LIMIT 1`, "patient has recorded vouchers"},
+// patientHasInpatientStay is true when any admission row still requires this chart.
+// Desk bills use ON DELETE SET NULL and become unassigned; stays keep patient_id NOT NULL.
+func patientHasInpatientStay(tx *sql.Tx, patientID int64) (bool, string) {
+	var one int
+	err := tx.QueryRow(`SELECT 1 FROM ipd_admissions WHERE patient_id = ? LIMIT 1`, patientID).Scan(&one)
+	if err == sql.ErrNoRows {
+		return false, ""
 	}
-	for _, c := range checks {
-		var one int
-		err := tx.QueryRow(c.query, patientID).Scan(&one)
-		if err == sql.ErrNoRows {
-			continue
-		}
-		if err != nil {
-			return true, "delete failed"
-		}
-		return true, c.reason
+	if err != nil {
+		return true, "delete failed"
 	}
-	return false, ""
+	return true, "patient has an inpatient stay"
 }
 
 func decodePatientWrite(w http.ResponseWriter, r *http.Request) (patientWriteRequest, bool) {

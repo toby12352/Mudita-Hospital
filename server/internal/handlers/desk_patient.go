@@ -23,7 +23,20 @@ func refreshLinkedPatient(tx *sql.Tx, id int64, name, phone, gender string, age 
 
 // resolveDeskPatient uses an explicit chart when the client sends one.
 // Omitting the id keeps the caller's current save path (OPD upsert, or no chart).
+// A blank name never creates or overwrites a chart; an explicit id is still kept as a link.
 func resolveDeskPatient(tx *sql.Tx, explicit *int64, save bool, name, phone, gender string, age *int64, upsert func() (int64, error)) (*int64, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		if explicit != nil && *explicit > 0 {
+			var exists int
+			if err := tx.QueryRow(`SELECT 1 FROM patients WHERE id = ?`, *explicit).Scan(&exists); err != nil {
+				return nil, err
+			}
+			id := *explicit
+			return &id, nil
+		}
+		return nil, nil
+	}
 	if explicit != nil && *explicit > 0 {
 		if err := refreshLinkedPatient(tx, *explicit, name, phone, gender, age); err != nil {
 			return nil, err

@@ -155,9 +155,20 @@ func TestIpdDayVoucherMigration(t *testing.T) {
 	if err := sqlDB.QueryRow(`SELECT started_on FROM ipd_voucher_epoch WHERE id = 1`).Scan(&startedOn); err != nil {
 		t.Fatal(err)
 	}
+	// 037 seeds tomorrow; 042 pulls that back to 2026-10-30 when tomorrow is later.
 	want := time.Now().In(yangon).AddDate(0, 0, 1).Format("2006-01-02")
+	if want > "2026-10-30" {
+		want = "2026-10-30"
+	}
 	if startedOn != want {
 		t.Fatalf("epoch started_on=%q want %q", startedOn, want)
+	}
+	var applied042 int
+	if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM schema_migrations WHERE name = '042_ipd_voucher_epoch_backdate'`).Scan(&applied042); err != nil {
+		t.Fatal(err)
+	}
+	if applied042 != 1 {
+		t.Fatalf("042 not recorded: %d", applied042)
 	}
 
 	var voucherTable int

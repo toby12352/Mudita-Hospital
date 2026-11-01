@@ -91,11 +91,13 @@ export async function createOpdBill(body: OpdBillWrite): Promise<OpdBill> { /* a
 
 ## Styling
 
-- Extend existing CSS variables in `shared/styles/App.css` / dashboard `theme.css`.
+Cross-portal type, contrast, focus, and target sizes: [UNIFIED_DESIGN_SYSTEM.md](../accessibility/UNIFIED_DESIGN_SYSTEM.md). Where that spec and the clinic design system below disagree on type, contrast, font stack, or control height, the accessibility spec wins. Action roles, overlay class names, bill-rail class names, and F-keys stay in this file. Track progress in [IMPLEMENTATION_STATUS.md](../accessibility/IMPLEMENTATION_STATUS.md).
+
+- Extend existing CSS variables in `shared/styles/App.css` / dashboard `theme.css`. Apply the same tokens in each file. Do not add a shared UI package.
 - Prefer BEM-ish / kebab class names already used (e.g. `.print-preview-card--receipt`).
 - Do not introduce Tailwind or a new CSS framework without an explicit team decision.
-- Keep brand assets consistent (`assets/logo.png`, Noto Sans Myanmar for MY).
-- Clinic desk actions and bill chrome follow **Clinic design system** below. Dashboard keeps its own theme — do not copy clinic action classes into `dashboard/`.
+- Brand mark stays `assets/logo.png`. Target UI font is Roboto, with Noto Sans Myanmar for Myanmar glyphs, loaded locally. Do not use a font CDN.
+- Clinic desk actions and bill chrome follow **Clinic design system** below. Dashboard keeps its own stylesheet — do not copy clinic action classes into `dashboard/`.
 
 ### Clinic design system
 
@@ -204,7 +206,7 @@ Do not bypass health or auth for convenience in production paths.
 - Bill screens use the light action column (`.opd-bill-rail`) with F5 Save draft, F6 Print (still editable), F7 Mark Paid, Charge to IPD (no function key), History F9, Void Bills on Ctrl+F8, Cancel F10, and New bill F2. Accent is class-driven (`.opd-bill-rail-btn--accent` on Mark Paid while collecting, New when finished, Transfer when that is the primary step). Void Bills uses `.opd-bill-rail-btn--danger` (outline). List and Drug Setup screens omit the rail. See **Clinic design system** under Styling. The live names are in [WORKFLOWS.md](../guidance/WORKFLOWS.md).
 - Admin uses the same collapsible desk sidebar with Home, portal groups (Patient, IPD, OPD, OT, Pharmacy) that expand to each desk’s pages, Settings, and About. Desk roles land in one portal with that portal’s rail only. Still **no React Router** — `View` + optional `NavIntent` in `app/types.ts`, remount pages with a changing `key` when the same view opens with a different intent.
 - Dashboard signed-in chrome is a left sidebar (logo and the six pages) and a workspace header (page title plus an account menu for name, role, language, server connection, and log out). No clinic status strip. Server setup, login, and change-password use the same canvas and a white card.
-- UI zoom: `mudita_ui_scale` in `localStorage` via `shared/uiScale.ts`; Ctrl/Cmd `+` / `-` / `0` anywhere.
+- UI zoom: clinic `mudita_ui_scale` via `shared/uiScale.ts`; dashboard `mudita_dash_ui_scale` via `dashboard/src/uiScale.ts`. Ctrl/Cmd `+` / `-` / `0` anywhere in each app.
 
 ## File size guidance
 

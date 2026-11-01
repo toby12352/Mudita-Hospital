@@ -111,6 +111,8 @@ export function PharmacyItemsTab({
   const adjustDeltaRef = useRef("");
   const adjustUnitIdRef = useRef("");
   const panelItemRef = useRef<PharmacyItem | null>(null);
+  const restockDialogRef = useRef<HTMLDivElement>(null);
+  const restockOpenerRef = useRef<HTMLElement | null>(null);
   const [adjustDelta, setAdjustDelta] = useState("");
   const [adjustUnitId, setAdjustUnitId] = useState("");
   const [adjustBatchNo, setAdjustBatchNo] = useState("");
@@ -378,14 +380,58 @@ export function PharmacyItemsTab({
 
   useEffect(() => {
     if (!embedDetail || panelMode !== "restock") return;
-    function onKey(e: globalThis.KeyboardEvent) {
-      if (e.key !== "Escape") return;
-      if (document.querySelector(".alert-dialog-overlay")) return;
-      e.preventDefault();
-      closeRestockOverlay();
+    const opener = document.activeElement;
+    restockOpenerRef.current = opener instanceof HTMLElement ? opener : null;
+    window.requestAnimationFrame(() => restockDialogRef.current?.focus());
+
+    function focusableIn(root: ParentNode): HTMLElement[] {
+      return Array.from(
+        root.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), iframe, [tabindex]:not([tabindex="-1"])',
+        ),
+      );
     }
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    function onKey(e: globalThis.KeyboardEvent) {
+      if (document.querySelector(".alert-dialog-overlay, .print-preview-overlay")) return;
+      const root = restockDialogRef.current;
+      if (!root) return;
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        closeRestockOverlay();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const focusable = focusableIn(root);
+      if (focusable.length === 0) return;
+      const active = document.activeElement;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const inside = active instanceof Node && root.contains(active) && active !== root;
+      if (e.shiftKey) {
+        if (!inside || active === first) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else if (!inside || active === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+    document.addEventListener("keydown", onKey, true);
+    return () => {
+      document.removeEventListener("keydown", onKey, true);
+      const prev = restockOpenerRef.current;
+      restockOpenerRef.current = null;
+      const active = document.activeElement;
+      const dialog = restockDialogRef.current;
+      const stillInside = dialog != null && active instanceof Node && dialog.contains(active);
+      const nothingFocused =
+        active == null || active === document.body || active === document.documentElement;
+      if ((stillInside || nothingFocused) && prev && document.contains(prev)) prev.focus();
+    };
+    // Intentional: closeRestockOverlay is stable enough for Escape wiring each open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- restock overlay focus trap
   }, [embedDetail, panelMode]);
 
   async function onDeactivate(id: number) {
@@ -749,6 +795,8 @@ export function PharmacyItemsTab({
               }}
             >
               <div
+                ref={restockDialogRef}
+                tabIndex={-1}
                 className="clinic-overlay-panel drug-setup-restock-dialog drug-setup-panel"
                 role="dialog"
                 aria-modal="true"

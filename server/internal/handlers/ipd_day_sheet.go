@@ -1,11 +1,81 @@
 package handlers
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"sort"
 	"strings"
 )
+
+// ipdPrintCarryRow is yesterday's ပိုငွေ or လိုငွေ shown at the top of the
+// hospital IPD income print. AmountMMK is the stay-sheet difference for that
+// opening row (surplus positive, shortfall negative). It is display-only and
+// is not added to income.
+type ipdPrintCarryRow struct {
+	Kind        string
+	AdmissionNo string
+	Patient     string
+	AmountMMK   int64
+}
+
+// loadIpdDailyPrintCarry returns brought-forward rows for the hospital daily
+// income print on civilDate. It uses yesterday's stored vouchers and the same
+// rule as openingCarryFromPrior. Issued, paid shortfall, zero close, deleted
+// stays, and stays discharged before civilDate are skipped. An issued prior
+// day does not block the whole hospital print.
+func loadIpdDailyPrintCarry(db *sql.DB, civilDate string) ([]ipdPrintCarryRow, error) {
+	civilDate = strings.TrimSpace(civilDate)
+	prev, ok := previousCivilDate(civilDate)
+	if !ok {
+		return nil, nil
+	}
+	start, _, ok := yangonDayUTCRange(civilDate)
+	if !ok {
+		return nil, nil
+	}
+	rows, err := db.Query(`
+		SELECT v.status, v.closing_mmk, a.admission_no, p.name
+		FROM ipd_day_vouchers v
+		JOIN ipd_admissions a ON a.id = v.admission_id
+		JOIN patients p ON p.id = a.patient_id
+		WHERE v.civil_date = ?
+		  AND a.status != 'deleted'
+		  AND (
+		    a.discharged_at IS NULL
+		    OR TRIM(a.discharged_at) = ''
+		    OR a.discharged_at >= ?
+		  )
+		ORDER BY a.admission_no, v.id
+	`, prev, start)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make([]ipdPrintCarryRow, 0)
+	for rows.Next() {
+		var prior dayVoucherPrior
+		var admissionNo, patient string
+		if err := rows.Scan(&prior.Status, &prior.ClosingMMK, &admissionNo, &patient); err != nil {
+			return nil, err
+		}
+		label, deposited, toPay, err := openingCarryFromPrior(prior)
+		if err != nil || label == "" {
+			continue
+		}
+		out = append(out, ipdPrintCarryRow{
+			Kind:        label,
+			AdmissionNo: admissionNo,
+			Patient:     patient,
+			AmountMMK:   deposited - toPay,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
 
 // errPreviousVoucherIssued means the previous civil date still has an issued
 // voucher, so the next sheet has no legal opening carry.

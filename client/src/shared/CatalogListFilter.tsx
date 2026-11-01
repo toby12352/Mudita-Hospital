@@ -1,11 +1,10 @@
-import type { ReactNode } from "react";
 import { ActionIcon } from "@/shared/ActionIcon";
 import { type ActiveFilterValue } from "@/shared/ActiveFilter";
 import { type DateSortValue } from "@/shared/DateSort";
+import { FilterMenu, type FilterMenuOption } from "@/shared/FilterMenu";
 import { useI18n } from "@/shared/i18n";
 
 const STATUS_OPTIONS: ActiveFilterValue[] = ["all", "active", "inactive"];
-const DATE_SORT_OPTIONS: DateSortValue[] = ["desc", "asc"];
 
 export function CatalogFilterButton({
   open,
@@ -38,46 +37,28 @@ export function CatalogDateSortField({
   id,
   value,
   onChange,
-  hideLabel = false,
-  labelledBy,
 }: {
   id: string;
   value: DateSortValue;
   onChange: (value: DateSortValue) => void;
-  /** When true, omit the built-in label (use a sibling label via labelledBy). */
+  /** Kept for call-site compatibility; label is always shown on the menu. */
   hideLabel?: boolean;
   labelledBy?: string;
 }) {
   const { t } = useI18n();
-  const labelId = `${id}-date-sort-label`;
-  const labels: Record<DateSortValue, string> = {
-    desc: t("sortNewest"),
-    asc: t("sortOldest"),
-  };
-  const groupLabelledBy = labelledBy ?? (hideLabel ? undefined : labelId);
+  const options: FilterMenuOption[] = [
+    { value: "desc", label: t("sortNewest") },
+    { value: "asc", label: t("sortOldest") },
+  ];
 
   return (
-    <div className={`catalog-filter-field${hideLabel ? " catalog-filter-field--control-only" : ""}`}>
-      {hideLabel ? null : (
-        <span className="drug-info-label" id={labelId}>
-          {t("sortByDate")}
-        </span>
-      )}
-      <div className="catalog-filter-segment" role="radiogroup" aria-labelledby={groupLabelledBy}>
-        {DATE_SORT_OPTIONS.map((opt) => (
-          <label key={opt}>
-            <input
-              type="radio"
-              name={`${id}-date-sort`}
-              value={opt}
-              checked={value === opt}
-              onChange={() => onChange(opt)}
-            />
-            <span>{labels[opt]}</span>
-          </label>
-        ))}
-      </div>
-    </div>
+    <FilterMenu
+      id={`${id}-date-sort`}
+      label={t("sortByDate")}
+      value={value}
+      options={options}
+      onChange={(next) => onChange(next === "asc" ? "asc" : "desc")}
+    />
   );
 }
 
@@ -106,7 +87,7 @@ export function CatalogFilterPanel({
   /** Set only while this field is the patient-search tour target. */
   searchGuide?: string;
   onSearch: () => void;
-  /** Omit both to hide the active/inactive radios (e.g. patient charts). */
+  /** Omit both to hide the active/inactive menu (e.g. patient charts). */
   active?: ActiveFilterValue;
   onActiveChange?: (value: ActiveFilterValue) => void;
   onReset: () => void;
@@ -114,15 +95,13 @@ export function CatalogFilterPanel({
     label: string;
     value: string;
     onChange: (value: string) => void;
-    children: ReactNode;
+    options: FilterMenuOption[];
   };
   dateSort?: DateSortValue;
   onDateSortChange?: (value: DateSortValue) => void;
 }) {
   const { t } = useI18n();
   const searchId = `${id}-search`;
-  const statusLabelId = `${id}-status-label`;
-  const categoryId = `${id}-category`;
   const showStatus = active != null && typeof onActiveChange === "function";
   const showDateSort = dateSort != null && typeof onDateSortChange === "function";
   const statusLabels: Record<ActiveFilterValue, string> = {
@@ -130,6 +109,10 @@ export function CatalogFilterPanel({
     active: t("active"),
     inactive: t("notActive"),
   };
+  const statusOptions: FilterMenuOption[] = STATUS_OPTIONS.map((value) => ({
+    value,
+    label: statusLabels[value],
+  }));
 
   return (
     <div className={`catalog-filter-wrap${open ? " open" : ""}`}>
@@ -157,40 +140,27 @@ export function CatalogFilterPanel({
             />
           </div>
           {showStatus ? (
-            <div className="catalog-filter-field">
-              <span className="drug-info-label" id={statusLabelId}>
-                {t("status")}
-              </span>
-              <div className="catalog-filter-segment" role="radiogroup" aria-labelledby={statusLabelId}>
-                {STATUS_OPTIONS.map((value) => (
-                  <label key={value}>
-                    <input
-                      type="radio"
-                      name={`${id}-status`}
-                      value={value}
-                      checked={active === value}
-                      onChange={() => onActiveChange(value)}
-                    />
-                    <span>{statusLabels[value]}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
+            <FilterMenu
+              id={`${id}-status`}
+              label={t("status")}
+              value={active}
+              options={statusOptions}
+              onChange={(next) => {
+                const value = STATUS_OPTIONS.includes(next as ActiveFilterValue)
+                  ? (next as ActiveFilterValue)
+                  : "all";
+                onActiveChange(value);
+              }}
+            />
           ) : null}
           {category ? (
-            <div className="catalog-filter-field">
-              <label className="drug-info-label" htmlFor={categoryId}>
-                {category.label}
-              </label>
-              <select
-                id={categoryId}
-                className="drug-info-input"
-                value={category.value}
-                onChange={(e) => category.onChange(e.target.value)}
-              >
-                {category.children}
-              </select>
-            </div>
+            <FilterMenu
+              id={`${id}-category`}
+              label={category.label}
+              value={category.value}
+              options={category.options}
+              onChange={category.onChange}
+            />
           ) : null}
           {showDateSort ? (
             <CatalogDateSortField id={id} value={dateSort} onChange={onDateSortChange} />

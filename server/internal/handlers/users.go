@@ -11,8 +11,9 @@ import (
 	"mudita-hospital/server/internal/middleware"
 )
 
-// Users handles Admin user management. New and edited accounts are unified.
-// Deactivate stays, and Admin rows are not given a grant matrix.
+// Users handles Admin user management. New accounts are unified with a grant
+// matrix, or Admin when create/update sends admin:true. Edited clerks stay
+// unified unless promoted. Deactivate stays; Admin rows have no grant matrix.
 type Users struct {
 	DB *sql.DB
 }
@@ -34,6 +35,7 @@ type userCreateRequest struct {
 	DisplayName string   `json:"display_name"`
 	Password    string   `json:"password"`
 	Grants      []string `json:"grants"`
+	Admin       bool     `json:"admin"`
 }
 
 type userUpdateRequest struct {
@@ -41,6 +43,7 @@ type userUpdateRequest struct {
 	Active      *bool     `json:"active,omitempty"`
 	Password    *string   `json:"password,omitempty"`
 	Grants      *[]string `json:"grants,omitempty"`
+	Admin       bool      `json:"admin"`
 }
 
 func (h *Users) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -130,12 +133,24 @@ func (h *Users) create(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "password must be at least 6 characters"})
 		return
 	}
-	grants, err := auth.NormalizeGrants(req.Grants)
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-		return
+
+	var role string
+	var mode string
+	var grants []string
+	if req.Admin {
+		role = auth.RoleAdmin
+		mode = auth.AccessPortal
+		grants = []string{}
+	} else {
+		var err error
+		grants, err = auth.NormalizeGrants(req.Grants)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		role = auth.FillerRole(grants)
+		mode = auth.AccessUnified
 	}
-	role := auth.FillerRole(grants)
 
 	hash, err := auth.HashPassword(req.Password)
 	if err != nil {
@@ -153,7 +168,7 @@ func (h *Users) create(w http.ResponseWriter, r *http.Request) {
 	res, err := tx.Exec(`
 		INSERT INTO users (username, display_name, role, password_hash, must_change_password, active, access_mode)
 		VALUES (?, ?, ?, ?, 1, 1, ?)
-	`, req.Username, req.DisplayName, role, hash, auth.AccessUnified)
+	`, req.Username, req.DisplayName, role, hash, mode)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "unique") {
 			writeJSON(w, http.StatusConflict, map[string]string{"error": "username already exists"})
@@ -163,9 +178,11 @@ func (h *Users) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, _ := res.LastInsertId()
-	if err := replaceGrants(tx, id, grants); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "create failed"})
-		return
+	if !req.Admin {
+		if err := replaceGrants(tx, id, grants); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "create failed"})
+			return
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "create failed"})
@@ -182,7 +199,7 @@ func (h *Users) create(w http.ResponseWriter, r *http.Request) {
 	audit.WriteAudit(h.DB, &aid, "create", "user", &id, map[string]any{
 		"username":    req.Username,
 		"role":        role,
-		"access_mode": auth.AccessUnified,
+		"access_mode": mode,
 		"old_grants":  []string{},
 		"new_grants":  grants,
 	})
@@ -247,6 +264,15 @@ func (h *Users) update(w http.ResponseWriter, r *http.Request, path string) {
 		}
 	}
 
+	if req.Admin {
+		if existing.Role == auth.RoleAdmin {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "cannot edit Admin"})
+			return
+		}
+		h.promoteAdmin(w, r, existing, displayName, active, req.Password)
+		return
+	}
+
 	if req.Grants != nil {
 		if existing.Role == auth.RoleAdmin {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "cannot edit Admin"})
@@ -257,6 +283,91 @@ func (h *Users) update(w http.ResponseWriter, r *http.Request, path string) {
 	}
 
 	h.saveProfile(w, r, existing, displayName, active, req.Password)
+}
+
+// promoteAdmin sets role Admin, clears grants, uses portal mode, then revokes sessions.
+func (h *Users) promoteAdmin(w http.ResponseWriter, r *http.Request, existing *auth.User, displayName string, active bool, password *string) {
+	oldGrants, err := loadGrants(h.DB, existing.ID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "load failed"})
+		return
+	}
+
+	var hash string
+	if password != nil {
+		if len(*password) < 6 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "password must be at least 6 characters"})
+			return
+		}
+		hash, err = auth.HashPassword(*password)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "hash failed"})
+			return
+		}
+	}
+
+	activeInt := 0
+	if active {
+		activeInt = 1
+	}
+
+	tx, err := h.DB.Begin()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "update failed"})
+		return
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if password != nil {
+		_, err = tx.Exec(`
+			UPDATE users SET display_name = ?, role = ?, active = ?, access_mode = ?,
+				password_hash = ?, must_change_password = 1, updated_at = datetime('now')
+			WHERE id = ?
+		`, displayName, auth.RoleAdmin, activeInt, auth.AccessPortal, hash, existing.ID)
+	} else {
+		_, err = tx.Exec(`
+			UPDATE users SET display_name = ?, role = ?, active = ?, access_mode = ?,
+				updated_at = datetime('now')
+			WHERE id = ?
+		`, displayName, auth.RoleAdmin, activeInt, auth.AccessPortal, existing.ID)
+	}
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "update failed"})
+		return
+	}
+	if err := replaceGrants(tx, existing.ID, nil); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "update failed"})
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "update failed"})
+		return
+	}
+
+	if err := auth.DeleteUserSessions(h.DB, existing.ID); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "session revoke failed"})
+		return
+	}
+
+	actor := middleware.UserFromContext(r.Context())
+	aid := actor.ID
+	id := existing.ID
+	audit.WriteAudit(h.DB, &aid, "update", "user", &id, map[string]any{
+		"username":       existing.Username,
+		"role":           auth.RoleAdmin,
+		"active":         active,
+		"access_mode":    auth.AccessPortal,
+		"password_reset": password != nil,
+		"old_grants":     oldGrants,
+		"new_grants":     []string{},
+	})
+
+	u, err := loadUserItem(h.DB, existing.ID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "reload failed"})
+		return
+	}
+	writeJSON(w, http.StatusOK, u)
 }
 
 // saveGrants replaces the matrix, sets access_mode = unified, then revokes sessions.

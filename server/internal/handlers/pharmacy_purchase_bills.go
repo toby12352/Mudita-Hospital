@@ -49,8 +49,8 @@ type pharmacyPurchaseBillLine struct {
 }
 
 type pharmacyPurchaseBillWriteRequest struct {
-	SupplierName string                           `json:"supplier_name"`
-	Description  string                           `json:"description"`
+	SupplierName string                          `json:"supplier_name"`
+	Description  string                          `json:"description"`
 	Lines        []pharmacyPurchaseBillLineInput `json:"lines"`
 }
 
@@ -155,6 +155,14 @@ func (h *Pharmacy) createPharmacyPurchaseBill(w http.ResponseWriter, r *http.Req
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": errMsg})
 		return
 	}
+	if !draftBillHasContent(
+		[]string{req.SupplierName, req.Description},
+		len(lines),
+		0,
+	) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bill is empty"})
+		return
+	}
 
 	billNo, err := nextPharmacyPurchaseBillNo(tx)
 	if err != nil {
@@ -250,6 +258,14 @@ func (h *Pharmacy) updatePharmacyPurchaseBill(w http.ResponseWriter, r *http.Req
 	lines, total, errMsg := normalizePharmacyPurchaseLines(tx, req.Lines)
 	if errMsg != "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": errMsg})
+		return
+	}
+	if !draftBillHasContent(
+		[]string{req.SupplierName, req.Description},
+		len(lines),
+		0,
+	) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bill is empty"})
 		return
 	}
 
@@ -704,7 +720,7 @@ func nextPharmacyPurchaseBillNo(tx *sql.Tx) (string, error) {
 
 func normalizePharmacyPurchaseLines(q queryRower, in []pharmacyPurchaseBillLineInput) ([]pharmacyPurchaseBillLine, int64, string) {
 	if len(in) == 0 {
-		return nil, 0, "at least one line"
+		return []pharmacyPurchaseBillLine{}, 0, ""
 	}
 	out := make([]pharmacyPurchaseBillLine, 0, len(in))
 	var total int64

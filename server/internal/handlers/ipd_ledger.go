@@ -142,6 +142,102 @@ func (h *IPD) insertLedger(w http.ResponseWriter, r *http.Request, admissionID i
 	writeJSON(w, http.StatusCreated, row)
 }
 
+// deleteDeposit removes one deposit or leftover ward ledger row on an open stay.
+// Admin only. Desk charges, collections, refunds, and reversals stay. Stored
+// day-voucher closings are left unchanged.
+func (h *IPD) deleteDeposit(w http.ResponseWriter, r *http.Request, path string) {
+	user, ok := requireAdminUser(w, r)
+	if !ok {
+		return
+	}
+	admissionID, lineID, ok := ledgerLineIDs(path)
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid id"})
+		return
+	}
+	auditActor := &user.ID
+
+	tx, err := h.DB.Begin()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "delete failed"})
+		return
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	var status string
+	err = tx.QueryRow(`SELECT status FROM ipd_admissions WHERE id = ?`, admissionID).Scan(&status)
+	if err == sql.ErrNoRows {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return
+	}
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "delete failed"})
+		return
+	}
+	if status != "open" {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "stay is not open"})
+		return
+	}
+
+	var kind string
+	var amount int64
+	var note string
+	err = tx.QueryRow(`
+		SELECT kind, amount_mmk, note FROM ipd_ledger
+		WHERE id = ? AND admission_id = ?
+	`, lineID, admissionID).Scan(&kind, &amount, &note)
+	if err == sql.ErrNoRows {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return
+	}
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "delete failed"})
+		return
+	}
+	if kind != "deposit" && kind != "ward" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "only deposits and ward charges can be deleted"})
+		return
+	}
+
+	res, err := tx.Exec(`
+		DELETE FROM ipd_ledger
+		WHERE id = ? AND admission_id = ? AND kind IN ('deposit', 'ward')
+	`, lineID, admissionID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "delete failed"})
+		return
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "delete failed"})
+		return
+	}
+	committed = true
+
+	audit.WriteAudit(h.DB, auditActor, "delete", "ipd_ledger", &lineID, map[string]any{
+		"admission_id": admissionID,
+		"kind":         kind,
+		"amount_mmk":   amount,
+		"note":         note,
+	})
+
+	row, err := loadAdmissionDetail(h.DB, admissionID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "reload failed"})
+		return
+	}
+	writeJSON(w, http.StatusOK, row)
+}
+
 func (h *IPD) printDeposit(w http.ResponseWriter, r *http.Request, path string) {
 	admissionID, lineID, ok := ledgerPrintIDs(path)
 	if !ok {
@@ -289,6 +385,24 @@ func ledgerPrintIDs(path string) (int64, int64, bool) {
 	}
 	rest := strings.TrimSuffix(strings.TrimPrefix(path, prefix), "/print")
 	parts := strings.Split(rest, "/")
+	if len(parts) != 3 || parts[1] != "ledger" {
+		return 0, 0, false
+	}
+	admissionID, err1 := strconv.ParseInt(parts[0], 10, 64)
+	lineID, err2 := strconv.ParseInt(parts[2], 10, 64)
+	if err1 != nil || err2 != nil || admissionID < 1 || lineID < 1 {
+		return 0, 0, false
+	}
+	return admissionID, lineID, true
+}
+
+// ledgerLineIDs parses /admissions/{id}/ledger/{lineId}.
+func ledgerLineIDs(path string) (int64, int64, bool) {
+	const prefix = "/admissions/"
+	if !strings.HasPrefix(path, prefix) {
+		return 0, 0, false
+	}
+	parts := strings.Split(strings.TrimPrefix(path, prefix), "/")
 	if len(parts) != 3 || parts[1] != "ledger" {
 		return 0, 0, false
 	}

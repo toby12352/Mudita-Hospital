@@ -1,5 +1,6 @@
 import { FormEvent, useState } from "react";
 import { changePassword, type User } from "@/shared/auth";
+import { FieldError } from "@/shared/FieldError";
 import { useI18n } from "@/shared/i18n";
 
 export function ChangePasswordForm({
@@ -19,7 +20,7 @@ export function ChangePasswordForm({
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (next !== confirm) {
-      setError("New passwords do not match");
+      setError(t("passwordsDoNotMatch"));
       return;
     }
     setBusy(true);
@@ -28,7 +29,7 @@ export function ChangePasswordForm({
       const result = await changePassword(current, next);
       await onDone(result);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Change failed");
+      setError(err instanceof Error ? err.message : t("changePasswordFailed"));
     } finally {
       setBusy(false);
     }
@@ -68,7 +69,7 @@ export function ChangePasswordForm({
           disabled={busy}
         />
       </label>
-      {error ? <p className="form-error">{error}</p> : null}
+      <FieldError>{error}</FieldError>
       <div className="btn-row">
         <button type="submit" className="btn primary" disabled={busy}>
           {busy ? t("saving") : t("savePassword")}

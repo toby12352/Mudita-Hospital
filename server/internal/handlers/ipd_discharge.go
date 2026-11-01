@@ -269,6 +269,7 @@ func buildIpdCash(db *sql.DB, date string) (*ipdCashReport, error) {
 		JOIN ipd_admissions a ON a.id = l.admission_id
 		JOIN patients p ON p.id = a.patient_id
 		WHERE l.kind IN ('deposit', 'collection', 'refund')
+		  AND a.status != 'deleted'
 		  AND l.created_at >= ? AND l.created_at < ?
 		ORDER BY l.created_at, l.id
 	`, start, end)
@@ -332,6 +333,7 @@ func buildIpdEarned(db *sql.DB, date string) (*ipdEarnedReport, error) {
 		JOIN ipd_admissions a ON a.id = l.admission_id
 		JOIN patients p ON p.id = a.patient_id
 		WHERE l.kind IN ('ward', 'charge', 'reversal')
+		  AND a.status != 'deleted'
 		  AND l.created_at >= ? AND l.created_at < ?
 		ORDER BY l.created_at, l.id
 	`, start, end)
@@ -371,7 +373,8 @@ func buildIpdOpenStays(db *sql.DB, date string) (*ipdOpenStayReport, error) {
 		       ), 0)
 		FROM ipd_admissions a
 		JOIN patients p ON p.id = a.patient_id
-		WHERE a.admitted_at < ?
+		WHERE a.status != 'deleted'
+		  AND a.admitted_at < ?
 		  AND (
 		    a.discharged_at IS NULL
 		    OR TRIM(a.discharged_at) = ''
@@ -408,46 +411,6 @@ func yangonDayUTCRange(date string) (start, end string, ok bool) {
 	}
 	endT := startT.AddDate(0, 0, 1)
 	return startT.UTC().Format("2006-01-02 15:04:05"), endT.UTC().Format("2006-01-02 15:04:05"), true
-}
-
-func ledgerBillNo(db *sql.DB, source string, sourceID *int64) string {
-	if db == nil || sourceID == nil {
-		return ""
-	}
-	table := ""
-	switch source {
-	case "opd":
-		table = "opd_bills"
-	case "ot":
-		table = "ot_bills"
-	case "pharmacy":
-		table = "pharmacy_bills"
-	case "lab":
-		table = "lab_bills"
-	default:
-		return ""
-	}
-	var billNo string
-	err := db.QueryRow(`SELECT bill_no FROM `+table+` WHERE id = ?`, *sourceID).Scan(&billNo)
-	if err != nil {
-		return ""
-	}
-	return billNo
-}
-
-func statementDesk(source string) string {
-	switch source {
-	case "opd":
-		return "OPD"
-	case "ot":
-		return "OT"
-	case "pharmacy":
-		return "Pharmacy"
-	case "lab":
-		return "Lab"
-	default:
-		return ""
-	}
 }
 
 func statementKind(line ipdLedgerLine) string {
@@ -495,36 +458,62 @@ func statementKind(line ipdLedgerLine) string {
 	case "refund":
 		return "Refund"
 	case "collection":
-		return "Collection"
+		return "Patient Paid"
 	default:
 		return line.Kind
 	}
 }
 
-func statementDetail(db *sql.DB, line ipdLedgerLine) string {
-	detail := strings.TrimSpace(line.Note)
-	desk := statementDesk(line.Source)
-	if desk == "" {
-		return detail
-	}
-	bill := ledgerBillNo(db, line.Source, line.SourceID)
-	// Charge/credit kinds already name the desk (e.g. "OPD charge"), so detail keeps the bill only.
-	label := desk
-	if line.Kind == "charge" {
-		label = bill
-		if label == "" {
-			return detail
+// statementVoucherNumber is the Voucher Number cell on daily and final statements.
+// Desk charges and reversals show the bill number stored on the ledger note.
+// Deposit, ward, and refund keep their kind labels. Collection is Patient Paid.
+func statementVoucherNumber(line ipdLedgerLine) string {
+	switch strings.TrimSpace(line.Kind) {
+	case "charge", "reversal":
+		if note := strings.TrimSpace(line.Note); note != "" {
+			return note
 		}
-	} else if bill != "" {
-		label = desk + " " + bill
+		return statementKind(line)
+	case "collection":
+		return "Patient Paid"
+	default:
+		return statementKind(line)
 	}
-	if detail == "" {
-		return label
+}
+
+// statementRemark loads the desk bill Remark (OPD/Pharmacy/Lab description, OT case
+// notes) or IPD charge Description for statement columns. Opening carry,
+// deposit, ward, collection, refund, and unknown sources stay blank.
+func statementRemark(db *sql.DB, line ipdLedgerLine) string {
+	if db == nil || line.SourceID == nil || *line.SourceID < 1 {
+		return ""
 	}
-	if label == "" {
-		return detail
+	id := *line.SourceID
+	var remark string
+	var err error
+	switch line.Source {
+	case "opd":
+		err = db.QueryRow(`SELECT COALESCE(description, '') FROM opd_bills WHERE id = ?`, id).Scan(&remark)
+	case "pharmacy":
+		err = db.QueryRow(`SELECT COALESCE(description, '') FROM pharmacy_bills WHERE id = ?`, id).Scan(&remark)
+	case "lab":
+		err = db.QueryRow(`SELECT COALESCE(description, '') FROM lab_bills WHERE id = ?`, id).Scan(&remark)
+	case "ot":
+		err = db.QueryRow(`
+			SELECT COALESCE(c.notes, '')
+			FROM ot_bills b
+			JOIN ot_cases c ON c.id = b.case_id
+			WHERE b.id = ?
+		`, id).Scan(&remark)
+	case "ipd":
+		err = db.QueryRow(`SELECT COALESCE(description, '') FROM ipd_charge_bills WHERE id = ?`, id).Scan(&remark)
+	default:
+		return ""
 	}
-	return label + " · " + detail
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(remark)
 }
 
 func ipdStatementCSS() string {
@@ -532,7 +521,6 @@ func ipdStatementCSS() string {
 .a4-kv .label{flex-basis:14ch}
 .a4-day{margin:12px 0 6px;font-size:12pt;font-weight:700}
 .a4-items tfoot td{font-weight:700}
-.a4-time{width:8ch;white-space:nowrap}
 .a4-items.a4-daily th.col-amt{white-space:normal;line-height:1.15}
 `
 }
@@ -560,14 +548,6 @@ func formatLedgerDate(createdAt string) string {
 		return strings.TrimSpace(createdAt)
 	}
 	return ts.In(yangon).Format("02 Jan 2006")
-}
-
-func formatLedgerTime(createdAt string) string {
-	ts, ok := ledgerUTC(createdAt)
-	if !ok {
-		return strings.TrimSpace(createdAt)
-	}
-	return ts.In(yangon).Format("15:04")
 }
 
 func formatLedgerDateTime(createdAt string) string {
@@ -638,10 +618,10 @@ func groupStatementDays(lines []ipdLedgerLine) (sections []statementSection, mul
 
 func writeStatementTable(b *strings.Builder, db *sql.DB, lines []ipdLedgerLine, dayTotal bool, empty string) {
 	b.WriteString(`<table class="a4-items"><thead><tr>`)
-	b.WriteString(`<th class="col-no">No.</th><th>Kind</th><th>Detail</th><th class="a4-time">Time</th><th class="col-amt">MMK</th>`)
+	b.WriteString(`<th class="col-no">No.</th><th>Voucher Number</th><th>Description/Remark</th><th class="col-amt">MMK</th>`)
 	b.WriteString(`</tr></thead><tbody>`)
 	if len(lines) == 0 {
-		b.WriteString(`<tr><td colspan="5">`)
+		b.WriteString(`<tr><td colspan="4">`)
 		b.WriteString(html.EscapeString(empty))
 		b.WriteString(`</td></tr>`)
 	}
@@ -651,18 +631,16 @@ func writeStatementTable(b *strings.Builder, db *sql.DB, lines []ipdLedgerLine, 
 		b.WriteString(`<tr><td class="col-no">`)
 		b.WriteString(fmt.Sprintf("%d", i+1))
 		b.WriteString(`</td><td>`)
-		b.WriteString(html.EscapeString(statementKind(line)))
+		b.WriteString(html.EscapeString(statementVoucherNumber(line)))
 		b.WriteString(`</td><td>`)
-		b.WriteString(html.EscapeString(statementDetail(db, line)))
-		b.WriteString(`</td><td class="a4-time">`)
-		b.WriteString(html.EscapeString(formatLedgerTime(line.CreatedAt)))
+		b.WriteString(html.EscapeString(statementRemark(db, line)))
 		b.WriteString(`</td><td class="col-amt">`)
 		b.WriteString(formatMMK(line.AmountMMK))
 		b.WriteString(`</td></tr>`)
 	}
 	b.WriteString(`</tbody>`)
 	if dayTotal {
-		b.WriteString(`<tfoot><tr><td colspan="4">Day total</td><td class="col-amt">`)
+		b.WriteString(`<tfoot><tr><td colspan="3">Day total</td><td class="col-amt">`)
 		b.WriteString(formatMMK(sum))
 		b.WriteString(`</td></tr></tfoot>`)
 	}
@@ -678,41 +656,46 @@ func writeDailyAmount(b *strings.Builder, amount int64, blankZero bool) {
 }
 
 // writeDailyStatementTable prints one civil day with Deposited Fee, To Pay,
-// and Difference. The final statement keeps writeStatementTable.
+// and one Difference on the Total row. The final statement keeps writeStatementTable.
 func writeDailyStatementTable(b *strings.Builder, db *sql.DB, rows []daySheetRow, empty string) {
 	b.WriteString(`<table class="a4-items a4-daily"><thead><tr>`)
-	b.WriteString(`<th class="col-no">No.</th><th>Kind</th><th>Detail</th><th class="a4-time">Time</th>`)
+	b.WriteString(`<th class="col-no">No.</th><th>Voucher Number</th><th>Description/Remark</th>`)
 	b.WriteString(`<th class="col-amt">Deposited Fee</th><th class="col-amt">To Pay</th><th class="col-amt">Difference</th>`)
 	b.WriteString(`</tr></thead><tbody>`)
 	if len(rows) == 0 {
-		b.WriteString(`<tr><td colspan="7">`)
+		b.WriteString(`<tr><td colspan="6">`)
 		b.WriteString(html.EscapeString(empty))
 		b.WriteString(`</td></tr>`)
+		b.WriteString(`</tbody></table>`)
+		return
 	}
+	var deposited, toPay int64
 	for i, row := range rows {
-		kind := row.Label
-		detail := row.Detail
-		when := ""
+		voucher := ""
+		remark := ""
 		if row.Kind == daySheetLedger && row.Ledger != nil {
-			kind = statementKind(*row.Ledger)
-			detail = statementDetail(db, *row.Ledger)
-			when = formatLedgerTime(row.Ledger.CreatedAt)
+			voucher = statementVoucherNumber(*row.Ledger)
+			remark = statementRemark(db, *row.Ledger)
 		}
+		deposited += row.DepositedMMK
+		toPay += row.ToPayMMK
 		b.WriteString(`<tr><td class="col-no">`)
 		b.WriteString(fmt.Sprintf("%d", i+1))
 		b.WriteString(`</td><td>`)
-		b.WriteString(html.EscapeString(kind))
+		b.WriteString(html.EscapeString(voucher))
 		b.WriteString(`</td><td>`)
-		b.WriteString(html.EscapeString(detail))
-		b.WriteString(`</td><td class="a4-time">`)
-		b.WriteString(html.EscapeString(when))
+		b.WriteString(html.EscapeString(remark))
 		b.WriteString(`</td>`)
 		writeDailyAmount(b, row.DepositedMMK, true)
 		writeDailyAmount(b, row.ToPayMMK, true)
-		writeDailyAmount(b, row.DifferenceMMK, false)
+		b.WriteString(`<td class="col-amt"></td>`)
 		b.WriteString(`</tr>`)
 	}
-	b.WriteString(`</tbody></table>`)
+	b.WriteString(`</tbody><tfoot><tr><td colspan="3">Total</td>`)
+	writeDailyAmount(b, deposited, false)
+	writeDailyAmount(b, toPay, false)
+	writeDailyAmount(b, deposited-toPay, false)
+	b.WriteString(`</tr></tfoot></table>`)
 }
 
 func previousCivilDate(date string) (string, bool) {
@@ -721,6 +704,14 @@ func previousCivilDate(date string) (string, bool) {
 		return "", false
 	}
 	return ts.AddDate(0, 0, -1).Format("2006-01-02"), true
+}
+
+func nextCivilDate(date string) (string, bool) {
+	ts, err := time.ParseInLocation("2006-01-02", strings.TrimSpace(date), yangon)
+	if err != nil {
+		return "", false
+	}
+	return ts.AddDate(0, 0, 1).Format("2006-01-02"), true
 }
 
 // loadPreviousDayVoucher reads the stored voucher for the civil date before
@@ -801,10 +792,10 @@ func renderIpdStatement(db *sql.DB, hosp *hospitalSettings, row ipdAdmission, da
 		}
 	}
 
-	title := "IPD FINAL STATEMENT"
+	title := "IPD Final Bill"
 	headerDate := formatLedgerDate(row.AdmittedAt)
 	if daily {
-		title = "IPD DAILY STATEMENT"
+		title = "IPD Daily Bill"
 		headerDate = formatCivilDate(dailyDate)
 	}
 

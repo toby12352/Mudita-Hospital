@@ -1,9 +1,9 @@
 # Tour: bill-buttons
 
 - Id: bill-buttons
-- Roles: Admin, OPD, OT, Pharmacy, and IPD. On IPD Bill the Mark Paid step skips and Charge to IPD is the first button. On the IPD expense rail the Charge to IPD step skips. Patients has no bill rail.
+- Roles: Admin, OPD, OT, Pharmacy, IPD, and unified accounts with expense grants. On IPD Bill the Mark Paid step skips and Charge to IPD is the first button. On the Expense bill rail the Charge to IPD step skips. Patients has no bill rail.
 - Depends on: none
-- Opens: the sale desk already on screen. Do not switch views during this lesson. OPD Bill is view `opd` with `opdScreen: "bill"`. OT Bill is view `ot` with `otMode: "case"`. Pharmacy Bill (sale) is view `pharmacy_billing` with `billingMode: "edit"`. Expense bill is view `opd` with `opdScreen: "expense"`, view `ot` with `otMode: "expense"`, view `pharmacy_expense`, or view `ipd_expense`. Do not open Return in (`pharmacy_return`) or Transfer to OT (`pharmacy_transfer`) for this lesson.
+- Opens: the sale desk already on screen. Do not switch views during this lesson. OPD Bill is view `opd` with `opdScreen: "bill"`. OT Bill is view `ot` with `otMode: "case"`. Pharmacy Bill (sale) is view `pharmacy_billing` with `billingMode: "edit"`. Expense bill is view `expense`. Do not open Return in (`pharmacy_return`) or Transfer to OT (`pharmacy_transfer`) for this lesson.
 - Mode: point and explain. Clicks on the highlighted control stay off. This lesson does not tell staff to press Mark Paid or Charge to IPD.
 - Entry: Help, not automatic
 
@@ -55,13 +55,13 @@
 
 ### 5. void
 - Anchor to add later: data-guide="bill-void"
-- Where the control is now: the same desk files as Save draft, including IPD Bill, rendering `vDelete` (“Void Bills” / “ဘေလ်ပယ်ဖျက်”), not the unused key `voidBill`. Footer key is Ctrl+F8 or Cmd+F8; the footer text is `^F8`. The reason field is `voidReason`. The empty-reason hint is `voidReasonRequired`. The history dialog’s confirm button is `delete`. Shown only when delete is allowed.
+- Where the control is now: the same desk files as Save draft, including IPD Bill, rendering `vDelete` (“Void Bills” / “ဘေလ်ပယ်ဖျက်”), not the unused key `voidBill`. Footer key is Ctrl+F8 or Cmd+F8; the footer text is `^F8`. Opens `VoidBillConfirm` for the open bill. The reason field is `voidReason`. The empty-reason hint is `voidReasonRequired`. Both confirms use `voidStatus`. Disabled when no saved bill is open. Shown only when delete is allowed.
 - Placement: left
 - Title EN: Void Bills
 - Title MY: ဘေလ်ပယ်ဖျက်
-- Body EN: Void Bills (ဘေလ်ပယ်ဖျက်) is Ctrl+F8 or Cmd+F8 (the footer shows ^F8) and needs a Void reason (ပယ်ဖျက်အကြောင်း); an empty reason is refused with Required to void (ပယ်ဖျက်ရန် လိုအပ်သည်), and the dialog confirm says Delete (ဖျက်ရန်). Void of a paid pharmacy sale or a paid OT bill puts quantity back, and this lesson does not void a bill.
-- Body MY: Void Bills (ဘေလ်ပယ်ဖျက်) သည် Ctrl+F8 သို့မဟုတ် Cmd+F8 (အောက်ခြေ ^F8) ဖြစ်ပြီး Void reason (ပယ်ဖျက်အကြောင်း) လိုသည်။ ဗလာဖြစ်လျှင် Required to void (ပယ်ဖျက်ရန် လိုအပ်သည်) ဖြင့် ငြင်းပြီး ဒိုင်ယာလော့ခ်အတည်ပြုခလုတ်သည် Delete (ဖျက်ရန်) ဖြစ်ကာ၊ ပေးပြီးဆေးဆိုင်အရောင်း သို့မဟုတ် ပေးပြီး OT ဘေလ်ကို ပယ်ဖျက်လျှင် အရေအတွက်ပြန်တက်သော်လည်း ဤသင်ခန်းစာတွင် ဘေလ်မပယ်ဖျက်ရ။
-- Must not press: Void Bills, Ctrl+F8, Cmd+F8, Delete
+- Body EN: Void Bills (ဘေလ်ပယ်ဖျက်) is Ctrl+F8 or Cmd+F8 (the footer shows ^F8) and voids the open bill. It needs a Void reason (ပယ်ဖျက်အကြောင်း); an empty reason is refused with Required to void (ပယ်ဖျက်ရန် လိုအပ်သည်), then a second confirm. Both confirms say Void (ပယ်ဖျက်). Void of a paid pharmacy sale or a paid OT bill puts quantity back, and this lesson does not void a bill.
+- Body MY: Void Bills (ဘေလ်ပယ်ဖျက်) သည် Ctrl+F8 သို့မဟုတ် Cmd+F8 (အောက်ခြေ ^F8) ဖြစ်ပြီး ဖွင့်ထားသောဘေလ်ကို ပယ်ဖျက်သည်။ Void reason (ပယ်ဖျက်အကြောင်း) လိုသည်။ ဗလာဖြစ်လျှင် Required to void (ပယ်ဖျက်ရန် လိုအပ်သည်) ဖြင့် ငြင်းပြီး နောက်ဆုံးအတည်ပြု ထပ်မေးကာ၊ အတည်ပြုခလုတ်နှစ်ခုလုံးသည် Void (ပယ်ဖျက်) ဖြစ်သည်။ ပေးပြီးဆေးဆိုင်အရောင်း သို့မဟုတ် ပေးပြီး OT ဘေလ်ကို ပယ်ဖျက်လျှင် အရေအတွက်ပြန်တက်သော်လည်း ဤသင်ခန်းစာတွင် ဘေလ်မပယ်ဖျက်ရ။
+- Must not press: Void Bills, Ctrl+F8, Cmd+F8
 - If the control is missing: skip this step
 
 ### 6. history
@@ -99,7 +99,7 @@
 
 ## Out of this tour
 - Do not press Mark Paid or Charge to IPD. Point at them only.
-- Do not press Void Bills, Delete, or enter a void reason on a live bill.
+- Do not press Void Bills or enter a void reason on a live bill.
 - Do not open Return in or Transfer to OT. F7 there is a different lesson.
 - Credit to IPD (IPD သို့ ပြန်ထည့်) on Return in is not Charge to IPD.
 - Do not discharge, transfer stock, or seed training data.

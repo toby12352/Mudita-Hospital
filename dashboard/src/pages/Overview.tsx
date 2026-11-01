@@ -23,14 +23,34 @@ type Props = {
   t: (k: string) => string;
 };
 
-const ACCENT = "#1b6bc7";
-const OT_BLUE = "#4a90c8";
-const PHARM = "#1f7a4d";
-const LAB = "#a16207";
-const IPD = "#6b4fa0";
-const NET = "#1c1c1c";
-const MUTED = "#6b7280";
-const GRID = "rgba(26, 31, 46, 0.08)";
+const FALLBACK = {
+  accent: "#2563eb",
+  ot: "#4a90c8",
+  pharmacy: "#1f7a4d",
+  lab: "#a16207",
+  ipd: "#6b4fa0",
+  ink: "#1c1c1c",
+  muted: "#6d6d68",
+  grid: "rgba(26, 31, 46, 0.08)",
+} as const;
+
+function readToken(name: string, fallback: string): string {
+  if (typeof document === "undefined") return fallback;
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+}
+
+function chartColors() {
+  return {
+    accent: readToken("--accent", FALLBACK.accent),
+    ot: readToken("--series-ot", FALLBACK.ot),
+    pharmacy: readToken("--series-pharmacy", FALLBACK.pharmacy),
+    lab: readToken("--series-lab", FALLBACK.lab),
+    ipd: readToken("--series-ipd", FALLBACK.ipd),
+    ink: readToken("--ink", FALLBACK.ink),
+    muted: readToken("--muted", FALLBACK.muted),
+    grid: FALLBACK.grid,
+  };
+}
 
 type TipPayload = { payload?: TrendPoint & { label?: string } };
 
@@ -61,12 +81,13 @@ function CashTrendTooltip({
         border: "1px solid rgba(26,31,46,0.12)",
         borderRadius: 8,
         padding: "0.45rem 0.6rem",
-        fontSize: 12,
+        fontSize: 14,
+        lineHeight: 1.45,
       }}
     >
-      <p style={{ margin: "0 0 0.25rem" }}>{row.label ?? row.date}</p>
+      <p style={{ margin: "0 0 0.25rem", fontWeight: 600 }}>{row.label ?? row.date}</p>
       {lines.map(([name, value]) => (
-        <p key={name} style={{ margin: 0 }}>
+        <p key={name} style={{ margin: 0, fontVariantNumeric: "tabular-nums" }}>
           {name}: {value} {t("mmk")}
         </p>
       ))}
@@ -80,12 +101,19 @@ function netTone(n: number): "accent" | "warn" | "default" {
   return "default";
 }
 
+function alertLabel(base: string, count: number | string | undefined, needsAttention: boolean, t: (k: string) => string) {
+  const value = count ?? "—";
+  if (needsAttention) return `${base}: ${value} — ${t("attentionNeeded")}`;
+  return `${base}: ${value}`;
+}
+
 export function OverviewPage({ t }: Props) {
   const [overview, setOverview] = useState<DashOverview | null>(null);
   const [trends, setTrends] = useState<TrendPoint[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [epoch, setEpoch] = useState(0);
+  const colors = chartColors();
 
   useEffect(() => {
     let cancelled = false;
@@ -132,6 +160,16 @@ export function OverviewPage({ t }: Props) {
       p.expense_mmk !== 0 ||
       p.net_cash_mmk !== 0,
   );
+  const lowStockWarn = Boolean(overview && overview.low_stock_count > 0);
+  const nearExpiryWarn = Boolean(overview && overview.near_expiry_count > 0);
+  const voidsWarn = Boolean(overview && overview.voids_today > 0);
+  const nearExpiryDays = overview?.near_expiry_days ?? 60;
+  const nearExpirySub = [
+    `≤ ${nearExpiryDays} ${t("daysUnit")}`,
+    nearExpiryWarn ? t("attentionNeeded") : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <div className="page page-frame">
@@ -144,10 +182,18 @@ export function OverviewPage({ t }: Props) {
         </div>
       </div>
 
-      {error ? <p className="form-error">{error}</p> : null}
-      {loading && !overview ? <p className="muted">{t("loading")}</p> : null}
+      {error ? (
+        <p className="form-error" role="alert">
+          {error}
+        </p>
+      ) : null}
+      {loading && !overview ? (
+        <p className="muted" aria-live="polite">
+          {t("loading")}
+        </p>
+      ) : null}
 
-      <section className="panel">
+      <section className="panel" aria-label={t("netCash")}>
         <div className="kpi-strip">
           <KpiCard
             label={t("totalIncome")}
@@ -166,9 +212,20 @@ export function OverviewPage({ t }: Props) {
         </div>
       </section>
 
-      <div className="kpi-strip kpi-strip--seven">
+      <div className="kpi-strip kpi-strip--seven" aria-label={t("overview")}>
         <KpiCard
-          label={t("cashToday")}
+          label={t("cashBalance")}
+          value={overview ? formatMMK(overview.cash_total_mmk ?? overview.grand_total_mmk) : "—"}
+          sub={t("mmk")}
+          tone="accent"
+        />
+        <KpiCard
+          label={t("onlineBalance")}
+          value={overview ? formatMMK(overview.online_total_mmk ?? 0) : "—"}
+          sub={t("mmk")}
+        />
+        <KpiCard
+          label={t("totalBalance")}
           value={overview ? formatMMK(overview.grand_total_mmk) : "—"}
           sub={t("mmk")}
           tone="accent"
@@ -210,36 +267,35 @@ export function OverviewPage({ t }: Props) {
         <KpiCard
           label={t("lowStock")}
           value={overview ? String(overview.low_stock_count) : "—"}
-          tone={overview && overview.low_stock_count > 0 ? "warn" : "default"}
+          sub={lowStockWarn ? t("attentionNeeded") : undefined}
+          tone={lowStockWarn ? "warn" : "default"}
         />
         <KpiCard
           label={t("nearExpiry")}
           value={overview ? String(overview.near_expiry_count) : "—"}
-          sub={overview ? `≤ ${overview.near_expiry_days} days` : "≤ 60 days"}
-          tone={overview && overview.near_expiry_count > 0 ? "danger" : "default"}
+          sub={nearExpirySub}
+          tone={nearExpiryWarn ? "danger" : "default"}
         />
       </div>
 
       <div className="alert-row" aria-label={t("alerts")}>
         <AlertChip
-          label={`${t("lowStock")}: ${overview?.low_stock_count ?? "—"}`}
-          tone={overview && overview.low_stock_count > 0 ? "warn" : "ok"}
+          label={alertLabel(t("lowStock"), overview?.low_stock_count, lowStockWarn, t)}
+          tone={lowStockWarn ? "warn" : "ok"}
         />
         <AlertChip
-          label={`${t("nearExpiry")}: ${overview?.near_expiry_count ?? "—"}`}
-          tone={overview && overview.near_expiry_count > 0 ? "danger" : "ok"}
+          label={alertLabel(t("nearExpiry"), overview?.near_expiry_count, nearExpiryWarn, t)}
+          tone={nearExpiryWarn ? "danger" : "ok"}
         />
         <AlertChip
-          label={`${t("voidsToday")}: ${overview?.voids_today ?? "—"}`}
-          tone={overview && overview.voids_today > 0 ? "warn" : "ok"}
+          label={alertLabel(t("voidsToday"), overview?.voids_today, voidsWarn, t)}
+          tone={voidsWarn ? "warn" : "ok"}
         />
       </div>
 
       {overview && total > 0 ? (
-        <section className="panel">
-          <h3>
-            {t("opdCash")} / {t("otCash")} / {t("pharmacyCash")}
-          </h3>
+        <section className="panel" aria-labelledby="overview-cash-share-title">
+          <h3 id="overview-cash-share-title">{t("cashShare")}</h3>
           <div className="bar-track" aria-hidden="true">
             <div className="bar-opd" style={{ width: `${opdShare}%` }} />
             <div className="bar-ot" style={{ width: `${otShare}%` }} />
@@ -247,13 +303,14 @@ export function OverviewPage({ t }: Props) {
           </div>
           <div className="split-opd-ot">
             <p className="muted">
-              OPD {opdShare.toFixed(0)}% · {formatMMK(overview.opd_total_mmk)} {t("mmk")}
+              {t("opdCash")} {opdShare.toFixed(0)}% · {formatMMK(overview.opd_total_mmk)} {t("mmk")}
             </p>
             <p className="muted">
-              OT {otShare.toFixed(0)}% · {formatMMK(overview.ot_total_mmk)} {t("mmk")}
+              {t("otCash")} {otShare.toFixed(0)}% · {formatMMK(overview.ot_total_mmk)} {t("mmk")}
             </p>
             <p className="muted">
-              Pharmacy {pharmacyShare.toFixed(0)}% · {formatMMK(overview.pharmacy_total_mmk ?? 0)} {t("mmk")}
+              {t("pharmacyCash")} {pharmacyShare.toFixed(0)}% ·{" "}
+              {formatMMK(overview.pharmacy_total_mmk ?? 0)} {t("mmk")}
             </p>
           </div>
           <p className="muted">
@@ -263,18 +320,23 @@ export function OverviewPage({ t }: Props) {
         </section>
       ) : null}
 
-      <section className="panel">
-        <h3>{t("cashTrend30")}</h3>
+      <section className="panel" aria-labelledby="overview-cash-trend-title">
+        <h3 id="overview-cash-trend-title">{t("cashTrend30")}</h3>
         {!hasTrendCash ? (
           <p className="empty-state">{t("noRevenueData")}</p>
         ) : (
-          <div className="chart-box">
+          <div className="chart-box" role="img" aria-label={t("cashTrend30")}>
             <ResponsiveContainer width="100%" height={240}>
               <ComposedChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                <CartesianGrid stroke={GRID} vertical={false} />
-                <XAxis dataKey="label" tick={{ fill: MUTED, fontSize: 11 }} tickLine={false} axisLine={false} />
+                <CartesianGrid stroke={colors.grid} vertical={false} />
+                <XAxis
+                  dataKey="label"
+                  tick={{ fill: colors.muted, fontSize: 11 }}
+                  tickLine={false}
+                  axisLine={false}
+                />
                 <YAxis
-                  tick={{ fill: MUTED, fontSize: 11 }}
+                  tick={{ fill: colors.muted, fontSize: 11 }}
                   tickLine={false}
                   axisLine={false}
                   tickFormatter={(v) =>
@@ -286,23 +348,32 @@ export function OverviewPage({ t }: Props) {
                   }
                   width={48}
                 />
-                <Tooltip content={(props) => <CashTrendTooltip active={props.active} payload={props.payload} t={t} />} />
-                <Bar dataKey="opd_total_mmk" name={t("opdCash")} stackId="cash" fill={ACCENT} />
-                <Bar dataKey="ot_total_mmk" name={t("otCash")} stackId="cash" fill={OT_BLUE} />
-                <Bar dataKey="pharmacy_total_mmk" name={t("pharmacyCash")} stackId="cash" fill={PHARM} />
-                <Bar dataKey="lab_total_mmk" name={t("labCash")} stackId="cash" fill={LAB} />
+                <Tooltip
+                  content={(props) => (
+                    <CashTrendTooltip active={props.active} payload={props.payload} t={t} />
+                  )}
+                />
+                <Bar dataKey="opd_total_mmk" name={t("opdCash")} stackId="cash" fill={colors.accent} />
+                <Bar dataKey="ot_total_mmk" name={t("otCash")} stackId="cash" fill={colors.ot} />
+                <Bar
+                  dataKey="pharmacy_total_mmk"
+                  name={t("pharmacyCash")}
+                  stackId="cash"
+                  fill={colors.pharmacy}
+                />
+                <Bar dataKey="lab_total_mmk" name={t("labCash")} stackId="cash" fill={colors.lab} />
                 <Bar
                   dataKey="ipd_cash_mmk"
                   name={t("ipdCash")}
                   stackId="cash"
-                  fill={IPD}
+                  fill={colors.ipd}
                   radius={[3, 3, 0, 0]}
                 />
                 <Line
                   type="monotone"
                   dataKey="net_cash_mmk"
                   name={t("netCash")}
-                  stroke={NET}
+                  stroke={colors.ink}
                   strokeWidth={2}
                   dot={false}
                 />

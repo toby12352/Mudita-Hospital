@@ -1,17 +1,20 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { getApiBase } from "../api";
 import { getStoredToken } from "../auth";
 import { KpiCard } from "../components/kpi/KpiCard";
 import { fetchDailyReport, type DailyReportResponse } from "../dashboardApi";
 import { formatDelta, formatMMK } from "../lib/format";
-import { fetchAndPreviewPrint } from "../print";
+import { fetchAndPreviewPrint, fetchPrintHTML, openPrintPreview, type BillDetailScope } from "../print";
 import { todayISO } from "../reports";
 
-type PrintKind = "income" | "expense" | "overall";
+type PrintKind = "income" | "expense" | "details" | "overall";
 
 type Props = {
   t: (k: string) => string;
 };
+
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 function shiftDate(iso: string, deltaDays: number): string {
   const [y, m, d] = iso.split("-").map(Number);
@@ -44,6 +47,11 @@ function earnedLineMMK(kind: string, amount: number): number {
   return -amount;
 }
 
+// Expense payments are stored negative; the report shows money spent as positive.
+function expenseDisplayMMK(amount: number): number {
+  return -amount;
+}
+
 function kindLabel(kind: string, t: (k: string) => string): string {
   if (
     kind === "deposit" ||
@@ -61,15 +69,17 @@ function kindLabel(kind: string, t: (k: string) => string): string {
 function portalLabel(portal: string, t: (k: string) => string): string {
   switch (portal) {
     case "opd":
-      return "OPD";
+      return t("opdPortal");
     case "ot":
-      return "OT";
+      return t("otPortal");
     case "lab":
-      return "Lab";
+      return t("labPortal");
     case "ipd":
-      return "IPD";
+      return t("ipdPortal");
     case "pharmacy":
       return t("pharmacyPortal");
+    case "expense":
+      return t("expensePortal");
     default:
       return portal;
   }
@@ -85,7 +95,16 @@ export function DailyReportPage({ t }: Props) {
   const [printOpen, setPrintOpen] = useState(false);
   const [epoch, setEpoch] = useState(0);
   const printMenuRef = useRef<HTMLDivElement>(null);
+  const printBtnRef = useRef<HTMLButtonElement>(null);
+  const menuFocusRef = useRef<"first" | "last">("first");
+  const restorePrintFocus = useRef(false);
   const printMenuId = useId();
+  const vsYesterdayId = useId();
+  const paidBillsId = useId();
+  const ipdGainsId = useId();
+  const ipdLinesId = useId();
+  const ipdStaysId = useId();
+  const expensesId = useId();
 
   useEffect(() => {
     let cancelled = false;
@@ -110,14 +129,38 @@ export function DailyReportPage({ t }: Props) {
   }, [date, epoch, t]);
 
   useEffect(() => {
+    if (printing || !restorePrintFocus.current) return;
+    restorePrintFocus.current = false;
+    printBtnRef.current?.focus();
+  }, [printing]);
+
+  useEffect(() => {
+    if (!printOpen) return;
+    const items = printMenuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]');
+    if (!items || items.length === 0) return;
+    const target = menuFocusRef.current === "last" ? items[items.length - 1] : items[0];
+    target.focus();
+  }, [printOpen]);
+
+  useEffect(() => {
     if (!printOpen) return;
     function onPointerDown(event: MouseEvent) {
-      if (!printMenuRef.current?.contains(event.target as Node)) {
-        setPrintOpen(false);
-      }
+      const root = printMenuRef.current;
+      if (!root || root.contains(event.target as Node)) return;
+      const target = event.target;
+      const takesFocus =
+        target instanceof Element &&
+        target.closest(
+          'button, a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+        ) !== null;
+      setPrintOpen(false);
+      if (!takesFocus) printBtnRef.current?.focus();
     }
     function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") setPrintOpen(false);
+      if (event.key !== "Escape") return;
+      const inside = printMenuRef.current?.contains(document.activeElement) ?? false;
+      setPrintOpen(false);
+      if (inside) printBtnRef.current?.focus();
     }
     document.addEventListener("mousedown", onPointerDown);
     document.addEventListener("keydown", onKey);
@@ -127,16 +170,110 @@ export function DailyReportPage({ t }: Props) {
     };
   }, [printOpen]);
 
+  function menuItems(): HTMLButtonElement[] {
+    return Array.from(printMenuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? []);
+  }
+
+  function moveFocusFromPrintButton(backwards: boolean) {
+    const btn = printBtnRef.current;
+    if (!btn) return;
+    const all = Array.from(document.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((el) => {
+      if (el.closest(".print-menu-dropdown")) return false;
+      return el.getClientRects().length > 0;
+    });
+    const index = all.indexOf(btn);
+    if (index < 0) {
+      btn.focus();
+      return;
+    }
+    const next = all[index + (backwards ? -1 : 1)];
+    (next ?? btn).focus();
+  }
+
+  function onPrintMenuKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    const items = menuItems();
+    const current = items.findIndex((el) => el === document.activeElement);
+
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      if (!printOpen) {
+        if (printBtnRef.current?.disabled) return;
+        menuFocusRef.current = event.key === "ArrowUp" ? "last" : "first";
+        setPrintOpen(true);
+        return;
+      }
+      if (items.length === 0) return;
+      const next =
+        event.key === "ArrowDown"
+          ? current < 0
+            ? 0
+            : (current + 1) % items.length
+          : current < 0
+            ? items.length - 1
+            : (current - 1 + items.length) % items.length;
+      items[next]?.focus();
+      return;
+    }
+
+    if (!printOpen) return;
+
+    if (event.key === "Home") {
+      event.preventDefault();
+      items[0]?.focus();
+      return;
+    }
+    if (event.key === "End") {
+      event.preventDefault();
+      items[items.length - 1]?.focus();
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      setPrintOpen(false);
+      printBtnRef.current?.focus();
+      return;
+    }
+    if (event.key === "Tab") {
+      event.preventDefault();
+      event.stopPropagation();
+      setPrintOpen(false);
+      moveFocusFromPrintButton(event.shiftKey);
+    }
+  }
+
   async function handlePrint(kind: PrintKind) {
     setPrintOpen(false);
+    printBtnRef.current?.focus();
     setPrintError(null);
     setPrinting(true);
     const titles: Record<PrintKind, string> = {
       income: t("printIncomeReport"),
       expense: t("printExpenseReport"),
+      details: t("printAllBillDetails"),
       overall: t("printOverallDailyReport"),
     };
     try {
+      if (kind === "details") {
+        const reportDate = date;
+        openPrintPreview("", {
+          title: titles.details,
+          billDetail: {
+            placeholder: t("billDetailSelectType"),
+            income: t("billDetailIncome"),
+            expenses: t("billDetailExpenses"),
+            all: t("billDetailAll"),
+            prompt: t("billDetailPrompt"),
+            load: (scope: BillDetailScope) =>
+              fetchPrintHTML(
+                `/api/dashboard/daily-report/print?date=${encodeURIComponent(reportDate)}&kind=details&scope=${scope}`,
+                getApiBase,
+                getStoredToken,
+              ),
+          },
+        });
+        return;
+      }
       await fetchAndPreviewPrint(
         `/api/dashboard/daily-report/print?date=${encodeURIComponent(date)}&kind=${kind}`,
         getApiBase,
@@ -145,13 +282,14 @@ export function DailyReportPage({ t }: Props) {
       );
     } catch (err) {
       setPrintError(err instanceof Error ? err.message : t("error"));
+      restorePrintFocus.current = true;
     } finally {
       setPrinting(false);
     }
   }
 
   return (
-    <div className="page page-frame">
+    <div className="page page-frame daily-page">
       <div className="page-header">
         <p className="lede muted">{t("dailyLede")}</p>
         <div className="page-actions">
@@ -184,25 +322,36 @@ export function DailyReportPage({ t }: Props) {
           <button type="button" className="btn ghost" onClick={() => setEpoch((n) => n + 1)}>
             {t("refresh")}
           </button>
-          <div className="print-menu" ref={printMenuRef}>
+          <div className="print-menu" ref={printMenuRef} onKeyDown={onPrintMenuKeyDown}>
             <button
+              ref={printBtnRef}
               type="button"
               className="btn primary"
               aria-haspopup="menu"
               aria-expanded={printOpen}
               aria-controls={printMenuId}
-              aria-label={t("printMenu")}
-              onClick={() => setPrintOpen((open) => !open)}
+              aria-label={printing ? t("busy") : t("printMenu")}
+              onClick={() => {
+                menuFocusRef.current = "first";
+                setPrintOpen((open) => !open);
+              }}
               disabled={printing || loading}
             >
               {printing ? t("busy") : t("print")}
             </button>
             {printOpen ? (
-              <div className="print-menu-dropdown" id={printMenuId} role="menu" aria-label={t("printMenu")}>
+              <div
+                className="print-menu-dropdown"
+                id={printMenuId}
+                role="menu"
+                aria-label={t("printMenu")}
+                aria-orientation="vertical"
+              >
                 <button
                   type="button"
                   className="print-menu-item"
                   role="menuitem"
+                  tabIndex={-1}
                   onClick={() => void handlePrint("income")}
                 >
                   {t("printIncomeReport")}
@@ -211,6 +360,7 @@ export function DailyReportPage({ t }: Props) {
                   type="button"
                   className="print-menu-item"
                   role="menuitem"
+                  tabIndex={-1}
                   onClick={() => void handlePrint("expense")}
                 >
                   {t("printExpenseReport")}
@@ -219,6 +369,16 @@ export function DailyReportPage({ t }: Props) {
                   type="button"
                   className="print-menu-item"
                   role="menuitem"
+                  tabIndex={-1}
+                  onClick={() => void handlePrint("details")}
+                >
+                  {t("printAllBillDetails")}
+                </button>
+                <button
+                  type="button"
+                  className="print-menu-item"
+                  role="menuitem"
+                  tabIndex={-1}
                   onClick={() => void handlePrint("overall")}
                 >
                   {t("printOverallDailyReport")}
@@ -229,16 +389,31 @@ export function DailyReportPage({ t }: Props) {
         </div>
       </div>
 
-      {error ? <p className="form-error">{error}</p> : null}
-      {printError ? <p className="form-error">{printError}</p> : null}
-      {loading && !data ? <p className="muted">{t("loading")}</p> : null}
+      {error ? (
+        <p className="form-error" role="alert">
+          {error}
+        </p>
+      ) : null}
+      {printError ? (
+        <p className="form-error" role="alert">
+          {printError}
+        </p>
+      ) : null}
+      {loading && !data ? (
+        <p className="muted" aria-live="polite">
+          {t("loading")}
+        </p>
+      ) : null}
 
       {data ? (
         <>
-          <section className="panel">
+          <section className="panel" aria-label={t("netCash")}>
             <div className="kpi-strip">
               <KpiCard label={t("totalIncome")} value={formatDelta(data.income_mmk ?? 0)} />
-              <KpiCard label={t("totalExpenses")} value={formatDelta(data.expense_mmk ?? 0)} />
+              <KpiCard
+                label={t("totalExpenses")}
+                value={formatMMK(expenseDisplayMMK(data.expense_mmk ?? 0))}
+              />
               <KpiCard
                 label={t("netCash")}
                 value={formatDelta(data.net_cash_mmk ?? 0)}
@@ -248,9 +423,18 @@ export function DailyReportPage({ t }: Props) {
             </div>
           </section>
 
-          <div className="kpi-strip">
+          <div className="kpi-strip" role="region" aria-label={t("dailyReport")}>
             <KpiCard
-              label={t("cashToday")}
+              label={t("cashBalance")}
+              value={formatMMK(data.cash_total_mmk ?? data.grand_total_mmk)}
+              tone="accent"
+            />
+            <KpiCard
+              label={t("onlineBalance")}
+              value={formatMMK(data.online_total_mmk ?? 0)}
+            />
+            <KpiCard
+              label={t("totalBalance")}
               value={formatMMK(data.grand_total_mmk)}
               sub={`${data.bill_count} ${t("billCount").toLowerCase()}`}
               tone="accent"
@@ -284,13 +468,15 @@ export function DailyReportPage({ t }: Props) {
             <KpiCard
               label={t("voidsToday")}
               value={String(data.voids)}
-              sub={t("voidsHint")}
+              sub={
+                data.voids > 0 ? `${t("voidsHint")} · ${t("attentionNeeded")}` : t("voidsHint")
+              }
               tone={data.voids > 0 ? "warn" : undefined}
             />
           </div>
 
-          <section className="panel delta-strip">
-            <h3>{t("vsYesterday")}</h3>
+          <section className="panel delta-strip" aria-labelledby={vsYesterdayId}>
+            <h2 id={vsYesterdayId}>{t("vsYesterday")}</h2>
             <div className="delta-grid">
               <div>
                 <p className="kpi-label">{t("cashToday")}</p>
@@ -339,19 +525,20 @@ export function DailyReportPage({ t }: Props) {
             </div>
           </section>
 
-          <section className="panel">
-            <h3>
+          <section className="panel" aria-labelledby={paidBillsId}>
+            <h2 id={paidBillsId}>
               {t("paidBills")} — {data.date}
-            </h3>
+            </h2>
             {data.lines.length ? (
               <div className="table-scroll">
-                <table className="data-table">
+                <table className="data-table" aria-labelledby={paidBillsId}>
                   <thead>
                     <tr>
                       <th>{t("source")}</th>
                       <th>{t("bill")}</th>
                       <th>{t("patient")}</th>
                       <th>{t("doctor")}</th>
+                      <th>{t("payType")}</th>
                       <th>{t("paid")}</th>
                       <th className="num">{t("mmk")}</th>
                     </tr>
@@ -366,6 +553,9 @@ export function DailyReportPage({ t }: Props) {
                         <td>{line.bill_no}</td>
                         <td>{line.patient}</td>
                         <td>{line.doctor || "—"}</td>
+                        <td>
+                          {line.payment_type === "online" ? t("payTypeOnline") : t("payTypeCash")}
+                        </td>
                         <td>{line.paid_at}</td>
                         <td className="num">{formatMMK(line.total_mmk)}</td>
                       </tr>
@@ -378,16 +568,16 @@ export function DailyReportPage({ t }: Props) {
             )}
           </section>
 
-          <section className="panel">
-            <h3>
+          <section className="panel" aria-labelledby={ipdGainsId}>
+            <h2 id={ipdGainsId}>
               {t("ipdGains")} — {data.date}
-            </h3>
+            </h2>
             <p className="muted">
               {t("ipdGainsHint")} · {formatMMK(data.ipd_earned_mmk ?? 0)} {t("mmk")}
             </p>
             {(data.ipd_earned_lines ?? []).length ? (
               <div className="table-scroll">
-                <table className="data-table">
+                <table className="data-table" aria-labelledby={ipdGainsId}>
                   <thead>
                     <tr>
                       <th>{t("kind")}</th>
@@ -413,16 +603,16 @@ export function DailyReportPage({ t }: Props) {
             )}
           </section>
 
-          <section className="panel">
-            <h3>
+          <section className="panel" aria-labelledby={ipdLinesId}>
+            <h2 id={ipdLinesId}>
               {t("ipdLines")} — {data.date}
-            </h3>
+            </h2>
             <p className="muted">
               {t("ipdCashHint")} · {formatMMK(data.ipd_cash_mmk ?? 0)} {t("mmk")}
             </p>
             {(data.ipd_lines ?? []).length ? (
               <div className="table-scroll">
-                <table className="data-table">
+                <table className="data-table" aria-labelledby={ipdLinesId}>
                   <thead>
                     <tr>
                       <th>{t("kind")}</th>
@@ -448,17 +638,17 @@ export function DailyReportPage({ t }: Props) {
             )}
           </section>
 
-          <section className="panel">
-            <h3>
+          <section className="panel" aria-labelledby={ipdStaysId}>
+            <h2 id={ipdStaysId}>
               {t("ipdOpenStays")} — {data.date}
-            </h3>
+            </h2>
             <p className="muted">
               {t("ipdHeldForPatients")} {formatMMK(data.ipd_owed_to_patients_mmk ?? 0)} ·{" "}
               {t("ipdOwedByPatients")} {formatMMK(data.ipd_owed_by_patients_mmk ?? 0)}
             </p>
             {(data.ipd_open_stays ?? []).length ? (
               <div className="table-scroll">
-                <table className="data-table">
+                <table className="data-table" aria-labelledby={ipdStaysId}>
                   <thead>
                     <tr>
                       <th>{t("admission")}</th>
@@ -482,13 +672,13 @@ export function DailyReportPage({ t }: Props) {
             )}
           </section>
 
-          <section className="panel">
-            <h3>
+          <section className="panel" aria-labelledby={expensesId}>
+            <h2 id={expensesId}>
               {t("expenseLines")} — {data.date}
-            </h3>
+            </h2>
             {(data.expense_lines ?? []).length ? (
               <div className="table-scroll">
-                <table className="data-table">
+                <table className="data-table" aria-labelledby={expensesId}>
                   <thead>
                     <tr>
                       <th>{t("bill")}</th>
@@ -505,7 +695,7 @@ export function DailyReportPage({ t }: Props) {
                         <td>{portalLabel(line.portal, t)}</td>
                         <td>{line.name}</td>
                         <td>{line.paid_at}</td>
-                        <td className="num">{formatDelta(line.amount_mmk ?? 0)}</td>
+                        <td className="num">{formatMMK(expenseDisplayMMK(line.amount_mmk ?? 0))}</td>
                       </tr>
                     ))}
                   </tbody>

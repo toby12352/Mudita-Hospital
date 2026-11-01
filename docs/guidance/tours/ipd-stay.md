@@ -3,7 +3,7 @@
 - Id: ipd-stay
 - Roles: Admin and IPD. Patients, OPD, OT, and Pharmacy do not open Stays.
 - Depends on: patient-chart
-- Opens: view `ipd`, NavIntent none. Sidebar Stays. Do not open view `ipd_expense`, a sale desk, or Patient Charts.
+- Opens: view `ipd`, NavIntent none. Sidebar Stays. Do not open view `expense`, a sale desk, or Patient Charts.
 - Mode: point and explain. Clicks on the highlighted control stay off. This lesson does not tell staff to press Admit, Take deposit, or IPD Bill.
 - Entry: Help, not automatic
 
@@ -48,6 +48,6 @@ The chart comes from patient-chart. This lesson does not create one. A stay is t
 - Do not press Admit, Take deposit, or IPD Bill. Point at them only.
 - Do not press Open (ဖွင့်မည်) on a real stay in order to reach Take deposit. If that button is missing, skip the step.
 - Do not press Discharge (ဆင်းခွင့်ရှင်း). That lesson is ipd-discharge.
-- Do not press Save notes (မှတ်ချက်သိမ်း), Print Daily Statement (နေ့စဉ်စာရင်းထုတ်), Pay this day (ဤနေ့ ပေးမည်), Pay later (နောက်မှ ပေးမည်), Mark unpaid (ပေးထားမှု ပြန်ဖြုတ်), IPD daily cash (IPD နေ့စဉ်ငွေ), or the Open stays / Settled stays toggle as part of this lesson.
+- Do not press Save notes (မှတ်ချက်သိမ်း), Print Daily Bill (နေ့စဉ်ဘေလ်ထုတ်), Pay this day (ဤနေ့ ပေးမည်), Pay later (နောက်မှ ပေးမည်), Mark unpaid (ပေးထားမှု ပြန်ဖြုတ်), IPD daily cash (IPD နေ့စဉ်ငွေ), or the Open stays / Settled stays toggle as part of this lesson.
 - Charge to IPD (IPD သို့ တင်) on a sale is on OPD Bill, OT Bill, and Pharmacy Bill. On IPD Bill it is the first button. Do not press it. F7 does not charge the stay.
 - Do not void a bill, transfer stock, or seed training data.

@@ -54,6 +54,10 @@ export function DatePicker({
   id,
   placeholder = "YYYY/MM/DD",
   required = false,
+  openCalendarLabel = "Open calendar",
+  chooseDateLabel = "Choose date",
+  previousMonthLabel = "Previous month",
+  nextMonthLabel = "Next month",
 }: {
   value: string;
   onChange: (iso: string) => void;
@@ -61,10 +65,21 @@ export function DatePicker({
   id?: string;
   placeholder?: string;
   required?: boolean;
+  openCalendarLabel?: string;
+  chooseDateLabel?: string;
+  previousMonthLabel?: string;
+  nextMonthLabel?: string;
 }) {
   const autoId = useId();
   const inputId = id ?? autoId;
+  const dialogId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const iconRef = useRef<HTMLButtonElement>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
+  const moveFocusInsideRef = useRef(false);
+  const suppressOpenRef = useRef(false);
   const [open, setOpen] = useState(false);
   const [text, setText] = useState(() => formatDateDisplay(value));
   const selected = parseIso(value);
@@ -83,13 +98,26 @@ export function DatePicker({
 
   useEffect(() => {
     if (!open) return;
+    const popover = popoverRef.current;
+    // The text field keeps the caret so a date can be typed. The icon button
+    // is what moves focus into the grid.
+    if (moveFocusInsideRef.current && popover) {
+      const selectedBtn = popover.querySelector<HTMLElement>(".date-picker-cell.selected");
+      const firstNav = popover.querySelector<HTMLElement>(".date-picker-nav");
+      (selectedBtn ?? firstNav)?.focus();
+    }
     function onDoc(e: MouseEvent) {
       if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+        moveFocusInsideRef.current = false;
         setOpen(false);
+        // Click outside closes without pulling focus back.
       }
     }
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") {
+        e.preventDefault();
+        closeCalendar(true);
+      }
     }
     document.addEventListener("mousedown", onDoc);
     document.addEventListener("keydown", onKey);
@@ -98,6 +126,24 @@ export function DatePicker({
       document.removeEventListener("keydown", onKey);
     };
   }, [open]);
+
+  function openFrom(el: HTMLElement | null, moveFocusInside: boolean) {
+    if (disabled) return;
+    returnFocusRef.current = el;
+    moveFocusInsideRef.current = moveFocusInside;
+    setOpen(true);
+  }
+
+  function closeCalendar(restoreFocus: boolean) {
+    moveFocusInsideRef.current = false;
+    setOpen(false);
+    if (!restoreFocus) return;
+    const opener = returnFocusRef.current;
+    if (!opener || opener === document.activeElement) return;
+    // Focusing the text field would reopen the grid. Skip that once.
+    if (opener === inputRef.current) suppressOpenRef.current = true;
+    opener.focus();
+  }
 
   function commitText(raw: string) {
     const iso = parseDateInput(raw);
@@ -114,7 +160,7 @@ export function DatePicker({
     const iso = `${viewY}-${String(viewM + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     onChange(iso);
     setText(formatDateDisplay(iso));
-    setOpen(false);
+    closeCalendar(true);
   }
 
   function shiftMonth(delta: number) {
@@ -141,6 +187,7 @@ export function DatePicker({
     <div className="date-picker" ref={rootRef}>
       <div className="date-picker-input-wrap">
         <input
+          ref={inputRef}
           id={inputId}
           type="text"
           className="date-picker-input"
@@ -150,25 +197,41 @@ export function DatePicker({
           required={required}
           onChange={(e) => setText(e.target.value)}
           onBlur={() => commitText(text)}
+          aria-expanded={open}
+          aria-haspopup="dialog"
+          aria-controls={open ? dialogId : undefined}
           onFocus={() => {
-            if (!disabled) setOpen(true);
+            if (suppressOpenRef.current) {
+              suppressOpenRef.current = false;
+              return;
+            }
+            if (!disabled) openFrom(inputRef.current, false);
           }}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               e.preventDefault();
               commitText(text);
-              setOpen(false);
+              closeCalendar(false);
             }
           }}
           autoComplete="off"
         />
         <button
+          ref={iconRef}
           type="button"
           className="date-picker-icon-btn"
           disabled={disabled}
-          aria-label="Open calendar"
+          aria-label={openCalendarLabel}
+          aria-expanded={open}
+          aria-haspopup="dialog"
+          aria-controls={open ? dialogId : undefined}
           onClick={() => {
-            if (!disabled) setOpen((o) => !o);
+            if (disabled) return;
+            if (open) {
+              closeCalendar(false);
+              return;
+            }
+            openFrom(iconRef.current, true);
           }}
         >
           <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
@@ -180,15 +243,31 @@ export function DatePicker({
         </button>
       </div>
       {open && !disabled ? (
-        <div className="date-picker-popover" role="dialog" aria-label="Choose date">
+        <div
+          id={dialogId}
+          ref={popoverRef}
+          className="date-picker-popover"
+          role="dialog"
+          aria-label={chooseDateLabel}
+        >
           <div className="date-picker-header">
-            <button type="button" className="date-picker-nav" onClick={() => shiftMonth(-1)} aria-label="Previous month">
+            <button
+              type="button"
+              className="date-picker-nav"
+              onClick={() => shiftMonth(-1)}
+              aria-label={previousMonthLabel}
+            >
               ‹
             </button>
             <span className="date-picker-month">
               {MONTHS[viewM]} {viewY}
             </span>
-            <button type="button" className="date-picker-nav" onClick={() => shiftMonth(1)} aria-label="Next month">
+            <button
+              type="button"
+              className="date-picker-nav"
+              onClick={() => shiftMonth(1)}
+              aria-label={nextMonthLabel}
+            >
               ›
             </button>
           </div>
@@ -202,19 +281,23 @@ export function DatePicker({
               day == null ? (
                 <span key={`e-${i}`} className="date-picker-cell empty" />
               ) : (
-                <button
-                  key={day}
-                  type="button"
-                  className={
-                    "date-picker-cell" +
-                    (selected && selected.y === viewY && selected.m === viewM + 1 && selected.d === day
-                      ? " selected"
-                      : "")
-                  }
-                  onClick={() => selectDay(day)}
-                >
-                  {day}
-                </button>
+                (() => {
+                  const iso = `${viewY}-${String(viewM + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+                  const isSelected =
+                    selected && selected.y === viewY && selected.m === viewM + 1 && selected.d === day;
+                  return (
+                    <button
+                      key={day}
+                      type="button"
+                      className={"date-picker-cell" + (isSelected ? " selected" : "")}
+                      aria-label={iso}
+                      aria-current={isSelected ? "date" : undefined}
+                      onClick={() => selectDay(day)}
+                    >
+                      {day}
+                    </button>
+                  );
+                })()
               ),
             )}
           </div>

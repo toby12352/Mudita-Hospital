@@ -127,11 +127,20 @@ export function HospitalTab() {
       ? [selectedPrinter, ...printers]
       : printers;
 
+  const billHeaderId = useId();
+  const printerTitleId = useId();
+
   return (
     <div className="settings-stack">
       <div className="settings-split">
-        <form className="card-form" onSubmit={(e) => void submit(e)}>
-          <h2 className="section-title">{t("billHeader")}</h2>
+        <form
+          className="card-form"
+          aria-labelledby={billHeaderId}
+          onSubmit={(e) => void submit(e)}
+        >
+          <h2 id={billHeaderId} className="section-title">
+            {t("billHeader")}
+          </h2>
           <label className={`field${hospitalNameError ? " is-invalid" : ""}`}>
             <span>{t("hospitalName")}</span>
             <input
@@ -191,7 +200,7 @@ export function HospitalTab() {
             {busy ? t("saving") : t("saveHospital")}
           </button>
         </form>
-        <aside className="bill-preview" aria-label="Bill header preview">
+        <aside className="bill-preview" aria-label={t("billHeader")}>
           <p className="preview-label">{t("preview")}</p>
           <p className="preview-name">{form.hospital_name || t("hospitalName")}</p>
           {form.address ? <p className="preview-line">{form.address}</p> : null}
@@ -200,15 +209,23 @@ export function HospitalTab() {
               {t("tel")}: {phonesPreview}
             </p>
           ) : null}
-          {form.logo_path ? <p className="preview-meta">Logo: {form.logo_path}</p> : null}
+          {form.logo_path ? (
+            <p className="preview-meta">
+              {t("logoPath")}: {form.logo_path}
+            </p>
+          ) : null}
         </aside>
       </div>
 
-      <form className="card-form" onSubmit={savePrinter}>
-        <h2 className="section-title">{t("defaultPrinter")}</h2>
+      <form className="card-form" aria-labelledby={printerTitleId} onSubmit={savePrinter}>
+        <h2 id={printerTitleId} className="section-title">
+          {t("defaultPrinter")}
+        </h2>
         <p className="hint">{t("defaultPrinterHint")}</p>
         {!tauri ? (
-          <p className="form-error">{t("defaultPrinterTauriOnly")}</p>
+          <p className="form-error" role="alert">
+            {t("defaultPrinterTauriOnly")}
+          </p>
         ) : (
           <>
             <label className="field">
@@ -230,7 +247,11 @@ export function HospitalTab() {
                 ))}
               </select>
             </label>
-            {printerError ? <p className="form-error">{printerError}</p> : null}
+            {printerError ? (
+              <p className="form-error" role="alert">
+                {printerError}
+              </p>
+            ) : null}
             {printerSaved ? <p className="form-ok">{t("saved")}</p> : null}
             <div className="btn-row">
               <button

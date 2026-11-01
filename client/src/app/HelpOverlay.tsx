@@ -1,8 +1,16 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { startGuide } from "@/features/guidance/guideControl";
 import { AlertDialog } from "@/shared/AlertDialog";
 import { DialogCloseButton } from "@/shared/DialogCloseButton";
 import { openCheatSheetPrint } from "@/shared/cheatsheet";
+
+function focusableIn(root: ParentNode): HTMLElement[] {
+  return Array.from(
+    root.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), iframe, [tabindex]:not([tabindex="-1"])',
+    ),
+  );
+}
 
 export function HelpOverlay({
   onClose,
@@ -30,10 +38,64 @@ export function HelpOverlay({
   showIpdTour?: boolean;
 }) {
   const [printError, setPrintError] = useState<string | null>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  useEffect(() => {
+    const opener = document.activeElement;
+    openerRef.current = opener instanceof HTMLElement ? opener : null;
+    dialogRef.current?.focus();
+    return () => {
+      const prev = openerRef.current;
+      openerRef.current = null;
+      const active = document.activeElement;
+      const dialog = dialogRef.current;
+      const stillInside = dialog != null && active instanceof Node && dialog.contains(active);
+      const nothingFocused =
+        active == null || active === document.body || active === document.documentElement;
+      if ((stillInside || nothingFocused) && prev && document.contains(prev)) prev.focus();
+    };
+  }, []);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (document.querySelector(".alert-dialog-overlay, .print-preview-overlay")) return;
+      const root = dialogRef.current;
+      if (!root) return;
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        onCloseRef.current();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const focusable = focusableIn(root);
+      if (focusable.length === 0) return;
+      const active = document.activeElement;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const inside = active instanceof Node && root.contains(active) && active !== root;
+      if (e.shiftKey) {
+        if (!inside || active === first) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else if (!inside || active === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, []);
 
   return (
     <>
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         className="clinic-overlay clinic-overlay--fixed help-overlay"
         role="dialog"
         aria-modal="true"

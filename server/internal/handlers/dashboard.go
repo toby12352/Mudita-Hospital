@@ -59,6 +59,12 @@ func (h *Dashboard) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.dailyReport(w, r)
 		case path == "/daily-report/print" && r.Method == http.MethodGet:
 			h.dailyReportPrint(w, r)
+		case path == "/revenue-report/print" && r.Method == http.MethodGet:
+			h.revenueReportPrint(w, r)
+		case path == "/revenue-report/export" && r.Method == http.MethodGet:
+			h.revenueReportExport(w, r)
+		case path == "/revenue-report/presentation" && r.Method == http.MethodGet:
+			h.revenueReportPresentation(w, r)
 		case path == "/audit" && r.Method == http.MethodGet:
 			h.listAudit(w, r)
 		case path == "/bulk/items" && r.Method == http.MethodPost:
@@ -95,6 +101,8 @@ type dashOverview struct {
 	PharmacyTotalMMK int64  `json:"pharmacy_total_mmk"`
 	LabCount         int    `json:"lab_count"`
 	LabTotalMMK      int64  `json:"lab_total_mmk"`
+	CashTotalMMK     int64  `json:"cash_total_mmk"`
+	OnlineTotalMMK   int64  `json:"online_total_mmk"`
 	GrandTotalMMK    int64  `json:"grand_total_mmk"`
 	BillCount        int    `json:"bill_count"`
 	AvgBillMMK       int64  `json:"avg_bill_mmk"`
@@ -114,6 +122,8 @@ type trendPoint struct {
 	OTTotalMMK       int64  `json:"ot_total_mmk"`
 	PharmacyTotalMMK int64  `json:"pharmacy_total_mmk"`
 	LabTotalMMK      int64  `json:"lab_total_mmk"`
+	CashTotalMMK     int64  `json:"cash_total_mmk"`
+	OnlineTotalMMK   int64  `json:"online_total_mmk"`
 	GrandTotalMMK    int64  `json:"grand_total_mmk"`
 	BillCount        int    `json:"bill_count"`
 	IpdCashMMK       int64  `json:"ipd_cash_mmk"`
@@ -199,6 +209,8 @@ func (h *Dashboard) overview(w http.ResponseWriter, r *http.Request) {
 		PharmacyTotalMMK: cash.PharmacyTotal,
 		LabCount:         cash.LabCount,
 		LabTotalMMK:      cash.LabTotal,
+		CashTotalMMK:     cash.CashTotal,
+		OnlineTotalMMK:   cash.OnlineTotal,
 		GrandTotalMMK:    cash.GrandTotal,
 		BillCount:        billCount,
 		AvgBillMMK:       avg,
@@ -332,41 +344,47 @@ type stockHealthReport struct {
 }
 
 type dailyReportResponse struct {
-	Date              string            `json:"date"`
-	Yesterday         string            `json:"yesterday"`
-	OPDCount          int               `json:"opd_count"`
-	OPDTotalMMK       int64             `json:"opd_total_mmk"`
-	OTCount           int               `json:"ot_count"`
-	OTTotalMMK        int64             `json:"ot_total_mmk"`
-	PharmacyCount     int               `json:"pharmacy_count"`
-	PharmacyTotalMMK  int64             `json:"pharmacy_total_mmk"`
-	LabCount          int               `json:"lab_count"`
-	LabTotalMMK       int64             `json:"lab_total_mmk"`
-	GrandTotalMMK     int64             `json:"grand_total_mmk"`
-	BillCount         int               `json:"bill_count"`
-	Voids             int               `json:"voids"`
-	Lines             []cashLine        `json:"lines"`
-	PrevOPDTotal      int64             `json:"prev_opd_total_mmk"`
-	PrevOTTotal       int64             `json:"prev_ot_total_mmk"`
-	PrevPharmacyTotal int64             `json:"prev_pharmacy_total_mmk"`
-	PrevLabTotal      int64             `json:"prev_lab_total_mmk"`
-	PrevGrandTotal    int64             `json:"prev_grand_total_mmk"`
-	PrevBillCount     int               `json:"prev_bill_count"`
-	DeltaOPDMMK       int64             `json:"delta_opd_mmk"`
-	DeltaOTMMK        int64             `json:"delta_ot_mmk"`
-	DeltaPharmacyMMK  int64             `json:"delta_pharmacy_mmk"`
-	DeltaLabMMK       int64             `json:"delta_lab_mmk"`
-	DeltaGrandMMK     int64             `json:"delta_grand_mmk"`
-	DeltaBills        int               `json:"delta_bills"`
-	IncomeMMK         int64             `json:"income_mmk"`
-	ExpenseMMK        int64             `json:"expense_mmk"`
-	NetCashMMK        int64             `json:"net_cash_mmk"`
-	PrevIncomeMMK     int64             `json:"prev_income_mmk"`
-	PrevExpenseMMK    int64             `json:"prev_expense_mmk"`
-	PrevNetCashMMK    int64             `json:"prev_net_cash_mmk"`
-	DeltaIncomeMMK    int64             `json:"delta_income_mmk"`
-	DeltaExpenseMMK   int64             `json:"delta_expense_mmk"`
-	DeltaNetCashMMK   int64             `json:"delta_net_cash_mmk"`
+	Date                 string            `json:"date"`
+	Yesterday            string            `json:"yesterday"`
+	OPDCount             int               `json:"opd_count"`
+	OPDTotalMMK          int64             `json:"opd_total_mmk"`
+	OTCount              int               `json:"ot_count"`
+	OTTotalMMK           int64             `json:"ot_total_mmk"`
+	PharmacyCount        int               `json:"pharmacy_count"`
+	PharmacyTotalMMK     int64             `json:"pharmacy_total_mmk"`
+	LabCount             int               `json:"lab_count"`
+	LabTotalMMK          int64             `json:"lab_total_mmk"`
+	CashTotalMMK         int64             `json:"cash_total_mmk"`
+	OnlineTotalMMK       int64             `json:"online_total_mmk"`
+	GrandTotalMMK        int64             `json:"grand_total_mmk"`
+	BillCount            int               `json:"bill_count"`
+	Voids                int               `json:"voids"`
+	Lines                []cashLine        `json:"lines"`
+	PrevOPDTotal         int64             `json:"prev_opd_total_mmk"`
+	PrevOTTotal          int64             `json:"prev_ot_total_mmk"`
+	PrevPharmacyTotal    int64             `json:"prev_pharmacy_total_mmk"`
+	PrevLabTotal         int64             `json:"prev_lab_total_mmk"`
+	PrevCashTotal        int64             `json:"prev_cash_total_mmk"`
+	PrevOnlineTotal      int64             `json:"prev_online_total_mmk"`
+	PrevGrandTotal       int64             `json:"prev_grand_total_mmk"`
+	PrevBillCount        int               `json:"prev_bill_count"`
+	DeltaOPDMMK          int64             `json:"delta_opd_mmk"`
+	DeltaOTMMK           int64             `json:"delta_ot_mmk"`
+	DeltaPharmacyMMK     int64             `json:"delta_pharmacy_mmk"`
+	DeltaLabMMK          int64             `json:"delta_lab_mmk"`
+	DeltaCashMMK         int64             `json:"delta_cash_mmk"`
+	DeltaOnlineMMK       int64             `json:"delta_online_mmk"`
+	DeltaGrandMMK        int64             `json:"delta_grand_mmk"`
+	DeltaBills           int               `json:"delta_bills"`
+	IncomeMMK            int64             `json:"income_mmk"`
+	ExpenseMMK           int64             `json:"expense_mmk"`
+	NetCashMMK           int64             `json:"net_cash_mmk"`
+	PrevIncomeMMK        int64             `json:"prev_income_mmk"`
+	PrevExpenseMMK       int64             `json:"prev_expense_mmk"`
+	PrevNetCashMMK       int64             `json:"prev_net_cash_mmk"`
+	DeltaIncomeMMK       int64             `json:"delta_income_mmk"`
+	DeltaExpenseMMK      int64             `json:"delta_expense_mmk"`
+	DeltaNetCashMMK      int64             `json:"delta_net_cash_mmk"`
 	IpdCashMMK           int64             `json:"ipd_cash_mmk"`
 	IpdLines             []ipdCashLine     `json:"ipd_lines"`
 	IpdEarnedMMK         int64             `json:"ipd_earned_mmk"`
@@ -434,41 +452,47 @@ func (h *Dashboard) dailyReport(w http.ResponseWriter, r *http.Request) {
 	billCount := cash.OPDCount + cash.OTCount + cash.PharmacyCount + cash.LabCount
 	prevBills := prevCash.OPDCount + prevCash.OTCount + prevCash.PharmacyCount + prevCash.LabCount
 	writeJSON(w, http.StatusOK, dailyReportResponse{
-		Date:              date,
-		Yesterday:         yesterday,
-		OPDCount:          cash.OPDCount,
-		OPDTotalMMK:       cash.OPDTotal,
-		OTCount:           cash.OTCount,
-		OTTotalMMK:        cash.OTTotal,
-		PharmacyCount:     cash.PharmacyCount,
-		PharmacyTotalMMK:  cash.PharmacyTotal,
-		LabCount:          cash.LabCount,
-		LabTotalMMK:       cash.LabTotal,
-		GrandTotalMMK:     cash.GrandTotal,
-		BillCount:         billCount,
-		Voids:             voids,
-		Lines:             cash.Lines,
-		PrevOPDTotal:      prevCash.OPDTotal,
-		PrevOTTotal:       prevCash.OTTotal,
-		PrevPharmacyTotal: prevCash.PharmacyTotal,
-		PrevLabTotal:      prevCash.LabTotal,
-		PrevGrandTotal:    prevCash.GrandTotal,
-		PrevBillCount:     prevBills,
-		DeltaOPDMMK:       cash.OPDTotal - prevCash.OPDTotal,
-		DeltaOTMMK:        cash.OTTotal - prevCash.OTTotal,
-		DeltaPharmacyMMK:  cash.PharmacyTotal - prevCash.PharmacyTotal,
-		DeltaLabMMK:       cash.LabTotal - prevCash.LabTotal,
-		DeltaGrandMMK:     cash.GrandTotal - prevCash.GrandTotal,
-		DeltaBills:        billCount - prevBills,
-		IncomeMMK:         today.IncomeMMK,
-		ExpenseMMK:        today.ExpenseMMK,
-		NetCashMMK:        today.NetCashMMK,
-		PrevIncomeMMK:     prev.IncomeMMK,
-		PrevExpenseMMK:    prev.ExpenseMMK,
-		PrevNetCashMMK:    prev.NetCashMMK,
-		DeltaIncomeMMK:    today.IncomeMMK - prev.IncomeMMK,
-		DeltaExpenseMMK:   today.ExpenseMMK - prev.ExpenseMMK,
-		DeltaNetCashMMK:   today.NetCashMMK - prev.NetCashMMK,
+		Date:                 date,
+		Yesterday:            yesterday,
+		OPDCount:             cash.OPDCount,
+		OPDTotalMMK:          cash.OPDTotal,
+		OTCount:              cash.OTCount,
+		OTTotalMMK:           cash.OTTotal,
+		PharmacyCount:        cash.PharmacyCount,
+		PharmacyTotalMMK:     cash.PharmacyTotal,
+		LabCount:             cash.LabCount,
+		LabTotalMMK:          cash.LabTotal,
+		CashTotalMMK:         cash.CashTotal,
+		OnlineTotalMMK:       cash.OnlineTotal,
+		GrandTotalMMK:        cash.GrandTotal,
+		BillCount:            billCount,
+		Voids:                voids,
+		Lines:                cash.Lines,
+		PrevOPDTotal:         prevCash.OPDTotal,
+		PrevOTTotal:          prevCash.OTTotal,
+		PrevPharmacyTotal:    prevCash.PharmacyTotal,
+		PrevLabTotal:         prevCash.LabTotal,
+		PrevCashTotal:        prevCash.CashTotal,
+		PrevOnlineTotal:      prevCash.OnlineTotal,
+		PrevGrandTotal:       prevCash.GrandTotal,
+		PrevBillCount:        prevBills,
+		DeltaOPDMMK:          cash.OPDTotal - prevCash.OPDTotal,
+		DeltaOTMMK:           cash.OTTotal - prevCash.OTTotal,
+		DeltaPharmacyMMK:     cash.PharmacyTotal - prevCash.PharmacyTotal,
+		DeltaCashMMK:         cash.CashTotal - prevCash.CashTotal,
+		DeltaOnlineMMK:       cash.OnlineTotal - prevCash.OnlineTotal,
+		DeltaLabMMK:          cash.LabTotal - prevCash.LabTotal,
+		DeltaGrandMMK:        cash.GrandTotal - prevCash.GrandTotal,
+		DeltaBills:           billCount - prevBills,
+		IncomeMMK:            today.IncomeMMK,
+		ExpenseMMK:           today.ExpenseMMK,
+		NetCashMMK:           today.NetCashMMK,
+		PrevIncomeMMK:        prev.IncomeMMK,
+		PrevExpenseMMK:       prev.ExpenseMMK,
+		PrevNetCashMMK:       prev.NetCashMMK,
+		DeltaIncomeMMK:       today.IncomeMMK - prev.IncomeMMK,
+		DeltaExpenseMMK:      today.ExpenseMMK - prev.ExpenseMMK,
+		DeltaNetCashMMK:      today.NetCashMMK - prev.NetCashMMK,
 		IpdCashMMK:           today.IPD.NetMMK,
 		IpdLines:             today.IPD.Lines,
 		IpdEarnedMMK:         today.IPDEarned.EarnedMMK,
@@ -483,7 +507,8 @@ func (h *Dashboard) dailyReport(w http.ResponseWriter, r *http.Request) {
 // dailyReportPrint is the admin HTML for one civil day.
 // Clinic desks stay on GET /api/reports/daily-cash/print, which is role-scoped
 // and does not include IPD or hospital expenses.
-// Optional kind=income|expense|overall (default overall) selects the sheet.
+// Optional kind=income|expense|overall|details (default overall) selects the sheet.
+// kind=details accepts scope=income|expense|all. An omitted scope prints every bill.
 func (h *Dashboard) dailyReportPrint(w http.ResponseWriter, r *http.Request) {
 	date := reportDate(r)
 	kind := strings.TrimSpace(r.URL.Query().Get("kind"))
@@ -491,22 +516,47 @@ func (h *Dashboard) dailyReportPrint(w http.ResponseWriter, r *http.Request) {
 		kind = "overall"
 	}
 	switch kind {
-	case "income", "expense", "overall":
+	case "income", "expense", "overall", "details":
 	default:
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "kind must be income, expense, or overall"})
-		return
-	}
-	move, err := buildCashMovement(h.DB, date)
-	if err != nil {
-		http.Error(w, "report failed", http.StatusInternalServerError)
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "kind must be income, expense, overall, or details"})
 		return
 	}
 	hosp, _ := loadHospitalSettings(h.DB)
 	if hosp == nil {
 		hosp = &hospitalSettings{HospitalName: "Mudita Hospital"}
 	}
+	if kind == "details" {
+		scope := strings.TrimSpace(r.URL.Query().Get("scope"))
+		switch scope {
+		case "", "income", "expense", "all":
+		default:
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "scope must be income, expense, or all"})
+			return
+		}
+		vouchers, err := buildDailyBillDetails(h.DB, date)
+		if err != nil {
+			http.Error(w, "report failed", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(renderDashboardDailyDetailsHTML(h.DB, hosp, vouchers, date, scope)))
+		return
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = w.Write([]byte(renderDashboardDailyHTML(hosp, move, kind)))
+	move, err := buildCashMovement(h.DB, date)
+	if err != nil {
+		http.Error(w, "report failed", http.StatusInternalServerError)
+		return
+	}
+	var carry []ipdPrintCarryRow
+	if kind == "income" || kind == "overall" {
+		carry, err = loadIpdDailyPrintCarry(h.DB, date)
+		if err != nil {
+			http.Error(w, "report failed", http.StatusInternalServerError)
+			return
+		}
+	}
+	_, _ = w.Write([]byte(renderDashboardDailyHTML(hosp, move, kind, carry)))
 }
 
 func buildStockHealth(db *sql.DB, slowDays, cogsDays int) (*stockHealthReport, error) {
@@ -870,6 +920,8 @@ func buildCashTrends(db *sql.DB, from, to string) ([]trendPoint, error) {
 			OTTotalMMK:       cash.OTTotal,
 			PharmacyTotalMMK: cash.PharmacyTotal,
 			LabTotalMMK:      cash.LabTotal,
+			CashTotalMMK:     cash.CashTotal,
+			OnlineTotalMMK:   cash.OnlineTotal,
 			GrandTotalMMK:    cash.GrandTotal,
 			BillCount:        cash.OPDCount + cash.OTCount + cash.PharmacyCount + cash.LabCount,
 			IpdCashMMK:       move.IPD.NetMMK,

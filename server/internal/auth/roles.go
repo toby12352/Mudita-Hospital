@@ -20,6 +20,7 @@ const (
 	PermPatients    = "patients"
 	PermIPD         = "ipd"
 	PermLab         = "lab"
+	PermExpense     = "expense"
 )
 
 // rolePermissions is the desk map. Admin has every permission; each desk has one.
@@ -33,6 +34,7 @@ var rolePermissions = map[string]map[string]bool{
 		PermPatients:    true,
 		PermIPD:         true,
 		PermLab:         true,
+		PermExpense:     true,
 	},
 	RoleOPD: {
 		PermOPD: true,

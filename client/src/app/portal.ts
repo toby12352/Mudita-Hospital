@@ -52,6 +52,8 @@ export function landingFor(portal: PortalId): PortalLanding {
       return { view: "patients", intent: { patientsScreen: "list" }, section: "patients" };
     case "ipd":
       return { view: "ipd", intent: {}, section: "ipd" };
+    case "expense":
+      return { view: "expense", intent: {}, section: "expense" };
     case "settings":
       return {
         view: "settings",
@@ -79,14 +81,14 @@ export function portalForView(view: View): PortalId | null {
     case "pharmacy_return":
     case "pharmacy_purchase":
     case "pharmacy_transfer":
-    case "pharmacy_expense":
       return "pharmacy";
     case "patients":
       return "patients";
     case "ipd":
     case "ipd_bill":
-    case "ipd_expense":
       return "ipd";
+    case "expense":
+      return "expense";
     case "settings":
       return "settings";
     default:
@@ -108,13 +110,14 @@ export function viewInPortal(view: View, portal: PortalId): boolean {
         view === "pharmacy_billing" ||
         view === "pharmacy_return" ||
         view === "pharmacy_purchase" ||
-        view === "pharmacy_transfer" ||
-        view === "pharmacy_expense"
+        view === "pharmacy_transfer"
       );
     case "patients":
       return view === "patients";
     case "ipd":
-      return view === "ipd" || view === "ipd_bill" || view === "ipd_expense";
+      return view === "ipd" || view === "ipd_bill";
+    case "expense":
+      return view === "expense";
     case "settings":
       return view === "settings";
   }
@@ -128,7 +131,7 @@ export function titleKeyForAdmin(view: View, portal: PortalId | null): string {
 }
 
 /** Clinic modules in sidebar order. Settings is not a module. */
-export const clinicModules = ["patients", "ipd", "opd", "ot", "pharmacy", "lab"] as const;
+export const clinicModules = ["patients", "ipd", "opd", "ot", "pharmacy", "lab", "expense"] as const;
 export type ClinicModule = (typeof clinicModules)[number];
 
 const moduleReadKey: Record<ClinicModule, string> = {
@@ -138,6 +141,7 @@ const moduleReadKey: Record<ClinicModule, string> = {
   ot: "ot.read",
   pharmacy: "pharmacy.read",
   lab: "lab.read",
+  expense: "expense.read",
 };
 
 /** Modules this account may open. Full Admin sees every module. Unified uses Read keys only. */
@@ -156,7 +160,6 @@ export function moduleForView(view: View): ClinicModule | null {
       return "patients";
     case "ipd":
     case "ipd_bill":
-    case "ipd_expense":
       return "ipd";
     case "opd":
       return "opd";
@@ -169,8 +172,9 @@ export function moduleForView(view: View): ClinicModule | null {
     case "pharmacy_return":
     case "pharmacy_purchase":
     case "pharmacy_transfer":
-    case "pharmacy_expense":
       return "pharmacy";
+    case "expense":
+      return "expense";
     default:
       return null;
   }

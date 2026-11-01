@@ -35,6 +35,7 @@ export type OpdBill = {
   printed_at?: string | null;
   admission_id?: number | null;
   collected_cash?: number;
+  payment_type?: "cash" | "online" | string;
   paid_at?: string | null;
   voided_at?: string | null;
   void_reason?: string;
@@ -80,6 +81,7 @@ export type OpdBillWrite = {
   discount_unit?: "percent" | "mmk";
   /** Admin-only on create. Yangon wall time as `YYYY-MM-DDTHH:mm`. */
   billed_at?: string;
+  payment_type?: "cash" | "online";
 };
 
 export async function listOpdDoctors(q = ""): Promise<OpdDoctor[]> {
@@ -149,9 +151,19 @@ export async function updateOpdBill(id: number, body: OpdBillWrite): Promise<Opd
   });
 }
 
-export async function payOpdBill(id: number, admissionId?: number | null): Promise<OpdBill> {
-  const body = admissionId != null ? JSON.stringify({ admission_id: admissionId }) : "{}";
-  return apiFetch<OpdBill>(`/api/opd/bills/${id}/pay`, { method: "POST", body });
+export async function payOpdBill(
+  id: number,
+  admissionId?: number | null,
+  paymentType: "cash" | "online" = "cash",
+): Promise<OpdBill> {
+  const payload: { payment_type: string; admission_id?: number } = {
+    payment_type: paymentType,
+  };
+  if (admissionId != null) payload.admission_id = admissionId;
+  return apiFetch<OpdBill>(`/api/opd/bills/${id}/pay`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function markOpdBillPrinted(id: number): Promise<OpdBill> {

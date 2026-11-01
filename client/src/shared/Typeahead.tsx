@@ -26,6 +26,8 @@ export type TypeaheadProps<T> = {
   autoFocus?: boolean;
   /** Desk shortcut target, for example `bill-patient`. */
   dataFocus?: string;
+  /** Guided tour target, for example `patient-search`. */
+  dataGuide?: string;
   required?: boolean;
 };
 
@@ -50,6 +52,7 @@ export function Typeahead<T>({
   ariaLabel,
   autoFocus = false,
   dataFocus,
+  dataGuide,
   required = false,
 }: TypeaheadProps<T>) {
   const listId = useId();
@@ -121,6 +124,7 @@ export function Typeahead<T>({
         autoFocus={autoFocus}
         required={required}
         data-focus={dataFocus}
+        data-guide={dataGuide}
         aria-label={label ? undefined : ariaLabel}
         role="combobox"
         aria-expanded={open}

@@ -217,6 +217,8 @@ func (h *Pharmacy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.listItems(w, r)
 		case path == "/items" && r.Method == http.MethodPost:
 			h.createItem(w, r)
+		case path == "/items/next-code" && r.Method == http.MethodGet:
+			h.nextItemCode(w, r)
 		case strings.HasPrefix(path, "/items/") && strings.HasSuffix(path, "/restock") && r.Method == http.MethodPost:
 			h.restock(w, r, path)
 		case strings.HasPrefix(path, "/items/") && strings.HasSuffix(path, "/adjust") && r.Method == http.MethodPost:
@@ -346,15 +348,14 @@ func (h *Pharmacy) createItem(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
-	req.Code = strings.ToUpper(strings.TrimSpace(req.Code))
 	req.Name = strings.TrimSpace(req.Name)
 	req.Dosage = strings.TrimSpace(req.Dosage)
 	req.Category = strings.TrimSpace(req.Category)
 	if req.Category == "" {
 		req.Category = "Other"
 	}
-	if req.Code == "" || req.Name == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "code and name required"})
+	if req.Name == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name required"})
 		return
 	}
 	if !itemCategories[req.Category] {
@@ -422,6 +423,12 @@ func (h *Pharmacy) createItem(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 
+	code, err := allocateNextItemCode(tx, units.StockUnit)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "code allocate failed"})
+		return
+	}
+
 	activeInt := 1
 	if req.Active != nil && !*req.Active {
 		activeInt = 0
@@ -435,7 +442,7 @@ func (h *Pharmacy) createItem(w http.ResponseWriter, r *http.Request) {
 			purchase_unit, stock_unit, billing_unit, units_per_purchase, billing_per_stock, charge_full_stock_unit,
 			buy_price_mmk, sell_price_mmk, reorder_level, active
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, 0, ?)
-	`, req.Code, req.Name, req.Category, req.Dosage, packSize,
+	`, code, req.Name, req.Category, req.Dosage, packSize,
 		pack.L1Qty, pack.L1Unit, pack.L2Qty, pack.L2Unit, pack.L3Qty, pack.L3Unit,
 		pack.L4Qty, pack.L4Unit, pack.L5Qty, pack.L5Unit, pack.L6Qty, pack.L6Unit,
 		units.PurchaseUnit, units.StockUnit, units.BillingUnit, units.UnitsPerPurchase,
@@ -474,7 +481,7 @@ func (h *Pharmacy) createItem(w http.ResponseWriter, r *http.Request) {
 	}
 
 	audit.WriteAudit(h.DB, &uid, "create", "item", &itemID, map[string]any{
-		"code": req.Code, "name": req.Name, "category": req.Category, "initial_qty": initialQty,
+		"code": code, "name": req.Name, "category": req.Category, "initial_qty": initialQty,
 		"batch_no": openingBatch, "expiry_date": openingExpiry,
 	})
 
@@ -497,15 +504,14 @@ func (h *Pharmacy) updateItem(w http.ResponseWriter, r *http.Request, path strin
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
-	req.Code = strings.ToUpper(strings.TrimSpace(req.Code))
 	req.Name = strings.TrimSpace(req.Name)
 	req.Dosage = strings.TrimSpace(req.Dosage)
 	req.Category = strings.TrimSpace(req.Category)
 	if req.Category == "" {
 		req.Category = "Other"
 	}
-	if req.Code == "" || req.Name == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "code and name required"})
+	if req.Name == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name required"})
 		return
 	}
 	if !itemCategories[req.Category] {
@@ -522,6 +528,7 @@ func (h *Pharmacy) updateItem(w http.ResponseWriter, r *http.Request, path strin
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "load failed"})
 		return
 	}
+	// Code is assigned at create and stays fixed, even if packing unit changes.
 
 	existingPack := itemPackFromPharmacyItem(existing)
 	oldClient := strings.TrimSpace(req.PackL4Unit) == "" && req.PackL4Qty == nil &&
@@ -623,7 +630,7 @@ func (h *Pharmacy) updateItem(w http.ResponseWriter, r *http.Request, path strin
 	}
 
 	_, err = h.DB.Exec(`
-		UPDATE items SET code = ?, name = ?, category = ?, dosage = ?, pack_size = ?,
+		UPDATE items SET name = ?, category = ?, dosage = ?, pack_size = ?,
 		  pack_l1_qty = ?, pack_l1_unit = ?, pack_l2_qty = ?, pack_l2_unit = ?, pack_l3_qty = ?, pack_l3_unit = ?,
 		  pack_l4_qty = ?, pack_l4_unit = ?, pack_l5_qty = ?, pack_l5_unit = ?, pack_l6_qty = ?, pack_l6_unit = ?,
 		  purchase_unit = ?, stock_unit = ?, billing_unit = ?,
@@ -631,17 +638,13 @@ func (h *Pharmacy) updateItem(w http.ResponseWriter, r *http.Request, path strin
 		  buy_price_mmk = ?, sell_price_mmk = ?, active = ?,
 		  updated_at = datetime('now')
 		WHERE id = ?
-	`, req.Code, req.Name, req.Category, req.Dosage, packSize,
+	`, req.Name, req.Category, req.Dosage, packSize,
 		pack.L1Qty, pack.L1Unit, pack.L2Qty, pack.L2Unit, pack.L3Qty, pack.L3Unit,
 		pack.L4Qty, pack.L4Unit, pack.L5Qty, pack.L5Unit, pack.L6Qty, pack.L6Unit,
 		units.PurchaseUnit, units.StockUnit, units.BillingUnit,
 		units.UnitsPerPurchase,
 		buy, sell, activeInt, id)
 	if err != nil {
-		if strings.Contains(strings.ToLower(err.Error()), "unique") {
-			writeJSON(w, http.StatusConflict, map[string]string{"error": "code already exists"})
-			return
-		}
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "update failed"})
 		return
 	}
@@ -649,7 +652,7 @@ func (h *Pharmacy) updateItem(w http.ResponseWriter, r *http.Request, path strin
 	user := middleware.UserFromContext(r.Context())
 	uid := user.ID
 	audit.WriteAudit(h.DB, &uid, "update", "item", &id, map[string]any{
-		"code": req.Code, "name": req.Name, "active": active,
+		"code": existing.Code, "name": req.Name, "active": active,
 		"pack_l2_qty": pack.L2Qty, "pack_l3_qty": pack.L3Qty,
 		"pack_l4_qty": pack.L4Qty, "pack_l5_qty": pack.L5Qty, "pack_l6_qty": pack.L6Qty,
 		"units_per_purchase": units.UnitsPerPurchase,

@@ -47,7 +47,7 @@ type expenseBillLine struct {
 	Code         string `json:"code"`
 	Description  string `json:"description"`
 	Qty          int64  `json:"qty"`
-	UnitPriceMMK int64  `json:"unit_price_mmk"`
+	UnitPriceMMK *int64 `json:"unit_price_mmk"`
 	LineTotalMMK int64  `json:"line_total_mmk"`
 	SortOrder    int    `json:"sort_order"`
 }
@@ -81,9 +81,18 @@ const expenseBillColumns = `
 	created_by_user_id, created_at, updated_at, billed_at`
 
 func (h *Expenses) listExpenseBills(w http.ResponseWriter, r *http.Request) {
-	_, portal, ok := h.allowPortal(w, r, r.URL.Query().Get("portal"), auth.ActionRead)
-	if !ok {
+	if _, ok := expenseUser(w, r); !ok {
 		return
+	}
+	rawPortal := strings.TrimSpace(r.URL.Query().Get("portal"))
+	var portal string
+	if rawPortal != "" {
+		var ok bool
+		portal, ok = expenseCategory(rawPortal)
+		if !ok {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid portal"})
+			return
+		}
 	}
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	status := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("status")))
@@ -94,8 +103,11 @@ func (h *Expenses) listExpenseBills(w http.ResponseWriter, r *http.Request) {
 
 	query := `SELECT ` + expenseBillColumns + ` FROM expense_bills`
 	args := make([]any, 0, 4)
-	where := []string{"portal = ?"}
-	args = append(args, portal)
+	where := make([]string, 0, 4)
+	if portal != "" {
+		where = append(where, "portal = ?")
+		args = append(args, portal)
+	}
 	if status != "" {
 		where = append(where, "status = ?")
 		args = append(args, status)
@@ -111,7 +123,9 @@ func (h *Expenses) listExpenseBills(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": errMsg})
 		return
 	}
-	query += " WHERE " + strings.Join(where, " AND ")
+	if len(where) > 0 {
+		query += " WHERE " + strings.Join(where, " AND ")
+	}
 	orderSQL, orderErr := billHistoryOrderBy(r, "created_at", "id")
 	if orderErr != "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": orderErr})
@@ -148,15 +162,16 @@ func (h *Expenses) createExpenseBill(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
-	user, portal, ok := h.allowPortal(w, r, req.Portal, auth.ActionCreate)
+	user, ok := expenseUser(w, r)
 	if !ok {
 		return
 	}
-	req.Name = strings.TrimSpace(req.Name)
-	if req.Name == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name required"})
+	portal, ok := expenseCategory(req.Portal)
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid portal"})
 		return
 	}
+	req.Name = strings.TrimSpace(req.Name)
 	override, status, errMsg := parseAdminBilledAt(user.Role, req.BilledAt)
 	if errMsg != "" {
 		writeJSON(w, status, map[string]string{"error": errMsg})
@@ -173,6 +188,14 @@ func (h *Expenses) createExpenseBill(w http.ResponseWriter, r *http.Request) {
 	lines, gross, discountMMK, discountUnit, errMsg := expenseBillAmounts(tx, req)
 	if errMsg != "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": errMsg})
+		return
+	}
+	if !draftBillHasContent(
+		[]string{req.Name, req.Description, portal},
+		len(lines),
+		req.DiscountValue,
+	) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bill is empty"})
 		return
 	}
 
@@ -239,7 +262,7 @@ func (h *Expenses) getExpenseBill(w http.ResponseWriter, r *http.Request, path s
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid id"})
 		return
 	}
-	if _, ok := h.guardExpenseBill(w, r, id, auth.ActionRead); !ok {
+	if _, ok := expenseUser(w, r); !ok {
 		return
 	}
 	bill, err := loadExpenseBill(h.DB, id)
@@ -260,7 +283,7 @@ func (h *Expenses) updateExpenseBill(w http.ResponseWriter, r *http.Request, pat
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid id"})
 		return
 	}
-	user, ok := h.guardExpenseBill(w, r, id, auth.ActionCreate)
+	user, ok := expenseUser(w, r)
 	if !ok {
 		return
 	}
@@ -270,11 +293,12 @@ func (h *Expenses) updateExpenseBill(w http.ResponseWriter, r *http.Request, pat
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 		return
 	}
-	req.Name = strings.TrimSpace(req.Name)
-	if req.Name == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name required"})
+	portal, ok := expenseCategory(req.Portal)
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid portal"})
 		return
 	}
+	req.Name = strings.TrimSpace(req.Name)
 
 	tx, err := h.DB.Begin()
 	if err != nil {
@@ -303,14 +327,22 @@ func (h *Expenses) updateExpenseBill(w http.ResponseWriter, r *http.Request, pat
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": errMsg})
 		return
 	}
+	if !draftBillHasContent(
+		[]string{req.Name, req.Description, portal},
+		len(lines),
+		req.DiscountValue,
+	) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bill is empty"})
+		return
+	}
 
 	res, err := tx.Exec(`
 		UPDATE expense_bills SET
-			name = ?, description = ?, total_mmk = ?,
+			portal = ?, name = ?, description = ?, total_mmk = ?,
 			discount_value = ?, discount_unit = ?, discount_mmk = ?,
 			updated_at = datetime('now')
 		WHERE id = ? AND status = 'draft'
-	`, req.Name, strings.TrimSpace(req.Description), gross, req.DiscountValue, discountUnit, discountMMK, id)
+	`, portal, req.Name, strings.TrimSpace(req.Description), gross, req.DiscountValue, discountUnit, discountMMK, id)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "update failed"})
 		return
@@ -335,7 +367,7 @@ func (h *Expenses) updateExpenseBill(w http.ResponseWriter, r *http.Request, pat
 
 	uid := user.ID
 	audit.WriteAudit(h.DB, &uid, "update", "expense_bill", &id, map[string]any{
-		"total_mmk": gross, "discount_mmk": discountMMK,
+		"portal": portal, "total_mmk": gross, "discount_mmk": discountMMK,
 	})
 
 	bill, err := loadExpenseBill(h.DB, id)
@@ -352,7 +384,7 @@ func (h *Expenses) markExpenseBillPrinted(w http.ResponseWriter, r *http.Request
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid id"})
 		return
 	}
-	user, ok := h.guardExpenseBill(w, r, id, auth.ActionCreate)
+	user, ok := expenseUser(w, r)
 	if !ok {
 		return
 	}
@@ -424,7 +456,7 @@ func (h *Expenses) payExpenseBill(w http.ResponseWriter, r *http.Request, path s
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid id"})
 		return
 	}
-	user, ok := h.guardExpenseBill(w, r, id, auth.ActionCreate)
+	user, ok := expenseUser(w, r)
 	if !ok {
 		return
 	}
@@ -450,14 +482,37 @@ func (h *Expenses) payExpenseBill(w http.ResponseWriter, r *http.Request, path s
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "only draft bills can be paid"})
 		return
 	}
-	var lineCount int
-	if err := tx.QueryRow(`SELECT COUNT(1) FROM expense_bill_lines WHERE bill_id = ?`, id).Scan(&lineCount); err != nil {
+	var portal, name string
+	if err := tx.QueryRow(`SELECT portal, name FROM expense_bills WHERE id = ?`, id).Scan(&portal, &name); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "load failed"})
+		return
+	}
+	if strings.TrimSpace(portal) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid portal"})
+		return
+	}
+	if strings.TrimSpace(name) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name required"})
+		return
+	}
+	lines, err := queryExpenseBillLines(tx, id)
+	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "lines load failed"})
 		return
 	}
-	if lineCount == 0 {
+	if len(lines) == 0 {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bill has no lines"})
 		return
+	}
+	for _, line := range lines {
+		if strings.TrimSpace(line.Description) == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "description required"})
+			return
+		}
+		if line.UnitPriceMMK == nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unit_price_mmk required"})
+			return
+		}
 	}
 
 	uid := user.ID
@@ -501,7 +556,7 @@ func (h *Expenses) purgeExpenseBill(w http.ResponseWriter, r *http.Request, path
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid id"})
 		return
 	}
-	user, ok := h.guardExpenseBill(w, r, id, auth.ActionDelete)
+	user, ok := expenseUser(w, r)
 	if !ok {
 		return
 	}
@@ -560,7 +615,7 @@ func (h *Expenses) voidExpenseBill(w http.ResponseWriter, r *http.Request, path 
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid id"})
 		return
 	}
-	user, ok := h.guardExpenseBill(w, r, id, auth.ActionDelete)
+	user, ok := expenseUser(w, r)
 	if !ok {
 		return
 	}
@@ -633,7 +688,7 @@ func (h *Expenses) printExpenseBill(w http.ResponseWriter, r *http.Request, path
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid id"})
 		return
 	}
-	if _, ok := h.guardExpenseBill(w, r, id, auth.ActionRead); !ok {
+	if _, ok := expenseUser(w, r); !ok {
 		return
 	}
 	bill, err := loadExpenseBill(h.DB, id)
@@ -658,11 +713,15 @@ func renderExpenseBillHTML(hosp *hospitalSettings, bill expenseBill) string {
 	dateLabel := receiptDateLabel(bill.CreatedAt, bill.BilledAt, bill.PaidAt)
 	lines := make([]receiptLine, 0, len(bill.Lines))
 	for _, line := range bill.Lines {
+		unitPrice := int64(0)
+		if line.UnitPriceMMK != nil {
+			unitPrice = *line.UnitPriceMMK
+		}
 		lines = append(lines, receiptLine{
 			Code:        line.Code,
 			Description: line.Description,
 			Qty:         line.Qty,
-			UnitPrice:   line.UnitPriceMMK,
+			UnitPrice:   unitPrice,
 			LineTotal:   line.LineTotalMMK,
 		})
 	}
@@ -711,7 +770,7 @@ func expenseBillAmounts(q queryRower, req expenseBillWriteRequest) (lines []expe
 
 func normalizeExpenseLines(q queryRower, in []expenseBillLineInput) ([]expenseBillLine, int64, string) {
 	if len(in) == 0 {
-		return nil, 0, "at least one line"
+		return []expenseBillLine{}, 0, ""
 	}
 	out := make([]expenseBillLine, 0, len(in))
 	var total int64
@@ -724,14 +783,17 @@ func normalizeExpenseLines(q queryRower, in []expenseBillLineInput) ([]expenseBi
 		if errMsg != "" {
 			return nil, 0, errMsg
 		}
-		price, errMsg := parseExpenseUnitPrice(raw.UnitPriceMMK)
+		price, errMsg := parseOptionalExpenseUnitPrice(raw.UnitPriceMMK)
 		if errMsg != "" {
 			return nil, 0, errMsg
 		}
-		if qty > 1 && price > math.MaxInt64/qty {
-			return nil, 0, "line total too large"
+		var lineTotal int64
+		if price != nil {
+			if qty > 1 && *price > math.MaxInt64/qty {
+				return nil, 0, "line total too large"
+			}
+			lineTotal = qty * *price
 		}
-		lineTotal := qty * price
 
 		if !hasRef {
 			desc := strings.TrimSpace(raw.Description)
@@ -824,6 +886,19 @@ func parseExpenseUnitPrice(raw json.RawMessage) (int64, string) {
 	return n, ""
 }
 
+// parseOptionalExpenseUnitPrice allows null on draft lines (fee not entered yet).
+func parseOptionalExpenseUnitPrice(raw json.RawMessage) (*int64, string) {
+	trimmed := strings.TrimSpace(string(raw))
+	if trimmed == "" || trimmed == "null" {
+		return nil, ""
+	}
+	n, errMsg := parseExpenseUnitPrice(raw)
+	if errMsg != "" {
+		return nil, errMsg
+	}
+	return &n, ""
+}
+
 func parseRequiredJSONInt(raw json.RawMessage, missing, badType string) (int64, string) {
 	trimmed := strings.TrimSpace(string(raw))
 	if trimmed == "" || trimmed == "null" {
@@ -892,13 +967,17 @@ func queryExpenseBillLines(db sqlQuery, billID int64) ([]expenseBillLine, error)
 	out := make([]expenseBillLine, 0)
 	for rows.Next() {
 		var l expenseBillLine
-		var ref sql.NullInt64
-		if err := rows.Scan(&l.ID, &ref, &l.Code, &l.Description, &l.Qty, &l.UnitPriceMMK, &l.LineTotalMMK, &l.SortOrder); err != nil {
+		var ref, price sql.NullInt64
+		if err := rows.Scan(&l.ID, &ref, &l.Code, &l.Description, &l.Qty, &price, &l.LineTotalMMK, &l.SortOrder); err != nil {
 			return nil, err
 		}
 		if ref.Valid {
 			v := ref.Int64
 			l.RefID = &v
+		}
+		if price.Valid {
+			v := price.Int64
+			l.UnitPriceMMK = &v
 		}
 		out = append(out, l)
 	}
@@ -964,51 +1043,26 @@ func expenseBillID(path, suffix string) (int64, bool) {
 	return parseID("/" + rest)
 }
 
-func (h *Expenses) allowPortal(w http.ResponseWriter, r *http.Request, portal, action string) (*auth.User, string, bool) {
-	canonical := strings.ToLower(strings.TrimSpace(portal))
-	perm, ok := expensePortalPermission(canonical)
+func expenseUser(w http.ResponseWriter, r *http.Request) (*auth.User, bool) {
 	user := middleware.UserFromContext(r.Context())
-	if !ok || user == nil {
+	if user == nil {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
-		return nil, "", false
-	}
-	allowed, err := auth.ExpenseAction(h.DB, user.ID, perm, action)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "permission check failed"})
-		return nil, "", false
-	}
-	if !allowed {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
-		return nil, "", false
-	}
-	return user, canonical, true
-}
-
-func (h *Expenses) guardExpenseBill(w http.ResponseWriter, r *http.Request, id int64, action string) (*auth.User, bool) {
-	var portal string
-	err := h.DB.QueryRow(`SELECT portal FROM expense_bills WHERE id = ?`, id).Scan(&portal)
-	if err == sql.ErrNoRows {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		return nil, false
 	}
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "load failed"})
-		return nil, false
-	}
-	user, _, ok := h.allowPortal(w, r, portal, action)
-	return user, ok
+	return user, true
 }
 
-func expensePortalPermission(portal string) (string, bool) {
-	switch portal {
-	case "opd":
-		return auth.PermOPD, true
-	case "ot":
-		return auth.PermOT, true
-	case "ipd":
-		return auth.PermIPD, true
-	case "pharmacy":
-		return auth.PermPharmacy, true
+// expenseCategory is the desk label stored on expense_bills.portal.
+// Report sections and receipts group on these six values.
+// An empty portal is allowed on drafts that have not chosen a category yet.
+func expenseCategory(portal string) (string, bool) {
+	p := strings.ToLower(strings.TrimSpace(portal))
+	if p == "" {
+		return "", true
+	}
+	switch p {
+	case "opd", "ot", "ipd", "pharmacy", "lab", "expense":
+		return p, true
 	default:
 		return "", false
 	}
@@ -1024,6 +1078,10 @@ func expensePortalLabel(portal string) string {
 		return "IPD"
 	case "pharmacy":
 		return "Pharmacy"
+	case "lab":
+		return "Lab"
+	case "expense":
+		return "Expenses"
 	default:
 		return portal
 	}

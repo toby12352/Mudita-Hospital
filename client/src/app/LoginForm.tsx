@@ -1,4 +1,5 @@
 import { FormEvent, useState } from "react";
+import { FieldError } from "@/shared/FieldError";
 
 export function LoginForm({
   onSubmit,
@@ -23,7 +24,7 @@ export function LoginForm({
     try {
       await onSubmit(username.trim(), password);
     } catch (err) {
-      setLocalError(err instanceof Error ? err.message : "Login failed");
+      setLocalError(err instanceof Error ? err.message : t("loginFailed"));
     } finally {
       setBusy(false);
     }
@@ -54,7 +55,7 @@ export function LoginForm({
           required
         />
       </label>
-      {showError ? <p className="form-error">{showError}</p> : null}
+      <FieldError>{showError}</FieldError>
       <button type="submit" className="btn primary" disabled={busy || disabled}>
         {busy ? t("signingIn") : t("signIn")}
       </button>

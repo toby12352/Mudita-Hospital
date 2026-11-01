@@ -14,16 +14,51 @@ export type PrintPreviewOptions = {
 };
 
 let activeOverlay: HTMLElement | null = null;
+let opener: HTMLElement | null = null;
+
+function focusableIn(root: ParentNode): HTMLElement[] {
+  return Array.from(
+    root.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), iframe, [tabindex]:not([tabindex="-1"])',
+    ),
+  );
+}
 
 function closePrintPreview(): void {
   if (!activeOverlay) return;
   activeOverlay.remove();
   activeOverlay = null;
-  document.removeEventListener("keydown", onEscape);
+  document.removeEventListener("keydown", onPreviewKey, true);
+  const prev = opener;
+  opener = null;
+  if (prev && document.contains(prev)) prev.focus();
 }
 
-function onEscape(e: KeyboardEvent): void {
-  if (e.key === "Escape") closePrintPreview();
+function onPreviewKey(e: KeyboardEvent): void {
+  const root = activeOverlay;
+  if (!root) return;
+  if (e.key === "Escape") {
+    e.preventDefault();
+    e.stopPropagation();
+    closePrintPreview();
+    return;
+  }
+  if (e.key !== "Tab") return;
+  const focusable = focusableIn(root);
+  if (focusable.length === 0) return;
+  const active = document.activeElement;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  const inside = active instanceof Node && root.contains(active);
+  if (e.shiftKey) {
+    if (!inside || active === first) {
+      e.preventDefault();
+      last.focus();
+    }
+  } else if (!inside || active === last) {
+    e.preventDefault();
+    first.focus();
+  }
 }
 
 /**
@@ -31,13 +66,15 @@ function onEscape(e: KeyboardEvent): void {
  * (Windows / system print dialog). No popup window — works in Tauri WebView2.
  */
 export function openPrintPreview(html: string, opts: PrintPreviewOptions = {}): void {
+  const nextOpener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   closePrintPreview();
+  opener = nextOpener;
 
   const title = opts.title ?? "Print preview";
   const receipt = opts.receipt !== false;
 
   const overlay = document.createElement("div");
-  overlay.className = "clinic-overlay clinic-overlay--fixed print-preview-overlay";
+  overlay.className = "clinic-overlay clinic-overlay--fixed print-preview-overlay print-preview-shell";
   overlay.setAttribute("role", "dialog");
   overlay.setAttribute("aria-modal", "true");
   overlay.setAttribute("aria-label", title);
@@ -93,7 +130,7 @@ export function openPrintPreview(html: string, opts: PrintPreviewOptions = {}): 
   overlay.append(card);
   document.body.append(overlay);
   activeOverlay = overlay;
-  document.addEventListener("keydown", onEscape);
+  document.addEventListener("keydown", onPreviewKey, true);
 
   overlay.addEventListener("click", (e) => {
     if (e.target === overlay) closePrintPreview();
@@ -113,6 +150,7 @@ export function openPrintPreview(html: string, opts: PrintPreviewOptions = {}): 
 
   // srcdoc keeps auth-fetched HTML in-process without a second navigation.
   iframe.srcdoc = html;
+  printBtn.focus({ focusVisible: true });
 }
 
 /** Print routes answer with JSON `{"error":"..."}` on failure. Peel that out so the clerk sees the sentence, not the raw body. */

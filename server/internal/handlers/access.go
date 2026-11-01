@@ -119,10 +119,16 @@ func otGrant(method, path string) string {
 }
 
 func ipdGrant(method, path string) string {
-	// Purge is admin-only inside the handler. The cell is update because
-	// ipd.delete is not a grantable key. Void uses create, same as posting
-	// the charge, so a desk that can charge can undo it.
+	// Purge and deposit/ward ledger delete are admin-only inside the handler.
+	// The cell is update because ipd.delete is not a grantable key. Void uses
+	// create, same as posting the charge, so a desk that can charge can undo it.
 	if method == http.MethodDelete && strings.HasPrefix(path, "/charge-bills/") {
+		return auth.GrantIPDUpdate
+	}
+	if method == http.MethodDelete && strings.Contains(path, "/ledger/") {
+		return auth.GrantIPDUpdate
+	}
+	if method == http.MethodDelete && strings.HasPrefix(path, "/admissions/") {
 		return auth.GrantIPDUpdate
 	}
 	if method == http.MethodPut && strings.HasPrefix(path, "/charge-bills/") {
@@ -175,6 +181,24 @@ func labGrant(method, path string) string {
 		return auth.GrantLabCreate
 	}
 	return auth.GrantLabRead
+}
+
+// expenseGrant maps an expense-bill route to a cell.
+// Catalog routes stay on settings and do not use this map.
+func expenseGrant(method, path string) string {
+	if method == http.MethodDelete && strings.HasPrefix(path, "/bills/") {
+		return auth.GrantExpenseDelete
+	}
+	if method == http.MethodPost && strings.HasSuffix(path, "/void") {
+		return auth.GrantExpenseDelete
+	}
+	if method == http.MethodPost && (path == "/bills" || strings.HasSuffix(path, "/pay") || strings.HasSuffix(path, "/printed")) {
+		return auth.GrantExpenseCreate
+	}
+	if method == http.MethodPut && strings.HasPrefix(path, "/bills/") {
+		return auth.GrantExpenseCreate
+	}
+	return auth.GrantExpenseRead
 }
 
 // masterGrant is the OPD service and doctor catalog.
