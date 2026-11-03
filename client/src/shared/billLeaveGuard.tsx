@@ -12,7 +12,7 @@ import { AlertDialog } from "@/shared/AlertDialog";
 import { useI18n } from "@/shared/i18n";
 
 export type BillLeaveGuardHandlers = {
-  /** True when the cart has lines and the bill was never saved. */
+  /** True for a never-saved cart with lines, or an existing draft with unsaved edits. */
   shouldPrompt: () => boolean;
   /** Persist as draft. Return true on success so leave can continue. */
   save: () => Promise<boolean>;
@@ -127,6 +127,7 @@ export function BillLeaveGuardProvider({ children }: { children: ReactNode }) {
           message={t("confirmLeaveUnsavedBill")}
           confirmLabel={t("saveDraft")}
           discardLabel={t("dontSave")}
+          hideCancel
           onClose={stay}
           onDiscard={discardAndLeave}
           onConfirm={() => {
@@ -181,4 +182,36 @@ export function useRegisterBillLeaveGuard(
     api.unregister(handlers);
     return undefined;
   }, [api, active]);
+}
+
+/**
+ * Compare the current save payload (`formKey`) to the last clean snapshot.
+ * Call `markClean()` after a successful open, save, or form reset; the next
+ * rendered `formKey` becomes the baseline (so chart fills after open count).
+ */
+export function useDraftBaseline(formKey: string): {
+  dirty: boolean;
+  markClean: () => void;
+} {
+  const baselineRef = useRef<string | null>(null);
+  const pendingCleanRef = useRef(true);
+  const [cleanGen, setCleanGen] = useState(0);
+
+  useEffect(() => {
+    if (!pendingCleanRef.current) return;
+    baselineRef.current = formKey;
+    pendingCleanRef.current = false;
+  }, [formKey, cleanGen]);
+
+  const markClean = useCallback(() => {
+    pendingCleanRef.current = true;
+    setCleanGen((g) => g + 1);
+  }, []);
+
+  const dirty =
+    baselineRef.current != null &&
+    !pendingCleanRef.current &&
+    formKey !== baselineRef.current;
+
+  return { dirty, markClean };
 }

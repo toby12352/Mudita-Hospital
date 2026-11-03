@@ -283,6 +283,7 @@ export function ExpenseBillListDialog({ mode, onClose, onOpen, onPurge }: Props)
       {purgeStep > 0 && selected ? (
         <AlertDialog
           tone="warning"
+          icon="trash"
           title={t("delete")}
           identity={`${selected.bill_no} · ${selected.name}`}
           message={

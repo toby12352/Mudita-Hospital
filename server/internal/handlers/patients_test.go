@@ -15,7 +15,10 @@ func TestPatientChartAPI(t *testing.T) {
 	if !auth.HasPermission(auth.RoleAdmin, auth.PermPatients) {
 		t.Fatal("Admin missing patients")
 	}
-	for _, role := range []string{auth.RoleOPD, auth.RoleOT, auth.RolePharmacy, auth.RoleIPD} {
+	if !auth.HasPermission(auth.RoleLab, auth.PermLab) {
+		t.Fatal("Lab missing lab")
+	}
+	for _, role := range []string{auth.RoleOPD, auth.RoleOT, auth.RolePharmacy, auth.RoleIPD, auth.RoleLab} {
 		if auth.HasPermission(role, auth.PermPatients) {
 			t.Fatalf("%s has patients", role)
 		}

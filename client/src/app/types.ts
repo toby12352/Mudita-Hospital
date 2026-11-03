@@ -51,8 +51,7 @@ export type SettingsTab =
   | "categories"
   | "expenses"
   | "users"
-  | "backup"
-  | "training";
+  | "backup";
 export type PharmacyTab = "items" | "movements";
 export type OpdScreen = "doctors" | "services" | "bill";
 export type PharmacyScreen = "browse" | "form" | "history";

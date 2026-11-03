@@ -127,7 +127,7 @@ func TestAllowAdminPortalAndUnified(t *testing.T) {
 
 	portalID := insertGrantUser(t, sqlDB, RolePharmacy, AccessPortal)
 	ok, err := Allow(sqlDB, portalID, PermPharmacy)
-	if err != nil || !ok {
+	if err != nil || ok {
 		t.Fatalf("portal pharmacy perm ok=%v err=%v", ok, err)
 	}
 	for _, perm := range []string{PermOPD, PermSettings, GrantPharmacyRead, GrantPharmacyUpdate, GrantPharmacyDelete} {
@@ -215,7 +215,7 @@ func TestDeskAllowedIgnoresUnifiedRole(t *testing.T) {
 
 	portalID := insertGrantUser(t, sqlDB, RolePharmacy, AccessPortal)
 	ok, err = DeskAllowed(sqlDB, portalID, PermPharmacy)
-	if err != nil || !ok {
+	if err != nil || ok {
 		t.Fatalf("portal pharmacy desk ok=%v err=%v", ok, err)
 	}
 	ok, err = DeskAllowed(sqlDB, portalID, PermSettings)
@@ -223,12 +223,36 @@ func TestDeskAllowedIgnoresUnifiedRole(t *testing.T) {
 		t.Fatalf("portal pharmacy settings ok=%v err=%v", ok, err)
 	}
 	ok, err = CellAllowed(sqlDB, portalID, GrantPharmacyUpdate)
-	if err != nil || !ok {
+	if err != nil || ok {
 		t.Fatalf("portal cell ok=%v err=%v", ok, err)
 	}
 	ok, err = Allow(sqlDB, portalID, GrantPharmacyUpdate)
 	if err != nil || ok {
 		t.Fatalf("portal allow update ok=%v err=%v", ok, err)
+	}
+
+	labID := insertGrantUser(t, sqlDB, RoleLab, AccessPortal)
+	ok, err = ChartReadAllowed(sqlDB, labID)
+	if err != nil || ok {
+		t.Fatalf("portal lab chart ok=%v err=%v", ok, err)
+	}
+	ok, err = DeskAllowed(sqlDB, labID, PermLab)
+	if err != nil || ok {
+		t.Fatalf("portal lab desk ok=%v err=%v", ok, err)
+	}
+	ok, err = DeskAllowed(sqlDB, labID, PermOPD)
+	if err != nil || ok {
+		t.Fatalf("portal lab opd ok=%v err=%v", ok, err)
+	}
+	unifiedLab := insertGrantUser(t, sqlDB, RolePatients, AccessUnified)
+	insertGrants(t, sqlDB, unifiedLab, GrantLabRead)
+	ok, err = ChartReadAllowed(sqlDB, unifiedLab)
+	if err != nil || ok {
+		t.Fatalf("unified lab chart ok=%v err=%v", ok, err)
+	}
+	ok, err = DeskAllowed(sqlDB, unifiedLab, PermLab)
+	if err != nil || !ok {
+		t.Fatalf("unified lab desk ok=%v err=%v", ok, err)
 	}
 }
 
@@ -273,5 +297,13 @@ func TestNormalizeGrantsAndFillerRole(t *testing.T) {
 	ipd, err := NormalizeGrants([]string{GrantIPDRead})
 	if err != nil || FillerRole(ipd) != RoleIPD {
 		t.Fatalf("ipd %#v %v", ipd, err)
+	}
+	labOnly, err := NormalizeGrants([]string{GrantLabRead, GrantLabCreate, GrantLabUpdate, GrantLabDelete})
+	if err != nil || FillerRole(labOnly) != RoleLab {
+		t.Fatalf("lab %#v %v", labOnly, err)
+	}
+	mixed, err := NormalizeGrants([]string{GrantLabRead, GrantPharmacyRead})
+	if err != nil || FillerRole(mixed) != RolePharmacy {
+		t.Fatalf("pharmacy before lab %#v %v", mixed, err)
 	}
 }

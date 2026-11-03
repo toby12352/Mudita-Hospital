@@ -8,6 +8,7 @@ import { AlertDialog } from "@/shared/AlertDialog";
 import { BillBtnIcon } from "@/shared/BillBtnIcon";
 import {
   BillHistoryToolbar,
+  billHistoryOrderHintKey,
   type BillHistoryQuery,
   type BillHistoryStatusOption,
   type BillHistorySuggestItem,
@@ -33,6 +34,7 @@ function listOpts(query: BillHistoryQuery) {
     from: query.from || undefined,
     to: query.to || undefined,
     sort: query.sort,
+    order: query.order,
   };
 }
 
@@ -64,6 +66,10 @@ export function PharmacyBillListDialog({
   const [loading, setLoading] = useState(true);
   const [purgeStep, setPurgeStep] = useState<0 | 1 | 2>(0);
   const [purgeError, setPurgeError] = useState<string | null>(null);
+  const [listQuery, setListQuery] = useState<Pick<BillHistoryQuery, "sort" | "order">>({
+    sort: "desc",
+    order: "voucher",
+  });
 
   const statusOptions = useMemo((): BillHistoryStatusOption[] | undefined => {
     if (mode === "history") return undefined;
@@ -79,6 +85,7 @@ export function PharmacyBillListDialog({
       setLoading(true);
       setError(null);
       setSelectedId(null);
+      setListQuery({ sort: query.sort, order: query.order });
       try {
         let list = await listPharmacyBills(query.q, "", kind, null, listOpts(query));
         if (mode === "purge") {
@@ -101,6 +108,7 @@ export function PharmacyBillListDialog({
         from: filters.from || undefined,
         to: filters.to || undefined,
         sort: filters.sort,
+        order: filters.order,
       });
       if (mode === "purge") {
         list = list.filter((b) => b.status === "draft" || b.status === "void");
@@ -227,6 +235,7 @@ export function PharmacyBillListDialog({
           loadSuggestions={loadSuggestions}
           onInvalidRange={() => setError(t("billHistoryInvalidRange"))}
           statusOptions={statusOptions}
+          voucherSort
         />
 
         {mode === "purge" ? <p className="hint">{t("billPurgeHint")}</p> : null}
@@ -247,6 +256,7 @@ export function PharmacyBillListDialog({
             id: b.id,
             voucher: b.bill_no,
             name: b.patient_name,
+            roomNo: b.ipd_room_no,
             status: b.status,
             printedAt: b.printed_at,
             collectedCash: b.collected_cash,
@@ -269,12 +279,15 @@ export function PharmacyBillListDialog({
           </div>
         ) : null}
 
-        {mode === "history" ? <p className="hint">{t("billHistoryHint")}</p> : null}
+        {mode === "history" ? (
+          <p className="hint">{t(billHistoryOrderHintKey(listQuery))}</p>
+        ) : null}
       </div>
       <AlertDialog message={error ?? ""} onClose={() => setError(null)} />
       {purgeStep > 0 && selected ? (
         <AlertDialog
           tone="warning"
+          icon="trash"
           title={t("delete")}
           identity={`${selected.bill_no} · ${selected.patient_name}`}
           message={

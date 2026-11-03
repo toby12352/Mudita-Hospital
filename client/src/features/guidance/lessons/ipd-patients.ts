@@ -5,9 +5,9 @@ const ipdScreen: GuideScreen = {
   section: "ipd",
 };
 
-/** Stay lesson. Opens Stays. Does not press Admit, Take deposit, or IPD Bill. */
-export const ipdStayLesson: GuideLesson = {
-  id: "ipd-stay",
+/** IPD Patients lesson. Opens IPD Patients. Does not press Admit, Take deposit, or IPD Bill. */
+export const ipdPatientsLesson: GuideLesson = {
+  id: "ipd-patients",
   steps: [
     {
       id: "admit",

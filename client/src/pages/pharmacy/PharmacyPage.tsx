@@ -25,6 +25,7 @@ import {
   type BillHistoryQuery,
   type BillHistoryStatusOption,
 } from "@/shared/BillHistoryToolbar";
+import { DeskChrome } from "@/shared/DeskChrome";
 import { DialogCloseButton } from "@/shared/DialogCloseButton";
 import { sortByDateAscDesc } from "@/shared/DateSort";
 import { useI18n } from "@/shared/i18n";
@@ -37,7 +38,7 @@ import { PharmacyItemsTab, type RestockPriceDraft } from "./PharmacyItemsTab";
 const listOpts = { includeInactive: true } as const;
 
 function emptyListQuery(): BillHistoryQuery {
-  return { q: "", money: "", category: "", unit: "", from: "", to: "", sort: "desc" };
+  return { q: "", money: "", category: "", unit: "", from: "", to: "", sort: "desc", order: "date" };
 }
 
 function itemHasUnit(item: PharmacyItem, unit: string): boolean {
@@ -541,7 +542,8 @@ export function PharmacyPage({
     : "";
 
   return (
-    <section className="opd-bill-desk opd-bill-desk--history" aria-label={t("drugSetup")}>
+    <DeskChrome>
+      <section className="opd-bill-desk opd-bill-desk--history" aria-label={t("drugSetup")}>
       <div className="opd-bill-desk-main">
         {showForm && creating && pharmacyUpdate ? (
           <div className="pharmacy-item-create-page">
@@ -740,6 +742,19 @@ export function PharmacyPage({
               </div>
               <DialogCloseButton onClick={backToList} />
             </div>
+            <PharmacyItemsTab
+              onEdit={() => void openEdit(infoItem)}
+              onDelete={pharmacyDelete ? openDeleteConfirm : undefined}
+              deleteBusy={deleteBusy}
+              selectedId={infoItem.id}
+              embedDetail
+              overlayHostRef={overlayHostRef}
+              onRestockPrices={setRestockDraftPrices}
+              onChanged={() => {
+                setListEpoch((n) => n + 1);
+                setDetailEpoch((n) => n + 1);
+              }}
+            />
             {error ? (
               <p className="form-error" role="alert">
                 {error}
@@ -792,19 +807,6 @@ export function PharmacyPage({
                 </div>
               );
             })()}
-            <PharmacyItemsTab
-              onEdit={() => void openEdit(infoItem)}
-              onDelete={pharmacyDelete ? openDeleteConfirm : undefined}
-              deleteBusy={deleteBusy}
-              selectedId={infoItem.id}
-              embedDetail
-              overlayHostRef={overlayHostRef}
-              onRestockPrices={setRestockDraftPrices}
-              onChanged={() => {
-                setListEpoch((n) => n + 1);
-                setDetailEpoch((n) => n + 1);
-              }}
-            />
           </div>
         ) : null}
       </div>
@@ -820,5 +822,6 @@ export function PharmacyPage({
         />
       ) : null}
     </section>
+    </DeskChrome>
   );
 }

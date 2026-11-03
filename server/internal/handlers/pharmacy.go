@@ -864,8 +864,7 @@ func (h *Pharmacy) adjust(w http.ResponseWriter, r *http.Request, path string) {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
 		return
 	}
-	// Allow denies portal Pharmacy: the role map has no pharmacy.update key.
-	// Admin passes. Unified passes only with that grant.
+	// Stock adjust needs pharmacy.update. Admin passes. A portal account is denied.
 	ok, err := auth.Allow(h.DB, user.ID, auth.GrantPharmacyUpdate)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "permission check failed"})

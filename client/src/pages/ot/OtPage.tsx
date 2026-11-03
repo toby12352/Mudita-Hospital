@@ -23,7 +23,7 @@ import {
   type OtDoctor,
   type OtService,
 } from "@/features/ot/api";
-import type { PatientChart } from "@/features/patients/api";
+import { getPatient, type PatientChart } from "@/features/patients/api";
 import { useOpenAdmission } from "@/features/patients/useOpenAdmission";
 import { PatientChartTypeahead } from "@/features/patients/PatientChartTypeahead";
 import {
@@ -45,7 +45,12 @@ import {
   type DiscountUnit,
 } from "@/shared/discount";
 import { AlertDialog } from "@/shared/AlertDialog";
-import { BillLineGrid, createBillLineEntry, type BillLineGridRow } from "@/shared/BillLineGrid";
+import {
+  BillLineGrid,
+  createBillLineEntry,
+  type BillLineEntryNode,
+  type BillLineGridRow,
+} from "@/shared/BillLineGrid";
 import {
   BillChargeToIpdButton,
   BillCollectNote,
@@ -55,11 +60,12 @@ import {
   moneyStatusLabel,
 } from "@/shared/BillPayPrint";
 import { draftHasContent } from "@/shared/billDraft";
-import { useRegisterBillLeaveGuard } from "@/shared/billLeaveGuard";
+import { useDraftBaseline, useRegisterBillLeaveGuard } from "@/shared/billLeaveGuard";
 import { userMessage } from "@/shared/errors";
 import { formatMMK } from "@/shared/format";
 import { Typeahead } from "@/shared/Typeahead";
 import { useClinicActions } from "@/app/clinicActions";
+import { DeskChrome } from "@/shared/DeskChrome";
 import { useI18n } from "@/shared/i18n";
 import { useBillActionFeedback, useBillActionPending } from "@/shared/useActionLock";
 import { VoidBillConfirm } from "@/shared/VoidBillConfirm";
@@ -126,6 +132,7 @@ export function OtPage({ openRecordId }: { openRecordId?: number } = {}) {
   const [patientName, setPatientName] = useState("");
   const [linkedChartId, setLinkedChartId] = useState<number | null>(null);
   const patientNameRef = useRef<HTMLInputElement>(null);
+  const [patientFatherMotherName, setPatientFatherMotherName] = useState("");
   const [patientPhone, setPatientPhone] = useState("");
   const [patientAge, setPatientAge] = useState("");
   const [patientGender, setPatientGender] = useState("");
@@ -156,6 +163,7 @@ export function OtPage({ openRecordId }: { openRecordId?: number } = {}) {
   /** Editable until the OT bill is paid or void (Print does not lock). */
   const isDraft = !(bill?.status === "paid" || bill?.status === "void");
   const openAdmissionId = useOpenAdmission(linkedChartId);
+  const markCleanRef = useRef<() => void>(() => {});
 
   function takeSeq() {
     return nextSeqRef.current++;
@@ -193,6 +201,7 @@ export function OtPage({ openRecordId }: { openRecordId?: number } = {}) {
     setCaseStatus("draft");
     setPatientName("");
     setLinkedChartId(null);
+    setPatientFatherMotherName("");
     setPatientPhone("");
     setPatientAge("");
     setPatientGender("");
@@ -213,6 +222,7 @@ export function OtPage({ openRecordId }: { openRecordId?: number } = {}) {
     setCreatedAt(null);
     setBilledAtLocal(nowDatetimeLocal());
     setError(null);
+    markCleanRef.current();
   }
 
   function rememberOtOnHand(id: number, qty: number) {
@@ -246,6 +256,7 @@ export function OtPage({ openRecordId }: { openRecordId?: number } = {}) {
     setPatientPhone(c.patient_phone);
     setPatientAge(c.patient_age_years != null ? String(c.patient_age_years) : "");
     setPatientGender(c.patient_gender);
+    setPatientFatherMotherName("");
     setDoctorId(c.doctor_id != null ? String(c.doctor_id) : "");
     setDoctorName(c.doctor_name || "");
     setDoctorFeeMmk(c.doctor_ot_fee_mmk ?? 0);
@@ -294,6 +305,15 @@ export function OtPage({ openRecordId }: { openRecordId?: number } = {}) {
         setBill(null);
         setPaymentType("cash");
       }
+      if (c.patient_id != null) {
+        try {
+          const chart = await getPatient(c.patient_id);
+          setPatientFatherMotherName(chart.father_mother_name || "");
+        } catch {
+          /* chart optional for display */
+        }
+      }
+      markCleanRef.current();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Open failed");
     } finally {
@@ -350,6 +370,10 @@ export function OtPage({ openRecordId }: { openRecordId?: number } = {}) {
     };
   }
 
+  const formKey = JSON.stringify(buildWrite());
+  const { dirty, markClean } = useDraftBaseline(formKey);
+  markCleanRef.current = markClean;
+
   function otherIssued(itemId: number, skipIndex: number) {
     return items.reduce(
       (sum, row, i) => (i !== skipIndex && row.item_id === itemId ? sum + row.qty_issued : sum),
@@ -357,7 +381,21 @@ export function OtPage({ openRecordId }: { openRecordId?: number } = {}) {
     );
   }
 
+  function otKindsMixed(): boolean {
+    return items.length > 0 && services.length > 0;
+  }
+
+  function blockOtKindsMixed(): boolean {
+    if (!otKindsMixed()) return false;
+    setError(t("otInventoryServicesSeparate"));
+    return true;
+  }
+
   function addOtItem(item: OtCatalogItem, qty: number, unit: SaleUnit | null) {
+    if (services.length > 0) {
+      setError(t("otInventoryServicesSeparate"));
+      return;
+    }
     const units = saleUnitsFromPack(packFromItem(item), item.sell_price_mmk);
     const chosen = unit ?? (units.length === 1 ? units[0] : null);
     if (!chosen && units.length > 0) {
@@ -409,6 +447,10 @@ export function OtPage({ openRecordId }: { openRecordId?: number } = {}) {
   }
 
   function addOtService(svc: OtService) {
+    if (items.length > 0) {
+      setError(t("otInventoryServicesSeparate"));
+      return;
+    }
     const seq = takeSeq();
     setServices((prev) => [
       ...prev,
@@ -540,6 +582,7 @@ export function OtPage({ openRecordId }: { openRecordId?: number } = {}) {
       !draftHasContent({
         texts: [
           patientName,
+          patientFatherMotherName,
           patientPhone,
           patientAge,
           patientGender,
@@ -555,6 +598,7 @@ export function OtPage({ openRecordId }: { openRecordId?: number } = {}) {
       setError(t("errDraftEmpty"));
       return false;
     }
+    if (blockOtKindsMixed()) return false;
     if (!begin("saveDraft")) return false;
     setBusy(true);
     setError(null);
@@ -585,6 +629,7 @@ export function OtPage({ openRecordId }: { openRecordId?: number } = {}) {
         setPaymentType(updated.payment_type === "online" ? "online" : "cash");
         setServices(stampServiceSeqs(servicesFromBill(updated)));
       }
+      markClean();
       pulse("saveDraft", "ok");
       return true;
     } catch (e) {
@@ -598,12 +643,14 @@ export function OtPage({ openRecordId }: { openRecordId?: number } = {}) {
   }
 
   useRegisterBillLeaveGuard(
-    items.length + services.length > 0 && caseId == null,
+    (items.length + services.length > 0 && caseId == null) ||
+      (caseId != null && isDraft && dirty),
     () => saveDraft(),
   );
 
   async function ensureBillReady(): Promise<OtBill | null> {
     if (blockMissingPatientName()) return null;
+    if (blockOtKindsMixed()) return null;
     const body = buildWrite();
     let id = caseId;
     let status = caseStatus;
@@ -924,6 +971,7 @@ export function OtPage({ openRecordId }: { openRecordId?: number } = {}) {
   function clearLinkedPatient() {
     setLinkedChartId(null);
     setPatientName("");
+    setPatientFatherMotherName("");
     setPatientPhone("");
     setPatientAge("");
     setPatientGender("");
@@ -1008,7 +1056,8 @@ export function OtPage({ openRecordId }: { openRecordId?: number } = {}) {
 
   return (
     <>
-      <section className="opd-bill-desk">
+      <DeskChrome>
+        <section className="opd-bill-desk">
         <div className="opd-bill-desk-main">
           <h2 className="opd-bill-desk-title">{t("otBillTitle")}</h2>
 
@@ -1027,6 +1076,7 @@ export function OtPage({ openRecordId }: { openRecordId?: number } = {}) {
                     onPick={(p: PatientChart) => {
                       setLinkedChartId(p.id);
                       setPatientName(p.name);
+                      setPatientFatherMotherName(p.father_mother_name || "");
                       setPatientPhone(p.phone || "");
                       setPatientAge(p.age_years != null ? String(p.age_years) : "");
                       setPatientGender(p.gender || "");
@@ -1054,12 +1104,12 @@ export function OtPage({ openRecordId }: { openRecordId?: number } = {}) {
                 )}
               </div>
               <label className="opd-bill-field">
-                <span className="opd-bill-label">{t("phone")}</span>
+                <span className="opd-bill-label">{t("fatherMotherName")}</span>
                 <input
                   className="opd-bill-input"
-                  value={patientPhone}
+                  value={patientFatherMotherName}
                   disabled={!identityEditable}
-                  onChange={(e) => setPatientPhone(e.target.value)}
+                  onChange={(e) => setPatientFatherMotherName(e.target.value)}
                 />
               </label>
               <label className="opd-bill-field">
@@ -1075,20 +1125,31 @@ export function OtPage({ openRecordId }: { openRecordId?: number } = {}) {
                   <span className="opd-bill-unit">{t("ageYearsShort")}</span>
                 </span>
               </label>
-              <label className="opd-bill-field">
+              <div className="opd-bill-field">
                 <span className="opd-bill-label">{t("gender")}</span>
-                <select
-                  className="opd-bill-input"
-                  value={patientGender}
-                  disabled={!identityEditable}
-                  onChange={(e) => setPatientGender(e.target.value)}
-                >
-                  <option value="">—</option>
-                  <option value="M">{t("genderM")}</option>
-                  <option value="F">{t("genderF")}</option>
-                  <option value="Other">{t("genderOther")}</option>
-                </select>
-              </label>
+                <div className="opd-bill-gender-phone">
+                  <select
+                    className="opd-bill-input"
+                    value={patientGender}
+                    disabled={!identityEditable}
+                    aria-label={t("gender")}
+                    onChange={(e) => setPatientGender(e.target.value)}
+                  >
+                    <option value="">—</option>
+                    <option value="M">{t("genderM")}</option>
+                    <option value="F">{t("genderF")}</option>
+                    <option value="Other">{t("genderOther")}</option>
+                  </select>
+                  <span className="opd-bill-label">{t("phone")}</span>
+                  <input
+                    className="opd-bill-input"
+                    value={patientPhone}
+                    disabled={!identityEditable}
+                    aria-label={t("phone")}
+                    onChange={(e) => setPatientPhone(e.target.value)}
+                  />
+                </div>
+              </div>
               <div className="opd-bill-field opd-bill-field--typeahead">
                 <span className="opd-bill-label">{t("doctor")}</span>
                 <Typeahead
@@ -1242,93 +1303,100 @@ export function OtPage({ openRecordId }: { openRecordId?: number } = {}) {
                 );
               }
             }}
-            entries={[
-              createBillLineEntry<OtCatalogItem>(
-                {
-                  key: "cupboard",
-                  placeholder: t("pharmacyItemPlaceholder"),
-                  ariaLabel: t("cupboardItemLabel"),
-                  loadSuggestions: async (term) => listOtCatalogItems(term),
-                  getKey: (item) => item.id,
-                  itemTitle: (item) => `${item.code} — ${item.name}`,
-                  renderOption: (item) => (
-                    <>
-                      <span className="typeahead-title">
-                        {item.code} — {item.name}
-                      </span>
-                      <span className="typeahead-sub">
-                        {item.stock_unit || t("item")} · {formatMMK(item.sell_price_mmk)} {t("mmk")} ·{" "}
-                        {t("otOnHand")} {item.ot_on_hand.toLocaleString()} {item.stock_unit || ""}
-                      </span>
-                    </>
+            entries={(() => {
+              const mixed = items.length > 0 && services.length > 0;
+              const showInventory = !mixed && services.length === 0;
+              const showServices = !mixed && items.length === 0;
+              const next: BillLineEntryNode[] = [];
+              if (showInventory) {
+                next.push(
+                  createBillLineEntry<OtCatalogItem>(
+                    {
+                      key: "cupboard",
+                      placeholder: t("pharmacyItemPlaceholder"),
+                      ariaLabel: t("cupboardItemLabel"),
+                      loadSuggestions: async (term) => listOtCatalogItems(term),
+                      getKey: (item) => item.id,
+                      itemTitle: (item) => `${item.code} — ${item.name}`,
+                      renderOption: (item) => (
+                        <>
+                          <span className="typeahead-title">{item.name}</span>
+                          <span className="typeahead-sub">
+                            {item.stock_unit || t("item")} · {formatMMK(item.sell_price_mmk)}{" "}
+                            {t("mmk")} · {t("otOnHand")} {item.ot_on_hand.toLocaleString()}{" "}
+                            {item.stock_unit || ""}
+                          </span>
+                        </>
+                      ),
+                      unitsFor: (item) =>
+                        saleUnitsFromPack(packFromItem(item), item.sell_price_mmk).map((u) => ({
+                          id: u.id,
+                          label: u.label,
+                        })),
+                      packFor: (item) => formatPackCompact(packFromItem(item)),
+                      packTitleFor: (item) => formatPackPreview(packFromItem(item)),
+                      onCommit: (item, qty, unit) => {
+                        const units = saleUnitsFromPack(packFromItem(item), item.sell_price_mmk);
+                        addOtItem(
+                          item,
+                          qty,
+                          unit ? (units.find((u) => u.id === unit.id) ?? null) : null,
+                        );
+                      },
+                      onSubmitCode: lookupOtItem,
+                    },
+                    {
+                      showUnitColumn: true,
+                      showPackColumn: true,
+                      showFoc: true,
+                      sourceLabel: t("otInventory"),
+                      sourceIcon: "box",
+                    },
                   ),
-                  unitsFor: (item) =>
-                    saleUnitsFromPack(packFromItem(item), item.sell_price_mmk).map((u) => ({
-                      id: u.id,
-                      label: u.label,
-                    })),
-                  packFor: (item) => formatPackCompact(packFromItem(item)),
-                  packTitleFor: (item) => formatPackPreview(packFromItem(item)),
-                  onCommit: (item, qty, unit) => {
-                    const units = saleUnitsFromPack(packFromItem(item), item.sell_price_mmk);
-                    addOtItem(
-                      item,
-                      qty,
-                      unit ? (units.find((u) => u.id === unit.id) ?? null) : null,
-                    );
-                  },
-                  onSubmitCode: lookupOtItem,
-                },
-                {
-                  showUnitColumn: true,
-                  showPackColumn: true,
-                  showFoc: true,
-                  sourceLabel: t("otInventory"),
-                  sourceIcon: "box",
-                },
-              ),
-              createBillLineEntry<OtService>(
-                {
-                  key: "service",
-                  placeholder: t("optionalServicePlaceholder"),
-                  ariaLabel: t("optionalService"),
-                  loadSuggestions: async (term) => listOtServices(term),
-                  getKey: (svc) => svc.id,
-                  itemTitle: (svc) => (svc.code ? `${svc.code} — ${svc.name}` : svc.name),
-                  renderOption: (svc) => (
-                    <>
-                      <span className="typeahead-title">
-                        {svc.code ? `${svc.code} — ${svc.name}` : svc.name}
-                      </span>
-                      <span className="typeahead-sub">
-                        {t("serviceType")}
-                        {svc.price_mmk == null
-                          ? ""
-                          : ` · ${formatMMK(svc.price_mmk)} ${t("mmk")}`}
-                      </span>
-                    </>
+                );
+              }
+              if (showServices) {
+                next.push(
+                  createBillLineEntry<OtService>(
+                    {
+                      key: "service",
+                      placeholder: t("optionalServicePlaceholder"),
+                      ariaLabel: t("optionalService"),
+                      loadSuggestions: async (term) => listOtServices(term),
+                      getKey: (svc) => svc.id,
+                      itemTitle: (svc) => (svc.code ? `${svc.code} — ${svc.name}` : svc.name),
+                      renderOption: (svc) => (
+                        <>
+                          <span className="typeahead-title">{svc.name}</span>
+                          <span className="typeahead-sub">
+                            {t("serviceType")}
+                            {svc.price_mmk == null
+                              ? ""
+                              : ` · ${formatMMK(svc.price_mmk)} ${t("mmk")}`}
+                          </span>
+                        </>
+                      ),
+                      unitsFor: () => [],
+                      commitOnPick: true,
+                      onCommit: (svc) => addOtService(svc),
+                      onSubmitCode: lookupOtService,
+                    },
+                    {
+                      showUnitColumn: true,
+                      showPackColumn: true,
+                      showFoc: true,
+                      sourceLabel: t("otServices"),
+                      sourceIcon: "clipboard",
+                    },
                   ),
-                  unitsFor: () => [],
-                  commitOnPick: true,
-                  onCommit: (svc) => addOtService(svc),
-                  onSubmitCode: lookupOtService,
-                },
-                {
-                  showUnitColumn: true,
-                  showPackColumn: true,
-                  showFoc: true,
-                  sourceLabel: t("otServices"),
-                  sourceIcon: "clipboard",
-                },
-              ),
-            ]}
+                );
+              }
+              return next;
+            })()}
           />
 
           <div className="opd-bill-footer">
             <div className="opd-bill-footer-left">
-              <span className="opd-bill-service-count">
-                {t("serviceCount")}: {items.length + services.length}
-              </span>
               {!caseId ? <span className="opd-bill-new-badge">{t("newBadge")}</span> : null}
             </div>
             <BillTotals
@@ -1454,6 +1522,7 @@ export function OtPage({ openRecordId }: { openRecordId?: number } = {}) {
 
         <AlertDialog message={error ?? ""} onClose={() => setError(null)} />
       </section>
+      </DeskChrome>
 
       {dialog ? (
         <OtHistoryModal

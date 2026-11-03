@@ -22,7 +22,7 @@ The code moved past a few names in the guidance plan. These are the ones that ma
 
 Sign-in is `signIn` (“Sign in” / “ဝင်ရန်”) in `client/src/app/LoginForm.tsx`. The language control in `client/src/app/LanguageSwitcher.tsx` is `english` (“English”) and `myanmar` (“မြန်မာ”), on the sign-in screen and on the desk.
 
-Roles stored on the user, from `server/internal/auth/roles.go` and `client/src/app/portal.ts`: Admin, OPD, OT, Pharmacy, Patients, IPD. A desk login opens only its own module. Admin uses the full sidebar. Settings, including training seed, is Admin-only. An unknown role gets no portal.
+Roles stored on the user, from `server/internal/auth/roles.go` and `client/src/app/portal.ts`: Admin, OPD, OT, Pharmacy, Patients, IPD. A desk login opens only its own module. Admin uses the full sidebar. Settings is Admin-only. An unknown role gets no portal.
 
 | Login | Lands on | View | NavIntent |
 |---|---|---|---|
@@ -30,7 +30,7 @@ Roles stored on the user, from `server/internal/auth/roles.go` and `client/src/a
 | OT | OT Bill | `ot` | `otMode: "case"` |
 | Pharmacy | Pharmacy Bill | `pharmacy_billing` | `billingMode: "edit"` |
 | Patients | Patient Charts | `patients` | `patientsScreen: "list"` |
-| IPD | Stays | `ipd` | none |
+| IPD | IPD Patients | `ipd` | none |
 | Admin | Home, then any module | `home` | none |
 
 Sidebar labels, from `client/src/app/AppNavBar.tsx`:
@@ -46,7 +46,7 @@ Sidebar labels, from `client/src/app/AppNavBar.tsx`:
 | Expense bill | `navExpenseBill` | Expense bill | အသုံးစရိတ် ဘေလ် | `expense` | none |
 | Patient Charts | `navPatients` | Patient Charts | လူနာမှတ်တမ်း | `patients` | `patientsScreen: "list"` |
 | Create New Patient | `navCreatePatient` | Create New Patient | လူနာအသစ် ဖန်တီးရန် | `patients` | `patientsScreen: "create"` |
-| Stays | `navIpd` | Stays | တက်ရောက်မှု | `ipd` | none |
+| IPD Patients | `navIpd` | IPD Patients | တက်ရောက်မှု | `ipd` | none |
 | IPD Bill | `navIpdBill` | IPD Bill | IPD ဘေလ် | `ipd_bill` | none |
 | Maintenance (pharmacy items) | `navMaintenance` | Maintenance | ထိန်းသိမ်းရေး | `pharmacy` | `pharmacyScreen: "browse"` |
 | Maintenance (OT stock) | `navOtCupboard` | Maintenance | ထိန်းသိမ်းရေး | `ot` | `otMode: "stock"` |
@@ -176,15 +176,15 @@ OT Bill itself uses the shared sale rail: F5 Save draft, F6 Print (still editabl
 
 ## Patients and attach
 
-A chart is the patient record (Patient Charts, view `patients`). A name typed on a bill is not a chart. Typing clears the link, so Charge to IPD disappears.
+A chart is the patient record (Patient Charts, view `patients`). A name typed on a bill is not a chart. Typing clears the link, so Charge to IPD disappears. Chart detail tabs: Info, Timeline (dated notes plus visits from linked bills), and History (bill ledger).
 
 Attach is on the chart history, under `patientsAddBill` (“+Add Bill” / “+ဘေလ်ထည့်”), in `client/src/pages/patients/PatientsPage.tsx`. The field is `patientsAttachBill` (“Bill number” / “ဘေလ်နံပါတ်”). The button is `patientsAttach` (“Attach bill” / “ဘေလ် တွဲရန်”). The hint key `patientsAttachHint` is not shown.
 
-The server (`server/internal/handlers/patients_attach.go`) sets the chart on one bill that does not have one yet. Totals, status, stock, and cash stay the same. It accepts `OPD-`, `PH-`, `RT-`, and `OTB-` numbers. A `TO-` slip is refused with `errCannotAttachTransfer` (“A transfer slip cannot be attached.” / “လွှဲစာရွက်ကို တွဲ၍မရပါ။”). Any other number is not found. OT stores the chart on the case, not on the bill row.
+The server (`server/internal/handlers/patients_attach.go`) sets the chart on one bill that does not have one yet. Totals, status, stock, and cash stay the same. It accepts `OPD-`, `PH-`, `RT-`, `OTB-`, and `LAB-` numbers. A `TO-` slip is refused with `errCannotAttachTransfer` (“A transfer slip cannot be attached.” / “လွှဲစာရွက်ကို တွဲ၍မရပါ။”). Any other number is not found. OT stores the chart on the case, not on the bill row.
 
 ## IPD stay
 
-Sidebar **Stays** (`navIpd`, “Stays” / “တက်ရောက်မှု”), view `ipd`, `client/src/pages/ipd/IpdPage.tsx`. No function keys are captured on this page. F5 reloads the window.
+Sidebar **IPD Patients** (`navIpd`, “IPD Patients” / “တက်ရောက်မှု”), view `ipd`, `client/src/pages/ipd/IpdPatientsPage.tsx`. No function keys are captured on this page. F5 reloads the window.
 
 A stay is the inpatient account other desks can charge. One open stay per chart. A second Admit is refused with `errIpdAlreadyOpen` (“This patient already has an open stay.” / “ဤလူနာတွင် ဖွင့်ထားသော တက်ရောက်မှု ရှိပြီးဖြစ်သည်။”). Admit needs a chosen chart (`ipdAdmit`, “Admit” / “တက်ခွင့်”).
 
@@ -192,11 +192,11 @@ On an open stay the rail shows:
 
 | Button | Key | English | Myanmar | Drawn in |
 |---|---|---|---|---|
-| Take deposit | `ipdTakeDeposit` | Take deposit | အပ်ငွေ လက်ခံ | `IpdPage.tsx` |
-| Save notes | `ipdSaveNotes` | Save notes | မှတ်ချက်သိမ်း | `IpdPage.tsx` |
-| Discharge | `ipdDischarge` | Discharge | ဆင်းခွင့်ရှင်း | `IpdPage.tsx` |
-| Print Daily Bill | `ipdPrintDailyStatement` | Print Daily Bill | နေ့စဉ်ဘေလ်ထုတ် | `IpdPage.tsx` |
-| Print Final Bill | `ipdPrintStatement` | Print Final Bill | နောက်ဆုံးဘေလ်ထုတ် | `IpdPage.tsx` |
+| Take deposit | `ipdTakeDeposit` | Take deposit | အပ်ငွေ လက်ခံ | `IpdPatientsPage.tsx` |
+| Save notes | `ipdSaveNotes` | Save notes | မှတ်ချက်သိမ်း | `IpdPatientsPage.tsx` |
+| Discharge | `ipdDischarge` | Discharge | ဆင်းခွင့်ရှင်း | `IpdPatientsPage.tsx` |
+| Print Daily Bill | `ipdPrintDailyStatement` | Print Daily Bill | နေ့စဉ်ဘေလ်ထုတ် | `IpdPatientsPage.tsx` |
+| Print Final Bill | `ipdPrintStatement` | Print Final Bill | နောက်ဆုံးဘေလ်ထုတ် | `IpdPatientsPage.tsx` |
 
 No F-keys. Room and nursing are not posted on this page. They are free-text lines on **IPD Bill** (`navIpdBill`, “IPD Bill” / “IPD ဘေလ်”), view `ipd_bill`, `client/src/pages/ipd/IpdChargeBillPage.tsx`. That rail starts with Charge to IPD (transfer icon, subtitle Not desk cash). Then Print (F6), Save draft (F5), History (F9), Void Bills (^F8), Cancel (F10), and New bill (F2). There is no Mark Paid and no F7. F7 does not charge the stay. The charge slip is A4 and is not the daily voucher.
 
@@ -221,7 +221,7 @@ The status chip (Still open, Awaiting, Paid, Carried) sits in the header beside 
 
 ### Why discharge is final
 
-Discharge asks first. The message is `confirmIpdDischarge` (“The final statement settles the whole stay.” / “နောက်ဆုံးစာရင်းသည် တက်ရောက်မှုတစ်ခုလုံးကို ရှင်းသည်။”). If yesterday is still Awaiting, it also says `confirmIpdDischargeAwaiting` (“Discharge will collect or refund the balance.” / “ဆင်းခွင့်ရှင်းလျှင် လက်ကျန်ကို ကောက်မည် သို့မဟုတ် ပြန်အမ်းမည်။”). The button subtitle is the settlement, from `settlementSub` in `IpdPage.tsx`:
+Discharge asks first. The message is `confirmIpdDischarge` (“The final statement settles the whole stay.” / “နောက်ဆုံးစာရင်းသည် တက်ရောက်မှုတစ်ခုလုံးကို ရှင်းသည်။”). If yesterday is still Awaiting, it also says `confirmIpdDischargeAwaiting` (“Discharge will collect or refund the balance.” / “ဆင်းခွင့်ရှင်းလျှင် လက်ကျန်ကို ကောက်မည် သို့မဟုတ် ပြန်အမ်းမည်။”). The button subtitle is the settlement, from `settlementSub` in `IpdPatientsPage.tsx`:
 
 - Positive balance (the hospital owes the patient): `ipdWillRefund` (“Refund the remainder” / “လက်ကျန်ကို ပြန်အမ်း”). The server writes a refund.
 - Negative balance (the patient owes the hospital): `ipdWillCollect` (“Collect the amount owed” / “ပေးရန်ကျန်ကို ကောက်”). The server writes a collection.
@@ -235,11 +235,7 @@ The Expenses portal has Expense bill (`navExpenseBill`): view `expense`. Admin a
 
 ## Training seed
 
-Settings → Training is Admin-only (`client/src/pages/settings/TrainingTab.tsx`). The server runs it only when training is turned on (`MUDITA_ALLOW_TRAINING=1` in `server/internal/config/config.go`). Otherwise the screen says `trainingOff`.
-
-`seedTraining` (“Seed training data” / “လေ့ကျင့်ဒေတာ ထည့်ရန်”) creates `DEMO-` items, the doctor “Dr Demo [TRAINING]”, the service `DEMO-DRESS`, and one paid OPD bill plus one paid pharmacy bill named “Training Patient [TRAINING]” for today if those bills are not already there (`server/internal/handlers/demo.go`). Those bills store a typed name. They do not create a patient chart and they do not create an IPD stay.
-
-Reset (`resetTraining`, “Reset & re-seed training” / “ပြန်သန့်ပြီး ထပ်ထည့်”) removes `DEMO-` items, the `DEMO-` service, the training doctor, and `[TRAINING]` bills and cases, then seeds again. Rows outside those tags are kept. This is not a desk step. Do not tell staff to press Seed.
+There is no Settings → Training tab in the clinic. The server may still expose gated `/api/demo` seed/reset when `MUDITA_ALLOW_TRAINING=1` (`server/internal/config/config.go`, `server/internal/handlers/demo.go`). That is not a staff desk step. Do not tell staff to seed training data.
 
 ## Retired words
 

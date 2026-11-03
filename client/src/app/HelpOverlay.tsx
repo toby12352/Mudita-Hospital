@@ -4,6 +4,9 @@ import { AlertDialog } from "@/shared/AlertDialog";
 import { DialogCloseButton } from "@/shared/DialogCloseButton";
 import { openCheatSheetPrint } from "@/shared/cheatsheet";
 
+/** Lessons are not production-ready; flip to true to show Help lesson buttons again. */
+const SHOW_GUIDANCE_LESSONS = false;
+
 function focusableIn(root: ParentNode): HTMLElement[] {
   return Array.from(
     root.querySelectorAll<HTMLElement>(
@@ -166,7 +169,7 @@ export function HelpOverlay({
             </ul>
           </div>
           <div className="btn-row">
-            {showBillTour ? (
+            {SHOW_GUIDANCE_LESSONS && showBillTour ? (
               <button
                 type="button"
                 className="btn"
@@ -178,7 +181,7 @@ export function HelpOverlay({
                 {t("guideBillButtons")}
               </button>
             ) : null}
-            {showChargeTour ? (
+            {SHOW_GUIDANCE_LESSONS && showChargeTour ? (
               <button
                 type="button"
                 className="btn"
@@ -190,7 +193,7 @@ export function HelpOverlay({
                 {t("chargeToIpd")}
               </button>
             ) : null}
-            {showPharmacyTour ? (
+            {SHOW_GUIDANCE_LESSONS && showPharmacyTour ? (
               <button
                 type="button"
                 className="btn"
@@ -202,7 +205,7 @@ export function HelpOverlay({
                 {t("drugSetup")}
               </button>
             ) : null}
-            {showPharmacyTour ? (
+            {SHOW_GUIDANCE_LESSONS && showPharmacyTour ? (
               <button
                 type="button"
                 className="btn"
@@ -214,7 +217,7 @@ export function HelpOverlay({
                 {t("navReturnIn")}
               </button>
             ) : null}
-            {showPharmacyTour ? (
+            {SHOW_GUIDANCE_LESSONS && showPharmacyTour ? (
               <button
                 type="button"
                 className="btn"
@@ -226,7 +229,7 @@ export function HelpOverlay({
                 {t("navTransferToOt")}
               </button>
             ) : null}
-            {showOtTour ? (
+            {SHOW_GUIDANCE_LESSONS && showOtTour ? (
               <button
                 type="button"
                 className="btn"
@@ -238,7 +241,7 @@ export function HelpOverlay({
                 {t("maintenanceInventory")}
               </button>
             ) : null}
-            {showPatientTour ? (
+            {SHOW_GUIDANCE_LESSONS && showPatientTour ? (
               <button
                 type="button"
                 className="btn"
@@ -250,19 +253,19 @@ export function HelpOverlay({
                 {t("navPatients")}
               </button>
             ) : null}
-            {showIpdTour ? (
+            {SHOW_GUIDANCE_LESSONS && showIpdTour ? (
               <button
                 type="button"
                 className="btn"
                 onClick={() => {
                   onClose();
-                  startGuide("ipd-stay");
+                  startGuide("ipd-patients");
                 }}
               >
                 {t("navIpd")}
               </button>
             ) : null}
-            {showIpdTour ? (
+            {SHOW_GUIDANCE_LESSONS && showIpdTour ? (
               <button
                 type="button"
                 className="btn"

@@ -40,6 +40,8 @@ export type LabBill = {
   void_reason?: string;
   created_at: string;
   updated_at: string;
+  /** Open IPD stay room when this chart is admitted; list responses only. */
+  ipd_room_no?: string;
   lines?: LabBillLine[];
 };
 
@@ -76,6 +78,8 @@ export type LabBillWrite = {
   patient_phone: string;
   patient_age_years?: number | null;
   patient_gender: string;
+  /** Chart-only; not stored on the bill or printed. */
+  father_mother_name?: string;
   doctor_id?: number | null;
   doctor_name?: string;
   description: string;
@@ -156,7 +160,7 @@ export async function listLabDoctors(q = ""): Promise<LabDoctor[]> {
 export async function listLabBills(
   q = "",
   status = "",
-  opts?: { money?: string; from?: string; to?: string; sort?: string },
+  opts?: { money?: string; from?: string; to?: string; sort?: string; order?: string },
 ): Promise<LabBill[]> {
   const params = new URLSearchParams();
   if (q.trim()) params.set("q", q.trim());
@@ -165,6 +169,7 @@ export async function listLabBills(
   if (opts?.from?.trim()) params.set("from", opts.from.trim());
   if (opts?.to?.trim()) params.set("to", opts.to.trim());
   if (opts?.sort?.trim()) params.set("sort", opts.sort.trim());
+  if (opts?.order?.trim()) params.set("order", opts.order.trim());
   const qs = params.toString() ? `?${params}` : "";
   const res = await apiFetch<{ bills: LabBill[] }>(`/api/lab/bills${qs}`);
   return res.bills;

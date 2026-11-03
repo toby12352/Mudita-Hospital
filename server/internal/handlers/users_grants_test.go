@@ -17,6 +17,7 @@ func TestUserGrantSaveAndMe(t *testing.T) {
 
 	_, adminTok := insertSession(t, sqlDB, auth.RoleAdmin, 0)
 	portalID, portalTok := insertSession(t, sqlDB, auth.RoleOPD, 0)
+	asPortal(t, sqlDB, portalID)
 	_, pharmacyTok := insertSession(t, sqlDB, auth.RolePharmacy, 0)
 
 	t.Run("desk cannot save", func(t *testing.T) {
@@ -130,6 +131,7 @@ func TestUserGrantSaveAndMe(t *testing.T) {
 
 	t.Run("deactivate leaves portal mode", func(t *testing.T) {
 		id, _ := insertSession(t, sqlDB, auth.RolePharmacy, 0)
+		asPortal(t, sqlDB, id)
 		w := doJSON(users, http.MethodPut, "/api/users/"+strconv.FormatInt(id, 10), adminTok, `{"active":false}`)
 		mustCode(t, w, http.StatusOK)
 		var mode string
@@ -244,8 +246,8 @@ func TestUserGrantSaveAndMe(t *testing.T) {
 		w := doJSON(authH, http.MethodGet, "/api/auth/me", pharmacyTok, "")
 		mustCode(t, w, http.StatusOK)
 		perms := mePerms(t, w.Body.Bytes())
-		if !hasString(perms, "pharmacy") || hasString(perms, "dashboard") || hasString(perms, "settings") {
-			t.Fatalf("portal me %#v", perms)
+		if !hasString(perms, auth.GrantPharmacyRead) || !hasString(perms, auth.GrantPatientsRead) || hasString(perms, "pharmacy") || hasString(perms, "dashboard") || hasString(perms, "settings") {
+			t.Fatalf("pharmacy me %#v", perms)
 		}
 
 		_, unifiedTok := insertModeSession(t, sqlDB, auth.RoleOPD, auth.AccessUnified,

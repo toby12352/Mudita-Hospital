@@ -6,7 +6,7 @@ const ipdScreen: GuideScreen = {
 };
 
 /**
- * Discharge lesson. Opens Stays and highlights the button already on screen.
+ * Discharge lesson. Opens IPD Patients and highlights the button already on screen.
  * Does not open a stay and does not call discharge.
  */
 export const ipdDischargeLesson: GuideLesson = {

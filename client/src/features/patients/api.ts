@@ -1,6 +1,11 @@
 import { apiFetch, getApiBase } from "@/shared/api";
 import { getStoredToken } from "@/shared/auth";
-import { fetchAndPreviewPrint } from "@/shared/print";
+import {
+  fetchAndPreviewPrint,
+  fetchPrintHtml,
+  isThermalReceiptHtml,
+  openPrintPreview,
+} from "@/shared/print";
 
 export type PatientChart = {
   id: number;
@@ -27,7 +32,7 @@ export type PatientWrite = {
   notes: string;
 };
 
-export type PatientHistoryBillKind = "opd" | "pharmacy" | "ot";
+export type PatientHistoryBillKind = "opd" | "pharmacy" | "ot" | "lab";
 
 export type PatientHistoryOpd = {
   id: number;
@@ -113,6 +118,42 @@ export async function fetchPatientHistory(id: number): Promise<PatientHistory> {
   return apiFetch<PatientHistory>(`/api/patients/${id}/history`);
 }
 
+export type PatientTimelineNote = {
+  id: number;
+  patient_id: number;
+  body: string;
+  author_user_id?: number | null;
+  author_name: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export async function fetchPatientTimelineNotes(id: number): Promise<PatientTimelineNote[]> {
+  const res = await apiFetch<{ notes: PatientTimelineNote[] }>(`/api/patients/${id}/notes`);
+  return res.notes ?? [];
+}
+
+export async function createPatientTimelineNote(
+  id: number,
+  body: string,
+): Promise<PatientTimelineNote> {
+  return apiFetch<PatientTimelineNote>(`/api/patients/${id}/notes`, {
+    method: "POST",
+    body: JSON.stringify({ body }),
+  });
+}
+
+export async function updatePatientTimelineNote(
+  patientId: number,
+  noteId: number,
+  body: string,
+): Promise<PatientTimelineNote> {
+  return apiFetch<PatientTimelineNote>(`/api/patients/${patientId}/notes/${noteId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ body }),
+  });
+}
+
 export async function attachPatientBill(id: number, billNo: string): Promise<void> {
   await apiFetch(`/api/patients/${id}/attach`, {
     method: "POST",
@@ -127,11 +168,16 @@ export async function printPatientHistoryBill(
   billId: number,
   title: string,
 ): Promise<void> {
-  return fetchAndPreviewPrint(
-    `/api/patients/${chartId}/bills/${kind}/${billId}/print`,
-    getApiBase,
-    getStoredToken,
-    // OT patient bills are A4; OPD/Pharmacy stay thermal (narrow preview).
-    { title, receipt: kind !== "ot" },
-  );
+  const path = `/api/patients/${chartId}/bills/${kind}/${billId}/print`;
+  if (kind === "ot") {
+    const html = await fetchPrintHtml(path, getApiBase, getStoredToken);
+    // Inventory-only OT bills are 80 mm; service bills stay A4.
+    openPrintPreview(html, { title, receipt: isThermalReceiptHtml(html) });
+    return;
+  }
+  return fetchAndPreviewPrint(path, getApiBase, getStoredToken, {
+    title,
+    // OPD, pharmacy, and lab stay thermal (narrow preview).
+    receipt: true,
+  });
 }

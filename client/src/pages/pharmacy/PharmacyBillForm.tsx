@@ -43,6 +43,7 @@ type Props = {
   returnSaleId?: number | null;
   patientId: number | null;
   patientName: string;
+  patientFatherMotherName: string;
   patientPhone: string;
   patientAge: string;
   patientGender: string;
@@ -73,6 +74,7 @@ type Props = {
   onPickPatient: (patient: PatientChart) => void;
   onClearPatient: () => void;
   patientNameRef?: Ref<HTMLInputElement>;
+  onPatientFatherMotherName: (v: string) => void;
   onPatientPhone: (v: string) => void;
   onPatientAge: (v: string) => void;
   onPatientGender: (v: string) => void;
@@ -109,6 +111,7 @@ export function PharmacyBillForm(props: Props) {
     printedAt,
     patientId,
     patientName,
+    patientFatherMotherName,
     patientPhone,
     patientAge,
     patientGender,
@@ -226,12 +229,12 @@ export function PharmacyBillForm(props: Props) {
             )}
             {isTransfer ? null : (
             <label className="opd-bill-field">
-              <span className="opd-bill-label">{t("phone")}</span>
+              <span className="opd-bill-label">{t("fatherMotherName")}</span>
               <input
                 className="opd-bill-input"
-                value={patientPhone}
+                value={patientFatherMotherName}
                 disabled={!identityEditable}
-                onChange={(e) => props.onPatientPhone(e.target.value)}
+                onChange={(e) => props.onPatientFatherMotherName(e.target.value)}
               />
             </label>
             )}
@@ -251,20 +254,31 @@ export function PharmacyBillForm(props: Props) {
             </label>
             )}
             {isTransfer ? null : (
-            <label className="opd-bill-field">
+            <div className="opd-bill-field">
               <span className="opd-bill-label">{t("gender")}</span>
-              <select
-                className="opd-bill-input"
-                value={patientGender}
-                disabled={!identityEditable}
-                onChange={(e) => props.onPatientGender(e.target.value)}
-              >
-                <option value="">—</option>
-                <option value="M">{t("genderM")}</option>
-                <option value="F">{t("genderF")}</option>
-                <option value="Other">{t("genderOther")}</option>
-              </select>
-            </label>
+              <div className="opd-bill-gender-phone">
+                <select
+                  className="opd-bill-input"
+                  value={patientGender}
+                  disabled={!identityEditable}
+                  aria-label={t("gender")}
+                  onChange={(e) => props.onPatientGender(e.target.value)}
+                >
+                  <option value="">—</option>
+                  <option value="M">{t("genderM")}</option>
+                  <option value="F">{t("genderF")}</option>
+                  <option value="Other">{t("genderOther")}</option>
+                </select>
+                <span className="opd-bill-label">{t("phone")}</span>
+                <input
+                  className="opd-bill-input"
+                  value={patientPhone}
+                  disabled={!identityEditable}
+                  aria-label={t("phone")}
+                  onChange={(e) => props.onPatientPhone(e.target.value)}
+                />
+              </div>
+            </div>
             )}
             <label className="opd-bill-field">
               <span className="opd-bill-label">{t("remark")}</span>
@@ -347,7 +361,7 @@ export function PharmacyBillForm(props: Props) {
                   return (
                     <>
                       <span className="typeahead-title">
-                        {item.code} — {item.name}
+                        {item.name}
                         {dosage ? ` (${dosage})` : ""}
                       </span>
                       <span className="typeahead-sub">

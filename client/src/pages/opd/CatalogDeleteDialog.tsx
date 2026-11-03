@@ -24,6 +24,7 @@ export function CatalogDeleteDialog({
   return (
     <AlertDialog
       tone="warning"
+      icon="trash"
       title={t("delete")}
       identity={identity}
       message={message}

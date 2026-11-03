@@ -18,6 +18,7 @@ import {
   type BillHistoryStatusOption,
 } from "@/shared/BillHistoryToolbar";
 import { CatalogAuditHistoryTable } from "@/shared/CatalogAuditHistoryTable";
+import { DeskChrome } from "@/shared/DeskChrome";
 import { DialogCloseButton } from "@/shared/DialogCloseButton";
 import { sortByDateAscDesc } from "@/shared/DateSort";
 import { fieldKeyForApiError } from "@/shared/errors";
@@ -40,7 +41,7 @@ function serviceLabel(s: LabService): string {
 }
 
 function emptyListQuery(): BillHistoryQuery {
-  return { q: "", money: "", category: "", unit: "", from: "", to: "", sort: "desc" };
+  return { q: "", money: "", category: "", unit: "", from: "", to: "", sort: "desc", order: "date" };
 }
 
 function activeFromMoney(money: string): ActiveFilterValue {
@@ -455,7 +456,8 @@ export function LabServicesPage() {
   }
 
   return (
-    <section className="opd-bill-desk opd-bill-desk--history" aria-label={t("serviceSetup")}>
+    <DeskChrome>
+      <section className="opd-bill-desk opd-bill-desk--history" aria-label={t("serviceSetup")}>
       <div className="opd-bill-desk-main">
         {showForm ? (
           <div className="catalog-master-form-page">
@@ -666,33 +668,6 @@ export function LabServicesPage() {
               </div>
               <DialogCloseButton onClick={backToList} />
             </div>
-            {error ? (
-              <p className="form-error" role="alert">
-                {error}
-              </p>
-            ) : null}
-            <div className="drug-info-fields">
-              <div className="drug-info-field">
-                <span className="drug-info-label">{t("code")}</span>
-                <span className="drug-info-input">{selected.code || "—"}</span>
-              </div>
-              <div className="drug-info-field">
-                <span className="drug-info-label">{t("name")}</span>
-                <span className="drug-info-input">{selected.name}</span>
-              </div>
-              <div className="drug-info-field">
-                <span className="drug-info-label">{t("priceMmk")}</span>
-                <span className="drug-info-input">
-                  {formatMMK(selected.price_mmk)} {t("mmk")}
-                </span>
-              </div>
-              <div className="drug-info-field">
-                <span className="drug-info-label">{t("active")}</span>
-                <span className="drug-info-input">
-                  {selected.active ? t("active") : t("inactive")}
-                </span>
-              </div>
-            </div>
             <div className="btn-row">
               {labUpdate ? (
                 <button
@@ -727,6 +702,33 @@ export function LabServicesPage() {
                 </button>
               ) : null}
             </div>
+            {error ? (
+              <p className="form-error" role="alert">
+                {error}
+              </p>
+            ) : null}
+            <div className="drug-info-fields">
+              <div className="drug-info-field">
+                <span className="drug-info-label">{t("code")}</span>
+                <span className="drug-info-input">{selected.code || "—"}</span>
+              </div>
+              <div className="drug-info-field">
+                <span className="drug-info-label">{t("name")}</span>
+                <span className="drug-info-input">{selected.name}</span>
+              </div>
+              <div className="drug-info-field">
+                <span className="drug-info-label">{t("priceMmk")}</span>
+                <span className="drug-info-input">
+                  {formatMMK(selected.price_mmk)} {t("mmk")}
+                </span>
+              </div>
+              <div className="drug-info-field">
+                <span className="drug-info-label">{t("active")}</span>
+                <span className="drug-info-input">
+                  {selected.active ? t("active") : t("inactive")}
+                </span>
+              </div>
+            </div>
           </div>
         ) : null}
       </div>
@@ -746,5 +748,6 @@ export function LabServicesPage() {
         />
       ) : null}
     </section>
+    </DeskChrome>
   );
 }

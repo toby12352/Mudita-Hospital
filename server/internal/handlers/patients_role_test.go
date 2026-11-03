@@ -306,7 +306,7 @@ func TestPatientsRoleKeepsExistingUsers(t *testing.T) {
 	}
 }
 
-func TestPatientsSeedInsertsWhenMissing(t *testing.T) {
+func TestSeedInsertsAdminOnly(t *testing.T) {
 	sqlDB := openTestDB(t)
 	if err := db.SeedDefaultUsers(sqlDB); err != nil {
 		t.Fatal(err)
@@ -315,12 +315,12 @@ func TestPatientsSeedInsertsWhenMissing(t *testing.T) {
 	var hash string
 	var must int
 	if err := sqlDB.QueryRow(`
-		SELECT id, password_hash, must_change_password FROM users WHERE username = 'patients'
+		SELECT id, password_hash, must_change_password FROM users WHERE username = 'admin'
 	`).Scan(&id, &hash, &must); err != nil {
 		t.Fatal(err)
 	}
-	if id < 1 || must != 1 || !auth.CheckPassword(hash, "patients123") {
-		t.Fatalf("seed id=%d must=%d", id, must)
+	if id < 1 || must != 1 || !auth.CheckPassword(hash, "admin123") {
+		t.Fatalf("admin seed id=%d must=%d", id, must)
 	}
 	if err := db.SeedDefaultUsers(sqlDB); err != nil {
 		t.Fatal(err)
@@ -328,37 +328,21 @@ func TestPatientsSeedInsertsWhenMissing(t *testing.T) {
 	var hash2 string
 	var id2 int64
 	if err := sqlDB.QueryRow(`
-		SELECT id, password_hash FROM users WHERE username = 'patients'
+		SELECT id, password_hash FROM users WHERE username = 'admin'
 	`).Scan(&id2, &hash2); err != nil {
 		t.Fatal(err)
 	}
 	if id2 != id || hash2 != hash {
-		t.Fatalf("reseed id %d→%d hash changed %v", id, id2, hash != hash2)
+		t.Fatalf("reseed admin id %d→%d hash changed %v", id, id2, hash != hash2)
 	}
-
-	var ipdID int64
-	var ipdHash string
-	var ipdMust int
+	var desks int
 	if err := sqlDB.QueryRow(`
-		SELECT id, password_hash, must_change_password FROM users WHERE username = 'ipd'
-	`).Scan(&ipdID, &ipdHash, &ipdMust); err != nil {
+		SELECT COUNT(1) FROM users WHERE username IN ('opd', 'ot', 'pharmacy', 'patients', 'ipd', 'lab')
+	`).Scan(&desks); err != nil {
 		t.Fatal(err)
 	}
-	if ipdID < 1 || ipdMust != 1 || !auth.CheckPassword(ipdHash, "ipd123") {
-		t.Fatalf("ipd seed id=%d must=%d", ipdID, ipdMust)
-	}
-	if err := db.SeedDefaultUsers(sqlDB); err != nil {
-		t.Fatal(err)
-	}
-	var ipdID2 int64
-	var ipdHash2 string
-	if err := sqlDB.QueryRow(`
-		SELECT id, password_hash FROM users WHERE username = 'ipd'
-	`).Scan(&ipdID2, &ipdHash2); err != nil {
-		t.Fatal(err)
-	}
-	if ipdID2 != ipdID || ipdHash2 != ipdHash {
-		t.Fatalf("reseed ipd id %d→%d hash changed %v", ipdID, ipdID2, ipdHash != ipdHash2)
+	if desks != 0 {
+		t.Fatalf("seeded desk logins %d", desks)
 	}
 }
 
@@ -366,7 +350,7 @@ func TestPatientHistory(t *testing.T) {
 	if !auth.HasPermission(auth.RolePatients, auth.PermPatients) {
 		t.Fatal("Patients missing patients")
 	}
-	for _, perm := range []string{auth.PermOPD, auth.PermOT, auth.PermPharmacy, auth.PermSettings, auth.PermIPD} {
+	for _, perm := range []string{auth.PermOPD, auth.PermOT, auth.PermPharmacy, auth.PermSettings, auth.PermIPD, auth.PermLab} {
 		if auth.HasPermission(auth.RolePatients, perm) {
 			t.Fatalf("Patients has %s", perm)
 		}
@@ -426,12 +410,12 @@ func TestPatientHistory(t *testing.T) {
 	}
 
 	w = doJSON(h, http.MethodGet, "/api/patients/"+strconv.FormatInt(chart.ID, 10)+"/history", opdTok, "")
-	mustCode(t, w, http.StatusForbidden)
+	mustCode(t, w, http.StatusOK)
 
 	authH := &Auth{DB: sqlDB}
 	w = doJSON(authH, http.MethodGet, "/api/auth/me", patientsTok, "")
 	mustCode(t, w, http.StatusOK)
-	if !meHasPerm(t, w, auth.PermPatients) || meHasPerm(t, w, auth.PermOPD) {
+	if !meHasPerm(t, w, auth.GrantPatientsRead) || meHasPerm(t, w, auth.GrantOPDRead) {
 		t.Fatalf("patients /me %s", w.Body.String())
 	}
 
@@ -494,7 +478,7 @@ func TestPatientHistory(t *testing.T) {
 	mustCode(t, w, http.StatusNotFound)
 
 	w = doJSON(h, http.MethodGet, printOwn, opdTok, "")
-	mustCode(t, w, http.StatusForbidden)
+	mustCode(t, w, http.StatusOK)
 
 	w = doJSON(h, http.MethodGet, "/api/patients/999999/history", adminTok, "")
 	mustCode(t, w, http.StatusNotFound)

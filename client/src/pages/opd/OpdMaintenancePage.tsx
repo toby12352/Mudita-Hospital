@@ -1,4 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  DeskChrome,
+  DeskChromePanel,
+  DeskChromeTabs,
+} from "@/shared/DeskChrome";
 import { useI18n } from "@/shared/i18n";
 import { OpdDoctorsPage } from "./OpdDoctorsPage";
 import { OpdServicesPage } from "./OpdServicesPage";
@@ -23,57 +28,53 @@ export function OpdMaintenancePage({
     setBrowsing(next);
   }, []);
 
+  const tabs = useMemo(
+    () => [
+      {
+        id: "opd-maintenance-tab-doctors",
+        label: t("maintenanceDoctors"),
+        controls: "opd-maintenance-panel-doctors",
+      },
+      {
+        id: "opd-maintenance-tab-services",
+        label: t("maintenanceServices"),
+        controls: "opd-maintenance-panel-services",
+      },
+    ],
+    [t],
+  );
+
   return (
-    <section className="desk-maintenance">
+    <DeskChrome>
       {browsing ? (
-        <div
-          className="desk-maintenance-tabs"
-          role="tablist"
-          aria-label={t("navMaintenance")}
-        >
-          <button
-            type="button"
-            id="opd-maintenance-tab-doctors"
-            role="tab"
-            className={`desk-maintenance-tab${screen === "doctors" ? " active" : ""}`}
-            aria-selected={screen === "doctors"}
-            aria-controls="opd-maintenance-panel-doctors"
-            onClick={() => onNavigateScreen("doctors")}
-          >
-            {t("maintenanceDoctors")}
-          </button>
-          <button
-            type="button"
-            id="opd-maintenance-tab-services"
-            role="tab"
-            className={`desk-maintenance-tab${screen === "services" ? " active" : ""}`}
-            aria-selected={screen === "services"}
-            aria-controls="opd-maintenance-panel-services"
-            onClick={() => onNavigateScreen("services")}
-          >
-            {t("maintenanceServices")}
-          </button>
-        </div>
+        <DeskChromeTabs
+          ariaLabel={t("navMaintenance")}
+          tabs={tabs}
+          activeId={
+            screen === "doctors"
+              ? "opd-maintenance-tab-doctors"
+              : "opd-maintenance-tab-services"
+          }
+          onSelect={(id) =>
+            onNavigateScreen(id === "opd-maintenance-tab-doctors" ? "doctors" : "services")
+          }
+        />
       ) : null}
       {screen === "doctors" ? (
-        <div
+        <DeskChromePanel
           id="opd-maintenance-panel-doctors"
-          role="tabpanel"
-          aria-labelledby="opd-maintenance-tab-doctors"
-          className="desk-maintenance-panel"
+          labelledBy="opd-maintenance-tab-doctors"
         >
           <OpdDoctorsPage onBrowseChange={onBrowseChange} />
-        </div>
+        </DeskChromePanel>
       ) : (
-        <div
+        <DeskChromePanel
           id="opd-maintenance-panel-services"
-          role="tabpanel"
-          aria-labelledby="opd-maintenance-tab-services"
-          className="desk-maintenance-panel"
+          labelledBy="opd-maintenance-tab-services"
         >
           <OpdServicesPage onBrowseChange={onBrowseChange} />
-        </div>
+        </DeskChromePanel>
       )}
-    </section>
+    </DeskChrome>
   );
 }

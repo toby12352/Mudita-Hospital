@@ -39,46 +39,91 @@ type detailVoucher struct {
 // with item rows. Desk bills come first (OPD, OT, IPD, Pharmacy, Lab); expenses
 // start on a new page. Pharmacy TO- slips are omitted. Paid IPD daily statements
 // print as Collected summary rows like the income report IPD table.
-// scope is "", "income", "expense", or "all". A non-empty scope adds the end
-// balance table. An empty scope keeps the full sheet.
+// scope is "", "income", "expense", or "all". Full sheets ("" / "all") open with
+// the overall-style cover cashbook, then Myanmar income and expense pages.
+// Income and expense scopes keep a single letterhead and end total.
 func renderDashboardDailyDetailsHTML(_ *sql.DB, hosp *hospitalSettings, vouchers []detailVoucher, date, scope string) string {
 	if hosp == nil {
 		hosp = &hospitalSettings{HospitalName: "Mudita Hospital"}
 	}
 	vouchers = filterDetailScope(vouchers, scope)
 	dateLabel := dailyReportDateLabel(date)
+	fullSheet := scope == "" || scope == "all"
 	title := detailScopeTitle(scope)
+	if fullSheet {
+		title = "Software by TAT"
+	}
 
 	var b strings.Builder
 	b.WriteString(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>`)
 	b.WriteString(html.EscapeString(title))
-	b.WriteString(` `)
-	b.WriteString(html.EscapeString(date))
+	if !fullSheet {
+		b.WriteString(` `)
+		b.WriteString(html.EscapeString(date))
+	}
 	b.WriteString(`</title><style>`)
 	b.WriteString(dashboardDailyDetailsPrintCSS())
 	b.WriteString(`</style></head><body>`)
 	b.WriteString(`<div class="a4-sheet">`)
-	writeA4Letterhead(&b, hosp)
-	writeDailyReportTitle(&b, title, dateLabel)
+	b.WriteString(`<p class="print-credit">Software by TAT</p>`)
 
-	if len(vouchers) == 0 {
-		b.WriteString(`<p class="daily-empty">No bills on this date.</p>`)
-		writeDetailScopeSettle(&b, nil, scope)
-		b.WriteString(`<p class="meta">Printed from Mudita Hospital</p>`)
+	if fullSheet {
+		incomeMMK, expenseMMK := detailVoucherCashTotals(vouchers)
+		writeDailyOverallCover(&b, hosp, dateLabel, incomeMMK, expenseMMK)
+		b.WriteString(`<div class="daily-page-break">`)
+		writeDailyReportTitle(&b, "နေ့စဉ် ဝင်ငွေ", dateLabel)
+		incomeVouchers := filterDetailScope(vouchers, "income")
+		if len(incomeVouchers) == 0 {
+			b.WriteString(`<p class="daily-empty">No income bills on this date.</p>`)
+		} else {
+			writeDetailVoucherSections(&b, incomeVouchers)
+		}
+		b.WriteString(`</div>`)
+		b.WriteString(`<div class="daily-page-break">`)
+		writeDailyReportTitle(&b, "နေ့စဉ် ထွက်ငွေ", dateLabel)
+		expenseVouchers := filterDetailScope(vouchers, "expense")
+		if len(expenseVouchers) == 0 {
+			b.WriteString(`<p class="daily-empty">No expense bills on this date.</p>`)
+		} else {
+			writeDetailVoucherSections(&b, expenseVouchers)
+		}
+		b.WriteString(`</div>`)
 		b.WriteString(`</div></body></html>`)
 		return b.String()
 	}
 
-	wroteExpenseBreak := false
-	sawDesk := false
-	expenseWrapped := false
-	splitExpenses := scope == "" || scope == "all"
+	writeA4Letterhead(&b, hosp)
+	writeDailyReportTitle(&b, detailScopeTitle(scope), dateLabel)
+	if len(vouchers) == 0 {
+		b.WriteString(`<p class="daily-empty">No bills on this date.</p>`)
+	} else {
+		writeDetailVoucherSections(&b, vouchers)
+	}
+	writeDetailScopeSettle(&b, vouchers, scope)
+	b.WriteString(`</div></body></html>`)
+	return b.String()
+}
+
+// detailVoucherCashTotals sums income and signed expense cash from vouchers.
+func detailVoucherCashTotals(vouchers []detailVoucher) (incomeMMK, expenseMMK int64) {
+	for _, v := range vouchers {
+		if v.Expense {
+			expenseMMK += v.CashMMK
+		} else {
+			incomeMMK += v.CashMMK
+		}
+	}
+	return incomeMMK, expenseMMK
+}
+
+// writeDetailVoucherSections emits portal sections for the given vouchers in order.
+func writeDetailVoucherSections(b *strings.Builder, vouchers []detailVoucher) {
 	currentPortal := ""
 	ipdCollectedOpen := false
 	var ipdCollectedMMK int64
 	closePortal := func() {
 		if ipdCollectedOpen {
-			writeDailySubtotalRow(&b, 4, ipdCollectedMMK)
+			writeDailySubtotalRow(b, 4, ipdCollectedMMK)
 			b.WriteString(`</tbody></table>`)
 			ipdCollectedOpen = false
 			ipdCollectedMMK = 0
@@ -89,21 +134,9 @@ func renderDashboardDailyDetailsHTML(_ *sql.DB, hosp *hospitalSettings, vouchers
 		}
 	}
 	for _, v := range vouchers {
-		if !v.Expense {
-			sawDesk = true
-		}
-		if splitExpenses && v.Expense && !wroteExpenseBreak {
-			closePortal()
-			if sawDesk {
-				b.WriteString(`<div class="daily-page-break">`)
-				expenseWrapped = true
-			}
-			writeDailyReportTitle(&b, "Expense Bill Details", dateLabel)
-			wroteExpenseBreak = true
-		}
 		if v.Portal != currentPortal {
 			closePortal()
-			openDailyPortalSection(&b, v.Portal)
+			openDailyPortalSection(b, v.Portal)
 			currentPortal = v.Portal
 			if v.IPDCollected {
 				b.WriteString(`<table class="daily-table"><thead><tr>`)
@@ -113,21 +146,13 @@ func renderDashboardDailyDetailsHTML(_ *sql.DB, hosp *hospitalSettings, vouchers
 			}
 		}
 		if v.IPDCollected {
-			writeIpdCollectedDetailRow(&b, v)
+			writeIpdCollectedDetailRow(b, v)
 			ipdCollectedMMK += v.CashMMK
 			continue
 		}
-		writeDetailVoucher(&b, v)
+		writeDetailVoucher(b, v)
 	}
 	closePortal()
-	if expenseWrapped {
-		b.WriteString(`</div>`)
-	}
-
-	writeDetailScopeSettle(&b, vouchers, scope)
-	b.WriteString(`<p class="meta">Printed from Mudita Hospital</p>`)
-	b.WriteString(`</div></body></html>`)
-	return b.String()
 }
 
 func detailScopeTitle(scope string) string {
@@ -156,7 +181,7 @@ func filterDetailScope(vouchers []detailVoucher, scope string) []detailVoucher {
 }
 
 func writeDetailScopeSettle(b *strings.Builder, vouchers []detailVoucher, scope string) {
-	if scope != "income" && scope != "expense" && scope != "all" {
+	if scope != "income" && scope != "expense" {
 		return
 	}
 	var income, expenseSigned int64
@@ -175,12 +200,6 @@ func writeDetailScopeSettle(b *strings.Builder, vouchers []detailVoucher, scope 
 	case "expense":
 		writeDailySettle(b, []dailySettleRow{
 			{Label: "Total expenses", Amount: -expenseSigned, Emph: true},
-		})
-	default:
-		writeDailySettle(b, []dailySettleRow{
-			{Label: "Total income", Amount: income, Emph: false},
-			{Label: "Total expenses", Amount: -expenseSigned, Emph: false},
-			{Label: "Total remaining balance", Amount: income + expenseSigned, Emph: true},
 		})
 	}
 }

@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import brandLogo from "@/assets/logo.png";
 import {
   fetchHealth,
   getApiBase,
   isApiConfigured,
   setApiBase,
+  setUnauthorizedHandler,
 } from "@/shared/api";
 import {
   clearSession,
@@ -43,14 +44,13 @@ import { HelpOverlay } from "./HelpOverlay";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { LoginForm } from "./LoginForm";
 import {
-  portalForRole,
   readableClinicModules,
   resolveShownView,
   titleKeyForAdmin,
 } from "./portal";
 import { ServerIpButton } from "./ServerIpButton";
 import { ServerSetupForm } from "./ServerSetupForm";
-import type { ConnState, NavIntent, NavSectionId, PortalId, View } from "./types";
+import type { ConnState, NavIntent, NavSectionId, View } from "./types";
 import { OpdMaintenancePage } from "@/pages/opd/OpdMaintenancePage";
 import { OpdPage } from "@/pages/opd/OpdPage";
 import { LabPage } from "@/pages/lab/LabPage";
@@ -64,7 +64,7 @@ import { PharmacyReturnPage } from "@/pages/pharmacy/PharmacyReturnPage";
 import { PharmacyTransferPage } from "@/pages/pharmacy/PharmacyTransferPage";
 import { ExpenseBillPage } from "@/pages/expenses/ExpenseBillPage";
 import { IpdChargeBillPage } from "@/pages/ipd/IpdChargeBillPage";
-import { IpdPage } from "@/pages/ipd/IpdPage";
+import { IpdPatientsPage } from "@/pages/ipd/IpdPatientsPage";
 import { PatientsPage } from "@/pages/patients/PatientsPage";
 import { SettingsPage } from "@/pages/settings/SettingsPage";
 
@@ -94,6 +94,7 @@ function AppShell() {
     billingMode: navIntent.billingMode,
     otMode: navIntent.otMode,
     opdScreen: navIntent.opdScreen,
+    labScreen: navIntent.labScreen,
   };
   const [activeSection, setActiveSection] = useState<NavSectionId>("home");
   const [navEpoch, setNavEpoch] = useState(0);
@@ -168,22 +169,31 @@ function AppShell() {
     };
   }, []);
 
+  const leaveToSignIn = useCallback((message: string | null) => {
+    const token = getStoredToken();
+    clearSession();
+    setUser(null);
+    setPermissions([]);
+    setView("home");
+    setNavIntent({});
+    setActiveSection("home");
+    setAuthError(message);
+    void logout(token);
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    setUnauthorizedHandler(() => leaveToSignIn(t("errSessionExpired")));
+    return () => setUnauthorizedHandler(null);
+  }, [user, leaveToSignIn, t]);
+
   useEffect(() => {
     if (!user || user.must_change_password) return;
     const watcher = createIdleWatcher(() => {
-      void (async () => {
-        await logout();
-        clearSession();
-        setUser(null);
-        setPermissions([]);
-        setView("home");
-        setNavIntent({});
-        setActiveSection("home");
-        setAuthError(t("idleLocked"));
-      })();
+      leaveToSignIn(t("idleLocked"));
     });
     return () => watcher.dispose();
-  }, [user]);
+  }, [user, leaveToSignIn, t]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -228,14 +238,7 @@ function AppShell() {
   }
 
   async function finishLogout() {
-    await logout();
-    clearSession();
-    setUser(null);
-    setPermissions([]);
-    setView("home");
-    setNavIntent({});
-    setActiveSection("home");
-    setAuthError(null);
+    leaveToSignIn(null);
   }
 
   async function handleLogout() {
@@ -283,6 +286,31 @@ function AppShell() {
     applyNavigate(next, intent, section);
   }
 
+  /** Open a bill / case / stay from patient history or the IPD stay ledger. */
+  function openLinkedRecord({
+    view: next,
+    section,
+    openRecordId: recordId,
+  }: {
+    view: View;
+    section: NavSectionId;
+    openRecordId: number;
+  }) {
+    if (next === "opd") {
+      navigate("opd", { opdScreen: "bill", billingMode: "edit", openRecordId: recordId }, section);
+      return;
+    }
+    if (next === "lab") {
+      navigate("lab", { labScreen: "bill", billingMode: "edit", openRecordId: recordId }, section);
+      return;
+    }
+    if (next === "ot") {
+      navigate("ot", { otMode: "case", openRecordId: recordId }, section);
+      return;
+    }
+    navigate(next, { billingMode: "edit", openRecordId: recordId }, section);
+  }
+
   function openGuideScreen(screen: GuideScreen) {
     const current = deskRef.current;
     if (guideScreenMatches(current, screen)) return;
@@ -293,6 +321,7 @@ function AppShell() {
     if (target.billingMode) intent.billingMode = target.billingMode;
     if (target.otMode) intent.otMode = target.otMode;
     if (target.opdScreen) intent.opdScreen = target.opdScreen;
+    if (target.labScreen) intent.labScreen = target.labScreen;
     navigate(target.view, intent, target.section);
   }
 
@@ -357,10 +386,7 @@ function AppShell() {
 
   const fullAdmin = user.role === "Admin";
   const sharedLayout = fullAdmin || user.access_mode === "unified";
-  const rolePortal = portalForRole(user.role);
-  const deskPortal: PortalId | null =
-    !sharedLayout && rolePortal && rolePortal !== "admin" ? rolePortal : null;
-  if (!sharedLayout && !deskPortal) {
+  if (!sharedLayout) {
     return (
       <AuthFrame title={t("noAccess")} lede={user.role}>
         <button type="button" className="btn ghost" onClick={() => void handleLogout()}>
@@ -373,13 +399,12 @@ function AppShell() {
   const readable = readableClinicModules(permissions, fullAdmin);
   const actionFlags = clinicActionFlags({
     fullAdmin,
-    accessMode: user.access_mode,
     permissions,
   });
   const shown = resolveShownView({
     sharedLayout,
     fullAdmin,
-    desk: deskPortal,
+    desk: null,
     view,
     intent: navIntent,
     section: activeSection,
@@ -392,9 +417,7 @@ function AppShell() {
 
   const opdScreen = shownIntent.opdScreen ?? "bill";
   const labScreen = shownIntent.labScreen ?? "bill";
-  const portalTitleKey = sharedLayout
-    ? titleKeyForAdmin(shownView, portal)
-    : deskPortal ?? "navHome";
+  const portalTitleKey = titleKeyForAdmin(shownView, portal);
 
   const pageKey = `${shownView}-${navEpoch}`;
   const displayName = user.display_name || user.username;
@@ -423,13 +446,7 @@ function AppShell() {
   const pageBody = (
     <>
       {sharedLayout && shownView === "home" ? (
-        <HomePage
-          key={pageKey}
-          displayName={displayName}
-          modules={readable}
-          showSettings={fullAdmin}
-          t={t}
-        />
+        <HomePage key={pageKey} displayName={displayName} t={t} />
       ) : null}
       {sharedLayout && shownView === "about" ? <AboutPage key={pageKey} t={t} /> : null}
       {fullAdmin && portal === "settings" && shownView === "settings" ? (
@@ -507,29 +524,7 @@ function AppShell() {
           startCreate={shownIntent.patientsScreen === "create"}
           focusId={shownIntent.patientsFocusId}
           canReadModule={(module) => readable.includes(module)}
-          onOpenRecord={({ view, section, openRecordId }) => {
-            if (view === "opd") {
-              navigate(
-                "opd",
-                { opdScreen: "bill", billingMode: "edit", openRecordId },
-                section,
-              );
-              return;
-            }
-            if (view === "lab") {
-              navigate(
-                "lab",
-                { labScreen: "bill", billingMode: "edit", openRecordId },
-                section,
-              );
-              return;
-            }
-            if (view === "ot") {
-              navigate("ot", { otMode: "case", openRecordId }, section);
-              return;
-            }
-            navigate(view, { billingMode: "edit", openRecordId }, section);
-          }}
+          onOpenRecord={openLinkedRecord}
           onViewList={(id) =>
             navigate(
               "patients",
@@ -542,9 +537,16 @@ function AppShell() {
         />
       ) : null}
       {portal === "ipd" && shownView === "ipd" ? (
-        <IpdPage key={pageKey} openRecordId={shownIntent.openRecordId} />
+        <IpdPatientsPage
+          key={pageKey}
+          openRecordId={shownIntent.openRecordId}
+          canReadModule={(module) => readable.includes(module)}
+          onOpenRecord={openLinkedRecord}
+        />
       ) : null}
-      {portal === "ipd" && shownView === "ipd_bill" ? <IpdChargeBillPage key={pageKey} /> : null}
+      {portal === "ipd" && shownView === "ipd_bill" ? (
+        <IpdChargeBillPage key={pageKey} openRecordId={shownIntent.openRecordId} />
+      ) : null}
       {portal === "expense" && shownView === "expense" ? (
         <ExpenseBillPage key={pageKey} />
       ) : null}
@@ -565,8 +567,8 @@ function AppShell() {
         {t("skipToContent")}
       </a>
       <AppNavBar
-        mode={sharedLayout ? "admin" : "desk"}
-        portal={sharedLayout ? null : deskPortal}
+        mode="admin"
+        portal={null}
         readModules={readable}
         showSettings={fullAdmin}
         view={shownView}
@@ -609,13 +611,15 @@ function AppShell() {
             user.role === "OPD" ||
             user.role === "OT" ||
             user.role === "Pharmacy" ||
-            user.role === "IPD"
+            user.role === "IPD" ||
+            user.role === "Lab"
           }
           showChargeTour={
             user.role === "Admin" ||
             user.role === "OPD" ||
             user.role === "OT" ||
-            user.role === "Pharmacy"
+            user.role === "Pharmacy" ||
+            user.role === "Lab"
           }
           showPharmacyTour={user.role === "Admin" || user.role === "Pharmacy"}
           showOtTour={user.role === "Admin" || user.role === "OT"}

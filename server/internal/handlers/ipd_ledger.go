@@ -139,7 +139,7 @@ func (h *IPD) insertLedger(w http.ResponseWriter, r *http.Request, admissionID i
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "reload failed"})
 		return
 	}
-	writeJSON(w, http.StatusCreated, row)
+	writeAdmissionJSON(w, http.StatusCreated, h.DB, row)
 }
 
 // deleteDeposit removes one deposit or leftover ward ledger row on an open stay.
@@ -235,7 +235,7 @@ func (h *IPD) deleteDeposit(w http.ResponseWriter, r *http.Request, path string)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "reload failed"})
 		return
 	}
-	writeJSON(w, http.StatusOK, row)
+	writeAdmissionJSON(w, http.StatusOK, h.DB, row)
 }
 
 func (h *IPD) printDeposit(w http.ResponseWriter, r *http.Request, path string) {
@@ -319,6 +319,60 @@ func loadAdmissionDetail(db *sql.DB, id int64) (ipdAdmission, error) {
 		return row, err
 	}
 	return one[0], nil
+}
+
+// omitDeletedIpdLedgerLines drops ipd charge/reversal lines whose bill is deleted
+// from the stay ledger list shown to the desk. BalanceMMK stays the full sum so
+// totals match the database. Statements and voucher closings keep using loadLedger.
+func omitDeletedIpdLedgerLines(db sqlQuery, row *ipdAdmission) error {
+	if row == nil || len(row.Ledger) == 0 {
+		return nil
+	}
+	deleted := map[int64]struct{}{}
+	rows, err := db.Query(`
+		SELECT id FROM ipd_charge_bills
+		WHERE admission_id = ? AND status = 'deleted'
+	`, row.ID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return err
+		}
+		deleted[id] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if len(deleted) == 0 {
+		return nil
+	}
+	out := make([]ipdLedgerLine, 0, len(row.Ledger))
+	for _, line := range row.Ledger {
+		if line.Source == "ipd" && line.SourceID != nil {
+			if line.Kind == "charge" || line.Kind == "reversal" {
+				if _, hide := deleted[*line.SourceID]; hide {
+					continue
+				}
+			}
+		}
+		out = append(out, line)
+	}
+	row.Ledger = out
+	return nil
+}
+
+// writeAdmissionJSON omits deleted IPD charge/reversal lines from the ledger list
+// before writing the stay. printStatement uses loadAdmissionDetail without this.
+func writeAdmissionJSON(w http.ResponseWriter, status int, db sqlQuery, row ipdAdmission) {
+	if err := omitDeletedIpdLedgerLines(db, &row); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "load failed"})
+		return
+	}
+	writeJSON(w, status, row)
 }
 
 func loadLedger(db sqlQuery, admissionID int64) ([]ipdLedgerLine, int64, error) {
@@ -457,6 +511,7 @@ func renderIpdDepositReceipt(hosp *hospitalSettings, row ipdAdmission, line ipdL
 	if gender := strings.TrimSpace(row.Patient.Gender); gender != "" {
 		writeReceiptKV(&b, "Sex", gender)
 	}
+	writeReceiptKV(&b, "Room", strings.TrimSpace(row.RoomNo))
 	if note := strings.TrimSpace(line.Note); note != "" {
 		b.WriteString(`<p class="section-title">Note</p>`)
 		b.WriteString(`<p class="note-body">`)

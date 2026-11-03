@@ -8,6 +8,7 @@ const (
 	RolePharmacy = "Pharmacy"
 	RolePatients = "Patients"
 	RoleIPD      = "IPD"
+	RoleLab      = "Lab"
 )
 
 // Permission keys used by RequirePermission / UI gates.
@@ -50,6 +51,9 @@ var rolePermissions = map[string]map[string]bool{
 	},
 	RoleIPD: {
 		PermIPD: true,
+	},
+	RoleLab: {
+		PermLab: true,
 	},
 }
 

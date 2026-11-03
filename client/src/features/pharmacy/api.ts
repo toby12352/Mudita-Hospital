@@ -1007,6 +1007,8 @@ export type PharmacyBill = {
   void_reason?: string;
   created_at: string;
   updated_at: string;
+  /** Open IPD stay room when this chart is admitted; list responses only. */
+  ipd_room_no?: string;
   lines?: PharmacyBillLine[];
 };
 
@@ -1171,7 +1173,7 @@ export async function listPharmacyBills(
   status = "",
   kind?: PharmacyBillKind,
   patientId?: number | null,
-  opts?: { money?: string; from?: string; to?: string; sort?: string },
+  opts?: { money?: string; from?: string; to?: string; sort?: string; order?: string },
 ): Promise<PharmacyBill[]> {
   const params = new URLSearchParams();
   if (q) params.set("q", q);
@@ -1182,6 +1184,7 @@ export async function listPharmacyBills(
   if (opts?.from?.trim()) params.set("from", opts.from.trim());
   if (opts?.to?.trim()) params.set("to", opts.to.trim());
   if (opts?.sort?.trim()) params.set("sort", opts.sort.trim());
+  if (opts?.order?.trim()) params.set("order", opts.order.trim());
   const qs = params.toString() ? `?${params}` : "";
   const res = await apiFetch<{ bills: PharmacyBill[] }>(`/api/pharmacy/bills${qs}`);
   return res.bills;
@@ -1196,6 +1199,8 @@ export async function createPharmacyBill(body: {
   patient_phone?: string;
   patient_age_years?: number | null;
   patient_gender?: string;
+  /** Chart-only; not stored on the bill or printed. */
+  father_mother_name?: string;
   description?: string;
   lines: PharmacyBillLine[];
   save_patient?: boolean;
@@ -1220,6 +1225,8 @@ export async function updatePharmacyBill(
     patient_phone?: string;
     patient_age_years?: number | null;
     patient_gender?: string;
+    /** Chart-only; not stored on the bill or printed. */
+    father_mother_name?: string;
     description?: string;
     lines: PharmacyBillLine[];
     save_patient?: boolean;

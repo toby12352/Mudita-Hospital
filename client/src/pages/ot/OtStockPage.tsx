@@ -111,7 +111,7 @@ function openUnitSelect(el: HTMLSelectElement | null) {
 }
 
 function emptyListQuery(): BillHistoryQuery {
-  return { q: "", money: "", category: "", unit: "", from: "", to: "", sort: "desc" };
+  return { q: "", money: "", category: "", unit: "", from: "", to: "", sort: "desc", order: "date" };
 }
 
 function activeFromMoney(money: string): ActiveFilterValue {

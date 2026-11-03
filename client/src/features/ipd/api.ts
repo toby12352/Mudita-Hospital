@@ -1,6 +1,11 @@
 import { apiFetch, getApiBase } from "@/shared/api";
 import { getStoredToken } from "@/shared/auth";
-import { fetchAndPreviewPrint, fetchPrintHtml } from "@/shared/print";
+import {
+  fetchAndPreviewPrint,
+  fetchPrintHtml,
+  isThermalReceiptHtml,
+  openPrintPreview,
+} from "@/shared/print";
 
 export type IpdPatient = {
   id: number;
@@ -102,12 +107,13 @@ export async function postIpdWardCharge(
 
 /** Deposit voucher, or OPD/OT/Pharmacy bill charged onto the stay. Does not stamp printed. */
 export async function printIpdDeposit(admissionId: number, lineId: number, title: string): Promise<void> {
-  return fetchAndPreviewPrint(
+  const html = await fetchPrintHtml(
     `/api/ipd/admissions/${admissionId}/ledger/${lineId}/print`,
     getApiBase,
     getStoredToken,
-    { title, receipt: true },
   );
+  // Deposits and pharmacy/OPD slips are 80 mm; OT service bills stay A4.
+  openPrintPreview(html, { title, receipt: isThermalReceiptHtml(html) });
 }
 
 export async function dischargeIpd(id: number): Promise<IpdAdmission> {
@@ -240,6 +246,8 @@ export type IpdChargeBill = {
   void_reason?: string;
   created_at: string;
   updated_at: string;
+  /** Open IPD stay room when this chart is admitted; list responses only. */
+  ipd_room_no?: string;
   lines?: IpdChargeBillLine[];
 };
 
@@ -259,7 +267,7 @@ export type IpdChargeBillWrite = {
 export async function listIpdChargeBills(
   q = "",
   status = "",
-  opts?: { money?: string; from?: string; to?: string; sort?: string },
+  opts?: { money?: string; from?: string; to?: string; sort?: string; order?: string },
 ): Promise<IpdChargeBill[]> {
   const params = new URLSearchParams();
   if (q.trim()) params.set("q", q.trim());
@@ -268,6 +276,7 @@ export async function listIpdChargeBills(
   if (opts?.from?.trim()) params.set("from", opts.from.trim());
   if (opts?.to?.trim()) params.set("to", opts.to.trim());
   if (opts?.sort?.trim()) params.set("sort", opts.sort.trim());
+  if (opts?.order?.trim()) params.set("order", opts.order.trim());
   const qs = params.toString();
   const res = await apiFetch<{ bills: IpdChargeBill[] }>(
     `/api/ipd/charge-bills${qs ? `?${qs}` : ""}`,
@@ -322,10 +331,10 @@ export async function purgeIpdChargeBill(id: number): Promise<void> {
   await apiFetch(`/api/ipd/charge-bills/${id}`, { method: "DELETE" });
 }
 
-/** A4 charge slip. Not the daily voucher. */
+/** Thermal charge slip (same narrow preview as OPD). Not the daily voucher. */
 export async function printIpdChargeBill(id: number, title: string): Promise<void> {
   return fetchAndPreviewPrint(`/api/ipd/charge-bills/${id}/print`, getApiBase, getStoredToken, {
     title,
-    receipt: false,
+    receipt: true,
   });
 }

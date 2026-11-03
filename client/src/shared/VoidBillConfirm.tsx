@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { AlertDialog } from "@/shared/AlertDialog";
+import { AlertBadgeIcon, AlertDialog } from "@/shared/AlertDialog";
 import { DialogCloseButton } from "@/shared/DialogCloseButton";
 import { useI18n } from "@/shared/i18n";
 import { useActionLock, useDelayedFlag } from "@/shared/useActionLock";
@@ -138,6 +138,7 @@ export function VoidBillConfirm({
     return (
       <AlertDialog
         tone="warning"
+        icon="trash"
         title={t("voidBill")}
         identity={identity}
         message={message}
@@ -174,25 +175,7 @@ export function VoidBillConfirm({
         <div className="alert-dialog-badge" aria-hidden="true">
           <span className="alert-dialog-badge-glow" />
           <span className="alert-dialog-badge-circle">
-            <svg viewBox="0 0 48 48" width="40" height="40">
-              <path
-                className="alert-dialog-draw-path alert-dialog-draw-path--warn"
-                d="M24 10l16 28H8z"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                strokeLinejoin="round"
-              />
-              <path
-                className="alert-dialog-draw-path alert-dialog-draw-path--warn-mark"
-                d="M24 20v8"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-              />
-              <circle className="alert-dialog-warn-dot" cx="24" cy="33" r="1.6" fill="currentColor" />
-            </svg>
+            <AlertBadgeIcon tone="warning" icon="trash" />
           </span>
         </div>
 

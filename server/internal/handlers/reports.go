@@ -114,19 +114,6 @@ func (h *Reports) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	})).ServeHTTP(w, r)
 }
 
-func canCashReport(role string) bool {
-	return auth.HasPermission(role, auth.PermOPD) ||
-		auth.HasPermission(role, auth.PermOT) ||
-		auth.HasPermission(role, auth.PermPharmacy) ||
-		auth.HasPermission(role, auth.PermLab) ||
-		auth.HasPermission(role, auth.PermSettings)
-}
-
-func canStockReport(role string) bool {
-	return auth.HasPermission(role, auth.PermPharmacy) ||
-		auth.HasPermission(role, auth.PermSettings)
-}
-
 // permitReport allows the reads the dashboard app already calls.
 // Portal desks keep the role checks. The dashboard grant opens these reads
 // and does not satisfy settings anywhere else.
@@ -162,12 +149,6 @@ func reportAllowed(db *sql.DB, user *auth.User, kind string) (bool, error) {
 	}
 	if role == auth.RoleAdmin {
 		return true, nil
-	}
-	if mode == auth.AccessPortal {
-		if kind == "stock" {
-			return canStockReport(role), nil
-		}
-		return canCashReport(role), nil
 	}
 	if mode != auth.AccessUnified {
 		return false, nil
@@ -234,8 +215,8 @@ func allCashSources() map[string]bool {
 	return map[string]bool{"OPD": true, "OT": true, "Pharmacy": true, "Lab": true}
 }
 
-// cashSourcesForUser keeps each portal desk on its own bills.
-// Admin and the dashboard grant see the combined report.
+// cashSourcesForUser keeps a personal account on the desks it can read.
+// Admin and the dashboard grant see the combined report. A portal row sees none.
 func cashSourcesForUser(db *sql.DB, user *auth.User) (map[string]bool, error) {
 	if user == nil {
 		return map[string]bool{}, nil
@@ -246,9 +227,6 @@ func cashSourcesForUser(db *sql.DB, user *auth.User) (map[string]bool, error) {
 	}
 	if role == auth.RoleAdmin {
 		return allCashSources(), nil
-	}
-	if mode == auth.AccessPortal {
-		return cashSourcesForRole(role), nil
 	}
 	if mode != auth.AccessUnified {
 		return map[string]bool{}, nil
@@ -280,25 +258,6 @@ func cashSourcesForUser(db *sql.DB, user *auth.User) (map[string]bool, error) {
 		}
 	}
 	return sources, nil
-}
-
-// cashSourcesForRole is the desks whose paid bills this role may see.
-// Admin has every desk permission, so the admin dashboard print stays combined.
-func cashSourcesForRole(role string) map[string]bool {
-	sources := map[string]bool{}
-	if auth.HasPermission(role, auth.PermOPD) {
-		sources["OPD"] = true
-	}
-	if auth.HasPermission(role, auth.PermOT) {
-		sources["OT"] = true
-	}
-	if auth.HasPermission(role, auth.PermPharmacy) {
-		sources["Pharmacy"] = true
-	}
-	if auth.HasPermission(role, auth.PermLab) {
-		sources["Lab"] = true
-	}
-	return sources
 }
 
 func scopeCashReport(rep *cashReport, sources map[string]bool) {
@@ -705,10 +664,11 @@ var dailyPortalOrder = []string{"OPD", "OT", "IPD", "Pharmacy", "Lab", "Expenses
 
 // renderDashboardDailyHTML is the admin daily print. kind is income, expense,
 // or overall (default). Income is desk bills plus IPD gains, one table per
-// portal. Expense is paid expense lines grouped by portal. Overall prints
-// income, then expenses on a new page, then Difference = income + expense.
-// Drawer cash and open stays are omitted. carry is yesterday's IPD ပိုငွေ /
-// လိုငွေ opening rows; they print first under IPD and are not income.
+// portal. Expense is paid expense lines grouped by portal. Overall prints a
+// letterheaded cover with the cashbook table, then income, then expenses on a
+// new page, then Difference = income + expense. Drawer cash and open stays are
+// omitted. carry is yesterday's IPD ပိုငွေ / လိုငွေ opening rows; they print
+// first under IPD and are not income.
 func renderDashboardDailyHTML(hosp *hospitalSettings, move *cashMovement, kind string, carry []ipdPrintCarryRow) string {
 	if hosp == nil {
 		hosp = &hospitalSettings{HospitalName: "Mudita Hospital"}
@@ -736,20 +696,34 @@ func renderDashboardDailyHTML(hosp *hospitalSettings, move *cashMovement, kind s
 	case "expense":
 		title = "Expense"
 		heading = "Expenses Cash Report"
+	case "overall":
+		title = "Software by TAT"
+		heading = "နေ့စဉ် ဝင်ငွေ"
 	}
 	dateLabel := dailyReportDateLabel(move.Date)
 
 	var b strings.Builder
 	b.WriteString("<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>")
 	b.WriteString(html.EscapeString(title))
-	b.WriteString(" ")
-	b.WriteString(html.EscapeString(move.Date))
+	if kind != "overall" {
+		b.WriteString(" ")
+		b.WriteString(html.EscapeString(move.Date))
+	}
 	b.WriteString("</title><style>")
 	b.WriteString(dashboardDailyPrintCSS())
 	b.WriteString("</style></head><body>")
 	b.WriteString(`<div class="a4-sheet">`)
-	writeA4Letterhead(&b, hosp)
-	writeDailyReportTitle(&b, heading, dateLabel)
+	b.WriteString(`<p class="print-credit">Software by TAT</p>`)
+
+	if kind == "overall" {
+		writeDailyOverallCover(&b, hosp, dateLabel, move.IncomeMMK, move.ExpenseMMK)
+		b.WriteString(`<div class="daily-page-break">`)
+		writeDailyReportTitle(&b, heading, dateLabel)
+		writeDailyOpeningBalanceBox(&b)
+	} else {
+		writeA4Letterhead(&b, hosp)
+		writeDailyReportTitle(&b, heading, dateLabel)
+	}
 
 	if showIncome {
 		wrote := writeDailyIncomeTables(&b, desk.Lines, earnedLines, carry)
@@ -761,12 +735,15 @@ func renderDashboardDailyHTML(hosp *hospitalSettings, move *cashMovement, kind s
 				{Label: "Total income", Amount: move.IncomeMMK, Emph: true},
 			})
 		}
+		if kind == "overall" {
+			b.WriteString(`</div>`)
+		}
 	}
 
 	if showExpense {
 		if kind == "overall" {
 			b.WriteString(`<div class="daily-page-break">`)
-			writeDailyReportTitle(&b, "Expenses Cash Report", dateLabel)
+			writeDailyReportTitle(&b, "နေ့စဉ် ထွက်ငွေ", dateLabel)
 		}
 		wrote := writeDailyExpenseTables(&b, move.ExpenseLines)
 		if !wrote {
@@ -787,7 +764,6 @@ func renderDashboardDailyHTML(hosp *hospitalSettings, move *cashMovement, kind s
 		}
 	}
 
-	b.WriteString(`<p class="meta">Printed from Mudita Hospital</p>`)
 	b.WriteString(`</div></body></html>`)
 	return b.String()
 }
@@ -798,6 +774,81 @@ func writeDailyReportTitle(b *strings.Builder, heading, dateLabel string) {
 	b.WriteString(`</p><p class="daily-date">Date: `)
 	b.WriteString(html.EscapeString(dateLabel))
 	b.WriteString(`</p>`)
+}
+
+// writeDailyOverallCover is the overall-print first page: centered logo,
+// address, phone, and date, then the cashbook table.
+func writeDailyOverallCover(b *strings.Builder, hosp *hospitalSettings, dateLabel string, incomeMMK, expenseMMK int64) {
+	b.WriteString(`<div class="daily-cover">`)
+	b.WriteString(`<div class="daily-cover-letterhead">`)
+	if src := receiptLogoDataURI(hosp); src != "" {
+		b.WriteString(`<img class="a4-logo daily-cover-logo" src="`)
+		b.WriteString(src)
+		b.WriteString(`" alt=""/>`)
+	}
+	if hosp.Address != "" {
+		b.WriteString(`<p class="daily-cover-address">`)
+		b.WriteString(html.EscapeString(hosp.Address))
+		b.WriteString(`</p>`)
+	}
+	if phones := hospitalPhones(hosp); phones != "" {
+		b.WriteString(`<p class="daily-cover-phone">Tel: `)
+		b.WriteString(html.EscapeString(phones))
+		b.WriteString(`</p>`)
+	}
+	b.WriteString(`<p class="daily-cover-date">Daily CashBook - `)
+	b.WriteString(html.EscapeString(dateLabel))
+	b.WriteString(`</p></div>`)
+	b.WriteString(`<div class="daily-cover-cashbook">`)
+	writeDailyCashbookTable(b, incomeMMK, expenseMMK)
+	b.WriteString(`</div></div>`)
+}
+
+// writeDailyOpeningBalanceBox is the overall-print handwriting line above
+// income tables. The amount cell is left empty on purpose.
+func writeDailyOpeningBalanceBox(b *strings.Builder) {
+	b.WriteString(`<div class="daily-opening"><span class="daily-opening-label">Opening Balance:</span><span class="daily-opening-box"></span></div>`)
+}
+
+// writeDailyCashbookTable is the overall cover table. Opening Balance,
+// the two ပြန်အင်းငွေ rows, အပ်ငွေ, and လက်ကျန်ငွေ stay blank for
+// handwriting. ထွက်ငွေ prints the signed expense (already negative).
+func writeDailyCashbookTable(b *strings.Builder, incomeMMK, expenseMMK int64) {
+	b.WriteString(`<table class="daily-cashbook">`)
+	writeDailyCashbookBlankRow(b, "Opening Balance", false)
+	writeDailyCashbookAmountRow(b, "ဝင်ငွေ", incomeMMK, false)
+	writeDailyCashbookBlankRow(b, "ပြန်အင်းငွေ", false)
+	writeDailyCashbookBlankRow(b, "ပြန်အင်းငွေ", false)
+	writeDailyCashbookAmountRow(b, "ထွက်ငွေ", expenseMMK, false)
+	writeDailyCashbookBlankRow(b, "အပ်ငွေ", false)
+	writeDailyCashbookBlankRow(b, "လက်ကျန်ငွေ", true)
+	b.WriteString(`</table>`)
+}
+
+func writeDailyCashbookBlankRow(b *strings.Builder, label string, emph bool) {
+	class := ""
+	if emph {
+		class = ` class="emph"`
+	}
+	b.WriteString(`<tr`)
+	b.WriteString(class)
+	b.WriteString(`><td>`)
+	b.WriteString(html.EscapeString(label))
+	b.WriteString(`</td><td class="blank"></td></tr>`)
+}
+
+func writeDailyCashbookAmountRow(b *strings.Builder, label string, amount int64, emph bool) {
+	class := ""
+	if emph {
+		class = ` class="emph"`
+	}
+	b.WriteString(`<tr`)
+	b.WriteString(class)
+	b.WriteString(`><td>`)
+	b.WriteString(html.EscapeString(label))
+	b.WriteString(`</td><td class="num">`)
+	b.WriteString(formatMMK(amount))
+	b.WriteString(` MMK</td></tr>`)
 }
 
 // dailyReportDateLabel turns YYYY-MM-DD into "Oct 30, 2026".
@@ -1126,7 +1177,7 @@ func dashboardDailyPrintCSS() string {
 html{background:#fff;color-scheme:light}
 body{
   margin:0;padding:0;color:#000;background:#fff;
-  font-family:Arial,"Noto Sans Myanmar","Segoe UI",sans-serif;
+  font-family:"Myanmar Text","Noto Sans Myanmar",Pyidaungsu,Arial,"Segoe UI",sans-serif;
   font-size:10pt;line-height:1.4;font-variant-numeric:tabular-nums;
   display:flex;justify-content:center;align-items:flex-start
 }
@@ -1137,8 +1188,11 @@ body{
 .a4-hospital{margin:0;font-size:16pt;font-weight:700;text-transform:uppercase}
 .a4-contact{text-align:right;font-size:9pt;max-width:48%}
 .a4-contact p{margin:0 0 2px}
-.a4-title{text-align:center;font-size:14pt;font-weight:700;margin:12px 0 4px;letter-spacing:.02em}
-.daily-date{text-align:center;font-size:11pt;font-weight:600;margin:0 0 14px}
+.a4-title{text-align:center;font-size:14pt;font-weight:700;margin:12px 0 4px;letter-spacing:.02em;line-height:1.6}
+.daily-date{text-align:center;font-size:11pt;font-weight:600;margin:0 0 14px;line-height:1.45}
+.daily-opening{display:flex;justify-content:flex-end;align-items:center;gap:10px;margin:0 0 14px}
+.daily-opening-label{font-size:11pt;font-weight:700;white-space:nowrap}
+.daily-opening-box{display:inline-block;width:50mm;min-height:9mm;border:1px solid #000;box-sizing:border-box}
 .block{margin:18px 0 0}
 .block h3{
   box-sizing:border-box;margin:0;padding:6px 10px;font-size:11pt;font-weight:700;line-height:1.35;
@@ -1153,12 +1207,26 @@ body{
 .daily-table thead{display:table-header-group}
 .daily-subtotal td{font-weight:700;background:#f7f7f7;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .daily-empty{margin:12px 0;font-size:10.5pt}
-.daily-page-break{page-break-before:always;break-before:page;margin-top:0;padding-top:0}
-.daily-page-break .a4-title{margin-top:0}
+.daily-page-break{page-break-before:always;break-before:page;margin-top:0;padding-top:8mm}
+.daily-page-break .a4-title{margin-top:0;padding-top:4mm;line-height:1.7}
+.daily-cover{min-height:240mm;display:flex;flex-direction:column}
+.daily-cover-letterhead{text-align:center;margin:4mm 0 8mm}
+.daily-cover-logo{display:block;width:34mm;height:auto;margin:0 auto 10px}
+.daily-cover-address{margin:0 0 6px;font-size:13pt;font-weight:600;line-height:1.45;max-width:150mm;margin-left:auto;margin-right:auto}
+.daily-cover-phone{margin:0 0 14px;font-size:13pt;font-weight:600;line-height:1.45}
+.daily-cover-date{margin:0;font-size:16pt;font-weight:700;line-height:1.5}
+.daily-cover-cashbook{flex:1;display:flex;align-items:center;justify-content:center;padding:18mm 0}
+.daily-cover-cashbook .daily-cashbook{margin:0}
 .a4-settle{width:100%;max-width:70mm;margin:18px 0 0 auto;border-collapse:collapse}
 .a4-settle td{padding:3px 0 3px 8px;font-size:10.5pt}
 .a4-settle td:last-child{text-align:right;white-space:nowrap}
 .a4-settle .emph td{font-weight:700;font-size:11.5pt;padding-top:6px;border-top:1px solid #000}
+.daily-cashbook{width:100%;max-width:130mm;margin:18px 0 0 auto;border-collapse:collapse}
+.daily-cashbook td{border:1px solid #000;padding:10px 14px;font-size:13pt;vertical-align:middle;height:14mm}
+.daily-cashbook td:first-child{text-align:left;font-weight:700;white-space:nowrap;width:42%}
+.daily-cashbook td.num,.daily-cashbook td.blank{text-align:right;min-width:70mm}
+.daily-cashbook .emph td{font-weight:700}
+.print-credit{text-align:right;margin:0 0 8px;font-size:9pt;color:#666}
 .meta{color:#666;margin-top:16px;font-size:9pt}
 @media print{
   body{margin:0;display:flex;justify-content:center;align-items:flex-start}

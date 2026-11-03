@@ -4,6 +4,7 @@ import { AlertDialog } from "@/shared/AlertDialog";
 import { BillBtnIcon } from "@/shared/BillBtnIcon";
 import {
   BillHistoryToolbar,
+  billHistoryOrderHintKey,
   type BillHistoryQuery,
   type BillHistoryStatusOption,
   type BillHistorySuggestItem,
@@ -33,6 +34,7 @@ function listOpts(query: BillHistoryQuery) {
     from: query.from || undefined,
     to: query.to || undefined,
     sort: query.sort,
+    order: query.order,
   };
 }
 
@@ -68,6 +70,10 @@ export function OtHistoryModal({
   const [loading, setLoading] = useState(true);
   const [purgeStep, setPurgeStep] = useState<0 | 1 | 2>(0);
   const [purgeError, setPurgeError] = useState<string | null>(null);
+  const [listQuery, setListQuery] = useState<Pick<BillHistoryQuery, "sort" | "order">>({
+    sort: "desc",
+    order: "voucher",
+  });
 
   const statusOptions = useMemo((): BillHistoryStatusOption[] | undefined => {
     if (mode === "history") return undefined;
@@ -83,6 +89,7 @@ export function OtHistoryModal({
       setLoading(true);
       setError(null);
       setSelectedId(null);
+      setListQuery({ sort: query.sort, order: query.order });
       try {
         let list = await listOtCases(query.q, "", listOpts(query));
         if (mode === "purge") {
@@ -105,6 +112,7 @@ export function OtHistoryModal({
         from: filters.from || undefined,
         to: filters.to || undefined,
         sort: filters.sort,
+        order: filters.order,
       });
       if (mode === "purge") {
         list = list.filter(isPurgeableOtCase);
@@ -231,6 +239,7 @@ export function OtHistoryModal({
           loadSuggestions={loadSuggestions}
           onInvalidRange={() => setError(t("billHistoryInvalidRange"))}
           statusOptions={statusOptions}
+          voucherSort
         />
 
         {mode === "purge" ? <p className="hint">{t("billPurgeHint")}</p> : null}
@@ -251,6 +260,7 @@ export function OtHistoryModal({
             id: c.id,
             voucher: c.case_no,
             name: c.patient_name,
+            roomNo: c.ipd_room_no,
             status: c.bill_status ?? c.status,
             printedAt: c.bill_printed_at,
             collectedCash: c.bill_collected_cash,
@@ -273,12 +283,15 @@ export function OtHistoryModal({
           </div>
         ) : null}
 
-        {mode === "history" ? <p className="hint">{t("billHistoryHint")}</p> : null}
+        {mode === "history" ? (
+          <p className="hint">{t(billHistoryOrderHintKey(listQuery))}</p>
+        ) : null}
       </div>
       <AlertDialog message={error ?? ""} onClose={() => setError(null)} />
       {purgeStep > 0 && selectedCase ? (
         <AlertDialog
           tone="warning"
+          icon="trash"
           title={t("delete")}
           identity={`${selectedCase.case_no} · ${selectedCase.patient_name}`}
           message={

@@ -41,6 +41,8 @@ export type OpdBill = {
   void_reason?: string;
   created_at: string;
   updated_at: string;
+  /** Open IPD stay room when this chart is admitted; list responses only. */
+  ipd_room_no?: string;
   lines?: OpdBillLine[];
 };
 
@@ -71,6 +73,8 @@ export type OpdBillWrite = {
   patient_phone: string;
   patient_age_years?: number | null;
   patient_gender: string;
+  /** Chart-only; not stored on the bill or printed. */
+  father_mother_name?: string;
   doctor_id?: number | null;
   doctor_name?: string;
   description: string;
@@ -119,7 +123,7 @@ export async function findOpdItemByCode(code: string): Promise<OpdItem | null> {
 export async function listOpdBills(
   q = "",
   status = "",
-  opts?: { money?: string; from?: string; to?: string; sort?: string },
+  opts?: { money?: string; from?: string; to?: string; sort?: string; order?: string },
 ): Promise<OpdBill[]> {
   const params = new URLSearchParams();
   if (q.trim()) params.set("q", q.trim());
@@ -128,6 +132,7 @@ export async function listOpdBills(
   if (opts?.from?.trim()) params.set("from", opts.from.trim());
   if (opts?.to?.trim()) params.set("to", opts.to.trim());
   if (opts?.sort?.trim()) params.set("sort", opts.sort.trim());
+  if (opts?.order?.trim()) params.set("order", opts.order.trim());
   const qs = params.toString() ? `?${params}` : "";
   const res = await apiFetch<{ bills: OpdBill[] }>(`/api/opd/bills${qs}`);
   return res.bills;

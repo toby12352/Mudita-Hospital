@@ -30,11 +30,16 @@ import {
 } from "@/shared/BillHistoryToolbar";
 import { DatePicker, formatDateDisplay } from "@/shared/DatePicker";
 import { sortByDateAscDesc } from "@/shared/DateSort";
+import { DeskChrome } from "@/shared/DeskChrome";
 import { DialogCloseButton } from "@/shared/DialogCloseButton";
 import { fieldKeyForApiError } from "@/shared/errors";
 import { FieldError, revealField } from "@/shared/FieldError";
 import { FormSection } from "@/shared/FormSection";
 import { useI18n } from "@/shared/i18n";
+import {
+  PatientTimeline,
+  type TimelineVisit,
+} from "@/pages/patients/PatientTimeline";
 
 type HistoryKind = "ipd" | "opd" | "ot" | "pharmacy" | "lab";
 
@@ -45,7 +50,7 @@ type HistoryRow = BillHistoryTableRow & {
   print?: { kind: PatientHistoryBillKind; billId: number; title: string };
 };
 
-type DetailTab = "info" | "history";
+type DetailTab = "info" | "timeline" | "history";
 
 type OpenRecordTarget = {
   view: View;
@@ -63,7 +68,7 @@ function historyStampDay(iso: string): string {
 }
 
 function emptyHistoryQuery(): BillHistoryQuery {
-  return { q: "", money: "", category: "", unit: "", from: "", to: "", sort: "desc" };
+  return { q: "", money: "", category: "", unit: "", from: "", to: "", sort: "desc", order: "date" };
 }
 
 const emptyHistory: PatientHistory = { opd: [], lab: [], pharmacy: [], ot: [], ipd: [] };
@@ -363,6 +368,8 @@ export function PatientsPage({
         collectedCash: row.collected_cash,
         when: row.created_at,
         priceMmk: row.total_mmk,
+        canPrint: true,
+        print: { kind: "lab", billId: row.id, title: row.bill_no },
       });
     }
     return rows;
@@ -717,6 +724,33 @@ export function PatientsPage({
       }
     : undefined;
 
+  const timelineVisits = useMemo((): TimelineVisit[] => {
+    return allHistoryRows.map((row) => {
+      let clickable = false;
+      if (row.openId != null && row.openId > 0 && onOpenRecord && canReadModule) {
+        if (row.kind === "opd") clickable = canReadModule("opd");
+        else if (row.kind === "lab") clickable = canReadModule("lab");
+        else if (row.kind === "ot") clickable = canReadModule("ot");
+        else if (row.kind === "ipd") clickable = canReadModule("ipd");
+        else if (row.kind === "pharmacy") clickable = canReadModule("pharmacy");
+      }
+      return {
+        key: row.key ?? `${row.kind}-${row.id}`,
+        kind: row.kind,
+        when: row.when,
+        voucher: row.voucher,
+        label: row.name && row.name !== "—" ? row.name : "",
+        openId: row.openId,
+        clickable,
+      };
+    });
+  }, [allHistoryRows, canReadModule, onOpenRecord]);
+
+  function openTimelineVisit(visit: TimelineVisit) {
+    const row = allHistoryRows.find((r) => (r.key ?? `${r.kind}-${r.id}`) === visit.key);
+    if (row) openHistoryRecord(row);
+  }
+
   function openDeleteConfirm(p: PatientChart) {
     setDeleteError(null);
     setDeleteStep(1);
@@ -789,7 +823,8 @@ export function PatientsPage({
     : "";
 
   return (
-    <section className="opd-bill-desk opd-bill-desk--history" aria-label={t("patients")}>
+    <DeskChrome>
+      <section className="opd-bill-desk opd-bill-desk--history" aria-label={t("patients")}>
       <div className="opd-bill-desk-main">
         {showForm ? (
           <>
@@ -1026,21 +1061,40 @@ export function PatientsPage({
               </div>
               <DialogCloseButton onClick={backToList} />
             </div>
-            <div className="tabs patient-detail-tabs" role="tablist" aria-label={selected.name}>
+            <div
+              className="desk-maintenance-tabs patient-detail-tabs"
+              role="tablist"
+              aria-label={selected.name}
+            >
               <button
                 type="button"
+                id="patient-chart-tab-info"
                 role="tab"
-                className={`tab${detailTab === "info" ? " active" : ""}`}
+                className={`desk-maintenance-tab${detailTab === "info" ? " active" : ""}`}
                 aria-selected={detailTab === "info"}
+                aria-controls="patient-chart-panel-info"
                 onClick={() => setDetailTab("info")}
               >
                 {t("patientInfo")}
               </button>
               <button
                 type="button"
+                id="patient-chart-tab-timeline"
                 role="tab"
-                className={`tab${detailTab === "history" ? " active" : ""}`}
+                className={`desk-maintenance-tab${detailTab === "timeline" ? " active" : ""}`}
+                aria-selected={detailTab === "timeline"}
+                aria-controls="patient-chart-panel-timeline"
+                onClick={() => setDetailTab("timeline")}
+              >
+                {t("patientTimeline")}
+              </button>
+              <button
+                type="button"
+                id="patient-chart-tab-history"
+                role="tab"
+                className={`desk-maintenance-tab${detailTab === "history" ? " active" : ""}`}
                 aria-selected={detailTab === "history"}
+                aria-controls="patient-chart-panel-history"
                 onClick={() => setDetailTab("history")}
               >
                 {t("history")}
@@ -1052,7 +1106,40 @@ export function PatientsPage({
               </p>
             ) : null}
             {detailTab === "info" ? (
-              <>
+              <div
+                id="patient-chart-panel-info"
+                role="tabpanel"
+                aria-labelledby="patient-chart-tab-info"
+              >
+                <div className="btn-row">
+                  {patientsUpdate ? (
+                    <button
+                      type="button"
+                      className="btn action"
+                      disabled={busy}
+                      onClick={() => openEdit(selected)}
+                    >
+                      <ActionIcon name="edit" />
+                      {t("edit")}
+                    </button>
+                  ) : null}
+                  {canDeleteSelected ? (
+                    <button
+                      type="button"
+                      className="btn action danger"
+                      disabled={busy || deleteBusy}
+                      onClick={() => openDeleteConfirm(selected)}
+                    >
+                      <ActionIcon name="trash" />
+                      {t("delete")}
+                    </button>
+                  ) : null}
+                  {patientsDelete && historyReady && historyHasStay(history) ? (
+                    <p className="hint" style={{ margin: 0, alignSelf: "center" }}>
+                      {t("patientDeleteBlocked")}
+                    </p>
+                  ) : null}
+                </div>
                 <div className="patient-info-detail">
                   <div className="patient-info-sections-row">
                     <section
@@ -1123,38 +1210,29 @@ export function PatientsPage({
                     </div>
                   </div>
                 </div>
-                <div className="btn-row">
-                  {patientsUpdate ? (
-                    <button
-                      type="button"
-                      className="btn action"
-                      disabled={busy}
-                      onClick={() => openEdit(selected)}
-                    >
-                      <ActionIcon name="edit" />
-                      {t("edit")}
-                    </button>
-                  ) : null}
-                  {canDeleteSelected ? (
-                    <button
-                      type="button"
-                      className="btn action danger"
-                      disabled={busy || deleteBusy}
-                      onClick={() => openDeleteConfirm(selected)}
-                    >
-                      <ActionIcon name="trash" />
-                      {t("delete")}
-                    </button>
-                  ) : null}
-                  {patientsDelete && historyReady && historyHasStay(history) ? (
-                    <p className="hint" style={{ margin: 0, alignSelf: "center" }}>
-                      {t("patientDeleteBlocked")}
-                    </p>
-                  ) : null}
-                </div>
-              </>
+              </div>
+            ) : detailTab === "timeline" ? (
+              <div
+                id="patient-chart-panel-timeline"
+                role="tabpanel"
+                aria-labelledby="patient-chart-tab-timeline"
+              >
+                <PatientTimeline
+                  key={selected.id}
+                  patientId={selected.id}
+                  visits={timelineVisits}
+                  visitsReady={historyReady}
+                  canUpdate={patientsUpdate}
+                  onOpenVisit={openTimelineVisit}
+                  onError={setError}
+                />
+              </div>
             ) : (
-              <>
+              <div
+                id="patient-chart-panel-history"
+                role="tabpanel"
+                aria-labelledby="patient-chart-tab-history"
+              >
                 <BillHistoryToolbar
                   key={selected.id}
                   searchPlaceholder={t("billHistorySearchPlaceholder")}
@@ -1219,7 +1297,7 @@ export function PatientsPage({
                     }}
                   />
                 )}
-              </>
+              </div>
             )}
           </>
         ) : null}
@@ -1239,6 +1317,7 @@ export function PatientsPage({
         <AlertDialog
           key={`patient-delete-${deleteTarget.id}-${deleteStep}`}
           tone="warning"
+          icon="trash"
           title={t("delete")}
           identity={deleteTarget.name}
           message={
@@ -1256,5 +1335,6 @@ export function PatientsPage({
         />
       ) : null}
     </section>
+    </DeskChrome>
   );
 }

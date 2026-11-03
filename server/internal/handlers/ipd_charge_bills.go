@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"html"
 	"math"
 	"net/http"
 	"strings"
@@ -41,6 +40,7 @@ type ipdChargeBill struct {
 	CreatedByUserID *int64              `json:"created_by_user_id,omitempty"`
 	CreatedAt       string              `json:"created_at"`
 	UpdatedAt       string              `json:"updated_at"`
+	IpdRoomNo       string              `json:"ipd_room_no,omitempty"`
 	Lines           []ipdChargeBillLine `json:"lines,omitempty"`
 }
 
@@ -125,7 +125,7 @@ func (h *IPD) listChargeBills(w http.ResponseWriter, r *http.Request) {
 	if len(where) > 0 {
 		query += " WHERE " + strings.Join(where, " AND ")
 	}
-	orderSQL, orderErr := billHistoryOrderBy(r, "created_at", "id")
+	orderSQL, orderErr := billHistoryOrderBy(r, "created_at", "id", "bill_no")
 	if orderErr != "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": orderErr})
 		return
@@ -151,6 +151,23 @@ func (h *IPD) listChargeBills(w http.ResponseWriter, r *http.Request) {
 	if err := rows.Err(); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "list failed"})
 		return
+	}
+	ids := make([]*int64, len(out))
+	for i := range out {
+		ids[i] = out[i].PatientID
+	}
+	rooms, err := openStayRoomByPatient(h.DB, collectOptionalPatientIDs(ids))
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "list failed"})
+		return
+	}
+	for i := range out {
+		if out[i].PatientID == nil {
+			continue
+		}
+		if room, ok := rooms[*out[i].PatientID]; ok {
+			out[i].IpdRoomNo = room
+		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"bills": out})
 }
@@ -620,6 +637,14 @@ func (h *IPD) purgeChargeBill(w http.ResponseWriter, r *http.Request, path strin
 	if rejectPurgeStatus(w, status) {
 		return
 	}
+	if err := purgeBillLedgerTx(tx, "ipd", id); err != nil {
+		if err == errLedgerNotBalanced {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "ledger not balanced"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "ledger purge failed"})
+		return
+	}
 	res, err := tx.Exec(`
 		UPDATE ipd_charge_bills SET status = 'deleted', updated_at = datetime('now') WHERE id = ?
 	`, id)
@@ -799,7 +824,8 @@ func (h *IPD) writeChargeBillHTML(w http.ResponseWriter, id int64) {
 	if err != nil || hosp == nil {
 		hosp = &hospitalSettings{HospitalName: "Mudita Hospital"}
 	}
-	page := renderIpdChargeBillHTML(hosp, bill, chargeBillDateLabel(h.DB, bill), chargeBillAdmissionNo(h.DB, bill.AdmissionID))
+	admissionNo, roomNo := chargeBillAdmissionMeta(h.DB, bill.AdmissionID)
+	page := renderIpdChargeBillHTML(hosp, bill, chargeBillDateLabel(h.DB, bill), admissionNo, roomNo)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write([]byte(page))
 }
@@ -1089,15 +1115,18 @@ func chargeBillDateLabel(db *sql.DB, bill ipdChargeBill) string {
 	return receiptDateLabel(bill.CreatedAt, bill.BilledAt, nil)
 }
 
-func chargeBillAdmissionNo(db *sql.DB, admissionID *int64) string {
+func chargeBillAdmissionMeta(db *sql.DB, admissionID *int64) (admissionNo, roomNo string) {
 	if admissionID == nil || *admissionID < 1 {
-		return ""
+		return "", ""
 	}
-	var no string
-	if err := db.QueryRow(`SELECT admission_no FROM ipd_admissions WHERE id = ?`, *admissionID).Scan(&no); err != nil {
-		return ""
+	var no, room string
+	if err := db.QueryRow(
+		`SELECT admission_no, COALESCE(room_no, '') FROM ipd_admissions WHERE id = ?`,
+		*admissionID,
+	).Scan(&no, &room); err != nil {
+		return "", ""
 	}
-	return no
+	return no, room
 }
 
 func chargeBillStatusLine(bill ipdChargeBill) string {
@@ -1116,73 +1145,44 @@ func chargeBillStatusLine(bill ipdChargeBill) string {
 	}
 }
 
-func renderIpdChargeBillHTML(hosp *hospitalSettings, bill ipdChargeBill, dateLabel, admissionNo string) string {
-	if hosp == nil {
-		hosp = &hospitalSettings{HospitalName: "Mudita Hospital"}
+func renderIpdChargeBillHTML(hosp *hospitalSettings, bill ipdChargeBill, dateLabel, admissionNo, roomNo string) string {
+	lines := make([]receiptLine, 0, len(bill.Lines))
+	for _, line := range bill.Lines {
+		lines = append(lines, receiptLine{
+			Description: line.Description,
+			Qty:         line.Qty,
+			LineTotal:   line.LineTotalMMK,
+		})
 	}
-	var b strings.Builder
-	b.WriteString(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>`)
-	b.WriteString(html.EscapeString(bill.BillNo))
-	b.WriteString(`</title><style>`)
-	b.WriteString(a4ReceiptCSS())
-	b.WriteString(`.a4-status{margin-top:14px;font-size:12pt;font-weight:700}`)
-	b.WriteString(`</style></head><body><div class="a4-sheet">`)
-	writeA4Letterhead(&b, hosp)
-	b.WriteString(`<p class="a4-title">IPD CHARGE BILL</p>`)
-	b.WriteString(`<div class="a4-meta"><div class="a4-meta-col"><p class="a4-meta-heading">Patient</p>`)
-	writeA4KV(&b, "Name", bill.PatientName)
-	if bill.PatientAgeYears != nil {
-		writeA4KV(&b, "Age", fmt.Sprintf("%d", *bill.PatientAgeYears))
-	}
-	writeA4KV(&b, "Sex", bill.PatientGender)
-	writeA4KV(&b, "Phone", bill.PatientPhone)
-	b.WriteString(`</div><div class="a4-meta-col"><p class="a4-meta-heading">Bill</p>`)
-	writeA4KV(&b, "Bill No", bill.BillNo)
-	writeA4KV(&b, "Admission No", admissionNo)
-	writeA4KV(&b, "Date", dateLabel)
-	writeA4KV(&b, "Status", chargeBillStatusLine(bill))
-	b.WriteString(`</div></div>`)
-
-	if note := strings.TrimSpace(bill.Description); note != "" {
-		b.WriteString(`<p class="a4-meta-heading">Description</p>`)
-		b.WriteString(`<p>`)
-		b.WriteString(html.EscapeString(note))
-		b.WriteString(`</p>`)
-	}
-
-	if len(bill.Lines) > 0 {
-		b.WriteString(`<table class="a4-items"><thead><tr>`)
-		b.WriteString(`<th>Particular</th><th class="col-qty">Qty</th><th class="col-amt">Fee</th>`)
-		b.WriteString(`</tr></thead><tbody>`)
-		for _, line := range bill.Lines {
-			b.WriteString(`<tr><td>`)
-			b.WriteString(html.EscapeString(line.Description))
-			b.WriteString(`</td><td class="col-qty">`)
-			b.WriteString(fmt.Sprintf("%d", line.Qty))
-			b.WriteString(`</td><td class="col-amt">`)
-			b.WriteString(formatMMK(line.LineTotalMMK))
-			b.WriteString(`</td></tr>`)
-		}
-		b.WriteString(`</tbody></table>`)
-	}
-
 	net := bill.TotalMMK - bill.DiscountMMK
 	if net < 0 {
 		net = 0
 	}
-	b.WriteString(`<table class="a4-settle">`)
-	writeA4SettleRow(&b, "Total", bill.TotalMMK, false)
-	if bill.DiscountMMK != 0 {
-		label := "Discount"
-		if strings.EqualFold(bill.DiscountUnit, "percent") && bill.DiscountValue > 0 {
-			label = fmt.Sprintf("Discount (%d%%)", bill.DiscountValue)
-		}
-		writeA4SettleRow(&b, label, bill.DiscountMMK, false)
+	printedAt := ""
+	if bill.PrintedAt != nil {
+		printedAt = *bill.PrintedAt
 	}
-	writeA4SettleRow(&b, "Net", net, true)
-	b.WriteString(`</table>`)
-	b.WriteString(`<p class="a4-status">`)
-	b.WriteString(html.EscapeString(chargeBillStatusLine(bill)))
-	b.WriteString(`</p></div></body></html>`)
-	return b.String()
+	return renderThermalReceiptHTML(hosp, receiptBill{
+		Title:             "IPD CHARGE BILL",
+		BillNo:            bill.BillNo,
+		Status:            bill.Status,
+		PrintedAt:         printedAt,
+		PatientName:       bill.PatientName,
+		PatientPhone:      bill.PatientPhone,
+		PatientAge:        bill.PatientAgeYears,
+		PatientGender:     bill.PatientGender,
+		AdmissionNo:       strings.TrimSpace(admissionNo),
+		RoomNo:            strings.TrimSpace(roomNo),
+		Note:              bill.Description,
+		DateLabel:         dateLabel,
+		TotalMMK:          bill.TotalMMK,
+		ShowNetSettlement: true,
+		DiscountMMK:       bill.DiscountMMK,
+		DiscountValue:     bill.DiscountValue,
+		DiscountUnit:      bill.DiscountUnit,
+		NetMMK:            net,
+		VoidReason:        bill.VoidReason,
+		StatusLine:        chargeBillStatusLine(bill),
+		Lines:             lines,
+	})
 }

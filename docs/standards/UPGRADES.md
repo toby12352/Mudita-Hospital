@@ -82,7 +82,7 @@ All schema changes go through named migrations in `server/internal/db/migrate.go
 2. **Add columns with defaults.** Prefer `ALTER TABLE … ADD COLUMN … NOT NULL DEFAULT …` so existing rows stay valid. Pattern: migration `013_ot_sale_unit`.
 3. **Backfill in the same migration.** When old values must move into a new column, `UPDATE` them after the `ADD COLUMN` in that script.
 4. **Drop later.** Remove or rebuild a column only after a prior migration has copied data. Use `DisableFK` for table rebuilds; copy every existing row; rely on the foreign-key check already in `applyMigration`.
-5. **Seeds stay insert-if-missing.** `SeedDefaultUsers` creates desk logins only when the username is absent. Do not reload services, doctors, items, stock, or bills on startup.
+5. **Seeds stay insert-if-missing.** `SeedDefaultUsers` creates the admin login only when that username is absent. It does not create or rewrite former desk usernames. Do not reload services, doctors, items, stock, or bills on startup.
 6. **Verify on a populated database.** Before shipping: start the API on a DB that already has rows → insert a service and a pharmacy item → add the new migration → restart → confirm those rows (and their IDs) remain.
 
 Unsafe for an upgrade: `DROP TABLE` without a copy, `DELETE` of catalog or bill rows, replacing `mudita.db` with a fresh or laptop file, or editing an already-shipped migration so hospitals diverge from git.

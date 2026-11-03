@@ -23,6 +23,7 @@ Never send currency as floats. Never camelCase in API JSON.
 - `Pharmacy` — `pharmacy` only
 - `Patients` — `patients` only (charts and visit history)
 - `IPD` — `ipd` only (admit a chart, list stays, edit notes, take deposits, post ward charges)
+- `Lab` — `lab` only (lab billing)
 
 **Permissions** (lowercase keys):
 
@@ -31,16 +32,16 @@ Never send currency as floats. Never camelCase in API JSON.
 - `opd`
 - `ot`
 - `pharmacy`
-- `patients` — Admin and Patients (chart create, edit, and history). OPD, OT, Pharmacy, and IPD do not have this permission. Those desks may still search and open one chart; the patients handler allows that read without letting them create, edit, or open history
+- `patients` — Admin and Patients (chart create, edit, and history). OPD, OT, Pharmacy, IPD, and Lab do not have this permission. Those desks may still search and open one chart; the patients handler allows that read without letting them create, edit, or open history
 - `ipd` — Admin and IPD (admit, list, open one stay, edit notes, deposits, and ward charges while the stay is open). No discharge and no desk-bill charges yet
 
 Source of truth for portal desks: `server/internal/auth/roles.go`. UI gates use the same string keys.
 
 ## Access mode and grants
 
-`users.access_mode` is `portal` or `unified`. The column defaults to `portal`. Existing desk accounts stay on that mode until Admin saves them from Settings → Users. Portal accounts keep the role above and the single desk rail.
+`users.access_mode` is `portal` or `unified`. The column default is still `portal`. Admin is stored as `portal` and passes every check from `users.role`. Every other account is `unified` and is authorized by rows in `user_grants`, not by `users.role`. The role column still holds one of the strings above (a filler for the check constraint). Authorization must not trust it when `access_mode` is `unified`.
 
-Unified accounts are authorized by rows in `user_grants`, not by `users.role`. The role column still holds one of the strings above (a filler for the check constraint). Authorization must not trust it when `access_mode` is `unified`.
+Migration `048_portal_users_to_grants` converts existing non-admin portal rows into unified accounts with that desk's grants, plus `patients.read` so bill chart search still works. It does not delete users, change passwords, or rewrite bills. A non-admin row left on `portal` is denied. New staff accounts are created in Settings and are unified from the start. The only seeded login is `admin`.
 
 Grant keys are `{module}.{action}`:
 
@@ -51,6 +52,7 @@ Grant keys are `{module}.{action}`:
 | `opd` | `read`, `create`, `update`, `delete` |
 | `ot` | `read`, `create`, `update`, `delete` |
 | `pharmacy` | `read`, `create`, `update`, `delete` |
+| `lab` | `read`, `create`, `update`, `delete` |
 
 `settings` and `manage_users` are not grantable. Admin has no grant rows and passes every check.
 
@@ -58,7 +60,7 @@ Grant keys are `{module}.{action}`:
 
 Create is daily work: a chart, bill, payment, admission, deposit, ward charge, or restock quantity. Draft-bill edits stay under Create. Update is master data: prices, fees, drug setup, and stock adjust. Delete is removal or void. Creating a drug or a service is Update. Pharmacy Update covers buy/sell prices and stock adjust. OPD Update covers service fees and doctor fees.
 
-The clinic hides those buttons using the keys from `/api/auth/me`. The server check is the boundary. Portal Pharmacy stock adjust stays denied. Unused-chart delete stays Admin-only; `patients.delete` does not open it.
+The clinic hides those buttons using the keys from `/api/auth/me`. The server check is the boundary. Pharmacy stock adjust follows `pharmacy.update`. Unused-chart delete stays Admin-only; `patients.delete` does not open it.
 
 ## API paths
 
@@ -74,11 +76,16 @@ When adding endpoints, update the API table in the root [README.md](../../README
 | Domain | Pattern |
 |--------|---------|
 | OPD bill | `OPD-000001` (`OPD-%06d`) |
+| Lab bill | `LAB-000001` (`LAB-%06d`) |
+| Pharmacy sale | `PH-000001` (`PH-%06d`) — own counter |
+| Pharmacy return | `RT-000001` (`RT-%06d`) — own counter |
+| Pharmacy transfer to OT | `TO-000001` (`TO-%06d`) — own counter |
+| Pharmacy purchase | `PU-000001` (`PU-%06d`) — own counter |
 | OT case | `OT-000001` |
 | OT bill | `OTB-000001` |
 | IPD admission | `IPD-000001` |
 
-Keep zero-padded numeric suffixes consistent with existing generators in handlers.
+`PH`, `RT`, `TO`, and `PU` each advance their own sequence. Keep zero-padded numeric suffixes consistent with existing generators in handlers.
 
 ## Stock locations (pharmacy / OT)
 

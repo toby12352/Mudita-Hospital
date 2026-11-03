@@ -75,7 +75,7 @@ Navigation is a `View`, not a URL. Implementation status for each row starts at 
 - IPD. `client/src/pages/ipd/`: stays, ledger, charge bills, daily statement preview.
 - Expenses. `client/src/pages/expenses/`. Opened from pharmacy, OPD, OT, and IPD views. Not its own role.
 - Reports. `client/src/pages/reports/ReportsPage.tsx`.
-- Settings. `client/src/pages/settings/`: hospital, doctors, categories, users, backup, training. `SettingsPage.tsx` is a thin shell over those tabs.
+- Settings. `client/src/pages/settings/`: hospital, doctors, categories, users, backup. `SettingsPage.tsx` is a thin shell over those tabs.
 
 `View` values include `home`, `about`, `settings`, `pharmacy`, `pharmacy_billing`, `pharmacy_return`, `pharmacy_purchase`, `pharmacy_transfer`, `opd`, `lab`, `ot`, `patients`, `ipd`, `ipd_bill`, `expense`, `reports`.
 
@@ -108,7 +108,7 @@ There is no `client/src/components/` folder. Reusable UI is under `client/src/sh
 
 Clinic `:root` in `App.css` already has color, radius, overlay, focus, and motion tokens. Examples: `--accent` `#2563EB`, `--ink` `#1f2937`, `--muted` `#667085`, `--placeholder` `#64748b`, `--border` `#d8dee6`, `--danger` `#c62828`, `--checking` `#b8860b`, `--radius-control` `5px` (`6px` on bill desks), `--radius-dialog` `10px`, `--focus-ring` `0 0 0 3px rgba(37, 99, 235, 0.18)`. There is no `--font-*` scale and no `--space-*` scale. Sizes are raw `rem` and `px`. `font-weight: 650` is used. Root `font-size` is 16px. Body line-height is 1.45, and 1.55 in Myanmar.
 
-Bill cart: `--bill-line-row-height: 2.35rem`, `--bill-cart-font: 0.875rem`. The cart body shows about six rows, then scrolls. The desk itself does not scroll with the page.
+Bill cart: `--bill-line-row-height: 2.35rem`, `--bill-cart-font: 0.875rem`. The cart body is locked at six row-heights (empty or full), stacks lines from the top, and scrolls within that pane; a short window may scroll `.opd-bill-desk-main` so totals stay reachable.
 
 Dashboard `:root` in `theme.css`: `--accent` `#1b6bc7`, `--bg` `#f6f6f4`, `--ink` `#1c1c1c`, `--muted` `#6d6d68`, `--border` `rgba(0, 0, 0, 0.06)`, `--card-radius` `16px`, `--warn` `#c47a00`. No `--focus-ring`. Buttons and nav items have no `:focus-visible` recipe. Inputs use `:focus { outline: 2px solid var(--accent) }`. No `prefers-reduced-motion` block. Status dots pulse.
 

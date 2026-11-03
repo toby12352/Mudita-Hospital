@@ -157,10 +157,13 @@ func TestIpdChargeBills(t *testing.T) {
 		t.Fatalf("content type %s", ct)
 	}
 	draftHTML := w.Body.String()
-	for _, want := range []string{"IPD CHARGE BILL", "Particular", "Qty", "Fee", "Dressing", "Daw Fee", "DRAFT", "Description", "Evening redress", "@page{size:A4"} {
+	for _, want := range []string{"IPD CHARGE BILL", "Name", "Qty", "Amt", "Dressing", "Daw Fee", "DRAFT", "Note", "Evening redress", "@page{size:80mm"} {
 		if !strings.Contains(draftHTML, want) {
 			t.Fatalf("draft slip missing %q", want)
 		}
+	}
+	if strings.Contains(draftHTML, "@page{size:A4") || strings.Contains(draftHTML, "PAID — CASH") || strings.Contains(draftHTML, "PRINTED — NOT PAID") {
+		t.Fatalf("draft slip kept A4 or cash footer: %s", draftHTML)
 	}
 	for _, absent := range []string{"Charged to IPD", "Deposited Fee", "IPD Daily Bill", "To Pay"} {
 		if strings.Contains(draftHTML, absent) {
@@ -236,7 +239,7 @@ func TestIpdChargeBills(t *testing.T) {
 	w = doJSON(h, http.MethodGet, "/api/ipd/charge-bills/"+strconv.FormatInt(bill.ID, 10)+"/print", ipdTok, "")
 	mustCode(t, w, http.StatusOK)
 	chargedHTML := w.Body.String()
-	for _, want := range []string{"Charged to IPD", "Particular", "Qty", "Fee", stay.AdmissionNo, bill.BillNo} {
+	for _, want := range []string{"Charged to IPD", "Name", "Qty", "Amt", stay.AdmissionNo, bill.BillNo, "@page{size:80mm"} {
 		if !strings.Contains(chargedHTML, want) {
 			t.Fatalf("charged slip missing %q", want)
 		}
@@ -452,6 +455,144 @@ func assertKeptDeposit(t *testing.T, sqlDB *sql.DB, admissionID int64) {
 	}
 	if kind != "deposit" || amount != 5000 || note != "keep" {
 		t.Fatalf("kept ledger %s %d %s", kind, amount, note)
+	}
+}
+
+// Admin delete of a voided charged IPD bill clears the charge+reversal pair from
+// ipd_ledger (same as OPD/OT/Pharmacy/Lab). The bill row stays deleted on history.
+// Bills already deleted before this fix are omitted from the stay JSON only.
+func TestIpdChargeBillPurgeClearsLedger(t *testing.T) {
+	sqlDB := openTestDB(t)
+	_, adminTok := insertSession(t, sqlDB, "Admin", 0)
+	_, ipdTok := insertSession(t, sqlDB, "IPD", 0)
+	h := &IPD{DB: sqlDB}
+	charts := &Patients{DB: sqlDB}
+
+	w := doJSON(charts, http.MethodPost, "/api/patients", adminTok, `{"name":"Daw Purge","phone":"09999"}`)
+	mustCode(t, w, http.StatusCreated)
+	chart := decodePatient(t, w)
+	w = doJSON(h, http.MethodPost, "/api/ipd/admissions", ipdTok, `{"patient_id":`+strconv.FormatInt(chart.ID, 10)+`}`)
+	mustCode(t, w, http.StatusCreated)
+	stay := decodeAdmission(t, w)
+
+	body := `{
+		"patient_id":` + strconv.FormatInt(chart.ID, 10) + `,
+		"patient_name":"Daw Purge",
+		"lines":[{"description":"Dressing","qty":1,"unit_price_mmk":3000}]
+	}`
+	w = doJSON(h, http.MethodPost, "/api/ipd/charge-bills", ipdTok, body)
+	mustCode(t, w, http.StatusCreated)
+	bill := decodeChargeBill(t, w)
+	w = doJSON(h, http.MethodPost, "/api/ipd/charge-bills/"+strconv.FormatInt(bill.ID, 10)+"/charge", ipdTok, "")
+	mustCode(t, w, http.StatusOK)
+	w = doJSON(h, http.MethodPost, "/api/ipd/charge-bills/"+strconv.FormatInt(bill.ID, 10)+"/void", ipdTok, `{"reason":"wrong"}`)
+	mustCode(t, w, http.StatusOK)
+
+	var ledgerBefore int
+	if err := sqlDB.QueryRow(`
+		SELECT COUNT(1) FROM ipd_ledger WHERE source = 'ipd' AND source_id = ?
+	`, bill.ID).Scan(&ledgerBefore); err != nil {
+		t.Fatal(err)
+	}
+	if ledgerBefore < 2 {
+		t.Fatalf("expected charge+reversal, got %d", ledgerBefore)
+	}
+	var stayNetBefore int64
+	if err := sqlDB.QueryRow(`SELECT COALESCE(SUM(amount_mmk), 0) FROM ipd_ledger WHERE admission_id = ?`, stay.ID).Scan(&stayNetBefore); err != nil {
+		t.Fatal(err)
+	}
+
+	w = doJSON(h, http.MethodGet, "/api/ipd/admissions/"+strconv.FormatInt(stay.ID, 10), ipdTok, "")
+	mustCode(t, w, http.StatusOK)
+	voidedStay := decodeAdmission(t, w)
+	var voidCharge, voidReversal int
+	for _, line := range voidedStay.Ledger {
+		if line.Source == "ipd" && line.SourceID != nil && *line.SourceID == bill.ID {
+			if line.Kind == "charge" {
+				voidCharge++
+			}
+			if line.Kind == "reversal" {
+				voidReversal++
+			}
+		}
+	}
+	if voidCharge != 1 || voidReversal != 1 {
+		t.Fatalf("voided stay still shows charge=%d reversal=%d", voidCharge, voidReversal)
+	}
+
+	w = doJSON(h, http.MethodDelete, "/api/ipd/charge-bills/"+strconv.FormatInt(bill.ID, 10), adminTok, "")
+	mustCode(t, w, http.StatusOK)
+
+	var ledgerAfter int
+	if err := sqlDB.QueryRow(`
+		SELECT COUNT(1) FROM ipd_ledger WHERE source = 'ipd' AND source_id = ?
+	`, bill.ID).Scan(&ledgerAfter); err != nil {
+		t.Fatal(err)
+	}
+	if ledgerAfter != 0 {
+		t.Fatalf("ledger rows left %d", ledgerAfter)
+	}
+	var stayNetAfter int64
+	if err := sqlDB.QueryRow(`SELECT COALESCE(SUM(amount_mmk), 0) FROM ipd_ledger WHERE admission_id = ?`, stay.ID).Scan(&stayNetAfter); err != nil {
+		t.Fatal(err)
+	}
+	if stayNetAfter != stayNetBefore {
+		t.Fatalf("stay net %d -> %d", stayNetBefore, stayNetAfter)
+	}
+
+	w = doJSON(h, http.MethodGet, "/api/ipd/charge-bills?status=deleted", adminTok, "")
+	mustCode(t, w, http.StatusOK)
+	listed := decodeChargeBillList(t, w)
+	found := false
+	for _, b := range listed {
+		if b.ID == bill.ID && b.Status == "deleted" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("deleted bill missing from history %+v", listed)
+	}
+
+	// Already-deleted bills still have leftover charge+reversal rows. The stay
+	// JSON omits them; balance_mmk still includes the full sum (net zero).
+	legacyRes, err := sqlDB.Exec(`
+		INSERT INTO ipd_charge_bills (
+			bill_no, patient_id, patient_name, status, description, total_mmk, admission_id, created_at, updated_at
+		) VALUES ('IPB-LEGACY-1', ?, 'Daw Purge', 'deleted', 'Old charge', 2000, ?, datetime('now'), datetime('now'))
+	`, chart.ID, stay.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacyID, _ := legacyRes.LastInsertId()
+	if _, err := sqlDB.Exec(`
+		INSERT INTO ipd_ledger (admission_id, kind, amount_mmk, source, source_id, note, created_at) VALUES
+			(?, 'charge', -2000, 'ipd', ?, 'IPB-LEGACY-1', datetime('now')),
+			(?, 'reversal', 2000, 'ipd', ?, 'IPB-LEGACY-1', datetime('now'))
+	`, stay.ID, legacyID, stay.ID, legacyID); err != nil {
+		t.Fatal(err)
+	}
+	var dbSum int64
+	if err := sqlDB.QueryRow(`SELECT COALESCE(SUM(amount_mmk), 0) FROM ipd_ledger WHERE admission_id = ?`, stay.ID).Scan(&dbSum); err != nil {
+		t.Fatal(err)
+	}
+
+	w = doJSON(h, http.MethodGet, "/api/ipd/admissions/"+strconv.FormatInt(stay.ID, 10), ipdTok, "")
+	mustCode(t, w, http.StatusOK)
+	got := decodeAdmission(t, w)
+	if got.BalanceMMK == nil || *got.BalanceMMK != dbSum {
+		t.Fatalf("balance %v want %d", got.BalanceMMK, dbSum)
+	}
+	for _, line := range got.Ledger {
+		if line.Source == "ipd" && line.SourceID != nil && *line.SourceID == legacyID {
+			t.Fatalf("deleted legacy line still in stay JSON %+v", line)
+		}
+	}
+
+	w = doJSON(h, http.MethodGet, "/api/ipd/admissions/"+strconv.FormatInt(stay.ID, 10)+"/statement", ipdTok, "")
+	mustCode(t, w, http.StatusOK)
+	if !strings.Contains(w.Body.String(), "IPB-LEGACY-1") {
+		t.Fatalf("statement dropped legacy deleted lines: %s", w.Body.String())
 	}
 }
 

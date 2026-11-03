@@ -15,7 +15,7 @@ import {
   type LabDoctor,
   type LabService,
 } from "@/features/lab/api";
-import type { PatientChart } from "@/features/patients/api";
+import { getPatient, type PatientChart } from "@/features/patients/api";
 import { useOpenAdmission } from "@/features/patients/useOpenAdmission";
 import {
   discountFieldsFromBill,
@@ -25,10 +25,11 @@ import {
 import { AlertDialog } from "@/shared/AlertDialog";
 import { formatUtcAsLocal, nowDatetimeLocal } from "@/shared/BillDateField";
 import { draftHasContent } from "@/shared/billDraft";
-import { useRegisterBillLeaveGuard } from "@/shared/billLeaveGuard";
+import { useDraftBaseline, useRegisterBillLeaveGuard } from "@/shared/billLeaveGuard";
 import { userMessage } from "@/shared/errors";
 import { getStoredUser } from "@/shared/auth";
 import { useClinicActions } from "@/app/clinicActions";
+import { DeskChrome } from "@/shared/DeskChrome";
 import { useI18n } from "@/shared/i18n";
 import { useBillActionFeedback, useBillActionPending } from "@/shared/useActionLock";
 import { VoidBillConfirm } from "@/shared/VoidBillConfirm";
@@ -69,6 +70,7 @@ export function LabPage({
   const [linkedChartId, setLinkedChartId] = useState<number | null>(null);
   const [patientName, setPatientName] = useState("");
   const patientNameRef = useRef<HTMLInputElement>(null);
+  const [patientFatherMotherName, setPatientFatherMotherName] = useState("");
   const [patientPhone, setPatientPhone] = useState("");
   const [patientAge, setPatientAge] = useState("");
   const [patientGender, setPatientGender] = useState("");
@@ -88,6 +90,7 @@ export function LabPage({
   const canVoid =
     billId != null && billStatus !== "void" && billStatus !== "deleted";
   const openAdmissionId = useOpenAdmission(linkedChartId);
+  const markCleanRef = useRef<() => void>(() => {});
 
   function openVoidConfirm() {
     if (!canVoid) return;
@@ -125,6 +128,7 @@ export function LabPage({
     setPatientId(null);
     setLinkedChartId(null);
     setPatientName("");
+    setPatientFatherMotherName("");
     setPatientPhone("");
     setPatientAge("");
     setPatientGender("");
@@ -137,6 +141,7 @@ export function LabPage({
     setCreatedAt(null);
     setBilledAtLocal(nowDatetimeLocal());
     setError(null);
+    markCleanRef.current();
   }
 
   async function openBill(id: number) {
@@ -156,6 +161,15 @@ export function LabPage({
       setPatientPhone(b.patient_phone);
       setPatientAge(b.patient_age_years != null ? String(b.patient_age_years) : "");
       setPatientGender(b.patient_gender);
+      setPatientFatherMotherName("");
+      if (b.patient_id != null) {
+        try {
+          const chart = await getPatient(b.patient_id);
+          setPatientFatherMotherName(chart.father_mother_name || "");
+        } catch {
+          /* chart optional for display */
+        }
+      }
       setDoctorId(b.doctor_id != null ? String(b.doctor_id) : "");
       setDoctorName(b.doctor_name || "");
       setDescription(b.description);
@@ -169,6 +183,7 @@ export function LabPage({
       const discount = discountFieldsFromBill(b.discount_value, b.discount_unit);
       setDiscountValue(discount.value);
       setDiscountUnit(discount.unit);
+      markCleanRef.current();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Open failed");
     } finally {
@@ -188,6 +203,7 @@ export function LabPage({
       patient_phone: patientPhone.trim(),
       patient_age_years: age != null && Number.isFinite(age) ? age : null,
       patient_gender: patientGender.trim(),
+      father_mother_name: patientFatherMotherName.trim(),
       doctor_id: doctorId ? Number(doctorId) : null,
       doctor_name: doctorName.trim(),
       description: description.trim(),
@@ -212,6 +228,10 @@ export function LabPage({
       }),
     };
   }
+
+  const formKey = JSON.stringify(buildBody());
+  const { dirty, markClean } = useDraftBaseline(formKey);
+  markCleanRef.current = markClean;
 
   function applySavedBill(b: {
     id: number;
@@ -255,6 +275,7 @@ export function LabPage({
     setLinkedChartId(p.id);
     setPatientId(p.id);
     setPatientName(p.name);
+    setPatientFatherMotherName(p.father_mother_name || "");
     setPatientPhone(p.phone || "");
     setPatientAge(p.age_years != null ? String(p.age_years) : "");
     setPatientGender(p.gender || "");
@@ -264,6 +285,7 @@ export function LabPage({
     setLinkedChartId(null);
     setPatientId(null);
     setPatientName("");
+    setPatientFatherMotherName("");
     setPatientPhone("");
     setPatientAge("");
     setPatientGender("");
@@ -314,7 +336,7 @@ export function LabPage({
   async function saveDraft(): Promise<number | null> {
     if (
       !draftHasContent({
-        texts: [patientName, patientPhone, patientAge, patientGender, doctorName, description],
+        texts: [patientName, patientFatherMotherName, patientPhone, patientAge, patientGender, doctorName, description],
         flags: [Boolean(doctorId), linkedChartId != null],
         lineCount: lines.length,
         discountValue,
@@ -326,19 +348,23 @@ export function LabPage({
     const body = buildBody();
     const b = billId ? await updateLabBill(billId, body) : await createLabBill(body);
     applySavedBill(b);
+    markClean();
     return b.id;
   }
 
-  useRegisterBillLeaveGuard(lines.length > 0 && billId == null, async () => {
-    try {
-      setError(null);
-      const id = await saveDraft();
-      return id != null;
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Save failed");
-      return false;
-    }
-  });
+  useRegisterBillLeaveGuard(
+    (lines.length > 0 && billId == null) || (billId != null && isDraft && dirty),
+    async () => {
+      try {
+        setError(null);
+        const id = await saveDraft();
+        return id != null;
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Save failed");
+        return false;
+      }
+    },
+  );
 
   async function doConfirm() {
     if (!isDraft) return;
@@ -624,7 +650,8 @@ export function LabPage({
 
   return (
     <>
-      <LabBillForm
+      <DeskChrome>
+        <LabBillForm
         billId={billId}
         billNo={billNo}
         billStatus={billStatus}
@@ -634,6 +661,7 @@ export function LabPage({
         onPaymentType={setPaymentType}
         patientId={patientId}
         patientName={patientName}
+        patientFatherMotherName={patientFatherMotherName}
         patientPhone={patientPhone}
         patientAge={patientAge}
         patientGender={patientGender}
@@ -660,6 +688,7 @@ export function LabPage({
         onPatientName={onPatientName}
         onPickPatient={pickPatient}
         onClearPatient={clearLinkedPatient}
+        onPatientFatherMotherName={setPatientFatherMotherName}
         onPatientPhone={setPatientPhone}
         onPatientAge={setPatientAge}
         onPatientGender={setPatientGender}
@@ -686,7 +715,8 @@ export function LabPage({
         onPurge={billPurge ? () => setDialog("purge") : undefined}
         onCancel={doCancel}
         onNewBill={doNewBill}
-      />
+        />
+      </DeskChrome>
       {dialog ? (
         <LabBillListDialog
           mode={dialog}

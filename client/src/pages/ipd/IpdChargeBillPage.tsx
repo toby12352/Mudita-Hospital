@@ -35,7 +35,8 @@ import {
   type DiscountUnit,
 } from "@/shared/discount";
 import { draftHasContent } from "@/shared/billDraft";
-import { useRegisterBillLeaveGuard } from "@/shared/billLeaveGuard";
+import { useDraftBaseline, useRegisterBillLeaveGuard } from "@/shared/billLeaveGuard";
+import { DeskChrome } from "@/shared/DeskChrome";
 import { useI18n } from "@/shared/i18n";
 import { useBillActionFeedback, useBillActionPending } from "@/shared/useActionLock";
 import { VoidBillConfirm } from "@/shared/VoidBillConfirm";
@@ -186,7 +187,7 @@ function IpdFreeTextEntry({
 }
 
 /** Free-text charge slip posted onto the chart's open stay. Not desk cash. */
-export function IpdChargeBillPage() {
+export function IpdChargeBillPage({ openRecordId }: { openRecordId?: number } = {}) {
   const { t } = useI18n();
   const { billPurge } = useClinicActions();
   const lineSeq = useRef(0);
@@ -204,6 +205,7 @@ export function IpdChargeBillPage() {
   const [printedAt, setPrintedAt] = useState<string | null>(null);
   const [patientId, setPatientId] = useState<number | null>(null);
   const [patientName, setPatientName] = useState("");
+  const [patientFatherMotherName, setPatientFatherMotherName] = useState("");
   const [patientPhone, setPatientPhone] = useState("");
   const [patientAge, setPatientAge] = useState("");
   const [patientGender, setPatientGender] = useState("");
@@ -223,6 +225,7 @@ export function IpdChargeBillPage() {
   const canVoid =
     billId != null && billStatus !== "void" && billStatus !== "deleted";
   const identityEditable = isDraft && patientId == null;
+  const markCleanRef = useRef<() => void>(() => {});
 
   function openVoidConfirm() {
     if (!canVoid) return;
@@ -295,6 +298,7 @@ export function IpdChargeBillPage() {
     setBillStatus("draft");
     setPatientId(null);
     setPatientName("");
+    setPatientFatherMotherName("");
     setPatientPhone("");
     setPatientAge("");
     setPatientGender("");
@@ -305,6 +309,7 @@ export function IpdChargeBillPage() {
     setCreatedAt(null);
     setBilledAtLocal(nowDatetimeLocal());
     setError(null);
+    markCleanRef.current();
   }
 
   function applySavedBill(b: IpdChargeBill) {
@@ -317,6 +322,7 @@ export function IpdChargeBillPage() {
     setPatientPhone(b.patient_phone ?? "");
     setPatientAge(b.patient_age_years != null ? String(b.patient_age_years) : "");
     setPatientGender(b.patient_gender ?? "");
+    setPatientFatherMotherName("");
     setDescription(b.description ?? "");
     setCreatedAt(b.created_at);
     setLines(linesFromBill(b.lines));
@@ -331,6 +337,15 @@ export function IpdChargeBillPage() {
     try {
       const b = await getIpdChargeBill(id);
       applySavedBill(b);
+      if (b.patient_id != null) {
+        try {
+          const chart = await getPatient(b.patient_id);
+          setPatientFatherMotherName(chart.father_mother_name || "");
+        } catch {
+          /* chart optional for display */
+        }
+      }
+      markCleanRef.current();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Open failed");
     } finally {
@@ -338,9 +353,15 @@ export function IpdChargeBillPage() {
     }
   }
 
+  useEffect(() => {
+    if (openRecordId != null) void openBill(openRecordId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- open once on mount from IPD ledger
+  }, []);
+
   function pickPatient(p: PatientChart) {
     setPatientId(p.id);
     setPatientName(p.name);
+    setPatientFatherMotherName(p.father_mother_name || "");
     setPatientPhone(p.phone || "");
     setPatientAge(p.age_years != null ? String(p.age_years) : "");
     setPatientGender(p.gender || "");
@@ -350,6 +371,7 @@ export function IpdChargeBillPage() {
   function clearPatient() {
     setPatientId(null);
     setPatientName("");
+    setPatientFatherMotherName("");
     setPatientPhone("");
     setPatientAge("");
     setPatientGender("");
@@ -402,10 +424,14 @@ export function IpdChargeBillPage() {
     };
   }
 
+  const formKey = JSON.stringify(buildBody());
+  const { dirty, markClean } = useDraftBaseline(formKey);
+  markCleanRef.current = markClean;
+
   async function saveDraft(): Promise<number | null> {
     if (
       !draftHasContent({
-        texts: [patientName, patientPhone, patientAge, patientGender, description],
+        texts: [patientName, patientFatherMotherName, patientPhone, patientAge, patientGender, description],
         flags: [patientId != null],
         lineCount: lines.length,
         discountValue,
@@ -422,19 +448,23 @@ export function IpdChargeBillPage() {
     const body = buildBody();
     const b = billId ? await updateIpdChargeBill(billId, body) : await createIpdChargeBill(body);
     applySavedBill(b);
+    markClean();
     return b.id;
   }
 
-  useRegisterBillLeaveGuard(lines.length > 0 && billId == null, async () => {
-    try {
-      setError(null);
-      const id = await saveDraft();
-      return id != null;
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Save failed");
-      return false;
-    }
-  });
+  useRegisterBillLeaveGuard(
+    (lines.length > 0 && billId == null) || (billId != null && isDraft && dirty),
+    async () => {
+      try {
+        setError(null);
+        const id = await saveDraft();
+        return id != null;
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Save failed");
+        return false;
+      }
+    },
+  );
 
   async function doConfirm() {
     if (!isDraft) return;
@@ -700,7 +730,8 @@ export function IpdChargeBillPage() {
 
   return (
     <>
-      <section className="opd-bill-desk">
+      <DeskChrome>
+        <section className="opd-bill-desk">
         <div className="opd-bill-desk-main">
           <h2 className="opd-bill-desk-title">{t("ipdBillTitle")}</h2>
 
@@ -735,13 +766,13 @@ export function IpdChargeBillPage() {
                 )}
               </div>
               <label className="opd-bill-field">
-                <span className="opd-bill-label">{t("phone")}</span>
+                <span className="opd-bill-label">{t("fatherMotherName")}</span>
                 <input
                   className="opd-bill-input"
-                  value={patientPhone}
+                  value={patientFatherMotherName}
                   disabled={!identityEditable}
-                  aria-label={t("phone")}
-                  onChange={(e) => setPatientPhone(e.target.value)}
+                  aria-label={t("fatherMotherName")}
+                  onChange={(e) => setPatientFatherMotherName(e.target.value)}
                 />
               </label>
               <label className="opd-bill-field">
@@ -758,21 +789,31 @@ export function IpdChargeBillPage() {
                   <span className="opd-bill-unit">{t("ageYearsShort")}</span>
                 </span>
               </label>
-              <label className="opd-bill-field">
+              <div className="opd-bill-field">
                 <span className="opd-bill-label">{t("gender")}</span>
-                <select
-                  className="opd-bill-input"
-                  value={patientGender}
-                  disabled={!identityEditable}
-                  aria-label={t("gender")}
-                  onChange={(e) => setPatientGender(e.target.value)}
-                >
-                  <option value="">—</option>
-                  <option value="M">{t("genderM")}</option>
-                  <option value="F">{t("genderF")}</option>
-                  <option value="Other">{t("genderOther")}</option>
-                </select>
-              </label>
+                <div className="opd-bill-gender-phone">
+                  <select
+                    className="opd-bill-input"
+                    value={patientGender}
+                    disabled={!identityEditable}
+                    aria-label={t("gender")}
+                    onChange={(e) => setPatientGender(e.target.value)}
+                  >
+                    <option value="">—</option>
+                    <option value="M">{t("genderM")}</option>
+                    <option value="F">{t("genderF")}</option>
+                    <option value="Other">{t("genderOther")}</option>
+                  </select>
+                  <span className="opd-bill-label">{t("phone")}</span>
+                  <input
+                    className="opd-bill-input"
+                    value={patientPhone}
+                    disabled={!identityEditable}
+                    aria-label={t("phone")}
+                    onChange={(e) => setPatientPhone(e.target.value)}
+                  />
+                </div>
+              </div>
               <label className="opd-bill-field">
                 <span className="opd-bill-label">{t("ipdDescription")}</span>
                 <input
@@ -852,9 +893,6 @@ export function IpdChargeBillPage() {
 
           <div className="opd-bill-footer">
             <div className="opd-bill-footer-left">
-              <span className="opd-bill-service-count">
-                {t("serviceCount")}: {lines.length}
-              </span>
               {!billId ? <span className="opd-bill-new-badge">{t("newBadge")}</span> : null}
             </div>
             <BillTotals
@@ -875,6 +913,7 @@ export function IpdChargeBillPage() {
             <BillChargeToIpdButton
               busy={busy}
               icon="transfer"
+              accent
               pending={pending && pendingAction === "chargeIpd"}
               success={isOk("chargeIpd")}
               fail={isErr("chargeIpd")}
@@ -957,6 +996,7 @@ export function IpdChargeBillPage() {
 
         <AlertDialog message={error ?? ""} onClose={() => setError(null)} />
       </section>
+      </DeskChrome>
 
       {dialog ? (
         <IpdChargeBillListDialog

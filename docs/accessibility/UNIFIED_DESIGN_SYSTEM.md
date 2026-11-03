@@ -105,9 +105,23 @@ Suspected failures, not yet measured with a contrast tool. The chat that touches
 - Dashboard `--border` `rgba(0, 0, 0, 0.06)` as an input or button boundary.
 - Muted secondary text on a panel that is not pure white.
 
-Clinic `--placeholder` `#64748b` and `--muted` `#667085` are close to the 4.5:1 line. Measure them. Do not lighten them.
+Clinic `--placeholder` `#64748b` and `--muted` `#667085` are close to the 4.5:1 line. Measure them. Do not lighten them. Form field labels and bill labels use `--ink`, not `--muted`. Supporting text (`.hint`, `.form-section-desc`, eyebrows) may stay on `--muted`.
 
-Disabled buttons stay at opacity 0.5, matching the clinic rule. Disabled fields stay at opacity 1, with muted text and fill `#f8fafc`. Do not gray out a field by fading the whole control.
+### Form labels and grouping (clinic + dashboard, 2026-11-02)
+
+- `.field` labels: **14px / 600 / `--ink`**, line-height 1.45. Input / select / textarea text stays **17px / 400 / `--ink`**.
+- `.form-section-title`: **18px / 600 / 1.35 / `--ink`**, sentence case. No uppercase. No letter-spacing.
+- `.form-section + .form-section`: **24px** space and a **2px** top rule using `--button-border` (`#4b5563`).
+- `.opd-bill-label` and `.packing-rel-head`: **14px / 600 / `--ink`**.
+- Disabled field and bill values: text **`#374151`**, fill `#f8fafc`, opacity 1. Do not gray out a field by fading the whole control.
+
+### Outline button edges (clinic, 2026-11-02)
+
+Measured on the running login screen at `http://localhost:1420` before the change: inactive language and Server IP used `1px solid #d8dee6` on white (~**1.35:1**). Danger outline used `--danger-border` rgba at ~**1.8:1**. Label ink `#1f2937` already passed 4.5:1.
+
+After: outline buttons use `--button-border: #4b5563` at **2px** (~**5.9:1** on white). Danger outline and dialog close use **2px solid `#c62828`**. Soft-on / open Filter uses **2px solid `#2563EB`**. Detail Edit / Delete / Restock / View are **44px** and **16px / 600**, placed under the title. Toolbar Search / Filter stay **32px** tall with **16px** labels. Bill rail non-accent tools are **40px** min-height and **16px** labels. Divider `--border` on tables and panels is unchanged. No WCAG conformance claim.
+
+Disabled buttons stay at opacity 0.5, matching the clinic rule. Disabled fields stay at opacity 1, with text `#374151` and fill `#f8fafc`. Do not gray out a field by fading the whole control.
 
 ## Spacing, radius, and elevation
 
@@ -124,7 +138,7 @@ Shadows stay the single clinic `--overlay-shadow` on overlays. No glass, no `bac
 
 ## Controls
 
-Primary form fields and the primary commit button on a form: **min-height 44px**. Input text 17px. Button text 16px and weight 600. Labels are visible elements, not placeholders. A label stays on one line in both English and Myanmar. The label column sizes to the text. Do not clip either locale.
+Primary form fields and the primary commit button on a form: **min-height 44px**. Input text 17px. Button text 16px and weight 600. Labels are visible elements, not placeholders: **14px / 600 / `--ink`**. A label stays on one line in both English and Myanmar. The label column sizes to the text. Do not clip either locale.
 
 Icon-only buttons outside a dense grid: **44×44px**, with an accessible name.
 

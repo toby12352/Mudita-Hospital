@@ -13,6 +13,8 @@
   --muted: #667085;
   --border: #d8dee6;
   --border-strong: #c5ccd6;
+  /* Outline buttons only — ~5.9:1 on white. Tables and panels keep --border. */
+  --button-border: #4b5563;
   --field-border: rgba(31, 41, 55, 0.5);
   --ok: #2e7d32;
   --ok-glow: transparent;
@@ -311,7 +313,7 @@ body,
 .desk-header-actions .lang-switch .btn {
   color: var(--ink);
   background: var(--bg-panel);
-  border-color: var(--border);
+  border: 2px solid var(--button-border);
 }
 
 .desk-header-actions .lang-switch .btn {
@@ -714,51 +716,246 @@ body,
   opacity: 0.92;
 }
 
-.desk-welcome,
+.desk-welcome {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: 0;
+  text-align: center;
+  padding: 1.5rem 1rem;
+  box-sizing: border-box;
+}
+
+.desk-welcome-stage {
+  position: relative;
+  width: 100%;
+  max-width: 36rem;
+  --sun-lift: 0;
+  --sun-opacity: 0;
+  --moon-lift: 0;
+  --moon-opacity: 0;
+}
+
+.desk-welcome-sky {
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  width: 18rem;
+  height: 7.5rem;
+  margin-left: -9rem;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.desk-welcome-orb {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 18rem;
+  height: 6.75rem;
+  margin-left: -9rem;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  transform: translateY(calc((1 - var(--orb-lift, 0)) * 55%));
+  will-change: transform, opacity;
+}
+
+.desk-welcome-orb--sun {
+  --orb-lift: var(--sun-lift);
+  opacity: var(--sun-opacity);
+}
+
+.desk-welcome-orb--moon {
+  --orb-lift: var(--moon-lift);
+  opacity: var(--moon-opacity);
+}
+
+.desk-welcome-lottie {
+  width: 18rem;
+  height: 6.75rem;
+  display: block;
+  line-height: 0;
+}
+
+.desk-welcome-lottie svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.desk-welcome-greeting {
+  position: relative;
+  z-index: 1;
+  margin: 0;
+  max-width: 36rem;
+  font-size: 40px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+html[data-locale="my"] .desk-welcome-greeting {
+  line-height: 1.55;
+}
+
+.desk-welcome-clock {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 400;
+  line-height: 1.35;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
 .desk-about {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  max-width: 40rem;
+  width: 100%;
+  max-width: 52rem;
+  margin-inline: auto;
+  margin-block: auto;
 }
 
-.desk-welcome-title,
+.desk-about-kicker {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--accent-pressed);
+}
+
 .desk-about-title {
   margin: 0;
   font-size: 28px;
   font-weight: 600;
   line-height: 1.25;
-}
-
-.desk-about-list {
-  margin: 0;
-  padding-left: 1.25rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
   color: var(--ink);
-  line-height: 1.45;
 }
 
-.desk-about-credit {
-  margin-top: 0.75rem;
-  padding-top: 0.85rem;
-  border-top: 1px solid var(--border);
+.desk-about-intro {
+  margin: 0;
+  max-width: 40rem;
+  font-size: 17px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+html[data-locale="my"] .desk-about-intro {
+  line-height: 1.55;
+}
+
+.desk-about-section {
+  margin: 0.5rem 0 0;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--ink);
+}
+
+.desk-about-cards {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.65rem;
+}
+
+@media (min-width: 720px) {
+  .desk-about-cards {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.desk-about-card {
+  margin: 0;
+  padding: 14px 16px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
+  min-width: 0;
+}
+
+.desk-about-card-name {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.desk-about-card-body {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.45;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.desk-about-credit {
+  margin-top: 0.5rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+  padding: 16px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-panel);
+}
+
+.desk-about-initials {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: var(--radius-panel);
+  background: var(--accent-soft);
+  color: var(--accent-pressed);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.desk-about-credit-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
 }
 
 .desk-about-author {
   margin: 0;
+  font-size: 17px;
   font-weight: 600;
+  line-height: 1.45;
   color: var(--ink);
+  overflow-wrap: anywhere;
 }
 
 .desk-about-copyright {
   margin: 0;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.45;
   color: var(--muted);
-  font-size: 0.92rem;
+  overflow-wrap: anywhere;
 }
 
 .desk-text-links {
@@ -841,17 +1038,26 @@ body,
 
 .desk-maintenance > .drug-setup,
 .desk-maintenance > .classic-list-panel,
-.desk-maintenance > .desk-maintenance-panel,
-.desk-maintenance > .opd-bill-desk {
+.desk-maintenance > .desk-maintenance-panel {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
 }
 
+/* Bill desks keep their own grid (main + rail); only stretch to fill the shell. */
+.desk-maintenance > .opd-bill-desk,
 .desk-maintenance-panel > .opd-bill-desk {
   flex: 1;
   min-height: 0;
+}
+
+.reports-desk > .reports-desk-actions {
+  flex-shrink: 0;
+}
+
+.reports-desk > .desk-maintenance-panel {
+  overflow: auto;
 }
 
 .brand .eyebrow,
@@ -1247,18 +1453,17 @@ body,
 }
 
 .form-section + .form-section {
-  margin-top: 0.35rem;
-  padding-top: 1.1rem;
-  border-top: 1px solid var(--border);
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 2px solid var(--button-border);
 }
 
 .form-section-title {
   margin: 0;
-  font-size: 14px;
+  font-size: 18px;
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--muted);
+  line-height: 1.35;
+  color: var(--ink);
 }
 
 .form-section-desc {
@@ -1271,8 +1476,10 @@ body,
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
-  font-size: 0.92rem;
-  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--ink);
 }
 
 .field.checkbox-field {
@@ -1344,7 +1551,7 @@ body,
 .field textarea:disabled,
 .packing-rel-row input:disabled {
   opacity: 1;
-  color: var(--muted);
+  color: #374151;
   background-color: #f8fafc;
   cursor: not-allowed;
 }
@@ -1401,7 +1608,7 @@ body,
 .btn.primary {
   background: var(--accent);
   color: var(--accent-ink);
-  border-color: var(--accent);
+  border: 2px solid var(--accent);
 }
 
 .btn.primary:hover:not(:disabled) {
@@ -1417,13 +1624,13 @@ body,
 .btn.ghost {
   background: var(--bg-panel);
   color: var(--ink);
-  border-color: var(--border);
+  border: 2px solid var(--button-border);
 }
 
 .btn.ghost:hover:not(:disabled) {
   background: var(--bg);
   color: var(--ink);
-  border-color: var(--border-strong);
+  border-color: var(--ink);
 }
 
 .btn.ghost:active:not(:disabled) {
@@ -1519,7 +1726,7 @@ body,
 .btn.ghost.danger {
   background: var(--bg-panel);
   color: var(--danger);
-  border-color: var(--danger-border);
+  border: 2px solid var(--danger);
 }
 
 .btn.ghost.danger:hover:not(:disabled),
@@ -1550,6 +1757,27 @@ body,
   gap: 1rem;
 }
 
+/* Every Settings tab fills the content box like OPD maintenance. */
+.settings-panel--fill {
+  gap: 0.5rem;
+}
+
+.settings-panel--fill > .desk-maintenance-panel {
+  overflow: auto;
+}
+
+.settings-panel--fill > .desk-maintenance-panel > .opd-bill-desk {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.settings-panel--fill > .desk-maintenance-panel > .settings-stack,
+.settings-panel--fill > .desk-maintenance-panel > .settings-split {
+  flex: 1;
+  min-height: 0;
+}
+
 /* Settings form controls — match billing-desk chrome without shrinking padding. */
 .settings-panel .field input,
 .settings-panel .field select {
@@ -1576,7 +1804,7 @@ body,
 
 .settings-panel .field input:disabled,
 .settings-panel .field select:disabled {
-  color: var(--muted);
+  color: #374151;
   background-color: #f8fafc;
   border-color: var(--field-border);
   cursor: not-allowed;
@@ -1653,18 +1881,8 @@ body,
 }
 
 /* Backup: the split stays within the desk; the restore list scrolls inside its card. */
-.shell-classic .app-content:has(> .settings-panel > .settings-backup) {
+.desk-maintenance-panel:has(> .settings-backup) {
   overflow: hidden;
-}
-
-.settings-panel:has(> .settings-backup) {
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.settings-panel:has(> .settings-backup) > .tabs {
-  flex-shrink: 0;
 }
 
 .settings-backup {
@@ -1751,9 +1969,12 @@ body,
   background: transparent;
   color: var(--accent);
   font: inherit;
-  font-size: 0.85rem;
+  font-size: 16px;
+  font-weight: 600;
   padding: 0;
   cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
 }
 
 .grant-all:disabled {
@@ -1847,8 +2068,13 @@ body,
   border: 1px solid var(--border);
   border-radius: var(--radius-dialog);
   box-shadow: 0 4px 16px rgba(31, 41, 55, 0.1);
-  max-height: 16rem;
+  max-height: var(--typeahead-menu-max-height, 16rem);
   overflow-y: auto;
+}
+
+.typeahead-menu[data-side="above"] {
+  top: auto;
+  bottom: calc(100% + 4px);
 }
 
 .typeahead-option {
@@ -2680,9 +2906,9 @@ body,
 }
 
 .packing-rel-head {
-  font-size: 0.8rem;
+  font-size: 14px;
   font-weight: 600;
-  color: var(--muted);
+  color: var(--ink);
 }
 
 .packing-rel-head > span {
@@ -2971,6 +3197,21 @@ body,
   background: var(--bg-panel);
 }
 
+/* Bill desks with a cart: header, entry, and totals stay put; cart body is six rows tall.
+   Main may scroll when the window is shorter than header + cart + totals. */
+.opd-bill-desk-main:has(> .opd-bill-grid) > .opd-bill-desk-title,
+.opd-bill-desk-main:has(> .opd-bill-grid) > .opd-bill-header,
+.opd-bill-desk-main:has(> .opd-bill-grid) > .opd-bill-footer,
+.opd-bill-desk-main:has(> .opd-bill-grid) > .ipd-stay-fields,
+.opd-bill-desk-main:has(> .opd-bill-grid) > .opd-bill-grid {
+  flex-shrink: 0;
+}
+
+.opd-bill-desk-main:has(> .opd-bill-grid) > .opd-bill-grid {
+  flex: 0 0 auto;
+  min-height: 0;
+}
+
 .opd-bill-desk-title {
   margin: 0;
   font-size: 22px;
@@ -3034,9 +3275,9 @@ body,
 
 .opd-bill-label {
   white-space: nowrap;
-  font-size: 0.8125rem;
+  font-size: 14px;
   font-weight: 600;
-  color: var(--muted);
+  color: var(--ink);
   background: transparent;
   padding: 0.2rem 0.4rem;
   border-radius: 0;
@@ -3045,9 +3286,28 @@ body,
 .opd-bill-field > .opd-bill-input,
 .opd-bill-field > .opd-bill-readonly,
 .opd-bill-field > .typeahead,
-.opd-bill-field > .opd-bill-control {
+.opd-bill-field > .opd-bill-control,
+.opd-bill-field > .opd-bill-gender-phone {
   min-width: 0;
   width: 100%;
+}
+
+/* Gender + Phone share the value column; phone takes more width (~3:2). */
+.opd-bill-gender-phone {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) max-content minmax(0, 3fr);
+  column-gap: 0.45rem;
+  align-items: center;
+  min-width: 0;
+}
+
+.opd-bill-gender-phone > .opd-bill-input {
+  min-width: 0;
+  width: 100%;
+}
+
+.opd-bill-gender-phone > .opd-bill-label {
+  padding-inline: 0.2rem;
 }
 
 .opd-bill-control {
@@ -3100,7 +3360,7 @@ body,
 .opd-bill-field--typeahead .typeahead input:disabled,
 .opd-bill-desk .bill-unit-select:disabled,
 .opd-bill-grid-row .qty-input:disabled {
-  color: var(--muted);
+  color: #374151;
   background-color: #f8fafc;
   border-color: var(--field-border);
   cursor: not-allowed;
@@ -3174,16 +3434,27 @@ body,
 }
 
 .opd-bill-grid-body {
+  --bill-cart-body-height: calc(var(--bill-line-row-height) * 6);
   flex: 0 0 auto;
-  min-height: 0;
-  max-height: calc(var(--bill-line-row-height) * 6);
+  height: var(--bill-cart-body-height);
+  min-height: var(--bill-cart-body-height);
+  max-height: var(--bill-cart-body-height);
   overflow: auto;
   overflow-anchor: none;
   scrollbar-gutter: stable;
 }
 
+.opd-bill-grid-lines {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  width: 100%;
+  min-width: 0;
+}
+
 .opd-bill-grid-entries {
   flex: 0 0 auto;
+  flex-shrink: 0;
   position: relative;
   z-index: 3;
   border-top: 1px solid var(--border);
@@ -3354,6 +3625,30 @@ body,
   grid-template-columns: minmax(0, 1fr) 8.5rem 4.25rem 7.25rem 5.25rem 5.5rem 3.25rem 2.25rem;
 }
 
+.bill-cart-count {
+  display: flex;
+  justify-content: flex-end;
+  align-items: baseline;
+  gap: 0.35rem;
+  flex-shrink: 0;
+  padding: 0.3rem 0.75rem;
+  padding-inline-end: calc(0.75rem + var(--bill-scroll-gutter, 0px));
+  background: var(--bill-header-bg);
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.bill-cart-count-n {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
 .bill-line-foc-head,
 .bill-line-foc-cell {
   display: flex;
@@ -3397,6 +3692,7 @@ body,
   font-size: 0.78rem;
   font-weight: 600;
   letter-spacing: 0.02em;
+  flex-shrink: 0;
   position: sticky;
   top: 0;
   z-index: 1;
@@ -3454,7 +3750,7 @@ body,
 .opd-bill-grid-row .btn.ghost.danger:active:not(:disabled) {
   background: transparent;
   color: var(--danger);
-  border-color: var(--danger-border);
+  border: 2px solid var(--danger);
 }
 
 .opd-bill-grid-row .btn.ghost.danger:hover:not(:disabled) {
@@ -3583,6 +3879,13 @@ body,
   border: 1px solid var(--border);
   border-radius: var(--radius-control);
   box-shadow: 0 2px 8px rgba(31, 41, 55, 0.08);
+  max-height: var(--typeahead-menu-max-height, 16rem);
+  overflow-y: auto;
+}
+
+.bill-unit-list[data-side="above"] {
+  top: auto;
+  bottom: calc(100% + 2px);
 }
 
 .bill-unit-option {
@@ -3654,6 +3957,19 @@ body,
   gap: 1rem;
   flex-wrap: wrap;
   flex-shrink: 0;
+}
+
+/* Stay form rail: wider than the shared bill rail for long stay labels (Print Deposit Fee, MY). */
+.opd-bill-rail.ipd-stay-rail {
+  width: 11.5rem;
+  min-width: 11.5rem;
+  max-width: 11.5rem;
+  box-sizing: border-box;
+}
+
+.opd-bill-rail.ipd-stay-rail .opd-bill-rail-btn-main {
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 /* One grid for the stay header and the notes row, so the notes box
@@ -3736,6 +4052,96 @@ body,
   color: var(--ink);
 }
 
+/* IPD Take deposit — absolute inside .opd-bill-desk, left of the rail. */
+.ipd-deposit-panel {
+  position: absolute;
+  z-index: 6;
+  width: 18rem;
+  max-width: calc(100% - 1rem);
+  padding: 0.75rem;
+  border-radius: var(--radius-dialog);
+  background: var(--bg-panel);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  box-shadow: var(--overlay-shadow);
+  transform-origin: right center;
+  animation: ipd-deposit-panel-in var(--motion-release-ms) var(--motion-ease-out);
+  box-sizing: border-box;
+}
+
+.ipd-deposit-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.65rem;
+}
+
+.ipd-deposit-panel-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--ink);
+}
+
+.ipd-deposit-panel .opd-bill-field {
+  margin-top: 0.45rem;
+}
+
+.ipd-deposit-panel .opd-bill-field:first-of-type {
+  margin-top: 0;
+}
+
+.ipd-deposit-preview {
+  margin: 0.5rem 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  color: var(--muted);
+  animation: ipd-deposit-preview-in var(--motion-status-ms) var(--motion-ease-out);
+}
+
+.ipd-deposit-preview-label {
+  font-weight: 600;
+}
+
+.ipd-deposit-preview-value {
+  color: var(--ink);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.ipd-deposit-panel-actions {
+  margin-top: 0.65rem;
+}
+
+.ipd-deposit-panel-actions .btn.primary {
+  width: 100%;
+  min-height: var(--control-height);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+@keyframes ipd-deposit-panel-in {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes ipd-deposit-preview-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 .ipd-ledger-cards {
   list-style: none;
   margin: 0.9rem 0 0;
@@ -3775,11 +4181,6 @@ body,
   display: flex;
   align-items: center;
   gap: 0.75rem;
-}
-
-.opd-bill-service-count {
-  font-size: 0.85rem;
-  font-weight: 600;
 }
 
 .opd-bill-new-badge {
@@ -3876,6 +4277,8 @@ body,
   text-align: right;
 }
 
+/* Locked to the wider of OPD / Pharmacy sale / OT (MY Mark Paid + subtitle ~203px).
+   Longer return / purchase / transfer labels wrap inside this width. */
 .opd-bill-rail {
   display: flex;
   flex-direction: column;
@@ -3883,9 +4286,25 @@ body,
   padding: 0.65rem 0.45rem;
   background: var(--bill-header-bg);
   border-left: 1px solid var(--border);
-  min-width: 9rem;
+  width: 12.75rem;
+  min-width: 12.75rem;
+  max-width: 12.75rem;
+  box-sizing: border-box;
   min-height: 0;
   overflow: auto;
+}
+
+.opd-bill-rail > .field {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.opd-bill-rail > .field .opd-bill-input,
+.opd-bill-rail > .field select {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .opd-bill-rail-btn {
@@ -3895,10 +4314,10 @@ body,
   gap: 0.5rem;
   width: 100%;
   font: inherit;
-  font-size: 0.8125rem;
+  font-size: 16px;
   font-weight: 600;
   padding: 0.55rem 0.5rem;
-  border: 1px solid var(--border);
+  border: 2px solid var(--button-border);
   border-radius: 6px;
   background: var(--bg-panel);
   color: var(--ink);
@@ -3907,7 +4326,7 @@ body,
   transform: scale(1);
   transform-origin: center;
   will-change: transform;
-  min-height: var(--control-height-compact);
+  min-height: 40px;
   box-sizing: border-box;
 }
 
@@ -3939,6 +4358,15 @@ body,
   text-align: left;
 }
 
+.opd-bill-rail-btn-label,
+.opd-bill-rail-btn-sub,
+.opd-bill-rail-btn-label-idle,
+.opd-bill-rail-btn-label-saved,
+.opd-bill-rail-btn-main > span:not(.opd-bill-rail-btn-icon-slot):not(.opd-bill-rail-btn-text):not(.opd-bill-rail-btn-label-swap) {
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+
 .opd-bill-rail-btn-label {
   line-height: 1.2;
 }
@@ -3962,7 +4390,7 @@ body,
 /* Confirm (draft) or New bill (finished) — accent is class-driven, not nth-child */
 .opd-bill-rail-btn--accent {
   background: var(--accent);
-  border-color: var(--accent);
+  border: 2px solid var(--accent);
   color: var(--accent-ink);
 }
 
@@ -3978,18 +4406,18 @@ body,
 
 .opd-bill-rail-btn:hover:not(:disabled):not(.opd-bill-rail-btn--accent):not(.opd-bill-rail-btn--danger) {
   background: #f8fafc;
-  border-color: var(--border-strong);
+  border-color: var(--ink);
 }
 
 .opd-bill-rail-btn:active:not(:disabled):not(.opd-bill-rail-btn--accent):not(.opd-bill-rail-btn--danger) {
   background: #f1f5f9;
-  border-color: var(--border-strong);
+  border-color: var(--ink);
 }
 
 .opd-bill-rail-btn--danger {
   background: var(--bg-panel);
   color: var(--danger);
-  border-color: var(--danger-border);
+  border: 2px solid var(--danger);
 }
 
 .opd-bill-rail-btn--danger:hover:not(:disabled) {
@@ -4190,7 +4618,7 @@ body,
   min-height: 24px;
   margin: 0;
   padding: 0;
-  border: 1px solid var(--danger-border);
+  border: 2px solid var(--danger);
   border-radius: var(--radius-control);
   background: #fff;
   color: var(--danger);
@@ -4439,6 +4867,19 @@ body,
   color: var(--accent);
 }
 
+.alert-dialog--door .alert-dialog-badge-glow {
+  background: radial-gradient(
+    circle,
+    rgba(37, 99, 235, 0.24) 0%,
+    rgba(37, 99, 235, 0.08) 45%,
+    transparent 70%
+  );
+}
+
+.alert-dialog--door .alert-dialog-badge-circle {
+  color: var(--accent);
+}
+
 .alert-dialog-draw-path {
   stroke-dasharray: 48;
   stroke-dashoffset: 48;
@@ -4454,6 +4895,29 @@ body,
   stroke-dasharray: 16;
   stroke-dashoffset: 16;
   animation-delay: 0.28s;
+}
+
+.alert-dialog-draw-path--trash-lid {
+  stroke-dasharray: 36;
+  stroke-dashoffset: 36;
+}
+
+.alert-dialog-draw-path--trash-handle {
+  stroke-dasharray: 28;
+  stroke-dashoffset: 28;
+  animation-delay: 0.2s;
+}
+
+.alert-dialog-draw-path--trash-body {
+  stroke-dasharray: 96;
+  stroke-dashoffset: 96;
+  animation-delay: 0.28s;
+}
+
+.alert-dialog-draw-path--trash-lines {
+  stroke-dasharray: 32;
+  stroke-dashoffset: 32;
+  animation-delay: 0.4s;
 }
 
 .alert-dialog-draw-path--check-box {
@@ -4485,8 +4949,20 @@ body,
   animation-delay: 0.28s;
 }
 
+.alert-dialog-draw-path--door-frame {
+  stroke-dasharray: 96;
+  stroke-dashoffset: 96;
+}
+
+.alert-dialog-draw-path--door-leaf {
+  stroke-dasharray: 72;
+  stroke-dashoffset: 72;
+  animation-delay: 0.22s;
+}
+
 .alert-dialog-check-dot,
-.alert-dialog-warn-dot {
+.alert-dialog-warn-dot,
+.alert-dialog-door-knob {
   opacity: 0;
   animation: alert-dialog-dot-in 0.2s 0.42s ease-out forwards;
 }
@@ -4611,14 +5087,14 @@ body,
   flex: 0 0 auto;
 }
 
-/* Patient Charts: keep Info / History tabs visible while the pane scrolls. */
-.drug-setup-detail-pane > .patient-detail-tabs {
+/* Patient Charts: keep Info / Timeline / History tabs visible while the pane scrolls. */
+.opd-bill-desk-main > .patient-detail-tabs {
   position: sticky;
   top: 0;
   z-index: 1;
   flex-shrink: 0;
-  margin: -0.5rem -0.65rem 0;
-  padding: 0.5rem 0.65rem 0.45rem;
+  margin: -0.55rem -0.75rem 0;
+  padding: 0.55rem 0.75rem 0;
   background: var(--bg-panel);
 }
 
@@ -4687,6 +5163,172 @@ body,
   padding-bottom: 0;
 }
 
+/* Patient Charts Timeline: dated notes + visit markers (paper rows, pill tags only). */
+.patient-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  min-width: 0;
+  margin-top: 0.35rem;
+}
+
+.patient-timeline-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.patient-timeline-composer > .btn.action {
+  align-self: flex-start;
+}
+
+.patient-timeline-composer-panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows 180ms ease,
+    opacity 180ms ease;
+}
+
+.patient-timeline-composer-panel--open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.patient-timeline-composer-panel-inner {
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.patient-timeline-composer-panel textarea,
+.patient-timeline-edit textarea {
+  width: 100%;
+  min-height: 4.5rem;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.patient-timeline-days,
+.patient-timeline-entries {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.patient-timeline-day + .patient-timeline-day {
+  margin-top: 1rem;
+}
+
+.patient-timeline-day-title {
+  margin: 0 0 0.45rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.patient-timeline-entries {
+  position: relative;
+  margin-left: 0.35rem;
+  padding-left: 0.85rem;
+  border-left: 2px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.patient-timeline-entry {
+  position: relative;
+  background: var(--bg-panel);
+  padding: 0.35rem 0 0.35rem 0.15rem;
+}
+
+.patient-timeline-entry::before {
+  content: "";
+  position: absolute;
+  left: -1.05rem;
+  top: 0.7rem;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: var(--border);
+  border: 2px solid var(--bg-panel);
+  box-sizing: border-box;
+}
+
+.patient-timeline-entry-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem 0.75rem;
+  margin-bottom: 0.25rem;
+}
+
+.patient-timeline-entry-time {
+  color: var(--muted);
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.patient-timeline-entry-body {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.45;
+}
+
+.patient-timeline-visit-btn {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  border-radius: var(--radius-control);
+}
+
+.patient-timeline-visit-btn:hover .patient-timeline-visit-voucher,
+.patient-timeline-visit-btn:focus-visible .patient-timeline-visit-voucher {
+  text-decoration: underline;
+}
+
+.patient-timeline-visit-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.patient-timeline-visit-voucher {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.patient-timeline-visit-label {
+  display: block;
+  margin-top: 0.15rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.patient-timeline-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.patient-timeline-entry .btn-row {
+  margin-top: 0.35rem;
+}
+
 .bill-history-toolbar-row {
   display: flex;
   align-items: flex-end;
@@ -4709,7 +5351,7 @@ body,
 
 .bill-history-toolbar-row .btn.action:active:not(:disabled) {
   background: #f1f5f9;
-  border-color: var(--border-strong);
+  border-color: var(--ink);
   transform: scale(var(--motion-press-scale));
 }
 
@@ -4722,6 +5364,13 @@ body,
 .bill-history-toolbar-row .btn.action.primary:active:not(:disabled) {
   background: var(--accent-pressed);
   border-color: var(--accent-pressed);
+  transform: scale(var(--motion-press-scale));
+}
+
+.bill-history-toolbar-row .btn.action.on:active:not(:disabled) {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent);
   transform: scale(var(--motion-press-scale));
 }
 
@@ -4802,7 +5451,7 @@ body,
 
 .bill-history-table-head--actions.bill-history-table-head--actions-wide,
 .bill-history-table-row--actions.bill-history-table-row--actions-wide {
-  grid-template-columns: 9rem minmax(8rem, 1.4fr) minmax(7.5rem, 10rem) minmax(9rem, 12rem) 8rem 5.5rem;
+  grid-template-columns: 9rem minmax(8rem, 1.4fr) minmax(7.5rem, 10rem) minmax(9rem, 12rem) 8rem 6.5rem;
 }
 
 .bill-history-table-head--no-price,
@@ -4817,7 +5466,7 @@ body,
 
 .bill-history-table-head--actions.bill-history-table-head--actions-wide.bill-history-table-head--no-price,
 .bill-history-table-row--actions.bill-history-table-row--actions-wide.bill-history-table-row--no-price {
-  grid-template-columns: 9rem minmax(8rem, 1.4fr) minmax(7.5rem, 10rem) minmax(9rem, 12rem) 5.5rem;
+  grid-template-columns: 9rem minmax(8rem, 1.4fr) minmax(7.5rem, 10rem) minmax(9rem, 12rem) 6.5rem;
 }
 
 /* Patient chart list: name · father/mother · phone · DOB */
@@ -4847,6 +5496,14 @@ body,
     minmax(6.5rem, 8rem)
     minmax(5.5rem, 7rem)
     minmax(3.5rem, 4.5rem);
+}
+
+/* Settings categories: No. · name */
+.bill-history-table-head--categories,
+.bill-history-table-row--categories {
+  grid-template-columns:
+    minmax(2.75rem, 3.5rem)
+    minmax(9rem, 1fr);
 }
 
 /* OPD services: No. · code · name · category · price · active */
@@ -4983,9 +5640,33 @@ body,
   font-weight: 500;
 }
 
+.bill-history-name-line {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
 .bill-history-name-primary {
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.bill-history-room-tag {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: #0f766e;
+  background: rgba(15, 118, 110, 0.1);
+  border: 1px solid rgba(15, 118, 110, 0.28);
   white-space: nowrap;
 }
 
@@ -5060,6 +5741,19 @@ body,
 
 .bill-history-table-row--selected:hover {
   background: var(--accent-soft);
+}
+
+.bill-history-table-row--flash {
+  animation: bill-history-row-flash 200ms var(--motion-ease-out);
+}
+
+@keyframes bill-history-row-flash {
+  from {
+    background: var(--accent-soft);
+  }
+  to {
+    background: transparent;
+  }
 }
 
 .bill-history-col {
@@ -5175,6 +5869,8 @@ body,
   min-width: 24px;
   min-height: 24px;
   box-sizing: border-box;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .bill-history-print-btn svg {
@@ -5251,7 +5947,7 @@ body,
 
 .opd-bill-dialog-footer .btn.action {
   border-radius: 6px;
-  font-size: 0.8125rem;
+  font-size: 16px;
   font-weight: 600;
 }
 
@@ -5817,7 +6513,7 @@ body,
 .drug-setup-detail-pane .btn {
   border-radius: var(--radius-control);
   padding: 0.35rem 0.75rem;
-  font-size: 0.88rem;
+  font-size: 16px;
 }
 
 .drug-setup-detail-pane .btn.primary {
@@ -5829,7 +6525,7 @@ body,
 .drug-setup-detail-pane .btn.ghost {
   background: var(--bg-panel);
   color: var(--ink);
-  border-color: var(--border);
+  border: 2px solid var(--button-border);
 }
 
 .drug-setup-detail-pane .btn.ghost.primary {
@@ -5840,7 +6536,7 @@ body,
 
 .drug-setup-detail-pane .btn.ghost.danger {
   color: var(--danger);
-  border-color: var(--danger-border);
+  border: 2px solid var(--danger);
   background: var(--bg-panel);
 }
 
@@ -5858,12 +6554,14 @@ body,
   gap: 0.4rem;
   border-radius: 12px;
   padding: 0.4rem 0.85rem;
-  font-size: 0.88rem;
+  font-size: 16px;
   font-weight: 600;
   line-height: 1.2;
   background: var(--bg-panel);
   color: var(--ink);
-  border: 1px solid var(--border);
+  border: 2px solid var(--button-border);
+  min-height: var(--control-height);
+  box-sizing: border-box;
 }
 
 .btn.action svg,
@@ -5878,14 +6576,14 @@ body,
 .drug-setup-detail-pane .btn.action:hover:not(:disabled):not(.primary):not(.danger):not(.on) {
   background: var(--bg);
   color: var(--ink);
-  border-color: var(--border-strong);
+  border-color: var(--ink);
 }
 
 .btn.action.primary,
 .drug-setup-detail-pane .btn.action.primary {
   background: var(--accent);
   color: var(--accent-ink);
-  border-color: var(--accent);
+  border: 2px solid var(--accent);
 }
 
 .btn.action.primary:hover:not(:disabled),
@@ -5899,7 +6597,7 @@ body,
 .drug-setup-detail-pane .btn.action.on {
   background: var(--accent-soft);
   color: var(--accent);
-  border-color: var(--accent-border);
+  border: 2px solid var(--accent);
 }
 
 .btn.action.on:hover:not(:disabled),
@@ -5913,7 +6611,7 @@ body,
 .drug-setup-detail-pane .btn.action.danger {
   background: var(--bg-panel);
   color: var(--danger);
-  border-color: var(--danger-border);
+  border: 2px solid var(--danger);
   filter: none;
 }
 
@@ -5934,7 +6632,7 @@ body,
 
 .opd-bill-dialog .btn.action:active:not(:disabled) {
   background: #f1f5f9;
-  border-color: var(--border-strong);
+  border-color: var(--ink);
   transform: scale(var(--motion-press-scale));
 }
 
@@ -5962,6 +6660,102 @@ body,
   margin-inline-end: 0;
 }
 
+/* Maintenance / catalog detail actions — press parity with the bill rail (no save feedback). */
+.catalog-master-detail-page > .btn-row > .btn.action,
+.pharmacy-item-detail-page .drug-setup-action-row > .btn.action,
+.catalog-master-detail-page .ot-stock-return > .btn.action,
+.catalog-master-detail-page .ot-cupboard-label > .btn.action,
+.catalog-filter-actions .btn.action,
+.catalog-master-form-page .btn-row > .btn.primary,
+.pharmacy-item-create-page .btn-row > .btn.primary,
+.pharmacy-item-edit-page .btn-row > .btn.primary,
+.drug-setup-restock-dialog .btn.primary,
+.drug-setup-restock-dialog .btn.ghost,
+.packing-rel-remove,
+.alert-dialog-close {
+  transition: var(--transition-billing-press);
+  transform: scale(1);
+  transform-origin: center;
+}
+
+/* Detail / OT cupboard actions: 16px beats .opd-bill-desk .btn.action (0.8125rem). Keep 44px. */
+.catalog-master-detail-page > .btn-row > .btn.action,
+.pharmacy-item-detail-page .drug-setup-action-row > .btn.action,
+.catalog-master-detail-page .ot-stock-return > .btn.action,
+.catalog-master-detail-page .ot-cupboard-label > .btn.action {
+  font-size: 16px;
+}
+
+.catalog-master-detail-page > .btn-row > .btn.action:active:not(:disabled):not(.primary):not(.danger):not(.on),
+.pharmacy-item-detail-page .drug-setup-action-row > .btn.action:active:not(:disabled):not(.primary):not(.danger):not(.on),
+.catalog-master-detail-page .ot-stock-return > .btn.action:active:not(:disabled):not(.primary):not(.danger):not(.on),
+.catalog-master-detail-page .ot-cupboard-label > .btn.action:active:not(:disabled):not(.primary):not(.danger):not(.on),
+.catalog-filter-actions .btn.action:active:not(:disabled):not(.primary):not(.danger):not(.on),
+.drug-setup-restock-dialog .btn.ghost:active:not(:disabled):not(.danger) {
+  background: #f1f5f9;
+  border-color: var(--ink);
+  transform: scale(var(--motion-press-scale));
+}
+
+.alert-dialog-close:active:not(:disabled) {
+  background: #fdeeee;
+  border-color: var(--danger);
+  transform: scale(var(--motion-press-scale));
+}
+
+.catalog-master-detail-page > .btn-row > .btn.action.danger:hover:not(:disabled),
+.pharmacy-item-detail-page .drug-setup-action-row > .btn.action.danger:hover:not(:disabled),
+.packing-rel-remove:hover:not(:disabled) {
+  background: #fef7f7;
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.catalog-master-detail-page > .btn-row > .btn.action.danger:active:not(:disabled),
+.pharmacy-item-detail-page .drug-setup-action-row > .btn.action.danger:active:not(:disabled),
+.catalog-filter-actions .btn.action.danger:active:not(:disabled),
+.packing-rel-remove:active:not(:disabled) {
+  background: #fdeeee;
+  border-color: var(--danger);
+  transform: scale(var(--motion-press-scale));
+}
+
+.catalog-master-detail-page > .btn-row > .btn.action.primary:active:not(:disabled),
+.pharmacy-item-detail-page .drug-setup-action-row > .btn.action.primary:active:not(:disabled),
+.catalog-filter-actions .btn.action.primary:active:not(:disabled),
+.catalog-master-form-page .btn-row > .btn.primary:active:not(:disabled),
+.pharmacy-item-create-page .btn-row > .btn.primary:active:not(:disabled),
+.pharmacy-item-edit-page .btn-row > .btn.primary:active:not(:disabled),
+.drug-setup-restock-dialog .btn.primary:active:not(:disabled) {
+  background: var(--accent-pressed);
+  border-color: var(--accent-pressed);
+  transform: scale(var(--motion-press-scale));
+}
+
+.catalog-master-detail-page > .btn-row > .btn.action.on:active:not(:disabled),
+.pharmacy-item-detail-page .drug-setup-action-row > .btn.action.on:active:not(:disabled),
+.catalog-filter-actions .btn.action.on:active:not(:disabled) {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent);
+  transform: scale(var(--motion-press-scale));
+}
+
+.catalog-master-detail-page > .btn-row > .btn.action:disabled,
+.pharmacy-item-detail-page .drug-setup-action-row > .btn.action:disabled,
+.catalog-master-detail-page .ot-stock-return > .btn.action:disabled,
+.catalog-master-detail-page .ot-cupboard-label > .btn.action:disabled,
+.catalog-filter-actions .btn.action:disabled,
+.catalog-master-form-page .btn-row > .btn.primary:disabled,
+.pharmacy-item-create-page .btn-row > .btn.primary:disabled,
+.pharmacy-item-edit-page .btn-row > .btn.primary:disabled,
+.drug-setup-restock-dialog .btn.primary:disabled,
+.drug-setup-restock-dialog .btn.ghost:disabled,
+.packing-rel-remove:disabled,
+.alert-dialog-close:disabled {
+  transform: none;
+}
+
 /* Field rows and a primary sitting with an action share one height and --radius-control.
    Standalone .btn.action groups keep the 12px radius above. Danger outline is unchanged.
    Compact floor: 24px; shared toolbar height uses --control-height-compact (32px). */
@@ -5981,14 +6775,14 @@ body,
   box-sizing: border-box;
 }
 
+/* Toolbar / field-row actions stay compact height; label is 16px. Detail Edit rows keep 44px. */
 .list-toolbar .btn,
 .drug-setup-filter .btn.action,
 .catalog-filter-actions .btn.action,
 .bill-history-toolbar-row .btn.action,
-.opd-bill-desk .btn.action,
 .opd-bill-dialog-footer .btn.action {
   border-radius: var(--radius-control);
-  font-size: 0.88rem;
+  font-size: 16px;
   line-height: 1.2;
   padding-block: 0.4rem;
   min-height: var(--control-height-compact);
@@ -5998,7 +6792,7 @@ body,
 .btn-row:has(> .btn.primary):has(> .btn.action) > .btn.primary,
 .btn-row:has(> .btn.primary):has(> .btn.action) > .btn.action {
   border-radius: var(--radius-control);
-  font-size: 0.88rem;
+  font-size: 16px;
   line-height: 1.2;
   padding-block: 0.4rem;
   min-height: var(--control-height-compact);
@@ -6274,12 +7068,12 @@ body,
   height: var(--control-height-compact);
   margin: 0;
   padding: 0 0.45rem 0 0.55rem;
-  border: 1px solid var(--border);
+  border: 2px solid var(--button-border);
   border-radius: var(--radius-control);
   background: var(--bg-input);
   color: var(--ink);
   font: inherit;
-  font-size: 0.88rem;
+  font-size: 16px;
   font-weight: 400;
   line-height: 1.2;
   text-align: left;
@@ -6287,7 +7081,7 @@ body,
 }
 
 .filter-menu-trigger:hover {
-  border-color: var(--border-strong);
+  border-color: var(--ink);
 }
 
 .filter-menu-trigger:focus {
@@ -6297,7 +7091,7 @@ body,
 }
 
 .filter-menu-trigger.open {
-  border-color: var(--accent);
+  border: 2px solid var(--accent);
   box-shadow: var(--focus-ring);
 }
 
@@ -6398,7 +7192,7 @@ body,
 
 .catalog-filter-actions .btn.action {
   border-radius: var(--radius-control);
-  font-size: 0.88rem;
+  font-size: 16px;
   line-height: 1.2;
   min-height: var(--control-height-compact);
   padding-block: 0;
@@ -6408,8 +7202,15 @@ body,
   .catalog-filter-chevron,
   .catalog-filter-wrap,
   .catalog-filter-clip,
-  .filter-menu-chevron {
+  .filter-menu-chevron,
+  .patient-timeline-composer-panel {
     transition: none;
+  }
+
+  .ipd-deposit-panel,
+  .ipd-deposit-preview,
+  .bill-history-table-row--flash {
+    animation: none;
   }
 
   .opd-bill-rail-btn,
@@ -6419,7 +7220,19 @@ body,
   .bill-history-toolbar-row .btn.action,
   .print-preview-card--with-aside .print-preview-actions .btn,
   .print-preview-card--with-aside .ipd-date-step,
-  .ipd-stay-fields .opd-bill-consult {
+  .ipd-stay-fields .opd-bill-consult,
+  .catalog-master-detail-page > .btn-row > .btn.action,
+  .pharmacy-item-detail-page .drug-setup-action-row > .btn.action,
+  .catalog-master-detail-page .ot-stock-return > .btn.action,
+  .catalog-master-detail-page .ot-cupboard-label > .btn.action,
+  .catalog-filter-actions .btn.action,
+  .catalog-master-form-page .btn-row > .btn.primary,
+  .pharmacy-item-create-page .btn-row > .btn.primary,
+  .pharmacy-item-edit-page .btn-row > .btn.primary,
+  .drug-setup-restock-dialog .btn.primary,
+  .drug-setup-restock-dialog .btn.ghost,
+  .packing-rel-remove,
+  .alert-dialog-close {
     transition: none;
   }
 
@@ -6430,7 +7243,19 @@ body,
   .bill-history-toolbar-row .btn.action:active:not(:disabled),
   .print-preview-card--with-aside .print-preview-actions .btn:active:not(:disabled),
   .print-preview-card--with-aside .ipd-date-step:active:not(:disabled),
-  .ipd-stay-fields .opd-bill-consult:active:not(:disabled) {
+  .ipd-stay-fields .opd-bill-consult:active:not(:disabled),
+  .catalog-master-detail-page > .btn-row > .btn.action:active:not(:disabled),
+  .pharmacy-item-detail-page .drug-setup-action-row > .btn.action:active:not(:disabled),
+  .catalog-master-detail-page .ot-stock-return > .btn.action:active:not(:disabled),
+  .catalog-master-detail-page .ot-cupboard-label > .btn.action:active:not(:disabled),
+  .catalog-filter-actions .btn.action:active:not(:disabled),
+  .catalog-master-form-page .btn-row > .btn.primary:active:not(:disabled),
+  .pharmacy-item-create-page .btn-row > .btn.primary:active:not(:disabled),
+  .pharmacy-item-edit-page .btn-row > .btn.primary:active:not(:disabled),
+  .drug-setup-restock-dialog .btn.primary:active:not(:disabled),
+  .drug-setup-restock-dialog .btn.ghost:active:not(:disabled),
+  .packing-rel-remove:active:not(:disabled),
+  .alert-dialog-close:active:not(:disabled) {
     transform: none;
   }
 
@@ -6465,6 +7290,7 @@ body,
   .alert-dialog-draw-path,
   .alert-dialog-warn-dot,
   .alert-dialog-check-dot,
+  .alert-dialog-door-knob,
   .alert-dialog-printer-paper,
   .alert-dialog--irreversible .alert-dialog-badge,
   .alert-dialog--irreversible .alert-dialog-badge-circle {
@@ -6477,6 +7303,7 @@ body,
 
   .alert-dialog-warn-dot,
   .alert-dialog-check-dot,
+  .alert-dialog-door-knob,
   .alert-dialog-printer-paper {
     opacity: 1;
     transform: none;
@@ -6666,11 +7493,19 @@ body,
   .opd-bill-rail {
     flex-direction: row;
     flex-wrap: wrap;
+    width: auto;
     min-width: 0;
+    max-width: none;
   }
 
   .opd-bill-rail-btn {
     flex: 1 1 8rem;
+  }
+
+  .opd-bill-rail.ipd-stay-rail {
+    width: auto;
+    min-width: 0;
+    max-width: none;
   }
 
   .opd-bill-header {

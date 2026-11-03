@@ -59,24 +59,26 @@ type labBill struct {
 	CreatedAt       string        `json:"created_at"`
 	UpdatedAt       string        `json:"updated_at"`
 	BilledAt        *string       `json:"billed_at,omitempty"`
+	IpdRoomNo       string        `json:"ipd_room_no,omitempty"`
 	Lines           []labBillLine `json:"lines,omitempty"`
 }
 
 type labBillWriteRequest struct {
-	PatientName     string        `json:"patient_name"`
-	PatientPhone    string        `json:"patient_phone"`
-	PatientAgeYears *int64        `json:"patient_age_years,omitempty"`
-	PatientGender   string        `json:"patient_gender"`
-	DoctorID        *int64        `json:"doctor_id,omitempty"`
-	DoctorName      string        `json:"doctor_name"`
-	Description     string        `json:"description"`
-	Lines           []labBillLine `json:"lines"`
-	SavePatient     bool          `json:"save_patient"`
-	DiscountValue   int64         `json:"discount_value"`
-	DiscountUnit    string        `json:"discount_unit"`
-	PatientID       *int64        `json:"patient_id,omitempty"`
-	BilledAt        string        `json:"billed_at,omitempty"`
-	PaymentType     string        `json:"payment_type"`
+	PatientName      string        `json:"patient_name"`
+	PatientPhone     string        `json:"patient_phone"`
+	PatientAgeYears  *int64        `json:"patient_age_years,omitempty"`
+	PatientGender    string        `json:"patient_gender"`
+	FatherMotherName *string       `json:"father_mother_name,omitempty"`
+	DoctorID         *int64        `json:"doctor_id,omitempty"`
+	DoctorName       string        `json:"doctor_name"`
+	Description      string        `json:"description"`
+	Lines            []labBillLine `json:"lines"`
+	SavePatient      bool          `json:"save_patient"`
+	DiscountValue    int64         `json:"discount_value"`
+	DiscountUnit     string        `json:"discount_unit"`
+	PatientID        *int64        `json:"patient_id,omitempty"`
+	BilledAt         string        `json:"billed_at,omitempty"`
+	PaymentType      string        `json:"payment_type"`
 }
 
 func (h *Lab) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -164,7 +166,7 @@ func (h *Lab) listBills(w http.ResponseWriter, r *http.Request) {
 	if len(where) > 0 {
 		query += " WHERE " + strings.Join(where, " AND ")
 	}
-	orderSQL, orderErr := billHistoryOrderBy(r, "created_at", "id")
+	orderSQL, orderErr := billHistoryOrderBy(r, "created_at", "id", "bill_no")
 	if orderErr != "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": orderErr})
 		return
@@ -186,6 +188,23 @@ func (h *Lab) listBills(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		out = append(out, b)
+	}
+	ids := make([]*int64, len(out))
+	for i := range out {
+		ids[i] = out[i].PatientID
+	}
+	rooms, err := openStayRoomByPatient(h.DB, collectOptionalPatientIDs(ids))
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "list failed"})
+		return
+	}
+	for i := range out {
+		if out[i].PatientID == nil {
+			continue
+		}
+		if room, ok := rooms[*out[i].PatientID]; ok {
+			out[i].IpdRoomNo = room
+		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"bills": out})
 }
@@ -242,7 +261,7 @@ func (h *Lab) createBill(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	patientID, err := resolveDeskPatient(tx, req.PatientID, req.SavePatient, req.PatientName, req.PatientPhone, req.PatientGender, req.PatientAgeYears, func() (int64, error) {
+	patientID, err := resolveDeskPatient(tx, req.PatientID, req.SavePatient, req.PatientName, req.PatientPhone, req.PatientGender, req.PatientAgeYears, req.FatherMotherName, func() (int64, error) {
 		return upsertLabPatient(tx, req)
 	})
 	if err == sql.ErrNoRows {
@@ -399,7 +418,7 @@ func (h *Lab) updateBill(w http.ResponseWriter, r *http.Request, path string) {
 		return
 	}
 
-	patientID, err := resolveDeskPatient(tx, req.PatientID, req.SavePatient, req.PatientName, req.PatientPhone, req.PatientGender, req.PatientAgeYears, func() (int64, error) {
+	patientID, err := resolveDeskPatient(tx, req.PatientID, req.SavePatient, req.PatientName, req.PatientPhone, req.PatientGender, req.PatientAgeYears, req.FatherMotherName, func() (int64, error) {
 		return upsertLabPatient(tx, req)
 	})
 	if err == sql.ErrNoRows {
@@ -820,6 +839,7 @@ func normalizeLabBillLines(q queryRower, in []labBillLine) ([]labBillLine, int64
 
 func upsertLabPatient(tx *sql.Tx, req labBillWriteRequest) (int64, error) {
 	phone := strings.TrimSpace(req.PatientPhone)
+	fatherArg := optionalStringArg(req.FatherMotherName)
 	if phone != "" {
 		var id int64
 		err := tx.QueryRow(`
@@ -827,17 +847,23 @@ func upsertLabPatient(tx *sql.Tx, req labBillWriteRequest) (int64, error) {
 		`, phone, req.PatientName).Scan(&id)
 		if err == nil {
 			_, err = tx.Exec(`
-				UPDATE patients SET age_years = ?, gender = ?, updated_at = datetime('now') WHERE id = ?
-			`, req.PatientAgeYears, strings.TrimSpace(req.PatientGender), id)
+				UPDATE patients SET age_years = ?, gender = ?,
+					father_mother_name = COALESCE(?, father_mother_name),
+					updated_at = datetime('now') WHERE id = ?
+			`, req.PatientAgeYears, strings.TrimSpace(req.PatientGender), fatherArg, id)
 			return id, err
 		}
 		if err != sql.ErrNoRows {
 			return 0, err
 		}
 	}
+	father := ""
+	if req.FatherMotherName != nil {
+		father = strings.TrimSpace(*req.FatherMotherName)
+	}
 	res, err := tx.Exec(`
-		INSERT INTO patients (name, phone, age_years, gender) VALUES (?, ?, ?, ?)
-	`, req.PatientName, phone, req.PatientAgeYears, strings.TrimSpace(req.PatientGender))
+		INSERT INTO patients (name, phone, age_years, gender, father_mother_name) VALUES (?, ?, ?, ?, ?)
+	`, req.PatientName, phone, req.PatientAgeYears, strings.TrimSpace(req.PatientGender), father)
 	if err != nil {
 		return 0, err
 	}

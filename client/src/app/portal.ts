@@ -19,6 +19,8 @@ export function portalForRole(role: string): PortalId | "admin" | null {
       return "patients";
     case "IPD":
       return "ipd";
+    case "Lab":
+      return "lab";
     case "Admin":
       return "admin";
     default:

@@ -26,7 +26,7 @@
 | App | Path | Role |
 |-----|------|------|
 | API | `server/` | Auth, domain handlers, migrations, backup, receipts |
-| Clinic | `client/` | One window. A portal account opens one desk. Admin and unified accounts use the shared clinic sidebar |
+| Clinic | `client/` | One window. Admin and personal accounts use the shared clinic sidebar |
 | Dashboard | `dashboard/` | Admin analytics (overview, revenue, stock, audit, master data bulk) |
 
 Shared brand asset: `assets/logo.png`. Packaging: `scripts/`, `deploy/server/`, output in `dist/`.
@@ -43,17 +43,17 @@ Shared brand asset: `assets/logo.png`. Packaging: `scripts/`, `deploy/server/`, 
 - Login → session token in SQLite (`sessions`); clients send `Authorization: Bearer` (and may use cookie).
 - Clinic localStorage: `mudita_*` (e.g. `mudita_token`, `mudita_api_base`).
 - Dashboard localStorage: `mudita_dash_*` so sessions do not collide.
-- Idle lock (~15 min) returns to login on clinic.
+- Idle lock (~15 min) on clinic and dashboard returns to the sign-in page. A rejected or 12-hour-expired session does the same (not an error on the open desk).
 - Roles → permissions: `server/internal/auth/roles.go`. Grant keys and `access_mode`: `server/internal/auth/grants.go`. See [CONVENTIONS.md](./CONVENTIONS.md).
 - Dashboard login is Admin, or any account with the single `dashboard` grant. The dashboard layout is unchanged. That grant does not open clinic Settings.
 
 ## Portals
 
-One clinic window, one API, one SQLite file. `access_mode = portal` (the default) still lands on one desk from `users.role`. Those accounts are not converted until Admin saves them. `access_mode = unified` uses the same clinic sidebar as Admin. A module is shown only when that account has Read on it. Settings, user management, and backup stay full Admin. The dashboard is a separate app, not a clinic module.
+One clinic window, one API, one SQLite file. Personal accounts use `access_mode = unified` and the same clinic sidebar as Admin. A module is shown only when that account has Read on it. Settings, user management, and backup stay full Admin. The dashboard is a separate app, not a clinic module. Admin is the only account stored as `portal`. A non-admin portal row cannot sign in to a desk.
 
-Admin opens Home, the modules, Settings, and About, and can move between them without a second login. OPD nav opens Doctors, Services, and Bill (doctors also appear in Admin Settings; services are maintained in OPD). Hospital settings, users, backup, and training open from Settings only; Admin Settings still includes Doctors. The Patients portal searches charts and shows visit history across OPD, pharmacy, OT, and IPD, including each stay’s balance and whether it is settled. A clerk may attach one bill that still has no chart. That sets `patient_id` only (on `ot_cases` for an OT bill). It does not guess a match and does not change totals or stock. The IPD portal admits one open stay per chart, takes deposits, posts ward charges, and discharges from the ledger balance. A positive balance writes a refund. A negative balance writes a collection. Zero writes no cash line. The stay is then `settled` and later deposits, ward charges, and desk charges are refused. A statement prints the ledger and a final balance of 0. Admin may delete a deposit line from an open stay; the stay balance updates and stored day-voucher closings are not rewritten. Admin soft-delete sets an open stay to `deleted`; stays lists, amounts owed, IPD cash, and dashboard income skip it, while the Deleted filter still shows it.
+Admin opens Home, the modules, Settings, and About, and can move between them without a second login. OPD nav opens Doctors, Services, and Bill (doctors also appear in Admin Settings; services are maintained in OPD). Hospital settings, users, backup, and training open from Settings only; Admin Settings still includes Doctors. The Patients screen searches charts and shows visit history across OPD, pharmacy, OT, lab, and IPD, including each stay’s balance and whether it is settled. A clerk may attach one bill that still has no chart. That sets `patient_id` only (on `ot_cases` for an OT bill). It does not guess a match and does not change totals or stock. The IPD screen admits one open stay per chart, takes deposits, posts ward charges, and discharges from the ledger balance. A positive balance writes a refund. A negative balance writes a collection. Zero writes no cash line. The stay is then `settled` and later deposits, ward charges, and desk charges are refused. A statement prints the ledger and a final balance of 0. Admin may delete a deposit line from an open stay; the stay balance updates and stored day-voucher closings are not rewritten. Admin soft-delete sets an open stay to `deleted`; stays lists, amounts owed, IPD cash, and dashboard income skip it, while the Deleted filter still shows it.
 
-Portal accounts and Admin use this landing. A unified account does not: the shell follows Read grants, and `users.role` is only a stored filler.
+The shell follows Read grants. `users.role` on a personal account is only a stored filler.
 
 | Role | Permission | Lands on |
 |------|------------|----------|
@@ -63,10 +63,11 @@ Portal accounts and Admin use this landing. A unified account does not: the shel
 | Pharmacy | `pharmacy` | Pharmacy billing |
 | Patients | `patients` | Patient charts and visit history |
 | IPD | `ipd` | Stays, deposits, ward charges, discharge, and IPD cash |
+| Lab | `lab` | Lab billing. Unified accounts use `lab.read`, `lab.create`, `lab.update`, and `lab.delete` |
 
-There is no Lab desk role. Lab opens through Admin or unified `lab.read` / `lab.create` / `lab.update` / `lab.delete` grants. Migration `034_lab` adds `lab_services`, `lab_bills`, `lab_bill_lines`, and `lab_bill_number_seq` only.
+Migration `034_lab` adds `lab_services`, `lab_bills`, `lab_bill_lines`, and `lab_bill_number_seq` only. Migration `046_lab_role` rebuilds `users` with the same ids, password hashes, and `access_mode`, and allows the Lab role. It does not rewrite bills. Migration `049_pharmacy_voucher_counters` adds return and transfer counter tables and reseeds the sale counter from existing `PH-` numbers only; existing `pharmacy_bills.bill_no` values and the purchase (`PU`) counter are unchanged.
 
-OPD replaced Reception. Existing Reception users were migrated to OPD. Seed desks are `opd`, `ot`, `pharmacy`, `patients`, `ipd`, and `admin`. Migration `019_patients_role` rebuilds `users` with the same ids and password hashes and allows the Patients role. Migration `021_ipd_role_admissions` rebuilds `users` the same way and allows the IPD role. It adds `ipd_admissions` and the `IPD-` number sequence. Migration `022_ipd_ledger` adds `ipd_ledger`. Migration `023_bill_admission` adds nullable `admission_id` and `collected_cash INTEGER NOT NULL DEFAULT 1` on the three bill tables. Existing bills stay cash. Discharge uses `status` and `discharged_at` on `ipd_admissions`. It does not add a column.
+OPD replaced Reception. Existing Reception users were migrated to OPD. The only seeded login is `admin`. Migration `048_portal_users_to_grants` converts former desk usernames (`opd`, `ot`, `pharmacy`, `patients`, `ipd`, `lab`, and any other non-admin portal row) into personal accounts. It keeps user ids and password hashes, adds `user_grants`, and signs those accounts out. Migration `019_patients_role` rebuilds `users` with the same ids and password hashes and allows the Patients role. Migration `021_ipd_role_admissions` rebuilds `users` the same way and allows the IPD role. It adds `ipd_admissions` and the `IPD-` number sequence. Migration `022_ipd_ledger` adds `ipd_ledger`. Migration `023_bill_admission` adds nullable `admission_id` and `collected_cash INTEGER NOT NULL DEFAULT 1` on the three bill tables. Existing bills stay cash. Discharge uses `status` and `discharged_at` on `ipd_admissions`. It does not add a column.
 
 Patients, the medicine catalog, and doctors stay shared. Service catalogs do not: OPD uses `services`, Lab uses `lab_services`, OT uses `ot_services`. Bills and on-hand stock do not: `opd_bills` are services and consultation, `lab_bills` are Lab services only, `pharmacy_bills` sell `MAIN`, and OT bills sell the OT cupboard.
 

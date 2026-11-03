@@ -42,12 +42,14 @@ func (h *Patients) printHistoryBill(w http.ResponseWriter, r *http.Request, path
 		(&Pharmacy{DB: h.DB}).printPharmacyBill(w, r, printPath)
 	case "ot":
 		(&OT{DB: h.DB}).printBill(w, r, printPath)
+	case "lab":
+		(&Lab{DB: h.DB}).printBill(w, r, printPath)
 	default:
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid id"})
 	}
 }
 
-// path: /{chartId}/bills/{opd|pharmacy|ot}/{billId}/print
+// path: /{chartId}/bills/{opd|pharmacy|ot|lab}/{billId}/print
 func parseHistoryBillPrintPath(path string) (chartID int64, kind string, billID int64, ok bool) {
 	parts := strings.Split(strings.Trim(path, "/"), "/")
 	if len(parts) != 5 || parts[1] != "bills" || parts[4] != "print" {
@@ -58,7 +60,7 @@ func parseHistoryBillPrintPath(path string) (chartID int64, kind string, billID 
 		return 0, "", 0, false
 	}
 	kind = parts[2]
-	if kind != "opd" && kind != "pharmacy" && kind != "ot" {
+	if kind != "opd" && kind != "pharmacy" && kind != "ot" && kind != "lab" {
 		return 0, "", 0, false
 	}
 	billID, err = strconv.ParseInt(parts[3], 10, 64)
@@ -85,6 +87,10 @@ func historyBillOwnedByChart(db *sql.DB, chartID int64, kind string, billID int6
 		err = db.QueryRow(`
 			SELECT COUNT(1) FROM ot_cases
 			WHERE ot_bill_id = ? AND patient_id = ?
+		`, billID, chartID).Scan(&n)
+	case "lab":
+		err = db.QueryRow(`
+			SELECT COUNT(1) FROM lab_bills WHERE id = ? AND patient_id = ?
 		`, billID, chartID).Scan(&n)
 	default:
 		return false, nil

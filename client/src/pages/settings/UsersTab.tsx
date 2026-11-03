@@ -45,33 +45,6 @@ function emptyCells(): Record<string, boolean> {
   return {};
 }
 
-function portalCells(role: string): Record<string, boolean> {
-  const cells: Record<string, boolean> = {};
-  const fill = (module: ModuleId, actions: ActionId[]) => {
-    for (const action of actions) cells[cellKey(module, action)] = true;
-  };
-  switch (role) {
-    case "OPD":
-      fill("opd", ["read", "create", "update", "delete"]);
-      break;
-    case "OT":
-      fill("ot", ["read", "create", "update", "delete"]);
-      break;
-    case "Pharmacy":
-      fill("pharmacy", ["read", "create", "update", "delete"]);
-      break;
-    case "Patients":
-      fill("patients", ["read", "create", "update"]);
-      break;
-    case "IPD":
-      fill("ipd", ["read", "create", "update"]);
-      break;
-    default:
-      break;
-  }
-  return cells;
-}
-
 function cellsFromGrants(grants: string[]): Record<string, boolean> {
   const cells: Record<string, boolean> = {};
   for (const grant of grants) {
@@ -101,7 +74,6 @@ function grantsFromCells(cells: Record<string, boolean>, dashboard: boolean): st
 
 function accessLabel(u: ManagedUser, t: (key: string) => string): string {
   if (u.role === "Admin") return t("fullAccess");
-  if (u.access_mode !== "unified") return u.role;
   const parts: string[] = [];
   const grants = u.grants ?? [];
   for (const mod of MODULES) {
@@ -134,7 +106,6 @@ export function UsersTab() {
   const [cells, setCells] = useState<Record<string, boolean>>(emptyCells);
   const [dashboard, setDashboard] = useState(false);
   const [admin, setAdmin] = useState(false);
-  const [portalWarning, setPortalWarning] = useState(false);
 
   function rememberFormOpener() {
     const el = document.activeElement;
@@ -196,7 +167,6 @@ export function UsersTab() {
     setCells(emptyCells());
     setDashboard(false);
     setAdmin(false);
-    setPortalWarning(false);
     setUsernameError(null);
     setError(null);
   }
@@ -236,15 +206,8 @@ export function UsersTab() {
     setPassword("");
     setAdmin(false);
     setError(null);
-    if (u.access_mode === "unified") {
-      setCells(cellsFromGrants(u.grants ?? []));
-      setDashboard((u.grants ?? []).includes("dashboard"));
-      setPortalWarning(false);
-    } else {
-      setCells(portalCells(u.role));
-      setDashboard(false);
-      setPortalWarning(true);
-    }
+    setCells(cellsFromGrants(u.grants ?? []));
+    setDashboard((u.grants ?? []).includes("dashboard"));
   }
 
   async function submit(e: FormEvent) {
@@ -433,7 +396,6 @@ export function UsersTab() {
           />
           <span>{t("dashboardAccess")}</span>
         </label>
-        {portalWarning ? <p className="hint">{t("portalSwitchWarning")}</p> : null}
         {!admin ? <p className="hint">{t("grantHint")}</p> : null}
         <p className="hint">{t("usersHint")}</p>
         {error ? (

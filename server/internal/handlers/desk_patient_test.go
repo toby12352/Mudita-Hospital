@@ -159,7 +159,7 @@ func TestDeskChartLookupAndPayWithoutPatientID(t *testing.T) {
 		w = doJSON(patientsH, http.MethodPut, "/api/patients/"+strconv.FormatInt(chart.ID, 10), tok, `{"name":"Nope"}`)
 		mustCode(t, w, http.StatusForbidden)
 		w = doJSON(patientsH, http.MethodGet, "/api/patients/"+strconv.FormatInt(chart.ID, 10)+"/history", tok, "")
-		mustCode(t, w, http.StatusForbidden)
+		mustCode(t, w, http.StatusOK)
 	}
 
 	res, err := sqlDB.Exec(`INSERT INTO services (code, name, price_mmk) VALUES ('CASH', 'Cash visit', 1500)`)

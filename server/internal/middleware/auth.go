@@ -53,8 +53,8 @@ func RequireAuth(db *sql.DB, next http.Handler) http.Handler {
 }
 
 // RequirePermission requires auth plus the desk gate.
-// Portal accounts use the role map. Unified accounts need a grant on that
-// module; users.role is not the decision. settings and manage_users stay Admin-only.
+// Admin passes. Unified accounts need a grant on that module; users.role is
+// not the decision. A non-admin portal row is denied. settings and manage_users stay Admin-only.
 func RequirePermission(db *sql.DB, perm string, next http.Handler) http.Handler {
 	return RequireAuth(db, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		user := UserFromContext(r.Context())

@@ -1,4 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  DeskChrome,
+  DeskChromePanel,
+  DeskChromeTabs,
+} from "@/shared/DeskChrome";
 import { useI18n } from "@/shared/i18n";
 import { OtServicesPage } from "./OtServicesPage";
 import { OtStockPage } from "./OtStockPage";
@@ -18,57 +23,53 @@ export function OtMaintenancePage() {
     setBrowsing(next);
   }, []);
 
+  const tabs = useMemo(
+    () => [
+      {
+        id: "ot-maintenance-tab-inventory",
+        label: t("otStockInventory"),
+        controls: "ot-maintenance-panel-inventory",
+      },
+      {
+        id: "ot-maintenance-tab-services",
+        label: t("maintenanceServices"),
+        controls: "ot-maintenance-panel-services",
+      },
+    ],
+    [t],
+  );
+
   return (
-    <section className="desk-maintenance">
+    <DeskChrome>
       {browsing ? (
-        <div
-          className="desk-maintenance-tabs"
-          role="tablist"
-          aria-label={t("navOtCupboard")}
-        >
-          <button
-            type="button"
-            id="ot-maintenance-tab-inventory"
-            role="tab"
-            className={`desk-maintenance-tab${tab === "inventory" ? " active" : ""}`}
-            aria-selected={tab === "inventory"}
-            aria-controls="ot-maintenance-panel-inventory"
-            onClick={() => setTab("inventory")}
-          >
-            {t("otStockInventory")}
-          </button>
-          <button
-            type="button"
-            id="ot-maintenance-tab-services"
-            role="tab"
-            className={`desk-maintenance-tab${tab === "services" ? " active" : ""}`}
-            aria-selected={tab === "services"}
-            aria-controls="ot-maintenance-panel-services"
-            onClick={() => setTab("services")}
-          >
-            {t("maintenanceServices")}
-          </button>
-        </div>
+        <DeskChromeTabs
+          ariaLabel={t("navOtCupboard")}
+          tabs={tabs}
+          activeId={
+            tab === "inventory"
+              ? "ot-maintenance-tab-inventory"
+              : "ot-maintenance-tab-services"
+          }
+          onSelect={(id) =>
+            setTab(id === "ot-maintenance-tab-inventory" ? "inventory" : "services")
+          }
+        />
       ) : null}
       {tab === "inventory" ? (
-        <div
+        <DeskChromePanel
           id="ot-maintenance-panel-inventory"
-          role="tabpanel"
-          aria-labelledby="ot-maintenance-tab-inventory"
-          className="desk-maintenance-panel"
+          labelledBy="ot-maintenance-tab-inventory"
         >
           <OtStockPage onBrowseChange={onBrowseChange} />
-        </div>
+        </DeskChromePanel>
       ) : (
-        <div
+        <DeskChromePanel
           id="ot-maintenance-panel-services"
-          role="tabpanel"
-          aria-labelledby="ot-maintenance-tab-services"
-          className="desk-maintenance-panel"
+          labelledBy="ot-maintenance-tab-services"
         >
           <OtServicesPage onBrowseChange={onBrowseChange} />
-        </div>
+        </DeskChromePanel>
       )}
-    </section>
+    </DeskChrome>
   );
 }

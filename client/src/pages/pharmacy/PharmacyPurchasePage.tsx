@@ -31,7 +31,8 @@ import {
 import { BillTotals } from "@/shared/BillTotals";
 import { BillDateField, formatUtcAsLocal } from "@/shared/BillDateField";
 import { draftHasContent } from "@/shared/billDraft";
-import { useRegisterBillLeaveGuard } from "@/shared/billLeaveGuard";
+import { useDraftBaseline, useRegisterBillLeaveGuard } from "@/shared/billLeaveGuard";
+import { DeskChrome } from "@/shared/DeskChrome";
 import { Typeahead } from "@/shared/Typeahead";
 import { useI18n } from "@/shared/i18n";
 import { useBillActionFeedback, useBillActionPending } from "@/shared/useActionLock";
@@ -406,6 +407,7 @@ export function PharmacyPurchasePage() {
   const isDraft = billStatus === "draft";
   const canVoid =
     billId != null && billStatus !== "void" && billStatus !== "deleted";
+  const markCleanRef = useRef<() => void>(() => {});
 
   function openVoidConfirm() {
     if (!canVoid) return;
@@ -453,6 +455,7 @@ export function PharmacyPurchasePage() {
     setLines([]);
     setCreatedAt(null);
     setError(null);
+    markCleanRef.current();
   }
 
   function applySavedBill(b: PharmacyPurchaseBill) {
@@ -472,6 +475,7 @@ export function PharmacyPurchasePage() {
     try {
       const b = await getPharmacyPurchaseBill(id);
       applySavedBill(b);
+      markCleanRef.current();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Open failed");
     } finally {
@@ -501,6 +505,10 @@ export function PharmacyPurchasePage() {
     };
   }
 
+  const formKey = JSON.stringify(buildBody());
+  const { dirty, markClean } = useDraftBaseline(formKey);
+  markCleanRef.current = markClean;
+
   async function saveDraft(): Promise<number | null> {
     if (
       !draftHasContent({
@@ -516,19 +524,23 @@ export function PharmacyPurchasePage() {
       ? await updatePharmacyPurchaseBill(billId, body)
       : await createPharmacyPurchaseBill(body);
     applySavedBill(b);
+    markClean();
     return b.id;
   }
 
-  useRegisterBillLeaveGuard(lines.length > 0 && billId == null, async () => {
-    try {
-      setError(null);
-      const id = await saveDraft();
-      return id != null;
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Save failed");
-      return false;
-    }
-  });
+  useRegisterBillLeaveGuard(
+    (lines.length > 0 && billId == null) || (billId != null && isDraft && dirty),
+    async () => {
+      try {
+        setError(null);
+        const id = await saveDraft();
+        return id != null;
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Save failed");
+        return false;
+      }
+    },
+  );
 
   async function doConfirm() {
     if (!isDraft) return;
@@ -818,7 +830,8 @@ export function PharmacyPurchasePage() {
 
   return (
     <>
-      <section className="opd-bill-desk">
+      <DeskChrome>
+        <section className="opd-bill-desk">
         <div className="opd-bill-desk-main">
           <h2 className="opd-bill-desk-title">{t("pharmacyPurchaseBills")}</h2>
 
@@ -903,9 +916,6 @@ export function PharmacyPurchasePage() {
 
           <div className="opd-bill-footer">
             <div className="opd-bill-footer-left">
-              <span className="opd-bill-service-count">
-                {t("serviceCount")}: {lines.length}
-              </span>
               {!billId ? <span className="opd-bill-new-badge">{t("newBadge")}</span> : null}
             </div>
             <BillTotals
@@ -1019,6 +1029,7 @@ export function PharmacyPurchasePage() {
 
         <AlertDialog message={error ?? ""} onClose={() => setError(null)} />
       </section>
+      </DeskChrome>
 
       {dialog ? (
         <PharmacyPurchaseListDialog

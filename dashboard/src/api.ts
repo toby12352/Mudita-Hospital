@@ -13,6 +13,31 @@ const TOKEN_KEY = "mudita_dash_token";
 const API_BASE_KEY = "mudita_dash_api_base";
 const API_CONFIGURED_KEY = "mudita_dash_api_configured";
 
+let unauthorizedHandler: (() => void) | null = null;
+let unauthorizedNotified = false;
+
+/** App registers leave-to-sign-in; resets the once-guard when set. */
+export function setUnauthorizedHandler(handler: (() => void) | null): void {
+  unauthorizedHandler = handler;
+  unauthorizedNotified = false;
+}
+
+/** True when the server rejected the session token (not a wrong password). */
+export function isUnauthorizedError(status: number, raw: string): boolean {
+  return status === 401 && raw.trim().toLowerCase() === "unauthorized";
+}
+
+/** Leave the desk once when a session is rejected. */
+export function notifyUnauthorized(): void {
+  if (unauthorizedNotified || !unauthorizedHandler) return;
+  unauthorizedNotified = true;
+  unauthorizedHandler();
+}
+
+export function reportUnauthorizedIfNeeded(status: number, raw: string): void {
+  if (isUnauthorizedError(status, raw)) notifyUnauthorized();
+}
+
 /** True after the user has completed (or skipped) the Server IP screen once. */
 export function isApiConfigured(): boolean {
   return localStorage.getItem(API_CONFIGURED_KEY) === "1";
@@ -113,6 +138,9 @@ export async function apiFetch<T = unknown>(path: string, init: RequestInit = {}
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
     const raw = (body as { error?: string }).error || `Request failed (${res.status})`;
+    if (path !== "/api/auth/logout") {
+      reportUnauthorizedIfNeeded(res.status, raw);
+    }
     throw new Error(userMessage(raw, res.status));
   }
   return body as T;

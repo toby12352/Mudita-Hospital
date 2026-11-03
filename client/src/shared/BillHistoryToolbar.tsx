@@ -13,6 +13,11 @@ export type BillHistoryStatusOption = {
   label: string;
 };
 
+export type BillHistoryOrder = "date" | "voucher";
+
+/** Menu value: a direction, or blank Select sort (billing desks with voucherSort). */
+export type BillHistorySortChoice = DateSortValue | "";
+
 export type BillHistoryQuery = {
   q: string;
   /** Money status on bill desks, or a custom filter value (e.g. patient category). */
@@ -24,7 +29,19 @@ export type BillHistoryQuery = {
   from: string;
   to: string;
   sort: DateSortValue;
+  /** Active list order: by created date, or by voucher number. */
+  order: BillHistoryOrder;
 };
+
+/** Caption key for history list order (billing desks with voucherSort). */
+export function billHistoryOrderHintKey(
+  query: Pick<BillHistoryQuery, "sort" | "order">,
+): "billHistoryHint" | "billHistoryHintOldest" | "billHistoryHintVoucherDesc" | "billHistoryHintVoucherAsc" {
+  if (query.order === "voucher") {
+    return query.sort === "asc" ? "billHistoryHintVoucherAsc" : "billHistoryHintVoucherDesc";
+  }
+  return query.sort === "asc" ? "billHistoryHintOldest" : "billHistoryHint";
+}
 
 export type BillHistorySuggestItem = {
   id: number;
@@ -44,7 +61,7 @@ function localToday(): string {
   return `${now.getFullYear()}-${month}-${day}`;
 }
 
-const emptyQuery = (): BillHistoryQuery => ({
+const emptyQuery = (voucherDefault = false): BillHistoryQuery => ({
   q: "",
   money: "",
   category: "",
@@ -52,16 +69,21 @@ const emptyQuery = (): BillHistoryQuery => ({
   from: "",
   to: "",
   sort: "desc",
+  order: voucherDefault ? "voucher" : "date",
 });
 
 /** History opens on today. Clearing both dates (Reset) shows every bill. */
-function todayQuery(): BillHistoryQuery {
+function todayQuery(voucherDefault = false): BillHistoryQuery {
   const today = localToday();
-  return { ...emptyQuery(), from: today, to: today };
+  return { ...emptyQuery(voucherDefault), from: today, to: today };
 }
 
-function initialQuery(range: BillHistoryInitialRange, initialMoney = ""): BillHistoryQuery {
-  const base = range === "all" ? emptyQuery() : todayQuery();
+function initialQuery(
+  range: BillHistoryInitialRange,
+  initialMoney = "",
+  voucherDefault = false,
+): BillHistoryQuery {
+  const base = range === "all" ? emptyQuery(voucherDefault) : todayQuery(voucherDefault);
   return { ...base, money: initialMoney };
 }
 
@@ -70,7 +92,7 @@ type Props = {
   /** Called on mount and whenever search / filter should reload the list. */
   onSearch: (query: BillHistoryQuery) => void;
   /**
-   * Typeahead suggestions; filters are the current money/category/unit/from/to/sort (not q).
+   * Typeahead suggestions; filters are the current money/category/unit/from/to/sort/order (not q).
    * Unused when `explicitSearch` is set.
    */
   loadSuggestions?: (
@@ -101,6 +123,11 @@ type Props = {
    * When omitted, the unit control is hidden and query.unit stays "".
    */
   unitOptions?: BillHistoryStatusOption[];
+  /**
+   * Show Ascend/Descend voucher sort and default history to voucher Descend
+   * (billing history desks only).
+   */
+  voucherSort?: boolean;
   /** Guided tour target on the search field. */
   searchGuide?: string;
   /**
@@ -109,8 +136,9 @@ type Props = {
    */
   onPickSuggestion?: (item: BillHistorySuggestItem) => void;
   /**
-   * Plain search field plus a Search button before Filter.
-   * Typing does not open suggestions; Enter or the button runs onSearch.
+   * Plain search field. Typing does not open suggestions; Enter or the
+   * toolbar Search button runs onSearch. The Search button is always shown,
+   * including when this flag is off and the field stays a typeahead.
    */
   explicitSearch?: boolean;
   /**
@@ -134,6 +162,7 @@ export function BillHistoryToolbar({
   hideStatus = false,
   categoryOptions,
   unitOptions,
+  voucherSort = false,
   searchGuide,
   onPickSuggestion,
   explicitSearch = false,
@@ -149,15 +178,37 @@ export function BillHistoryToolbar({
   const [unit, setUnit] = useState("");
   const [from, setFrom] = useState(() => (initialRange === "all" ? "" : localToday()));
   const [to, setTo] = useState(() => (initialRange === "all" ? "" : localToday()));
-  const [sort, setSort] = useState<DateSortValue>("desc");
-  const filtersRef = useRef({ money, category, unit, from, to, sort });
-  filtersRef.current = { money, category, unit, from, to, sort };
+  /** With voucherSort, only one menu holds a direction; the other is Select sort (""). */
+  const [dateSort, setDateSort] = useState<BillHistorySortChoice>(voucherSort ? "" : "desc");
+  const [voucherDir, setVoucherDir] = useState<BillHistorySortChoice>(voucherSort ? "desc" : "desc");
+  const [order, setOrder] = useState<BillHistoryOrder>(voucherSort ? "voucher" : "date");
+  const activeSort: DateSortValue =
+    order === "voucher" ? voucherDir || "desc" : dateSort || "desc";
+  const filtersRef = useRef({
+    money,
+    category,
+    unit,
+    from,
+    to,
+    sort: activeSort,
+    order,
+  });
+  filtersRef.current = {
+    money,
+    category,
+    unit,
+    from,
+    to,
+    sort: activeSort,
+    order,
+  };
   const onSearchRef = useRef(onSearch);
   onSearchRef.current = onSearch;
   const onInvalidRangeRef = useRef(onInvalidRange);
   onInvalidRangeRef.current = onInvalidRange;
   const initialRangeRef = useRef(initialRange);
   const initialMoneyRef = useRef(initialMoney);
+  const voucherSortRef = useRef(voucherSort);
 
   const defaultMoneyLabels: Record<BillHistoryMoney, string> = {
     "": t("all"),
@@ -175,9 +226,18 @@ export function BillHistoryToolbar({
       label: defaultMoneyLabels[value],
     }));
 
-  const sortOptions: FilterMenuOption[] = [
-    { value: "desc", label: t("sortNewest") },
-    { value: "asc", label: t("sortOldest") },
+  const selectSortOption: FilterMenuOption = { value: "", label: t("selectSort") };
+  const sortOptions: FilterMenuOption[] = voucherSort
+    ? [selectSortOption, { value: "desc", label: t("sortNewest") }, { value: "asc", label: t("sortOldest") }]
+    : [
+        { value: "desc", label: t("sortNewest") },
+        { value: "asc", label: t("sortOldest") },
+      ];
+
+  const voucherOptions: FilterMenuOption[] = [
+    selectSortOption,
+    { value: "asc", label: t("sortAscend") },
+    { value: "desc", label: t("sortDescend") },
   ];
 
   const buildQuery = useCallback(
@@ -186,9 +246,10 @@ export function BillHistoryToolbar({
       nextMoney = money,
       nextFrom = from,
       nextTo = to,
-      nextSort = sort,
+      nextSort = activeSort,
       nextCategory = category,
       nextUnit = unit,
+      nextOrder = order,
     ): BillHistoryQuery => ({
       q: q.trim(),
       money: nextMoney,
@@ -197,8 +258,9 @@ export function BillHistoryToolbar({
       from: nextFrom.trim(),
       to: nextTo.trim(),
       sort: nextSort,
+      order: nextOrder,
     }),
-    [money, category, unit, from, to, sort],
+    [money, category, unit, from, to, activeSort, order],
   );
 
   function rangeInvalid(nextFrom: string, nextTo: string): boolean {
@@ -212,21 +274,28 @@ export function BillHistoryToolbar({
     nextMoney = money,
     nextFrom = from,
     nextTo = to,
-    nextSort = sort,
+    nextSort = activeSort,
     nextCategory = category,
     nextUnit = unit,
+    nextOrder = order,
   ) {
     if (rangeInvalid(nextFrom, nextTo)) {
       onInvalidRangeRef.current();
       return;
     }
     onSearchRef.current(
-      buildQuery(q, nextMoney, nextFrom, nextTo, nextSort, nextCategory, nextUnit),
+      buildQuery(q, nextMoney, nextFrom, nextTo, nextSort, nextCategory, nextUnit, nextOrder),
     );
   }
 
   useEffect(() => {
-    onSearchRef.current(initialQuery(initialRangeRef.current, initialMoneyRef.current));
+    onSearchRef.current(
+      initialQuery(
+        initialRangeRef.current,
+        initialMoneyRef.current,
+        voucherSortRef.current,
+      ),
+    );
   }, []);
 
   const loadSuggest = useCallback(
@@ -240,6 +309,7 @@ export function BillHistoryToolbar({
         from: f.from,
         to: f.to,
         sort: f.sort,
+        order: f.order,
       });
     },
     [loadSuggestions],
@@ -305,12 +375,10 @@ export function BillHistoryToolbar({
             onSubmitWithoutPick={() => apply(queryText)}
           />
         )}
-        {explicitSearch ? (
-          <button type="button" className="btn action" onClick={() => apply(queryText)}>
-            <ActionIcon name="search" />
-            {t("search")}
-          </button>
-        ) : null}
+        <button type="button" className="btn action" onClick={() => apply(queryText)}>
+          <ActionIcon name="search" />
+          {t("search")}
+        </button>
         <CatalogFilterButton
           open={filterOpen}
           controlsId={filterPanelId}
@@ -341,7 +409,7 @@ export function BillHistoryToolbar({
                     onChange={(e) => {
                       const next = e.target.value;
                       setFrom(next);
-                      apply(queryText, money, next, to, sort, category, unit);
+                      apply(queryText, money, next, to, activeSort, category, unit, order);
                     }}
                   />
                 </div>
@@ -357,7 +425,7 @@ export function BillHistoryToolbar({
                     onChange={(e) => {
                       const next = e.target.value;
                       setTo(next);
-                      apply(queryText, money, from, next, sort, category, unit);
+                      apply(queryText, money, from, next, activeSort, category, unit, order);
                     }}
                   />
                 </div>
@@ -371,7 +439,7 @@ export function BillHistoryToolbar({
                 options={resolvedStatusOptions}
                 onChange={(next) => {
                   setMoney(next);
-                  apply(queryText, next, from, to, sort, category, unit);
+                  apply(queryText, next, from, to, activeSort, category, unit, order);
                 }}
               />
             ) : null}
@@ -383,7 +451,7 @@ export function BillHistoryToolbar({
                 options={categoryMenuOptions}
                 onChange={(next) => {
                   setCategory(next);
-                  apply(queryText, money, from, to, sort, next, unit);
+                  apply(queryText, money, from, to, activeSort, next, unit, order);
                 }}
               />
             ) : null}
@@ -395,21 +463,61 @@ export function BillHistoryToolbar({
                 options={unitMenuOptions}
                 onChange={(next) => {
                   setUnit(next);
-                  apply(queryText, money, from, to, sort, category, next);
+                  apply(queryText, money, from, to, activeSort, category, next, order);
                 }}
               />
             ) : null}
             <FilterMenu
               id={`${filterPanelId}-sort`}
               label={t("sortByDate")}
-              value={sort}
+              value={dateSort}
               options={sortOptions}
               onChange={(next) => {
-                const nextSort = next === "asc" ? "asc" : "desc";
-                setSort(nextSort);
-                apply(queryText, money, from, to, nextSort, category, unit);
+                if (voucherSort) {
+                  if (next === "") {
+                    // Clearing the active date sort restores voucher Descend.
+                    setDateSort("");
+                    setVoucherDir("desc");
+                    setOrder("voucher");
+                    apply(queryText, money, from, to, "desc", category, unit, "voucher");
+                    return;
+                  }
+                  const nextSort: DateSortValue = next === "asc" ? "asc" : "desc";
+                  setDateSort(nextSort);
+                  setVoucherDir("");
+                  setOrder("date");
+                  apply(queryText, money, from, to, nextSort, category, unit, "date");
+                  return;
+                }
+                const nextSort: DateSortValue = next === "asc" ? "asc" : "desc";
+                setDateSort(nextSort);
+                setOrder("date");
+                apply(queryText, money, from, to, nextSort, category, unit, "date");
               }}
             />
+            {voucherSort ? (
+              <FilterMenu
+                id={`${filterPanelId}-voucher-sort`}
+                label={t("sortByVoucher")}
+                value={voucherDir}
+                options={voucherOptions}
+                onChange={(next) => {
+                  if (next === "") {
+                    // Clearing voucher sort restores the open default (voucher Descend).
+                    setDateSort("");
+                    setVoucherDir("desc");
+                    setOrder("voucher");
+                    apply(queryText, money, from, to, "desc", category, unit, "voucher");
+                    return;
+                  }
+                  const nextSort: DateSortValue = next === "asc" ? "asc" : "desc";
+                  setVoucherDir(nextSort);
+                  setDateSort("");
+                  setOrder("voucher");
+                  apply(queryText, money, from, to, nextSort, category, unit, "voucher");
+                }}
+              />
+            ) : null}
             <div className="catalog-filter-actions">
               <button
                 type="button"
@@ -421,8 +529,10 @@ export function BillHistoryToolbar({
                   setUnit("");
                   setFrom("");
                   setTo("");
-                  setSort("desc");
-                  onSearchRef.current(emptyQuery());
+                  setDateSort(voucherSort ? "" : "desc");
+                  setVoucherDir("desc");
+                  setOrder(voucherSort ? "voucher" : "date");
+                  onSearchRef.current(emptyQuery(voucherSort));
                 }}
               >
                 {t("reset")}

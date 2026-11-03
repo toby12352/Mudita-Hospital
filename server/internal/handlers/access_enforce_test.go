@@ -12,6 +12,9 @@ import (
 func insertModeSession(t *testing.T, sqlDB *sql.DB, role, mode string, grants ...string) (int64, string) {
 	t.Helper()
 	id, token := insertSession(t, sqlDB, role, 0)
+	if _, err := sqlDB.Exec(`DELETE FROM user_grants WHERE user_id = ?`, id); err != nil {
+		t.Fatalf("clear grants: %v", err)
+	}
 	if _, err := sqlDB.Exec(`UPDATE users SET access_mode = ? WHERE id = ?`, mode, id); err != nil {
 		t.Fatalf("mode: %v", err)
 	}
@@ -34,8 +37,10 @@ func TestAccessEnforcement(t *testing.T) {
 	itemID := insertItem(t, sqlDB, "DRUG1", "Drug", 100, 50)
 	insertBatch(t, sqlDB, itemID, "B1", "2027-01-01", 10)
 
-	_, portalOPD := insertSession(t, sqlDB, auth.RoleOPD, 0)
-	_, portalPharmacy := insertSession(t, sqlDB, auth.RolePharmacy, 0)
+	portalOPDID, portalOPD := insertSession(t, sqlDB, auth.RoleOPD, 0)
+	asPortal(t, sqlDB, portalOPDID)
+	portalPharmacyID, portalPharmacy := insertSession(t, sqlDB, auth.RolePharmacy, 0)
+	asPortal(t, sqlDB, portalPharmacyID)
 	_, adminTok := insertSession(t, sqlDB, auth.RoleAdmin, 0)
 
 	_, pharmacyClerk := insertModeSession(t, sqlDB, auth.RoleOPD, auth.AccessUnified,
@@ -55,46 +60,36 @@ func TestAccessEnforcement(t *testing.T) {
 	priceBody := `{"code":"DRUG1","name":"Drug","category":"Tablet","sell_price_mmk":80,"buy_price_mmk":100}`
 	adjustBody := `{"qty_delta":1,"reason":"count"}`
 
-	t.Run("portal opd fee", func(t *testing.T) {
+	t.Run("portal opd is denied", func(t *testing.T) {
 		w := doJSON(services, http.MethodPut, fmt.Sprintf("/api/services/%d", serviceID), portalOPD, feeBody)
-		mustCode(t, w, http.StatusOK)
+		mustCode(t, w, http.StatusForbidden)
 		var price int64
 		if err := sqlDB.QueryRow(`SELECT price_mmk FROM services WHERE id = ?`, serviceID).Scan(&price); err != nil {
 			t.Fatal(err)
 		}
-		if price != 2500 {
+		if price != 1000 {
 			t.Fatalf("portal fee %d", price)
 		}
 	})
 
-	t.Run("portal pharmacy price and adjust", func(t *testing.T) {
+	t.Run("portal pharmacy is denied", func(t *testing.T) {
+		before := mainQty(t, sqlDB, itemID)
 		w := doJSON(pharmacy, http.MethodPut, fmt.Sprintf("/api/pharmacy/items/%d", itemID), portalPharmacy, priceBody)
-		mustCode(t, w, http.StatusOK)
+		mustCode(t, w, http.StatusForbidden)
+		w = doJSON(pharmacy, http.MethodPost, fmt.Sprintf("/api/pharmacy/items/%d/restock", itemID), portalPharmacy,
+			`{"qty":1,"qty_unit":"stock","buy_price_mmk":111,"sell_price_mmk":222}`)
+		mustCode(t, w, http.StatusForbidden)
+		w = doJSON(pharmacy, http.MethodPost, fmt.Sprintf("/api/pharmacy/items/%d/adjust", itemID), portalPharmacy, adjustBody)
+		mustCode(t, w, http.StatusForbidden)
+		if mainQty(t, sqlDB, itemID) != before {
+			t.Fatalf("portal changed qty to %d", mainQty(t, sqlDB, itemID))
+		}
 		var sell int64
 		if err := sqlDB.QueryRow(`SELECT sell_price_mmk FROM items WHERE id = ?`, itemID).Scan(&sell); err != nil {
 			t.Fatal(err)
 		}
-		if sell != 80 {
+		if sell != 50 {
 			t.Fatalf("portal sell %d", sell)
-		}
-		before := mainQty(t, sqlDB, itemID)
-		w = doJSON(pharmacy, http.MethodPost, fmt.Sprintf("/api/pharmacy/items/%d/restock", itemID), portalPharmacy,
-			`{"qty":1,"qty_unit":"stock","buy_price_mmk":111,"sell_price_mmk":222}`)
-		mustCode(t, w, http.StatusOK)
-		if mainQty(t, sqlDB, itemID) != before+1 {
-			t.Fatalf("portal restock qty %d", mainQty(t, sqlDB, itemID))
-		}
-		var buy int64
-		if err := sqlDB.QueryRow(`SELECT buy_price_mmk, sell_price_mmk FROM items WHERE id = ?`, itemID).Scan(&buy, &sell); err != nil {
-			t.Fatal(err)
-		}
-		if buy != 111 || sell != 222 {
-			t.Fatalf("portal restock prices %d/%d", buy, sell)
-		}
-		w = doJSON(pharmacy, http.MethodPost, fmt.Sprintf("/api/pharmacy/items/%d/adjust", itemID), portalPharmacy, adjustBody)
-		mustCode(t, w, http.StatusForbidden)
-		if mainQty(t, sqlDB, itemID) != before+1 {
-			t.Fatalf("portal adjust changed qty to %d", mainQty(t, sqlDB, itemID))
 		}
 	})
 

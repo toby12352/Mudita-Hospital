@@ -1,4 +1,4 @@
-import { apiFetch, getApiBase, TOKEN_KEY } from "./api";
+import { apiFetch, getApiBase, reportUnauthorizedIfNeeded, TOKEN_KEY } from "./api";
 import { userMessage } from "./errors";
 
 export type MasterItem = {
@@ -149,6 +149,7 @@ export async function downloadExportCSV(kind: "items" | "services" | "doctors"):
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     const raw = (body as { error?: string }).error || `Export failed (${res.status})`;
+    reportUnauthorizedIfNeeded(res.status, raw);
     throw new Error(userMessage(raw, res.status));
   }
   const blob = await res.blob();

@@ -126,7 +126,7 @@ func (h *Expenses) listExpenseBills(w http.ResponseWriter, r *http.Request) {
 	if len(where) > 0 {
 		query += " WHERE " + strings.Join(where, " AND ")
 	}
-	orderSQL, orderErr := billHistoryOrderBy(r, "created_at", "id")
+	orderSQL, orderErr := billHistoryOrderBy(r, "created_at", "id", "bill_no")
 	if orderErr != "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": orderErr})
 		return

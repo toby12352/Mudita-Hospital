@@ -22,7 +22,7 @@ import {
   type PharmacyBillKind,
   type PharmacyItem,
 } from "@/features/pharmacy/api";
-import type { PatientChart } from "@/features/patients/api";
+import { getPatient, type PatientChart } from "@/features/patients/api";
 import { useOpenAdmission } from "@/features/patients/useOpenAdmission";
 import { getStoredUser } from "@/shared/auth";
 import { formatUtcAsLocal, nowDatetimeLocal } from "@/shared/BillDateField";
@@ -33,9 +33,10 @@ import {
 } from "@/shared/discount";
 import { AlertDialog } from "@/shared/AlertDialog";
 import { draftHasContent } from "@/shared/billDraft";
-import { useRegisterBillLeaveGuard } from "@/shared/billLeaveGuard";
+import { useDraftBaseline, useRegisterBillLeaveGuard } from "@/shared/billLeaveGuard";
 import { userMessage } from "@/shared/errors";
 import { useClinicActions } from "@/app/clinicActions";
+import { DeskChrome } from "@/shared/DeskChrome";
 import { useI18n } from "@/shared/i18n";
 import { useBillActionFeedback, useBillActionPending } from "@/shared/useActionLock";
 import { VoidBillConfirm } from "@/shared/VoidBillConfirm";
@@ -86,6 +87,7 @@ export function PharmacyBillingPage({
   const [patientName, setPatientName] = useState("");
   const [linkedChartId, setLinkedChartId] = useState<number | null>(null);
   const patientNameRef = useRef<HTMLInputElement>(null);
+  const [patientFatherMotherName, setPatientFatherMotherName] = useState("");
   const [patientPhone, setPatientPhone] = useState("");
   const [patientAge, setPatientAge] = useState("");
   const [patientGender, setPatientGender] = useState("");
@@ -106,6 +108,7 @@ export function PharmacyBillingPage({
   const canVoid =
     billId != null && billStatus !== "void" && billStatus !== "deleted";
   const openAdmissionId = useOpenAdmission(isTransfer ? null : linkedChartId);
+  const markCleanRef = useRef<() => void>(() => {});
 
   function openVoidConfirm() {
     if (!canVoid) return;
@@ -167,6 +170,7 @@ export function PharmacyBillingPage({
     setPaymentType("cash");
     setPatientName("");
     setLinkedChartId(null);
+    setPatientFatherMotherName("");
     setPatientPhone("");
     setPatientAge("");
     setPatientGender("");
@@ -180,7 +184,8 @@ export function PharmacyBillingPage({
     setAwaitingConfirm(false);
     setTransferDone(false);
     setError(null);
-      }
+    markCleanRef.current();
+  }
 
   function rememberOnHand(id: number, qty: number) {
     setOnHandByItemId((prev) => ({ ...prev, [id]: qty }));
@@ -232,6 +237,15 @@ export function PharmacyBillingPage({
       setPatientPhone(b.patient_phone || "");
       setPatientAge(b.patient_age_years != null ? String(b.patient_age_years) : "");
       setPatientGender(b.patient_gender || "");
+      setPatientFatherMotherName("");
+      if (!isTransfer && b.patient_id != null) {
+        try {
+          const chart = await getPatient(b.patient_id);
+          setPatientFatherMotherName(chart.father_mother_name || "");
+        } catch {
+          /* chart optional for display */
+        }
+      }
       setDescription(b.description || "");
       const next = b.lines ?? [];
       setLines(next);
@@ -241,6 +255,7 @@ export function PharmacyBillingPage({
       setDiscountUnit(discount.unit);
       setCreatedAt(b.created_at);
       setAwaitingConfirm(false);
+      markCleanRef.current();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Load failed");
     } finally {
@@ -261,6 +276,7 @@ export function PharmacyBillingPage({
       patient_phone: patientPhone.trim(),
       patient_age_years: age != null && !Number.isNaN(age) ? age : null,
       patient_gender: patientGender,
+      father_mother_name: patientFatherMotherName.trim(),
       description: description.trim(),
       lines: lines.map((line) => ({
         item_id: line.item_id,
@@ -293,6 +309,10 @@ export function PharmacyBillingPage({
     };
   }
 
+  const formKey = JSON.stringify(buildBody());
+  const { dirty, markClean } = useDraftBaseline(formKey);
+  markCleanRef.current = markClean;
+
   function onPatientName(v: string) {
     setPatientName(v);
     setLinkedChartId(null);
@@ -301,6 +321,7 @@ export function PharmacyBillingPage({
   function pickPatient(p: PatientChart) {
     setLinkedChartId(p.id);
     setPatientName(p.name);
+    setPatientFatherMotherName(p.father_mother_name || "");
     setPatientPhone(p.phone || "");
     setPatientAge(p.age_years != null ? String(p.age_years) : "");
     setPatientGender(p.gender || "");
@@ -309,6 +330,7 @@ export function PharmacyBillingPage({
   function clearLinkedPatient() {
     setLinkedChartId(null);
     setPatientName("");
+    setPatientFatherMotherName("");
     setPatientPhone("");
     setPatientAge("");
     setPatientGender("");
@@ -397,7 +419,7 @@ export function PharmacyBillingPage({
     if (
       !isTransfer &&
       !draftHasContent({
-        texts: [patientName, patientPhone, patientAge, patientGender, description],
+        texts: [patientName, patientFatherMotherName, patientPhone, patientAge, patientGender, description],
         flags: [linkedChartId != null],
         lineCount: lines.length,
         discountValue,
@@ -422,19 +444,23 @@ export function PharmacyBillingPage({
       ? await updatePharmacyBill(billId, body)
       : await createPharmacyBill(body);
     applySavedBill(b);
+    markClean();
     return b;
   }
 
-  useRegisterBillLeaveGuard(lines.length > 0 && billId == null, async () => {
-    try {
-      setError(null);
-      const saved = await saveDraft();
-      return saved != null;
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Save failed");
-      return false;
-    }
-  });
+  useRegisterBillLeaveGuard(
+    (lines.length > 0 && billId == null) || (billId != null && isDraft && dirty),
+    async () => {
+      try {
+        setError(null);
+        const saved = await saveDraft();
+        return saved != null;
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Save failed");
+        return false;
+      }
+    },
+  );
 
   function receiptTitle(billNoPaid: string) {
     if (isReturn) {
@@ -888,7 +914,8 @@ export function PharmacyBillingPage({
 
   return (
     <>
-      <PharmacyBillForm
+      <DeskChrome>
+        <PharmacyBillForm
         billId={billId}
         billNo={billNo}
         billStatus={billStatus}
@@ -900,6 +927,7 @@ export function PharmacyBillingPage({
         returnSaleId={returnSaleId}
         patientId={linkedChartId}
         patientName={patientName}
+        patientFatherMotherName={patientFatherMotherName}
         patientPhone={patientPhone}
         patientAge={patientAge}
         patientGender={patientGender}
@@ -927,6 +955,7 @@ export function PharmacyBillingPage({
         onPatientName={onPatientName}
         onPickPatient={pickPatient}
         onClearPatient={clearLinkedPatient}
+        onPatientFatherMotherName={setPatientFatherMotherName}
         onPatientPhone={setPatientPhone}
         onPatientAge={setPatientAge}
         onPatientGender={setPatientGender}
@@ -971,7 +1000,8 @@ export function PharmacyBillingPage({
         onPurge={billPurge ? () => setDialog("purge") : undefined}
         onCancel={doCancel}
         onNewBill={doNewBill}
-      />
+        />
+      </DeskChrome>
       {dialog ? (
         <PharmacyBillListDialog
           mode={dialog}

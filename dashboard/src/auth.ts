@@ -1,7 +1,7 @@
 import { apiFetch, getApiBase, TOKEN_KEY } from "./api";
 import { userMessage } from "./errors";
 
-export type Role = "Admin" | "OPD" | "OT" | "Pharmacy" | "Patients";
+export type Role = "Admin" | "OPD" | "OT" | "Pharmacy" | "Patients" | "IPD" | "Lab";
 
 export type User = {
   id: number;
@@ -70,11 +70,15 @@ export async function login(username: string, password: string): Promise<LoginRe
   return body as LoginResult;
 }
 
-export async function logout(): Promise<void> {
-  const token = getStoredToken();
+/** Best-effort server logout. Pass a token after clearSession so the request still runs. */
+export async function logout(tokenOverride?: string | null): Promise<void> {
+  const token = tokenOverride !== undefined ? tokenOverride : getStoredToken();
   if (!token) return;
   try {
-    await apiFetch("/api/auth/logout", { method: "POST" });
+    await fetch(`${getApiBase()}/api/auth/logout`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    });
   } catch {
     // clear local session even if server unreachable
   }
@@ -111,9 +115,18 @@ export function createIdleWatcher(onIdle: () => void): { onActivity: () => void;
     timer = window.setTimeout(onIdle, IDLE_MS);
   };
 
-  const events = ["mousemove", "mousedown", "keydown", "touchstart", "scroll"] as const;
+  const events = [
+    "mousemove",
+    "mousedown",
+    "keydown",
+    "touchstart",
+    "scroll",
+    "wheel",
+    "pointerdown",
+  ] as const;
+  const opts: AddEventListenerOptions = { passive: true, capture: true };
   for (const e of events) {
-    window.addEventListener(e, reset, { passive: true });
+    window.addEventListener(e, reset, opts);
   }
   reset();
 
@@ -122,7 +135,7 @@ export function createIdleWatcher(onIdle: () => void): { onActivity: () => void;
     dispose: () => {
       if (timer !== undefined) window.clearTimeout(timer);
       for (const e of events) {
-        window.removeEventListener(e, reset);
+        window.removeEventListener(e, reset, opts);
       }
     },
   };

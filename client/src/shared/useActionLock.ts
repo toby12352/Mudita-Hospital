@@ -125,7 +125,7 @@ export function useBillActionFeedback() {
       const ms =
         kind === "err"
           ? ACTION_ERR_SHAKE_MS
-          : action === "saveDraft"
+          : action === "saveDraft" || action === "notes"
             ? ACTION_OK_FLASH_MS
             : ACTION_TICK_FLASH_MS;
       timer.current = window.setTimeout(() => {

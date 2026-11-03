@@ -145,7 +145,7 @@ func (h *IPD) discharge(w http.ResponseWriter, r *http.Request, path string) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "reload failed"})
 		return
 	}
-	writeJSON(w, http.StatusOK, row)
+	writeAdmissionJSON(w, http.StatusOK, h.DB, row)
 }
 
 func (h *IPD) printStatement(w http.ResponseWriter, r *http.Request, path string) {

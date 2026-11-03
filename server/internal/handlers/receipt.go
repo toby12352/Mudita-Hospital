@@ -81,18 +81,25 @@ type receiptBill struct {
 	// Empty on OPD, OT, and pharmacy receipts, which use the patient block instead.
 	PortalLabel string
 	PayeeName   string
+	// AdmissionNo and RoomNo are optional IPD stay fields. Empty on desk cash slips.
+	AdmissionNo string
+	RoomNo      string
 	Note        string
 	DateLabel   string
 	TotalMMK    int64
 	// ShowSettlement prints Total, Discount, Paid, and Remaining Balance.
 	// TotalMMK is the cart sum. NetMMK is the amount due after discount.
 	ShowSettlement bool
-	DiscountMMK    int64
-	DiscountValue  int64
-	DiscountUnit   string
-	NetMMK         int64
-	VoidReason     string
-	Lines          []receiptLine
+	// ShowNetSettlement prints Total, Discount, and Net only (IPD charge slips).
+	ShowNetSettlement bool
+	DiscountMMK       int64
+	DiscountValue     int64
+	DiscountUnit      string
+	NetMMK            int64
+	VoidReason        string
+	// StatusLine, when set, replaces the cash footer (PAID / PRINTED — NOT PAID).
+	StatusLine string
+	Lines      []receiptLine
 }
 
 func renderThermalReceiptHTML(hosp *hospitalSettings, bill receiptBill) string {
@@ -139,8 +146,15 @@ func writeThermalReceipt(b *strings.Builder, hosp *hospitalSettings, bill receip
 	if bill.CaseNo != "" {
 		writeReceiptKV(b, "Case", bill.CaseNo)
 	}
+	if admission := strings.TrimSpace(bill.AdmissionNo); admission != "" {
+		writeReceiptKV(b, "Admission", admission)
+	}
 	writeReceiptKV(b, "Date", bill.DateLabel)
-	writeReceiptKV(b, "Status", strings.ToUpper(bill.Status))
+	statusKV := strings.TrimSpace(bill.StatusLine)
+	if statusKV == "" {
+		statusKV = strings.ToUpper(bill.Status)
+	}
+	writeReceiptKV(b, "Status", statusKV)
 	if label := strings.TrimSpace(bill.PortalLabel); label != "" {
 		writeReceiptKV(b, "Portal", label)
 	}
@@ -151,7 +165,8 @@ func writeThermalReceipt(b *strings.Builder, hosp *hospitalSettings, bill receip
 	name := strings.TrimSpace(bill.PatientName)
 	phone := strings.TrimSpace(bill.PatientPhone)
 	gender := strings.TrimSpace(bill.PatientGender)
-	hasPatient := name != "" || phone != "" || bill.PatientAge != nil || gender != ""
+	room := strings.TrimSpace(bill.RoomNo)
+	hasPatient := name != "" || phone != "" || bill.PatientAge != nil || gender != "" || room != ""
 	if hasPatient {
 		b.WriteString(`<p class="section-title">Patient</p>`)
 		if name != "" {
@@ -165,6 +180,9 @@ func writeThermalReceipt(b *strings.Builder, hosp *hospitalSettings, bill receip
 		}
 		if gender != "" {
 			writeReceiptKV(b, "Sex", gender)
+		}
+		if room != "" {
+			writeReceiptKV(b, "Room", room)
 		}
 	}
 
@@ -211,7 +229,17 @@ func writeThermalReceipt(b *strings.Builder, hosp *hospitalSettings, bill receip
 	}
 
 	b.WriteString(`<hr class="sep"/>`)
-	if bill.ShowSettlement {
+	if bill.ShowNetSettlement {
+		writeReceiptMoney(b, "TOTAL", bill.TotalMMK, true)
+		if bill.DiscountMMK != 0 {
+			label := "DISCOUNT"
+			if strings.EqualFold(bill.DiscountUnit, "percent") && bill.DiscountValue > 0 {
+				label = fmt.Sprintf("DISCOUNT (%d%%)", bill.DiscountValue)
+			}
+			writeReceiptMoney(b, label, bill.DiscountMMK, false)
+		}
+		writeReceiptMoney(b, "NET", bill.NetMMK, true)
+	} else if bill.ShowSettlement {
 		writeReceiptMoney(b, "TOTAL", bill.TotalMMK, true)
 		label := "DISCOUNT"
 		if strings.EqualFold(bill.DiscountUnit, "percent") && bill.DiscountValue > 0 {
@@ -234,22 +262,26 @@ func writeThermalReceipt(b *strings.Builder, hosp *hospitalSettings, bill receip
 		b.WriteString(` MMK</span></div>`)
 	}
 
-	status := strings.ToLower(bill.Status)
 	b.WriteString(`<p class="status">`)
-	switch status {
-	case "paid":
-		b.WriteString(`PAID — CASH`)
-	case "void":
-		b.WriteString(`VOID`)
-		if bill.VoidReason != "" {
-			b.WriteString(` — `)
-			b.WriteString(html.EscapeString(bill.VoidReason))
-		}
-	default:
-		if bill.PrintedAt != "" {
-			b.WriteString(`PRINTED — NOT PAID`)
-		} else {
-			b.WriteString(`DRAFT — NOT PAID`)
+	if line := strings.TrimSpace(bill.StatusLine); line != "" {
+		b.WriteString(html.EscapeString(line))
+	} else {
+		status := strings.ToLower(bill.Status)
+		switch status {
+		case "paid":
+			b.WriteString(`PAID — CASH`)
+		case "void":
+			b.WriteString(`VOID`)
+			if bill.VoidReason != "" {
+				b.WriteString(` — `)
+				b.WriteString(html.EscapeString(bill.VoidReason))
+			}
+		default:
+			if bill.PrintedAt != "" {
+				b.WriteString(`PRINTED — NOT PAID`)
+			} else {
+				b.WriteString(`DRAFT — NOT PAID`)
+			}
 		}
 	}
 	b.WriteString(`</p>`)

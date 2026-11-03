@@ -11,6 +11,8 @@ export type BillHistoryTableRow = {
   name: string;
   /** Optional second line under the name (e.g. IPD yesterday voucher). */
   nameDetail?: string;
+  /** Open IPD stay room for this chart; omit when not admitted. */
+  roomNo?: string;
   status: string | null | undefined;
   printedAt?: string | null;
   collectedCash?: number | null;
@@ -23,6 +25,11 @@ export type BillHistoryTableRow = {
   canPrint?: boolean;
   /** Admin soft-delete (e.g. open IPD stay). */
   canDelete?: boolean;
+  /**
+   * When the table has onActivate, false keeps this row non-clickable
+   * (e.g. IPD ledger deposits mixed with bill charges). Default true.
+   */
+  canActivate?: boolean;
 };
 
 type Props = {
@@ -40,6 +47,8 @@ type Props = {
   busy?: boolean;
   /** Hide the price column (e.g. IPD stays list has no balance). */
   hidePrice?: boolean;
+  /** One-shot highlight for a newly posted row (e.g. IPD deposit). */
+  flashId?: number | null;
 };
 
 function formatBillWhen(iso: string): string {
@@ -87,6 +96,7 @@ export function BillHistoryTable({
   printingId = null,
   busy = false,
   hidePrice = false,
+  flashId = null,
 }: Props) {
   const { t } = useI18n();
   const showPrint = onPrint != null && rows.some((r) => r.canPrint);
@@ -156,13 +166,16 @@ export function BillHistoryTable({
           const label =
             row.statusLabel ?? moneyStatusLabel(row.status, t, row.printedAt, row.collectedCash);
           const selected = selectedId != null && selectedId === row.id;
+          const flash = flashId != null && flashId === row.id;
+          const clickable = onActivate != null && row.canActivate !== false;
           const rowClass = [
             "bill-history-table-row",
             showActions ? "bill-history-table-row--actions" : "",
             actionsWide ? "bill-history-table-row--actions-wide" : "",
             hidePrice ? "bill-history-table-row--no-price" : "",
             selected ? "bill-history-table-row--selected" : "",
-            onActivate ? "bill-history-table-row--clickable" : "",
+            flash ? "bill-history-table-row--flash" : "",
+            clickable ? "bill-history-table-row--clickable" : "",
           ]
             .filter(Boolean)
             .join(" ");
@@ -175,8 +188,22 @@ export function BillHistoryTable({
               <span className="bill-history-col bill-history-col--voucher" title={row.voucher}>
                 {row.voucher || "—"}
               </span>
-              <span className="bill-history-col bill-history-col--name" title={row.name || undefined}>
-                <span className="bill-history-name-primary">{row.name || "—"}</span>
+              <span
+                className="bill-history-col bill-history-col--name"
+                title={
+                  row.roomNo
+                    ? `${row.name || "—"} · ${t("billHistoryRoom").replace("{room}", row.roomNo)}`
+                    : row.name || undefined
+                }
+              >
+                <span className="bill-history-name-line">
+                  <span className="bill-history-name-primary">{row.name || "—"}</span>
+                  {row.roomNo ? (
+                    <span className="bill-history-room-tag">
+                      {t("billHistoryRoom").replace("{room}", row.roomNo)}
+                    </span>
+                  ) : null}
+                </span>
                 {row.nameDetail ? (
                   <span className="bill-history-name-detail">{row.nameDetail}</span>
                 ) : null}
@@ -231,7 +258,7 @@ export function BillHistoryTable({
 
           return (
             <li key={row.key ?? String(row.id)}>
-              {onActivate ? (
+              {clickable ? (
                 <div
                   role="button"
                   tabIndex={0}

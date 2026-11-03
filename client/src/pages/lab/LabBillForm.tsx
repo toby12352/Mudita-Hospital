@@ -32,6 +32,7 @@ type Props = {
   onPaymentType: (v: "cash" | "online") => void;
   patientId: number | null;
   patientName: string;
+  patientFatherMotherName: string;
   patientPhone: string;
   patientAge: string;
   patientGender: string;
@@ -59,6 +60,7 @@ type Props = {
   onPickPatient: (patient: PatientChart) => void;
   onClearPatient: () => void;
   patientNameRef?: Ref<HTMLInputElement>;
+  onPatientFatherMotherName: (v: string) => void;
   onPatientPhone: (v: string) => void;
   onPatientAge: (v: string) => void;
   onPatientGender: (v: string) => void;
@@ -93,6 +95,7 @@ export function LabBillForm(props: Props) {
     printedAt,
     patientId,
     patientName,
+    patientFatherMotherName,
     patientPhone,
     patientAge,
     patientGender,
@@ -176,12 +179,12 @@ export function LabBillForm(props: Props) {
               )}
             </div>
             <label className="opd-bill-field">
-              <span className="opd-bill-label">{t("phone")}</span>
+              <span className="opd-bill-label">{t("fatherMotherName")}</span>
               <input
                 className="opd-bill-input"
-                value={patientPhone}
+                value={patientFatherMotherName}
                 disabled={!identityEditable}
-                onChange={(e) => props.onPatientPhone(e.target.value)}
+                onChange={(e) => props.onPatientFatherMotherName(e.target.value)}
               />
             </label>
             <label className="opd-bill-field">
@@ -197,20 +200,31 @@ export function LabBillForm(props: Props) {
                 <span className="opd-bill-unit">{t("ageYearsShort")}</span>
               </span>
             </label>
-            <label className="opd-bill-field">
+            <div className="opd-bill-field">
               <span className="opd-bill-label">{t("gender")}</span>
-              <select
-                className="opd-bill-input"
-                value={patientGender}
-                disabled={!identityEditable}
-                onChange={(e) => props.onPatientGender(e.target.value)}
-              >
-                <option value="">—</option>
-                <option value="M">{t("genderM")}</option>
-                <option value="F">{t("genderF")}</option>
-                <option value="Other">{t("genderOther")}</option>
-              </select>
-            </label>
+              <div className="opd-bill-gender-phone">
+                <select
+                  className="opd-bill-input"
+                  value={patientGender}
+                  disabled={!identityEditable}
+                  aria-label={t("gender")}
+                  onChange={(e) => props.onPatientGender(e.target.value)}
+                >
+                  <option value="">—</option>
+                  <option value="M">{t("genderM")}</option>
+                  <option value="F">{t("genderF")}</option>
+                  <option value="Other">{t("genderOther")}</option>
+                </select>
+                <span className="opd-bill-label">{t("phone")}</span>
+                <input
+                  className="opd-bill-input"
+                  value={patientPhone}
+                  disabled={!identityEditable}
+                  aria-label={t("phone")}
+                  onChange={(e) => props.onPatientPhone(e.target.value)}
+                />
+              </div>
+            </div>
             <div className="opd-bill-field opd-bill-field--typeahead">
               <span className="opd-bill-label">{t("doctor")}</span>
               <div className="opd-bill-control">
@@ -329,9 +343,7 @@ export function LabBillForm(props: Props) {
                 itemTitle: (s) => (s.code ? `${s.code} — ${s.name}` : s.name),
                 renderOption: (s) => (
                   <>
-                    <span className="typeahead-title">
-                      {s.code ? `${s.code} — ${s.name}` : s.name}
-                    </span>
+                    <span className="typeahead-title">{s.name}</span>
                     <span className="typeahead-sub">
                       {t("serviceType")} · {formatMMK(s.price_mmk)} {t("mmk")}
                     </span>
@@ -353,9 +365,6 @@ export function LabBillForm(props: Props) {
 
         <div className="opd-bill-footer">
           <div className="opd-bill-footer-left">
-            <span className="opd-bill-service-count">
-              {t("serviceCount")}: {lines.length}
-            </span>
             {!billId ? <span className="opd-bill-new-badge">{t("newBadge")}</span> : null}
           </div>
           <BillTotals

@@ -33,8 +33,9 @@ import {
   type DiscountUnit,
 } from "@/shared/discount";
 import { draftHasContent } from "@/shared/billDraft";
-import { useRegisterBillLeaveGuard } from "@/shared/billLeaveGuard";
+import { useDraftBaseline, useRegisterBillLeaveGuard } from "@/shared/billLeaveGuard";
 import { useClinicActions } from "@/app/clinicActions";
+import { DeskChrome } from "@/shared/DeskChrome";
 import { useI18n } from "@/shared/i18n";
 import { useBillActionFeedback, useBillActionPending } from "@/shared/useActionLock";
 import { VoidBillConfirm } from "@/shared/VoidBillConfirm";
@@ -209,6 +210,7 @@ export function ExpenseBillPage() {
   const isDraft = billStatus === "draft";
   const canVoid =
     billId != null && billStatus !== "void" && billStatus !== "deleted";
+  const markCleanRef = useRef<() => void>(() => {});
 
   function openVoidConfirm() {
     if (!canVoid) return;
@@ -249,6 +251,7 @@ export function ExpenseBillPage() {
     setCreatedAt(null);
     setBilledAtLocal(nowDatetimeLocal());
     setError(null);
+    markCleanRef.current();
   }
 
   function applySavedBill(b: ExpenseBill) {
@@ -272,6 +275,7 @@ export function ExpenseBillPage() {
     try {
       const b = await getExpenseBill(id);
       applySavedBill(b);
+      markCleanRef.current();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Open failed");
     } finally {
@@ -320,6 +324,10 @@ export function ExpenseBillPage() {
     };
   }
 
+  const formKey = JSON.stringify(buildBody());
+  const { dirty, markClean } = useDraftBaseline(formKey);
+  markCleanRef.current = markClean;
+
   async function saveDraft(): Promise<number | null> {
     if (
       !draftHasContent({
@@ -335,19 +343,23 @@ export function ExpenseBillPage() {
     const body = buildBody();
     const b = billId ? await updateExpenseBill(billId, body) : await createExpenseBill(body);
     applySavedBill(b);
+    markClean();
     return b.id;
   }
 
-  useRegisterBillLeaveGuard(lines.length > 0 && billId == null, async () => {
-    try {
-      setError(null);
-      const id = await saveDraft();
-      return id != null;
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Save failed");
-      return false;
-    }
-  });
+  useRegisterBillLeaveGuard(
+    (lines.length > 0 && billId == null) || (billId != null && isDraft && dirty),
+    async () => {
+      try {
+        setError(null);
+        const id = await saveDraft();
+        return id != null;
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Save failed");
+        return false;
+      }
+    },
+  );
 
   async function doConfirm() {
     if (!isDraft) return;
@@ -614,7 +626,8 @@ export function ExpenseBillPage() {
 
   return (
     <>
-      <section className="opd-bill-desk">
+      <DeskChrome>
+        <section className="opd-bill-desk">
         <div className="opd-bill-desk-main">
           <h2 className="opd-bill-desk-title">{t("expenseBillTitle")}</h2>
 
@@ -709,9 +722,6 @@ export function ExpenseBillPage() {
 
           <div className="opd-bill-footer">
             <div className="opd-bill-footer-left">
-              <span className="opd-bill-service-count">
-                {t("serviceCount")}: {lines.length}
-              </span>
               {!billId ? <span className="opd-bill-new-badge">{t("newBadge")}</span> : null}
             </div>
             <BillTotals
@@ -808,6 +818,7 @@ export function ExpenseBillPage() {
 
         <AlertDialog message={error ?? ""} onClose={() => setError(null)} />
       </section>
+      </DeskChrome>
 
       {dialog ? (
         <ExpenseBillListDialog

@@ -91,7 +91,9 @@ func moneyStatusClause(money, statusCol, printedCol, otBillNull string) (string,
 
 // billHistoryOrderBy returns ORDER BY … LIMIT 100 for list endpoints.
 // sort query is "asc" or "desc" (default desc / newest first).
-func billHistoryOrderBy(r *http.Request, createdCol, idCol string) (string, string) {
+// order query is "date" (default) or "voucher". voucherCol is the bill_no /
+// case_no column used when order=voucher (empty rejects voucher).
+func billHistoryOrderBy(r *http.Request, createdCol, idCol, voucherCol string) (string, string) {
 	sort := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("sort")))
 	dir := "DESC"
 	switch sort {
@@ -102,5 +104,16 @@ func billHistoryOrderBy(r *http.Request, createdCol, idCol string) (string, stri
 	default:
 		return "", "invalid sort"
 	}
-	return " ORDER BY " + createdCol + " " + dir + ", " + idCol + " " + dir + " LIMIT 100", ""
+	order := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("order")))
+	switch order {
+	case "", "date":
+		return " ORDER BY " + createdCol + " " + dir + ", " + idCol + " " + dir + " LIMIT 100", ""
+	case "voucher":
+		if voucherCol == "" {
+			return "", "invalid order"
+		}
+		return " ORDER BY " + voucherCol + " " + dir + ", " + idCol + " " + dir + " LIMIT 100", ""
+	default:
+		return "", "invalid order"
+	}
 }

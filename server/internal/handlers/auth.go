@@ -240,7 +240,7 @@ func (a *Auth) changePassword(w http.ResponseWriter, r *http.Request) {
 
 func permissionsFor(role string) []string {
 	candidates := []string{
-		auth.PermSettings, auth.PermManageUsers, auth.PermOPD, auth.PermOT, auth.PermPharmacy, auth.PermPatients, auth.PermIPD,
+		auth.PermSettings, auth.PermManageUsers, auth.PermOPD, auth.PermOT, auth.PermPharmacy, auth.PermPatients, auth.PermIPD, auth.PermLab,
 	}
 	out := make([]string, 0, len(candidates))
 	for _, p := range candidates {

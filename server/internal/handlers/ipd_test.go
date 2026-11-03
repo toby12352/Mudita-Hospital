@@ -54,7 +54,7 @@ func TestIPDAdmissions(t *testing.T) {
 	}
 	w = doJSON(authH, http.MethodGet, "/api/auth/me", ipdTok, "")
 	mustCode(t, w, http.StatusOK)
-	if !meHasPerm(t, w, auth.PermIPD) || meHasPerm(t, w, auth.PermPatients) || meHasPerm(t, w, auth.PermOPD) {
+	if !meHasPerm(t, w, auth.GrantIPDRead) || !meHasPerm(t, w, auth.GrantPatientsRead) || meHasPerm(t, w, auth.GrantOPDRead) {
 		t.Fatalf("ipd /me %s", w.Body.String())
 	}
 
@@ -84,7 +84,7 @@ func TestIPDAdmissions(t *testing.T) {
 	w = doJSON(charts, http.MethodPost, "/api/patients", ipdTok, `{"name":"Nope"}`)
 	mustCode(t, w, http.StatusForbidden)
 	w = doJSON(charts, http.MethodGet, "/api/patients/"+strconv.FormatInt(chart.ID, 10)+"/history", ipdTok, "")
-	mustCode(t, w, http.StatusForbidden)
+	mustCode(t, w, http.StatusOK)
 
 	w = doJSON(h, http.MethodPost, "/api/ipd/admissions", ipdTok, `{"patient_id":0}`)
 	mustCode(t, w, http.StatusBadRequest)

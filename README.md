@@ -106,14 +106,11 @@ Open `http://localhost:1420` in a browser.
 
 ## Default users (dev)
 
+A fresh database has one seeded login. Personal accounts are created in Settings. On an upgraded hospital database, former desk usernames stay, with the same password, as personal accounts for that desk.
+
 | Username | Password | Role | Notes |
 |----------|----------|------|--------|
 | `admin` | `admin123` | Admin | Must change password on first login. Opens the admin sidebar (Home) |
-| `opd` | `opd123` | OPD | Demo. OPD billing only |
-| `ot` | `ot123` | OT | Demo. OT billing and cupboard only |
-| `pharmacy` | `pharmacy123` | Pharmacy | Demo. Pharmacy billing and stock only |
-| `patients` | `patients123` | Patients | Demo. Patient charts and visit history only. Must change password on first login |
-| `ipd` | `ipd123` | IPD | Demo. Admit a chart and edit stay notes. Must change password on first login |
 
 ## Auth, master data, pharmacy, OPD & OT API
 
@@ -138,13 +135,16 @@ Open `http://localhost:1420` in a browser.
 | GET / PUT / DELETE | `/api/service-categories/{id}` | GET: Admin or OPD. PUT/DELETE: Admin. DELETE is refused while a service still uses the category |
 | GET / POST | `/api/users` | Bearer + Admin (`manage_users`) |
 | PUT | `/api/users/{id}` | Bearer + Admin (`manage_users`) |
-| GET | `/api/patients` | Bearer + Admin, Patients, OPD, OT, Pharmacy, or IPD — `?q=` matches chart id (exact when numeric), name, or phone; limit 50. Desk tokens may search only |
+| GET | `/api/patients` | Bearer + Admin, Patients, OPD, OT, Pharmacy, IPD, or Lab — `?q=` matches chart id (exact when numeric), name, or phone; limit 50. Desk tokens may search only |
 | POST | `/api/patients` | Bearer + Admin or Patients (`patients`) — creates a chart and does not merge duplicates |
-| GET | `/api/patients/{id}` | Bearer + Admin, Patients, OPD, OT, Pharmacy, or IPD — one chart. Desk tokens may not edit it |
+| GET | `/api/patients/{id}` | Bearer + Admin, Patients, OPD, OT, Pharmacy, IPD, or Lab — one chart. Desk tokens may not edit it |
 | PUT | `/api/patients/{id}` | Bearer + Admin or Patients (`patients`) — demographics only; no delete |
-| GET | `/api/patients/{id}/history` | Bearer + Admin or Patients (`patients`) — read-only. OPD bills (`id`, …), pharmacy bills except `TO-` (`id`, …), OT cases linked by `patient_id` (`case_no`, `status`, `bill_id` when billed, `bill_no`, `bill_status`, `created_at`), and IPD stays (`admission_no`, `status`, `admitted_at`, `balance_mmk`, `settled`). No name matching |
-| GET | `/api/patients/{id}/bills/{kind}/{billId}/print` | Bearer + Admin or Patients (`patients`) — receipt HTML; `kind` is `opd`, `pharmacy`, or `ot`. Bill must already be on this chart. Does not mark printed, paid, or void. 404 if missing or pharmacy `TO-` |
-| POST | `/api/patients/{id}/attach` | Bearer + Admin or Patients — body `bill_no`. Sets `patient_id` only when it is still null. OT sets `ot_cases.patient_id`. Rejects a bill that already has a chart, and rejects `TO-`. Does not change totals or stock |
+| GET | `/api/patients/{id}/history` | Bearer + Admin or Patients (`patients`) — read-only. OPD bills (`id`, …), lab bills (`id`, …), pharmacy bills except `TO-` (`id`, …), OT cases linked by `patient_id` (`case_no`, `status`, `bill_id` when billed, `bill_no`, `bill_status`, `created_at`), and IPD stays (`admission_no`, `status`, `admitted_at`, `balance_mmk`, `settled`). No name matching |
+| GET | `/api/patients/{id}/notes` | Bearer + Admin or Patients (`patients.read`) — dated Timeline notes newest first (`id`, `body`, `author_user_id`, `author_name`, `created_at`, `updated_at`). Does not change `patients.notes` |
+| POST | `/api/patients/{id}/notes` | Bearer + Admin or Patients (`patients.update`) — body `{ "body" }`. Appends a Timeline note for today. Author is the signed-in user |
+| PATCH | `/api/patients/{id}/notes/{noteId}` | Bearer + Admin or Patients (`patients.update`) — body `{ "body" }`. Author may correct their own note; sets `updated_at`. No delete |
+| GET | `/api/patients/{id}/bills/{kind}/{billId}/print` | Bearer + Admin or Patients (`patients`) — receipt HTML; `kind` is `opd`, `pharmacy`, `ot`, or `lab`. Bill must already be on this chart. Does not mark printed, paid, or void. 404 if missing or pharmacy `TO-` |
+| POST | `/api/patients/{id}/attach` | Bearer + Admin or Patients — body `bill_no`. Sets `patient_id` only when it is still null. Accepts `OPD-`, `LAB-`, `PH-`, `RT-`, and `OTB-`. OT sets `ot_cases.patient_id`. Rejects a bill that already has a chart, and rejects `TO-`. Does not change totals or stock |
 | GET | `/api/ipd/admissions` | Bearer + Admin or IPD (`ipd`) — `?status=open`, `settled`, or `deleted`. No status returns open and settled only (deleted stays stay out). Each row includes patient name, phone, age, gender, and `yesterday_voucher_status` (`issued`, `paid`, `credit`, or empty) |
 | POST | `/api/ipd/admissions` | Bearer + Admin or IPD — admit an existing chart. Rejects a second open stay. Number `IPD-000001` |
 | GET | `/api/ipd/admissions/{id}` | Bearer + Admin or IPD — one stay, patient demographics, ledger lines, and `balance_mmk` (signed sum) |

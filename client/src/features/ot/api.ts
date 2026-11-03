@@ -1,7 +1,12 @@
 import type { StockTransfer } from "@/features/pharmacy/api";
 import { apiFetch, getApiBase } from "@/shared/api";
 import { getStoredToken } from "@/shared/auth";
-import { fetchAndPreviewPrint } from "@/shared/print";
+import {
+  fetchAndPreviewPrint,
+  fetchPrintHtml,
+  isThermalReceiptHtml,
+  openPrintPreview,
+} from "@/shared/print";
 
 export type OtStockBatch = {
   id: number;
@@ -241,6 +246,8 @@ export type OtCase = {
   bill_total_mmk?: number | null;
   created_at: string;
   updated_at: string;
+  /** Open IPD stay room when this chart is admitted; list responses only. */
+  ipd_room_no?: string;
   items?: OtCaseItem[];
   services?: OtCaseService[];
   doctor_ot_fee_mmk?: number;
@@ -322,7 +329,7 @@ export async function listOtDoctors(q = ""): Promise<OtDoctor[]> {
 export async function listOtCases(
   q = "",
   status = "",
-  opts?: { money?: string; from?: string; to?: string; sort?: string },
+  opts?: { money?: string; from?: string; to?: string; sort?: string; order?: string },
 ): Promise<OtCase[]> {
   const params = new URLSearchParams();
   if (q.trim()) params.set("q", q.trim());
@@ -331,6 +338,7 @@ export async function listOtCases(
   if (opts?.from?.trim()) params.set("from", opts.from.trim());
   if (opts?.to?.trim()) params.set("to", opts.to.trim());
   if (opts?.sort?.trim()) params.set("sort", opts.sort.trim());
+  if (opts?.order?.trim()) params.set("order", opts.order.trim());
   const qs = params.toString() ? `?${params}` : "";
   const res = await apiFetch<{ cases: OtCase[] }>(`/api/ot/cases${qs}`);
   return res.cases;
@@ -460,11 +468,12 @@ export async function printOtBill(
   billId: number,
   opts?: { title?: string; note?: string; onPrinted?: () => void | Promise<void> },
 ): Promise<void> {
-  return printHtml(`/api/ot/bills/${billId}/print`, {
+  const html = await fetchPrintHtml(`/api/ot/bills/${billId}/print`, getApiBase, getStoredToken);
+  // Inventory-only bills are 80 mm; service bills stay A4.
+  openPrintPreview(html, {
     title: opts?.title ?? "OT receipt",
     note: opts?.note,
-    // A4 OT payment receipt — wide preview (not 80mm thermal chrome).
-    receipt: false,
+    receipt: isThermalReceiptHtml(html),
     onPrinted: opts?.onPrinted,
   });
 }

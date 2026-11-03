@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState, type ReactNode } from "react";
+import { FormEvent, useCallback, useEffect, useState, type ReactNode } from "react";
 import brandLogo from "./assets/logo.png";
 import {
   fetchHealth,
@@ -6,6 +6,7 @@ import {
   isApiConfigured,
   markApiConfigured,
   setApiBase,
+  setUnauthorizedHandler,
 } from "./api";
 import {
   changePassword,
@@ -139,20 +140,29 @@ function App() {
     };
   }, [t]);
 
+  const leaveToSignIn = useCallback((message: string | null) => {
+    const token = getStoredToken();
+    clearSession();
+    setUser(null);
+    setPermissions([]);
+    setPage("overview");
+    setAuthError(message);
+    void logout(token);
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    setUnauthorizedHandler(() => leaveToSignIn(t("errSessionExpired")));
+    return () => setUnauthorizedHandler(null);
+  }, [user, leaveToSignIn, t]);
+
   useEffect(() => {
     if (!user || user.must_change_password) return;
     const watcher = createIdleWatcher(() => {
-      void (async () => {
-        await logout();
-        clearSession();
-        setUser(null);
-        setPermissions([]);
-        setPage("overview");
-        setAuthError("Locked after 15 minutes idle — please sign in again.");
-      })();
+      leaveToSignIn(t("idleLocked"));
     });
     return () => watcher.dispose();
-  }, [user]);
+  }, [user, leaveToSignIn, t]);
 
   async function handleLogin(username: string, password: string) {
     setAuthError(null);
@@ -191,12 +201,7 @@ function App() {
   }
 
   async function handleLogout() {
-    await logout();
-    clearSession();
-    setUser(null);
-    setPermissions([]);
-    setPage("overview");
-    setAuthError(null);
+    leaveToSignIn(null);
   }
 
   async function handlePasswordChanged(result: { token: string; user: User }) {

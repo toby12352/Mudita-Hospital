@@ -135,56 +135,88 @@ func TestOtCaseFocOnItemsAndServices(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Inventory and services must be separate bills.
 	w = doJSON(ot, http.MethodPost, "/api/ot/cases", tok, fmt.Sprintf(`{
-		"patient_name":"OT Foc",
+		"patient_name":"OT Foc Items",
 		"items":[
 			{"item_id":%d,"qty_issued":1,"foc":1},
 			{"item_id":%d,"qty_issued":1,"foc":0}
-		],
+		]
+	}`, itemFree, itemPaid))
+	mustCode(t, w, http.StatusCreated)
+	itemCase := decodeOtCase(t, w)
+	if len(itemCase.Items) != 2 || itemCase.Items[0].Foc != 1 || itemCase.Items[1].Foc != 0 {
+		t.Fatalf("items %+v", itemCase.Items)
+	}
+
+	w = doJSON(ot, http.MethodGet, "/api/ot/cases/"+strconv.FormatInt(itemCase.ID, 10), tok, "")
+	mustCode(t, w, http.StatusOK)
+	reloadedItems := decodeOtCase(t, w)
+	if reloadedItems.Items[0].Foc != 1 {
+		t.Fatalf("reload foc item=%d", reloadedItems.Items[0].Foc)
+	}
+
+	w = doJSON(ot, http.MethodPost, fmt.Sprintf("/api/ot/cases/%d/bill", itemCase.ID), tok, `{"services":[]}`)
+	mustCode(t, w, http.StatusCreated)
+	itemBill := decodeOtBill(t, w)
+	if itemBill.TotalMMK != 600 {
+		t.Fatalf("item bill total %d want 600 lines=%+v", itemBill.TotalMMK, itemBill.Lines)
+	}
+	var itemFocLines int
+	for _, l := range itemBill.Lines {
+		if l.Foc == 1 {
+			itemFocLines++
+			if l.LineTotalMMK <= 0 {
+				t.Fatalf("foc item line stored zero %+v", l)
+			}
+		}
+	}
+	if itemFocLines != 1 {
+		t.Fatalf("foc item bill lines %d", itemFocLines)
+	}
+
+	w = doJSON(ot, http.MethodPost, "/api/ot/cases", tok, fmt.Sprintf(`{
+		"patient_name":"OT Foc Services",
 		"services":[
 			{"ref_id":%d,"unit_price_mmk":900,"foc":1},
 			{"ref_id":%d,"unit_price_mmk":1100,"foc":0}
 		]
-	}`, itemFree, itemPaid, focSvc.ID, paidSvc.ID))
+	}`, focSvc.ID, paidSvc.ID))
 	mustCode(t, w, http.StatusCreated)
-	c := decodeOtCase(t, w)
-	if len(c.Items) != 2 || c.Items[0].Foc != 1 || c.Items[1].Foc != 0 {
-		t.Fatalf("items %+v", c.Items)
-	}
-	if len(c.Services) != 2 || c.Services[0].Foc != 1 || c.Services[1].Foc != 0 {
-		t.Fatalf("services %+v", c.Services)
+	svcCase := decodeOtCase(t, w)
+	if len(svcCase.Services) != 2 || svcCase.Services[0].Foc != 1 || svcCase.Services[1].Foc != 0 {
+		t.Fatalf("services %+v", svcCase.Services)
 	}
 
-	w = doJSON(ot, http.MethodGet, "/api/ot/cases/"+strconv.FormatInt(c.ID, 10), tok, "")
+	w = doJSON(ot, http.MethodGet, "/api/ot/cases/"+strconv.FormatInt(svcCase.ID, 10), tok, "")
 	mustCode(t, w, http.StatusOK)
-	reloaded := decodeOtCase(t, w)
-	if reloaded.Items[0].Foc != 1 || reloaded.Services[0].Foc != 1 {
-		t.Fatalf("reload foc item=%d svc=%d", reloaded.Items[0].Foc, reloaded.Services[0].Foc)
+	reloadedSvcs := decodeOtCase(t, w)
+	if reloadedSvcs.Services[0].Foc != 1 {
+		t.Fatalf("reload foc svc=%d", reloadedSvcs.Services[0].Foc)
 	}
 
-	w = doJSON(ot, http.MethodPost, fmt.Sprintf("/api/ot/cases/%d/bill", c.ID), tok, fmt.Sprintf(`{
+	w = doJSON(ot, http.MethodPost, fmt.Sprintf("/api/ot/cases/%d/bill", svcCase.ID), tok, fmt.Sprintf(`{
 		"services":[
 			{"line_type":"service","ref_id":%d,"unit_price_mmk":900,"foc":1},
 			{"line_type":"service","ref_id":%d,"unit_price_mmk":1100,"foc":0}
 		]
 	}`, focSvc.ID, paidSvc.ID))
 	mustCode(t, w, http.StatusCreated)
-	bill := decodeOtBill(t, w)
-	// Charged: paid item 600 + paid service 1100 = 1700. FOC item/service excluded.
-	if bill.TotalMMK != 1700 {
-		t.Fatalf("ot bill total %d want 1700 lines=%+v", bill.TotalMMK, bill.Lines)
+	svcBill := decodeOtBill(t, w)
+	if svcBill.TotalMMK != 1100 {
+		t.Fatalf("service bill total %d want 1100 lines=%+v", svcBill.TotalMMK, svcBill.Lines)
 	}
-	var focLines int
-	for _, l := range bill.Lines {
+	var svcFocLines int
+	for _, l := range svcBill.Lines {
 		if l.Foc == 1 {
-			focLines++
+			svcFocLines++
 			if l.LineTotalMMK <= 0 {
-				t.Fatalf("foc line stored zero %+v", l)
+				t.Fatalf("foc service line stored zero %+v", l)
 			}
 		}
 	}
-	if focLines != 2 {
-		t.Fatalf("foc bill lines %d", focLines)
+	if svcFocLines != 1 {
+		t.Fatalf("foc service bill lines %d", svcFocLines)
 	}
 }
 

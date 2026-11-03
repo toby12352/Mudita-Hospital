@@ -315,7 +315,7 @@ func TestCashMovement(t *testing.T) {
 		detailsPrinted := doJSON(dash, http.MethodGet, "/api/dashboard/daily-report/print?date="+printDay+"&kind=details", adminTok, "")
 		mustCode(t, detailsPrinted, http.StatusOK)
 		detailsBody := detailsPrinted.Body.String()
-		if !strings.Contains(detailsBody, "All Bill Details") || !strings.Contains(detailsBody, "OPD-PRINT") || !strings.Contains(detailsBody, "EXP-PRINT") {
+		if !strings.Contains(detailsBody, "နေ့စဉ် ဝင်ငွေ") || !strings.Contains(detailsBody, "OPD-PRINT") || !strings.Contains(detailsBody, "EXP-PRINT") {
 			t.Fatalf("details print missing vouchers: %s", detailsBody)
 		}
 		if strings.Contains(detailsBody, "IPD-PRINT") {

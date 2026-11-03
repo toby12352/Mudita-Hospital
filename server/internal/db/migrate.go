@@ -2070,6 +2070,154 @@ FROM items
 GROUP BY prefix;
 `,
 	},
+	{
+		Name:      "046_lab_role",
+		DisableFK: true,
+		SQL: `
+-- Allow the Lab role. Copy every user row unchanged: same ids, password hashes, and access_mode.
+-- Bills, grants, and sessions are not rewritten.
+CREATE TABLE users_new (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  display_name TEXT NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('Admin', 'OPD', 'OT', 'Pharmacy', 'Patients', 'IPD', 'Lab')),
+  password_hash TEXT NOT NULL,
+  must_change_password INTEGER NOT NULL DEFAULT 0,
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  access_mode TEXT NOT NULL DEFAULT 'portal'
+);
+
+INSERT INTO users_new (
+  id, username, display_name, role, password_hash, must_change_password, active, created_at, updated_at, access_mode
+)
+SELECT
+  id, username, display_name, role, password_hash, must_change_password, active, created_at, updated_at, access_mode
+FROM users;
+
+DROP TABLE users;
+ALTER TABLE users_new RENAME TO users;
+`,
+	},
+	{
+		Name: "047_patient_timeline_notes",
+		SQL: `
+-- Dated chart notes for the Patient Charts Timeline tab.
+-- Standing patients.notes, bills, stock, and chart ids are left alone.
+CREATE TABLE IF NOT EXISTS patient_timeline_notes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+  body TEXT NOT NULL,
+  author_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  author_name TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_patient_timeline_notes_patient_created
+  ON patient_timeline_notes(patient_id, created_at);
+`,
+	},
+	{
+		Name: "048_portal_users_to_grants",
+		SQL: `
+-- Turn non-admin portal desk logins into personal accounts.
+-- Writes: user_grants inserts, sessions for those users, users.access_mode.
+-- An unexpected non-admin portal role is deactivated and given no grants.
+-- Admin, password hashes, bills, and stock are not updated.
+DELETE FROM sessions
+WHERE user_id IN (
+  SELECT id FROM users WHERE access_mode = 'portal' AND role != 'Admin'
+);
+
+INSERT OR IGNORE INTO user_grants (user_id, perm)
+SELECT u.id, g.perm
+FROM users u
+JOIN (
+  SELECT 'OPD' AS role, 'opd.read' AS perm
+  UNION ALL SELECT 'OPD', 'opd.create'
+  UNION ALL SELECT 'OPD', 'opd.update'
+  UNION ALL SELECT 'OPD', 'opd.delete'
+  UNION ALL SELECT 'OPD', 'patients.read'
+  UNION ALL SELECT 'OT', 'ot.read'
+  UNION ALL SELECT 'OT', 'ot.create'
+  UNION ALL SELECT 'OT', 'ot.update'
+  UNION ALL SELECT 'OT', 'ot.delete'
+  UNION ALL SELECT 'OT', 'patients.read'
+  UNION ALL SELECT 'Pharmacy', 'pharmacy.read'
+  UNION ALL SELECT 'Pharmacy', 'pharmacy.create'
+  UNION ALL SELECT 'Pharmacy', 'pharmacy.update'
+  UNION ALL SELECT 'Pharmacy', 'pharmacy.delete'
+  UNION ALL SELECT 'Pharmacy', 'patients.read'
+  UNION ALL SELECT 'Lab', 'lab.read'
+  UNION ALL SELECT 'Lab', 'lab.create'
+  UNION ALL SELECT 'Lab', 'lab.update'
+  UNION ALL SELECT 'Lab', 'lab.delete'
+  UNION ALL SELECT 'Lab', 'patients.read'
+  UNION ALL SELECT 'IPD', 'ipd.read'
+  UNION ALL SELECT 'IPD', 'ipd.create'
+  UNION ALL SELECT 'IPD', 'ipd.update'
+  UNION ALL SELECT 'IPD', 'patients.read'
+  UNION ALL SELECT 'Patients', 'patients.read'
+  UNION ALL SELECT 'Patients', 'patients.create'
+  UNION ALL SELECT 'Patients', 'patients.update'
+) g ON g.role = u.role
+WHERE u.access_mode = 'portal' AND u.role != 'Admin';
+
+UPDATE users
+SET active = 0, access_mode = 'unified', updated_at = datetime('now')
+WHERE access_mode = 'portal' AND role != 'Admin'
+  AND role NOT IN ('OPD', 'OT', 'Pharmacy', 'Patients', 'IPD', 'Lab');
+
+UPDATE users
+SET access_mode = 'unified', updated_at = datetime('now')
+WHERE access_mode = 'portal' AND role != 'Admin'
+  AND role IN ('OPD', 'OT', 'Pharmacy', 'Patients', 'IPD', 'Lab');
+`,
+	},
+	{
+		Name: "049_pharmacy_voucher_counters",
+		SQL: `
+-- Split pharmacy voucher counters: PH, RT, and TO each have their own next_num.
+-- Existing pharmacy_bills.bill_no values and purchase (PU) counters are unchanged.
+-- Each series continues from one past the highest all-digit suffix already stored.
+
+CREATE TABLE IF NOT EXISTS pharmacy_return_bill_number_seq (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  next_num INTEGER NOT NULL DEFAULT 1
+);
+INSERT OR IGNORE INTO pharmacy_return_bill_number_seq (id, next_num)
+SELECT 1, COALESCE(MAX(CAST(substr(bill_no, 4) AS INTEGER)), 0) + 1
+FROM pharmacy_bills
+WHERE length(bill_no) > 3
+  AND substr(bill_no, 1, 3) = 'RT-'
+  AND substr(bill_no, 4) != ''
+  AND substr(bill_no, 4) NOT GLOB '*[^0-9]*';
+
+CREATE TABLE IF NOT EXISTS pharmacy_transfer_bill_number_seq (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  next_num INTEGER NOT NULL DEFAULT 1
+);
+INSERT OR IGNORE INTO pharmacy_transfer_bill_number_seq (id, next_num)
+SELECT 1, COALESCE(MAX(CAST(substr(bill_no, 4) AS INTEGER)), 0) + 1
+FROM pharmacy_bills
+WHERE length(bill_no) > 3
+  AND substr(bill_no, 1, 3) = 'TO-'
+  AND substr(bill_no, 4) != ''
+  AND substr(bill_no, 4) NOT GLOB '*[^0-9]*';
+
+UPDATE pharmacy_bill_number_seq
+SET next_num = (
+  SELECT COALESCE(MAX(CAST(substr(bill_no, 4) AS INTEGER)), 0) + 1
+  FROM pharmacy_bills
+  WHERE length(bill_no) > 3
+    AND substr(bill_no, 1, 3) = 'PH-'
+    AND substr(bill_no, 4) != ''
+    AND substr(bill_no, 4) NOT GLOB '*[^0-9]*'
+)
+WHERE id = 1;
+`,
+	},
 }
 
 // Migrate applies pending migrations inside a transaction per migration.

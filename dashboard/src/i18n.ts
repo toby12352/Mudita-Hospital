@@ -301,6 +301,7 @@ const en: Dict = {
   errInvalidServerAddress:
     "That address is not valid. Use the server computer’s address, for example 192.168.1.10.",
   errSessionExpired: "Your sign-in has expired. Sign in again.",
+  idleLocked: "Locked after 15 minutes idle — please sign in again.",
   errBadCredentials: "That username or password is not correct.",
   errUsernamePasswordRequired: "Enter both the username and the password.",
   errCurrentPasswordWrong: "The current password is not correct.",
@@ -661,6 +662,7 @@ const my: Dict = {
   errInvalidServerAddress:
     "လိပ်စာ မမှန်ပါ။ ဆာဗာကွန်ပျူတာ လိပ်စာ သုံးပါ၊ ဥပမာ 192.168.1.10။",
   errSessionExpired: "ဝင်ရောက်မှု သက်တမ်းကုန်ပါပြီ။ ပြန်ဝင်ပါ။",
+  idleLocked: "၁၅ မိနစ် မလှုပ်ရှားသောကြောင့် ပိတ်ထားသည် — ထပ်မံ ဝင်ပါ။",
   errBadCredentials: "အသုံးပြုသူအမည် သို့မဟုတ် စကားဝှက် မမှန်ပါ။",
   errUsernamePasswordRequired: "အသုံးပြုသူအမည်နှင့် စကားဝှက် နှစ်ခုစလုံး ထည့်ပါ။",
   errCurrentPasswordWrong: "လက်ရှိ စကားဝှက် မမှန်ပါ။",

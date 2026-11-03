@@ -1,3 +1,4 @@
+import { reportUnauthorizedIfNeeded } from "./api";
 import { userMessage } from "./errors";
 import { t } from "./i18n";
 
@@ -162,13 +163,13 @@ export function openPrintPreview(html: string, opts: PrintPreviewOptions = {}): 
           currentLang = lang;
           langLoading = false;
           syncLangButtons();
-          iframe.srcdoc = next;
+          iframe.srcdoc = withPrintDocumentTitle(next);
         },
         (err: unknown) => {
           langLoading = false;
           syncLangButtons();
           const message = err instanceof Error ? err.message : "print failed";
-          iframe.srcdoc = previewMessage(message);
+          iframe.srcdoc = withPrintDocumentTitle(previewMessage(message));
         },
       );
     };
@@ -201,7 +202,7 @@ export function openPrintPreview(html: string, opts: PrintPreviewOptions = {}): 
         (err: unknown) => {
           if (excelBtn) excelBtn.disabled = false;
           const message = err instanceof Error ? err.message : "export failed";
-          iframe.srcdoc = previewMessage(message);
+          iframe.srcdoc = withPrintDocumentTitle(previewMessage(message));
         },
       );
     });
@@ -263,26 +264,26 @@ export function openPrintPreview(html: string, opts: PrintPreviewOptions = {}): 
       const value = scopeSelect.value;
       if (value !== "income" && value !== "expense" && value !== "all") {
         loadedScope = "";
-        iframe.srcdoc = previewMessage(billDetail.prompt);
+        iframe.srcdoc = withPrintDocumentTitle(previewMessage(billDetail.prompt));
         return;
       }
       const scope: BillDetailScope = value;
       loadingScope = true;
       loadedScope = "";
-      iframe.srcdoc = previewMessage(billDetail.prompt);
+      iframe.srcdoc = withPrintDocumentTitle(previewMessage(billDetail.prompt));
       void billDetail.load(scope).then(
         (next) => {
           if (scopeSelect.value !== scope) return;
           loadingScope = false;
           loadedScope = scope;
-          iframe.srcdoc = next;
+          iframe.srcdoc = withPrintDocumentTitle(next);
         },
         (err: unknown) => {
           if (scopeSelect.value !== scope) return;
           loadingScope = false;
           loadedScope = "";
           const message = err instanceof Error ? err.message : "print failed";
-          iframe.srcdoc = previewMessage(message);
+          iframe.srcdoc = withPrintDocumentTitle(previewMessage(message));
         },
       );
     });
@@ -294,19 +295,46 @@ export function openPrintPreview(html: string, opts: PrintPreviewOptions = {}): 
       return;
     }
     try {
-      iframe.contentWindow?.focus();
-      iframe.contentWindow?.print();
+      printIframe(iframe);
     } catch {
       /* user can retry */
     }
   });
 
-  iframe.srcdoc = billDetail ? previewMessage(billDetail.prompt) : html;
+  iframe.srcdoc = withPrintDocumentTitle(billDetail ? previewMessage(billDetail.prompt) : html);
   printBtn.focus({ focusVisible: true });
 }
 
+const PRINT_DOCUMENT_TITLE = "Software by TAT";
+
+/** Browser print chrome uses <title>; keep Mudita Dashboard out of the footer. */
+function withPrintDocumentTitle(html: string): string {
+  if (/<title\b[^>]*>[\s\S]*?<\/title>/i.test(html)) {
+    return html.replace(/<title\b[^>]*>[\s\S]*?<\/title>/i, `<title>${PRINT_DOCUMENT_TITLE}</title>`);
+  }
+  return html.replace(/<head\b([^>]*)>/i, `<head$1><title>${PRINT_DOCUMENT_TITLE}</title>`);
+}
+
+function printIframe(iframe: HTMLIFrameElement): void {
+  const win = iframe.contentWindow;
+  const doc = iframe.contentDocument;
+  if (!win) return;
+  const prevParentTitle = document.title;
+  const prevFrameTitle = doc?.title ?? "";
+  document.title = PRINT_DOCUMENT_TITLE;
+  if (doc) doc.title = PRINT_DOCUMENT_TITLE;
+  const restore = () => {
+    document.title = prevParentTitle;
+    if (doc) doc.title = prevFrameTitle;
+    win.removeEventListener("afterprint", restore);
+  };
+  win.addEventListener("afterprint", restore);
+  win.focus();
+  win.print();
+}
+
 function previewMessage(message: string): string {
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="font-family:Arial,sans-serif;padding:24px;color:#333"><p>${escapePreviewText(message)}</p></body></html>`;
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${PRINT_DOCUMENT_TITLE}</title></head><body style="font-family:Arial,sans-serif;padding:24px;color:#333"><p>${escapePreviewText(message)}</p></body></html>`;
 }
 
 function escapePreviewText(value: string): string {
@@ -331,6 +359,20 @@ function openScopeSelect(select: HTMLSelectElement | null): void {
   select.focus();
 }
 
+function printFailureRaw(text: string, status: number, fallback: string): string {
+  const trimmed = text.trim();
+  if (trimmed) {
+    try {
+      const body = JSON.parse(trimmed) as { error?: unknown };
+      if (typeof body.error === "string" && body.error.trim()) return body.error;
+    } catch {
+      /* keep the body */
+    }
+    return trimmed;
+  }
+  return `${fallback} (${status})`;
+}
+
 /** Fetch authenticated print HTML. */
 export async function fetchPrintHTML(
   path: string,
@@ -343,7 +385,9 @@ export async function fetchPrintHTML(
   });
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(userMessage(text || `print failed (${res.status})`, res.status));
+    const raw = printFailureRaw(text, res.status, "print failed");
+    reportUnauthorizedIfNeeded(res.status, raw);
+    throw new Error(userMessage(raw, res.status));
   }
   return res.text();
 }
@@ -360,7 +404,9 @@ export async function downloadPrintCSV(
   });
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(userMessage(text || `export failed (${res.status})`, res.status));
+    const raw = printFailureRaw(text, res.status, "export failed");
+    reportUnauthorizedIfNeeded(res.status, raw);
+    throw new Error(userMessage(raw, res.status));
   }
   const blob = await res.blob();
   const cd = res.headers.get("Content-Disposition") || "";

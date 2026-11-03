@@ -1,14 +1,17 @@
-import { useEffect, useId, useRef } from "react";
+import { useCallback, useEffect, useId, useRef } from "react";
+import { notifyUnauthorized } from "@/shared/api";
 import { DialogCloseButton } from "@/shared/DialogCloseButton";
 import { useI18n } from "@/shared/i18n";
 import { useDelayedFlag } from "@/shared/useActionLock";
 
-export type AlertTone = "check" | "warning" | "success" | "print" | "save";
+export type AlertTone = "check" | "warning" | "success" | "print" | "save" | "door";
+/** Optional badge glyph override. Use "trash" on confirms opened from a trash button. */
+export type AlertIcon = "trash";
 
 type Props = {
   message: string;
   onClose: () => void;
-  /** Default "check". Use "success" for a green tick, "warning" for confirms, "print" after Mark Paid, "save" for leave-draft. */
+  /** Default "check". Use "success" for a green tick, "warning" for confirms, "print" after Mark Paid, "save" for leave-draft, "door" for discharge. */
   tone?: AlertTone;
   /** Optional title; defaults by tone. */
   title?: string;
@@ -22,6 +25,8 @@ type Props = {
   onDiscard?: () => void;
   /** Label for onDiscard (defaults: dontSave). */
   discardLabel?: string;
+  /** Hide the Cancel button (leave-draft keeps Escape / × / scrim via onClose). */
+  hideCancel?: boolean;
   /** Filled red confirm button (delete / restore). */
   danger?: boolean;
   /** Disables buttons and close while an action is in flight. */
@@ -32,6 +37,8 @@ type Props = {
   identity?: string;
   /** Extra pulse / shake on the warning badge (irreversible deletes). */
   irreversible?: boolean;
+  /** Badge glyph; defaults from tone. Pass "trash" when the opener is a trash button. */
+  icon?: AlertIcon;
 };
 
 function defaultTitle(tone: AlertTone, t: (k: string) => string): string {
@@ -39,6 +46,7 @@ function defaultTitle(tone: AlertTone, t: (k: string) => string): string {
   if (tone === "warning") return t("alertWarning");
   if (tone === "print") return t("paid");
   if (tone === "save") return t("saveDraft");
+  if (tone === "door") return t("confirm");
   return t("alertCheck");
 }
 
@@ -53,7 +61,57 @@ function defaultConfirmLabel(
   return t("confirm");
 }
 
-function BadgeIcon({ tone }: { tone: AlertTone }) {
+/** 40px badge glyph for AlertDialog and void step-1 chrome. */
+export function AlertBadgeIcon({
+  tone,
+  icon,
+}: {
+  tone: AlertTone;
+  icon?: AlertIcon;
+}) {
+  if (icon === "trash") {
+    return (
+      <svg viewBox="0 0 48 48" width="40" height="40">
+        <path
+          className="alert-dialog-draw-path alert-dialog-draw-path--trash-lid"
+          d="M9.75 13.5h28.5"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          className="alert-dialog-draw-path alert-dialog-draw-path--trash-handle"
+          d="M18.75 13.5V9.75h10.5V13.5"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          className="alert-dialog-draw-path alert-dialog-draw-path--trash-body"
+          d="M13.2 13.5l1.65 24.75h18.3L34.8 13.5"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          className="alert-dialog-draw-path alert-dialog-draw-path--trash-lines"
+          d="M20.25 21v11.25M27.75 21v11.25"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  }
+
   if (tone === "success") {
     return (
       <svg viewBox="0 0 48 48" width="40" height="40">
@@ -169,6 +227,38 @@ function BadgeIcon({ tone }: { tone: AlertTone }) {
     );
   }
 
+  if (tone === "door") {
+    return (
+      <svg viewBox="0 0 48 48" width="40" height="40" className="alert-dialog-door">
+        <path
+          className="alert-dialog-draw-path alert-dialog-draw-path--door-frame"
+          d="M12 38V12h16v26"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.25"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          className="alert-dialog-draw-path alert-dialog-draw-path--door-leaf"
+          d="M28 12l10 3.5V34.5L28 38"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.25"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <circle
+          className="alert-dialog-door-knob"
+          cx="34.5"
+          cy="25"
+          r="1.5"
+          fill="currentColor"
+        />
+      </svg>
+    );
+  }
+
   return (
     <svg viewBox="0 0 48 48" width="40" height="40">
       <rect
@@ -205,11 +295,13 @@ export function AlertDialog({
   okLabel,
   onDiscard,
   discardLabel,
+  hideCancel = false,
   danger = false,
   busy = false,
   error = null,
   identity,
   irreversible = false,
+  icon,
 }: Props) {
   const { t } = useI18n();
   const actionRef = useRef<HTMLButtonElement>(null);
@@ -219,12 +311,18 @@ export function AlertDialog({
   const trimmed = message.trim();
   const isConfirm = typeof onConfirm === "function";
   const showDiscard = typeof onDiscard === "function";
+  const isSessionExpired = !isConfirm && trimmed === t("errSessionExpired");
   const heading = title?.trim() || defaultTitle(tone, t);
   const actionLabel = confirmLabel?.trim() || defaultConfirmLabel(tone, danger, t);
   const discardActionLabel = discardLabel?.trim() || t("dontSave");
-  const singleOkLabel = okLabel?.trim() || t("alertOk");
+  const singleOkLabel = okLabel?.trim() || (isSessionExpired ? t("logOut") : t("alertOk"));
   const errorText = error?.trim() ?? "";
   const showPending = useDelayedFlag(busy);
+
+  const dismiss = useCallback(() => {
+    if (isSessionExpired) notifyUnauthorized();
+    onClose();
+  }, [isSessionExpired, onClose]);
 
   useEffect(() => {
     if (!trimmed) return;
@@ -248,18 +346,18 @@ export function AlertDialog({
       e.stopPropagation();
       if (busy) return;
       if (e.key === "Escape") {
-        onClose();
+        dismiss();
         return;
       }
       if (isConfirm) {
         onConfirm?.();
         return;
       }
-      onClose();
+      dismiss();
     }
     document.addEventListener("keydown", onKey, true);
     return () => document.removeEventListener("keydown", onKey, true);
-  }, [trimmed, onClose, onConfirm, isConfirm, busy]);
+  }, [trimmed, dismiss, onConfirm, isConfirm, busy]);
 
   if (!trimmed) return null;
 
@@ -272,7 +370,9 @@ export function AlertDialog({
           ? " alert-dialog--print"
           : tone === "save"
             ? " alert-dialog--save"
-            : " alert-dialog--check";
+            : tone === "door"
+              ? " alert-dialog--door"
+              : " alert-dialog--check";
   const irreversibleClass = irreversible ? " alert-dialog--irreversible" : "";
 
   return (
@@ -280,7 +380,7 @@ export function AlertDialog({
       className="clinic-overlay clinic-overlay--fixed alert-dialog-overlay"
       role="presentation"
       onClick={(e) => {
-        if (e.target === e.currentTarget && !busy) onClose();
+        if (e.target === e.currentTarget && !busy) dismiss();
       }}
     >
       <div
@@ -291,12 +391,12 @@ export function AlertDialog({
         aria-describedby={bodyId}
         aria-busy={busy || undefined}
       >
-        <DialogCloseButton onClick={onClose} disabled={busy} />
+        <DialogCloseButton onClick={dismiss} disabled={busy} />
 
         <div className="alert-dialog-badge" aria-hidden="true">
           <span className="alert-dialog-badge-glow" />
           <span className="alert-dialog-badge-circle">
-            <BadgeIcon tone={tone} />
+            <AlertBadgeIcon tone={tone} icon={icon} />
           </span>
         </div>
 
@@ -311,14 +411,16 @@ export function AlertDialog({
 
         {isConfirm ? (
           <div className="alert-dialog-actions">
-            <button
-              type="button"
-              className="alert-dialog-ok"
-              onClick={onClose}
-              disabled={busy}
-            >
-              {t("cancel")}
-            </button>
+            {hideCancel ? null : (
+              <button
+                type="button"
+                className="alert-dialog-ok"
+                onClick={onClose}
+                disabled={busy}
+              >
+                {t("cancel")}
+              </button>
+            )}
             {showDiscard ? (
               <button
                 type="button"
@@ -346,7 +448,7 @@ export function AlertDialog({
             ref={actionRef}
             type="button"
             className="alert-dialog-ok"
-            onClick={onClose}
+            onClick={dismiss}
             disabled={busy}
           >
             {singleOkLabel}

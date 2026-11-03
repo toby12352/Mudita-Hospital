@@ -1,8 +1,8 @@
 # Tour: ipd-discharge
 
 - Id: ipd-discharge
-- Roles: Admin and IPD. Patients, OPD, OT, Pharmacy do not open Stays.
-- Depends on: ipd-stay
+- Roles: Admin and IPD. Patients, OPD, OT, Pharmacy, and Lab do not open IPD Patients.
+- Depends on: ipd-patients
 - Opens: view `ipd`, with an open stay already on screen. NavIntent none. Do not open view `expense`. If Discharge is not on screen, skip every step. Do not open a stay in order to discharge it.
 - Mode: point and explain. Clicks on the highlighted control stay off. This lesson does not tell the reader to press Discharge on a real stay.
 - Entry: Help, not automatic
@@ -13,7 +13,7 @@ Discharge is its own lesson because it is final. Read the cash line on the butto
 
 ### 1. cash-line
 - Anchor to add later: data-guide="ipd-discharge"
-- Where the control is now: the subtitle on the Discharge button in `client/src/pages/ipd/IpdPage.tsx`, from `settlementSub`. Positive `balance_mmk` renders `ipdWillRefund`, negative renders `ipdWillCollect`, and zero renders `ipdWillZero`. The balance figure is `ipdRemainingBalance` in the stay summary. The button is drawn only while `stay.status` is open. If the list is showing, or the stay is settled, skip this step.
+- Where the control is now: the subtitle on the Discharge button in `client/src/pages/ipd/IpdPatientsPage.tsx`, from `settlementSub`. Positive `balance_mmk` renders `ipdWillRefund`, negative renders `ipdWillCollect`, and zero renders `ipdWillZero`. The balance figure is `ipdRemainingBalance` in the stay summary. The button is drawn only while `stay.status` is open. If the list is showing, or the stay is settled, skip this step.
 - Placement: left
 - Title EN: Read the cash line
 - Title MY: ငွေစာကြောင်းကို ဖတ်ပါ
@@ -24,7 +24,7 @@ Discharge is its own lesson because it is final. Read the cash line on the butto
 
 ### 2. discharge
 - Anchor to add later: data-guide="ipd-discharge"
-- Where the control is now: the same rail button in `client/src/pages/ipd/IpdPage.tsx`, label `ipdDischarge`. Pressing it opens `AlertDialog` with message `confirmIpdDischarge`, and `confirmIpdDischargeAwaiting` as well when yesterday’s voucher is still `issued`. The confirm label is `ipdDischarge`. After a real discharge the success line is `ipdDischarged`, the stay is settled, vouchers still `issued` become `paid`, and later deposits and charges are refused with `errIpdNotOpen`. The open-stay buttons are then hidden. If the button is not on screen, skip this step.
+- Where the control is now: the same rail button in `client/src/pages/ipd/IpdPatientsPage.tsx`, label `ipdDischarge`. Pressing it opens `AlertDialog` with message `confirmIpdDischarge`, and `confirmIpdDischargeAwaiting` as well when yesterday’s voucher is still `issued`. The confirm label is `ipdDischarge`. After a real discharge the success line is `ipdDischarged`, the stay is settled, vouchers still `issued` become `paid`, and later deposits and charges are refused with `errIpdNotOpen`. The open-stay buttons are then hidden. If the button is not on screen, skip this step.
 - Placement: left
 - Title EN: Discharge
 - Title MY: ဆင်းခွင့်ရှင်း

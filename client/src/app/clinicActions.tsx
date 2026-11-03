@@ -3,7 +3,7 @@ import { createContext, useContext, type ReactNode } from "react";
 export type ClinicActionFlags = {
   pharmacyCreate: boolean;
   pharmacyUpdate: boolean;
-  /** Stock adjust. Portal Pharmacy stays hidden; unified uses pharmacy.update. */
+  /** Stock adjust. Follows pharmacy.update. */
   pharmacyAdjust: boolean;
   pharmacyDelete: boolean;
   opdCreate: boolean;
@@ -28,37 +28,35 @@ export type ClinicActionFlags = {
 
 type ClinicActionInput = {
   fullAdmin: boolean;
-  accessMode?: "portal" | "unified";
   permissions: readonly string[] | null | undefined;
 };
 
-function allowGrant(input: ClinicActionInput, grant: string, portalDefault: boolean): boolean {
+function allowGrant(input: ClinicActionInput, grant: string): boolean {
   if (input.fullAdmin) return true;
-  if (input.accessMode === "unified") return !!input.permissions?.includes(grant);
-  return portalDefault;
+  return !!input.permissions?.includes(grant);
 }
 
-/** Full Admin sees every action. Unified follows /me grant keys. Portal keeps today's desk. */
+/** Full Admin sees every action. Other accounts follow /me grant keys. */
 export function clinicActionFlags(input: ClinicActionInput): ClinicActionFlags {
   return {
-    pharmacyCreate: allowGrant(input, "pharmacy.create", true),
-    pharmacyUpdate: allowGrant(input, "pharmacy.update", true),
-    pharmacyAdjust: allowGrant(input, "pharmacy.update", false),
-    pharmacyDelete: allowGrant(input, "pharmacy.delete", true),
-    opdCreate: allowGrant(input, "opd.create", true),
-    opdUpdate: allowGrant(input, "opd.update", true),
-    opdDelete: allowGrant(input, "opd.delete", true),
-    otCreate: allowGrant(input, "ot.create", true),
-    otUpdate: allowGrant(input, "ot.update", true),
-    otDelete: allowGrant(input, "ot.delete", true),
-    labCreate: allowGrant(input, "lab.create", true),
-    labUpdate: allowGrant(input, "lab.update", true),
-    labDelete: allowGrant(input, "lab.delete", true),
-    expenseCreate: allowGrant(input, "expense.create", true),
-    expenseUpdate: allowGrant(input, "expense.update", true),
-    expenseDelete: allowGrant(input, "expense.delete", true),
-    patientsCreate: allowGrant(input, "patients.create", true),
-    patientsUpdate: allowGrant(input, "patients.update", true),
+    pharmacyCreate: allowGrant(input, "pharmacy.create"),
+    pharmacyUpdate: allowGrant(input, "pharmacy.update"),
+    pharmacyAdjust: allowGrant(input, "pharmacy.update"),
+    pharmacyDelete: allowGrant(input, "pharmacy.delete"),
+    opdCreate: allowGrant(input, "opd.create"),
+    opdUpdate: allowGrant(input, "opd.update"),
+    opdDelete: allowGrant(input, "opd.delete"),
+    otCreate: allowGrant(input, "ot.create"),
+    otUpdate: allowGrant(input, "ot.update"),
+    otDelete: allowGrant(input, "ot.delete"),
+    labCreate: allowGrant(input, "lab.create"),
+    labUpdate: allowGrant(input, "lab.update"),
+    labDelete: allowGrant(input, "lab.delete"),
+    expenseCreate: allowGrant(input, "expense.create"),
+    expenseUpdate: allowGrant(input, "expense.update"),
+    expenseDelete: allowGrant(input, "expense.delete"),
+    patientsCreate: allowGrant(input, "patients.create"),
+    patientsUpdate: allowGrant(input, "patients.update"),
     patientsDelete: input.fullAdmin,
     billPurge: input.fullAdmin,
   };
@@ -81,7 +79,6 @@ export function useClinicActions(): ClinicActionFlags {
     useContext(ClinicActionsContext) ??
     clinicActionFlags({
       fullAdmin: false,
-      accessMode: "portal",
       permissions: [],
     })
   );

@@ -116,6 +116,22 @@ func TestBillHistoryMoneyAndDateFilters(t *testing.T) {
 	w = doJSON(opd, http.MethodGet, "/api/opd/bills?sort=bogus", token, "")
 	mustCode(t, w, http.StatusBadRequest)
 
+	// Omitted order keeps date sort (same as order=date).
+	byDate := listNos("/api/opd/bills?sort=asc")
+	if len(byDate) < 1 || byDate[0] != "OPD-PAID" {
+		t.Fatalf("default order first %v, want OPD-PAID", byDate)
+	}
+	voucherAsc := listNos("/api/opd/bills?order=voucher&sort=asc")
+	if len(voucherAsc) < 1 || voucherAsc[0] != "OPD-DEL" {
+		t.Fatalf("order=voucher&sort=asc first %v, want OPD-DEL", voucherAsc)
+	}
+	voucherDesc := listNos("/api/opd/bills?order=voucher&sort=desc")
+	if len(voucherDesc) < 1 || voucherDesc[0] != "OPD-VOID" {
+		t.Fatalf("order=voucher&sort=desc first %v, want OPD-VOID", voucherDesc)
+	}
+	w = doJSON(opd, http.MethodGet, "/api/opd/bills?order=bogus", token, "")
+	mustCode(t, w, http.StatusBadRequest)
+
 	// OT: money filters the joined bill, not case workflow status.
 	caseRes, err := sqlDB.Exec(`
 		INSERT INTO ot_cases (case_no, patient_name, status, created_at, updated_at)

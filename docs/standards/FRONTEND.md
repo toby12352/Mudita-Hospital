@@ -24,9 +24,9 @@ client/src/
     opd/OpdPage.tsx
     ot/OtPage.tsx
     patients/PatientsPage.tsx
-    ipd/IpdPage.tsx
+    ipd/IpdPatientsPage.tsx
     pharmacy/           # PharmacyPage, PharmacyBillingPage, tabs, forms
-    settings/           # SettingsPage + hospital/doctors/categories/users/backup/training
+    settings/           # SettingsPage + hospital/doctors/categories/users/backup
     reports/ReportsPage.tsx
   features/
     opd/api.ts
@@ -35,7 +35,7 @@ client/src/
     ipd/api.ts
     pharmacy/api.ts
     reports/api.ts
-    settings/           # masterData.ts, backup.ts, demo.ts
+    settings/           # masterData.ts, backup.ts
   shared/
     api.ts
     auth.ts
@@ -108,9 +108,9 @@ Scope: **`client/` only**. Reference screens: Drug Setup / OPD maintenance, OT c
 | Role | Look | Typical use |
 |------|------|-------------|
 | Primary | Solid accent `#2563EB`, white text | One main commit per context: New, Mark Paid while collecting, form Save/Create where that is the submit |
-| Secondary / outline | Panel/white fill, light border, dark text | Search, Filter, History, Edit, Cancel, most rail tools |
-| Danger outline | Red text + red border, not a solid red fill | Void Bills, Delete, Deactivate, Restore on lists/rails |
-| Soft on | Soft blue fill (`--accent-soft`) | Toggle-open only (Filter / Restock / View) — not a second solid primary |
+| Secondary / outline | Panel/white fill, **2px** `#4b5563` (`--button-border`) edge, dark text | Search, Filter, History, Edit, Cancel, most rail tools |
+| Danger outline | Red text + **2px** solid `#c62828` edge, not a solid red fill | Void Bills, Delete, Deactivate, Restore on lists/rails |
+| Soft on | Soft blue fill (`--accent-soft`) + **2px** solid accent edge | Toggle-open only (Filter / Restock / View) — not a second solid primary |
 
 Solid `.btn.danger` (filled red) is reserved for rare confirm dialogs that already use it (e.g. delete-item confirm). Do not use filled red on list rows or the bill rail.
 
@@ -124,7 +124,8 @@ Solid `.btn.danger` (filled red) is reserved for rare confirm dialogs that alrea
 **Surfaces**
 
 - Root `--radius-control` is `5px`. Bill desks (`.opd-bill-desk`, `.opd-bill-dialog`) set `--radius-control: 6px`. Do not collapse those into one radius.
-- One neutral border everywhere, including bill desks and settings: root `--border` (`#d8dee6`) and `--border-strong`. Do not override bill or settings borders to `#d5dce5`.
+- One neutral divider everywhere, including bill desks and settings: root `--border` (`#d8dee6`) and `--border-strong`. Do not override bill or settings borders to `#d5dce5`.
+- Outline **buttons** use `--button-border` (`#4b5563`, 2px), not `--border`. Tables, cards, and panels keep the light divider. Accessibility contrast for the button edge wins over a light stroke.
 - Placeholder text is `#64748b` on white, including bill desks and settings. Do not use `#94a3b8`.
 - White panel and input backgrounds. No dark chrome.
 
@@ -145,6 +146,7 @@ Controls that share a horizontal row share one height and one radius.
 
 **Layout**
 
+- Desk pages use the shared full-page shell in `shared/DeskChrome.tsx` (`.desk-maintenance`): white panel (`.opd-bill-desk` or settings content) fills the content area. Two or more screens use `DeskChromeTabs` (underline strip, `role="tablist"`). A single screen has no page tab bar. Catalog multi-tab desks hide the strip on create, edit, and detail. Inner chart tabs (Patient Info / Timeline / History) stay on the chart; they do not replace the page chrome.
 - Labels stay on one line. The label column sizes to the text; the field takes the remaining width. Check English and Myanmar before locking a width. Do not clip either locale.
 - List code and name cells stay on one line (`nowrap` + ellipsis). The code column fits `DEMO-GLOVE` and `TESTPACK1` without painting into the next column. Put the full string on the cell `title`.
 - Bill cart typeahead, Qty, unit select, and the row delete control share one height, padding, and line-height.
@@ -174,6 +176,7 @@ Dismiss: `DialogCloseButton` on dismissible overlays; Escape; scrim click when l
 - Stay **text only** when an icon would crowd or confuse (e.g. Deactivate, Restock/View on a crowded detail row, form-footer Cancel, bill-rail Cancel F10).
 - Consultation labels do not start with “+”. The plus `ActionIcon` is the only plus. Drop the character from both EN and MY.
 - Cart row delete uses the trash `ActionIcon`, not a text “×”.
+- Delete / void / purge confirms opened from a trash button pass `icon="trash"` on `AlertDialog` (amber warning circle, trash can instead of the hazard triangle). Other warning confirms keep the triangle.
 
 **Do not**
 

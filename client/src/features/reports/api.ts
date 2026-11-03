@@ -21,6 +21,8 @@ export type CashReport = {
   ot_total_mmk: number;
   pharmacy_count: number;
   pharmacy_total_mmk: number;
+  lab_count: number;
+  lab_total_mmk: number;
   cash_total_mmk?: number;
   online_total_mmk?: number;
   grand_total_mmk: number;

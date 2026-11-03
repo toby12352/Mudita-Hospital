@@ -1,4 +1,13 @@
-import { ReactNode, Ref, useEffect, useId, useRef, useState } from "react";
+import {
+  ReactNode,
+  Ref,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
+import { applyMenuPlacement, revealOptionInMenu } from "@/shared/menuPlacement";
 
 export type TypeaheadProps<T> = {
   value: string;
@@ -30,6 +39,15 @@ export type TypeaheadProps<T> = {
   dataGuide?: string;
   required?: boolean;
 };
+
+function assignRef<T>(ref: Ref<T> | undefined, value: T | null) {
+  if (ref == null) return;
+  if (typeof ref === "function") {
+    ref(value);
+    return;
+  }
+  (ref as { current: T | null }).current = value;
+}
 
 export function Typeahead<T>({
   value,
@@ -63,6 +81,8 @@ export function Typeahead<T>({
   const skipSuggestRef = useRef(false);
   const suggestSeqRef = useRef(0);
   const blurCloseRef = useRef<number | null>(null);
+  const localInputRef = useRef<HTMLInputElement | null>(null);
+  const menuRef = useRef<HTMLUListElement | null>(null);
 
   function closeSuggestions() {
     setOpen(false);
@@ -112,11 +132,56 @@ export function Typeahead<T>({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value, disabled, effectiveMinChars, maxResults, debounceMs]);
 
+  useLayoutEffect(() => {
+    if (!open) return;
+    const input = localInputRef.current;
+    const menu = menuRef.current;
+    if (!input || !menu) return;
+
+    function place() {
+      const anchor = localInputRef.current;
+      const list = menuRef.current;
+      if (!anchor || !list) return;
+      applyMenuPlacement(anchor, list);
+    }
+
+    place();
+    window.addEventListener("resize", place);
+    const scrollParents: (Element | Window)[] = [window];
+    let node: HTMLElement | null = input.parentElement;
+    while (node) {
+      const { overflowY } = getComputedStyle(node);
+      if (overflowY === "auto" || overflowY === "scroll" || overflowY === "hidden") {
+        node.addEventListener("scroll", place, { passive: true });
+        scrollParents.push(node);
+      }
+      node = node.parentElement;
+    }
+    return () => {
+      window.removeEventListener("resize", place);
+      for (const parent of scrollParents) {
+        if (parent === window) continue;
+        parent.removeEventListener("scroll", place);
+      }
+    };
+  }, [open, suggestions.length]);
+
+  useLayoutEffect(() => {
+    if (!open || highlight < 0) return;
+    const menu = menuRef.current;
+    if (!menu) return;
+    const option = menu.querySelector<HTMLElement>('[aria-selected="true"]');
+    if (option) revealOptionInMenu(menu, option);
+  }, [highlight, open, suggestions]);
+
   return (
     <div className={`field grow typeahead${className ? ` ${className}` : ""}`}>
       {label ? <span>{label}</span> : null}
       <input
-        ref={inputRef}
+        ref={(el) => {
+          localInputRef.current = el;
+          assignRef(inputRef, el);
+        }}
         value={value}
         disabled={disabled}
         placeholder={placeholder}
@@ -175,7 +240,7 @@ export function Typeahead<T>({
         }}
       />
       {open && suggestions.length > 0 ? (
-        <ul id={listId} className="typeahead-menu" role="listbox">
+        <ul id={listId} ref={menuRef} className="typeahead-menu" role="listbox">
           {suggestions.map((item, i) => {
             const extra = optionClassName?.(item) ?? "";
             return (

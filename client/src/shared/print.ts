@@ -1,3 +1,4 @@
+import { reportUnauthorizedIfNeeded } from "@/shared/api";
 import { userMessage } from "@/shared/errors";
 import { t } from "@/shared/i18n";
 
@@ -179,9 +180,16 @@ export async function fetchPrintHtml(
   });
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(userMessage(printErrorText(text, res.status), res.status));
+    const raw = printErrorText(text, res.status);
+    reportUnauthorizedIfNeeded(res.status, raw);
+    throw new Error(userMessage(raw, res.status));
   }
   return res.text();
+}
+
+/** True when server HTML targets the 80 mm thermal roll. */
+export function isThermalReceiptHtml(html: string): boolean {
+  return html.includes("@page{size:80mm");
 }
 
 /** Fetch authenticated print HTML then open preview. */

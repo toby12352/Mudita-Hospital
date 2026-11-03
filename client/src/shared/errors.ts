@@ -327,6 +327,8 @@ const EXACT: Record<string, string> = {
   "bill already has a patient": "errBillAlreadyLinked",
   "cannot attach a transfer": "errCannotAttachTransfer",
   "bill_no required": "errBillNoRequired",
+  "body required": "errTimelineNoteRequired",
+  "body too long": "errTimelineNoteTooLong",
   "bill not found": "errNotFound",
   "bill has no patient": "errBillNoPatient",
   "stay is for a different patient": "errStayMismatch",

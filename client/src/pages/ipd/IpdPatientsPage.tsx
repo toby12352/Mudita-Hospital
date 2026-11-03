@@ -20,6 +20,8 @@ import type { PatientChart } from "@/features/patients/api";
 import { PatientChartTypeahead } from "@/features/patients/PatientChartTypeahead";
 import { IpdDailyStatementPreview } from "@/pages/ipd/IpdDailyStatementPreview";
 import { defaultIpdStatementDate, utcStampToYangonDate, yangonToday } from "@/pages/ipd/ipdStatementDate";
+import type { ClinicModule } from "@/app/portal";
+import type { NavSectionId, View } from "@/app/types";
 import { ActionIcon } from "@/shared/ActionIcon";
 import { AlertDialog } from "@/shared/AlertDialog";
 import { getStoredUser } from "@/shared/auth";
@@ -32,11 +34,13 @@ import {
   type BillHistorySuggestItem,
 } from "@/shared/BillHistoryToolbar";
 import { BillHistoryTable } from "@/shared/BillHistoryTable";
+import { DialogCloseButton } from "@/shared/DialogCloseButton";
 import { fieldKeyForApiError } from "@/shared/errors";
 import { FieldError, revealField } from "@/shared/FieldError";
 import { formatMMK } from "@/shared/format";
+import { DeskChrome } from "@/shared/DeskChrome";
 import { useI18n } from "@/shared/i18n";
-import { useBillActionPending } from "@/shared/useActionLock";
+import { useBillActionFeedback, useBillActionPending } from "@/shared/useActionLock";
 
 const DRAFT_ADMISSION_NO = "IPD-000*";
 
@@ -48,7 +52,21 @@ type DraftPatient = {
   gender: string;
 };
 
-export function IpdPage({ openRecordId }: { openRecordId?: number } = {}) {
+type OpenRecordTarget = {
+  view: View;
+  section: NavSectionId;
+  openRecordId: number;
+};
+
+export function IpdPatientsPage({
+  openRecordId,
+  canReadModule,
+  onOpenRecord,
+}: {
+  openRecordId?: number;
+  canReadModule?: (module: ClinicModule) => boolean;
+  onOpenRecord?: (target: OpenRecordTarget) => void;
+} = {}) {
   const { t } = useI18n();
   const [allStays, setAllStays] = useState<IpdAdmission[]>([]);
   const [listQuery, setListQuery] = useState<BillHistoryQuery | null>(null);
@@ -65,12 +83,23 @@ export function IpdPage({ openRecordId }: { openRecordId?: number } = {}) {
   const isAdmin = getStoredUser()?.role === "Admin";
   const [depositAmount, setDepositAmount] = useState("");
   const [depositNote, setDepositNote] = useState("");
+  const [depositPanelOpen, setDepositPanelOpen] = useState(false);
+  const [depositPanelPos, setDepositPanelPos] = useState<{
+    top: number;
+    right: number;
+    maxWidth: number;
+  }>({
+    top: 0,
+    right: 0,
+    maxWidth: 288,
+  });
+  const [flashLedgerId, setFlashLedgerId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [patientError, setPatientError] = useState<string | null>(null);
   const [depositAmountError, setDepositAmountError] = useState<string | null>(null);
-  const [okMsg, setOkMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const { action: pendingAction, pending, begin, end } = useBillActionPending();
+  const { pulse, isOk, isErr } = useBillActionFeedback();
   const [showCash, setShowCash] = useState(false);
   const [cashReport, setCashReport] = useState<IpdCashReport | null>(null);
   const [cashQuery, setCashQuery] = useState<BillHistoryQuery | null>(null);
@@ -83,11 +112,13 @@ export function IpdPage({ openRecordId }: { openRecordId?: number } = {}) {
   const [deleteDepositBusy, setDeleteDepositBusy] = useState(false);
   const [dailyOpen, setDailyOpen] = useState(false);
   const [printingLedgerId, setPrintingLedgerId] = useState<number | null>(null);
+  const deskRef = useRef<HTMLElement>(null);
   const patientFieldRef = useRef<HTMLDivElement>(null);
   const roomRef = useRef<HTMLInputElement>(null);
   const depositAmountRef = useRef<HTMLInputElement>(null);
+  const depositBtnRef = useRef<HTMLButtonElement>(null);
+  const depositPanelRef = useRef<HTMLDivElement>(null);
   const formErrorRef = useRef<HTMLParagraphElement>(null);
-  const okMsgRef = useRef<HTMLParagraphElement>(null);
   const listQueryRef = useRef(listQuery);
   listQueryRef.current = listQuery;
 
@@ -112,16 +143,88 @@ export function IpdPage({ openRecordId }: { openRecordId?: number } = {}) {
   );
 
   useEffect(() => {
-    if (okMsg?.trim()) revealField(okMsgRef.current);
-  }, [okMsg]);
-
-  useEffect(() => {
     setDailyOpen(false);
   }, [stay?.id]);
+
+  useEffect(() => {
+    if (stay?.status !== "open") {
+      setDepositPanelOpen(false);
+      setDepositAmount("");
+      setDepositNote("");
+      setDepositAmountError(null);
+    }
+  }, [stay?.id, stay?.status]);
+
+  function placeDepositPanel() {
+    const btn = depositBtnRef.current;
+    const desk = deskRef.current;
+    const rail = btn?.closest(".opd-bill-rail") as HTMLElement | null;
+    if (!btn || !desk || !rail) return;
+    const gap = 8;
+    const margin = 8;
+    const deskRect = desk.getBoundingClientRect();
+    const btnRect = btn.getBoundingClientRect();
+    const panelH = depositPanelRef.current?.offsetHeight ?? 0;
+    const right = rail.offsetWidth + gap;
+    const available = Math.max(160, desk.clientWidth - right - margin);
+    const maxWidth = Math.min(288, available);
+    let top = btnRect.top - deskRect.top;
+    const maxTop = Math.max(margin, desk.clientHeight - panelH - margin);
+    if (top > maxTop) top = maxTop;
+    if (top < margin) top = margin;
+    setDepositPanelPos({ top, right, maxWidth });
+  }
+
+  useEffect(() => {
+    if (!depositPanelOpen) return;
+    placeDepositPanel();
+    window.requestAnimationFrame(placeDepositPanel);
+    function onDocKey(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopPropagation();
+      closeDepositPanel();
+    }
+    function onDocPointer(e: MouseEvent) {
+      const target = e.target;
+      if (!(target instanceof Node)) return;
+      if (depositPanelRef.current?.contains(target)) return;
+      if (depositBtnRef.current?.contains(target)) return;
+      closeDepositPanel();
+    }
+    window.addEventListener("resize", placeDepositPanel);
+    window.addEventListener("scroll", placeDepositPanel, true);
+    document.addEventListener("keydown", onDocKey, true);
+    document.addEventListener("mousedown", onDocPointer);
+    window.setTimeout(() => revealField(depositAmountRef.current), 0);
+    return () => {
+      window.removeEventListener("resize", placeDepositPanel);
+      window.removeEventListener("scroll", placeDepositPanel, true);
+      document.removeEventListener("keydown", onDocKey, true);
+      document.removeEventListener("mousedown", onDocPointer);
+    };
+  }, [depositPanelOpen]);
 
   function clearFieldErrors() {
     setPatientError(null);
     setDepositAmountError(null);
+  }
+
+  function openDepositPanel() {
+    placeDepositPanel();
+    setDepositAmountError(null);
+    setDepositPanelOpen(true);
+  }
+
+  function closeDepositPanel() {
+    setDepositPanelOpen(false);
+    setDepositAmountError(null);
+    window.setTimeout(() => depositBtnRef.current?.focus(), 0);
+  }
+
+  function toggleDepositPanel() {
+    if (depositPanelOpen) closeDepositPanel();
+    else openDepositPanel();
   }
 
   function applyApiError(e: unknown) {
@@ -350,14 +453,12 @@ export function IpdPage({ openRecordId }: { openRecordId?: number } = {}) {
     setDepositNote("");
     setError(null);
     clearFieldErrors();
-    setOkMsg(null);
   }
 
   async function openStay(id: number) {
     setBusy(true);
     setError(null);
     clearFieldErrors();
-    setOkMsg(null);
     try {
       showStay(await getIpdAdmission(id));
     } catch (e) {
@@ -387,7 +488,6 @@ export function IpdPage({ openRecordId }: { openRecordId?: number } = {}) {
     setBilledAtLocal(nowDatetimeLocal());
     setError(null);
     clearFieldErrors();
-    setOkMsg(null);
   }
 
   async function admit() {
@@ -400,7 +500,6 @@ export function IpdPage({ openRecordId }: { openRecordId?: number } = {}) {
     setBusy(true);
     setError(null);
     clearFieldErrors();
-    setOkMsg(null);
     try {
       const created = await admitPatient(
         chartId,
@@ -409,8 +508,10 @@ export function IpdPage({ openRecordId }: { openRecordId?: number } = {}) {
       showStay(created);
       setBilledAtLocal(nowDatetimeLocal());
       await refreshList();
+      pulse("admit", "ok");
     } catch (e) {
       applyApiError(e);
+      pulse("admit", "err");
     } finally {
       setBusy(false);
       end();
@@ -423,14 +524,14 @@ export function IpdPage({ openRecordId }: { openRecordId?: number } = {}) {
     setBusy(true);
     setError(null);
     clearFieldErrors();
-    setOkMsg(null);
     try {
       const saved = await updateIpdNotes(stay.id, notes, roomNo);
       showStay(saved);
-      setOkMsg(t("saved"));
       await refreshList();
+      pulse("notes", "ok");
     } catch (e) {
       applyApiError(e);
+      pulse("notes", "err");
     } finally {
       setBusy(false);
       end();
@@ -449,15 +550,24 @@ export function IpdPage({ openRecordId }: { openRecordId?: number } = {}) {
     setBusy(true);
     setError(null);
     clearFieldErrors();
-    setOkMsg(null);
     try {
       const saved = await postIpdDeposit(stay.id, amount, depositNote);
+      const newestDeposit = (saved.ledger ?? [])
+        .filter((line) => line.kind === "deposit")
+        .reduce<IpdLedgerLine | null>((best, line) => (best == null || line.id > best.id ? line : best), null);
       setStay(saved);
       setDepositAmount("");
       setDepositNote("");
-      setOkMsg(t("saved"));
+      setDepositPanelOpen(false);
+      if (newestDeposit) {
+        setFlashLedgerId(newestDeposit.id);
+        window.setTimeout(() => setFlashLedgerId((id) => (id === newestDeposit.id ? null : id)), 220);
+      }
+      window.setTimeout(() => depositBtnRef.current?.focus(), 0);
+      pulse("deposit", "ok");
     } catch (e) {
       applyApiError(e);
+      pulse("deposit", "err");
     } finally {
       setBusy(false);
       end();
@@ -476,13 +586,27 @@ export function IpdPage({ openRecordId }: { openRecordId?: number } = {}) {
           ? t("ipdDepositReceipt")
           : line.note.trim() || t("print");
       await printIpdDeposit(stay.id, line.id, title);
+      pulse("print", "ok");
     } catch (e) {
       applyApiError(e);
+      pulse("print", "err");
     } finally {
       setBusy(false);
       setPrintingLedgerId(null);
       end();
     }
+  }
+
+  function latestDepositLine(): IpdLedgerLine | null {
+    const deposits = (stay?.ledger ?? []).filter((line) => line.kind === "deposit");
+    if (deposits.length === 0) return null;
+    return deposits.reduce((best, line) => (line.id > best.id ? line : best));
+  }
+
+  async function printDepositFee() {
+    const line = latestDepositLine();
+    if (!stay || !line) return;
+    await printLedgerLine(line);
   }
 
   async function printStatement() {
@@ -492,8 +616,10 @@ export function IpdPage({ openRecordId }: { openRecordId?: number } = {}) {
     setError(null);
     try {
       await printIpdStatement(stay.id, t("ipdStatement"));
+      pulse("statement", "ok");
     } catch (e) {
       applyApiError(e);
+      pulse("statement", "err");
     } finally {
       setBusy(false);
       end();
@@ -506,7 +632,6 @@ export function IpdPage({ openRecordId }: { openRecordId?: number } = {}) {
     setBusy(true);
     setError(null);
     clearFieldErrors();
-    setOkMsg(null);
     try {
       const saved = await dischargeIpd(stay.id);
       setConfirmDischarge(false);
@@ -516,11 +641,12 @@ export function IpdPage({ openRecordId }: { openRecordId?: number } = {}) {
       setRoomEditing(false);
       setDepositAmount("");
       setDepositNote("");
-      setOkMsg(t("ipdDischarged"));
       await refreshList();
+      pulse("discharge", "ok");
     } catch (e) {
       applyApiError(e);
       setConfirmDischarge(false);
+      pulse("discharge", "err");
     } finally {
       setBusy(false);
       end();
@@ -541,9 +667,11 @@ export function IpdPage({ openRecordId }: { openRecordId?: number } = {}) {
         setComposing(false);
       }
       await refreshList();
+      pulse("purge", "ok");
     } catch (e) {
       applyApiError(e);
       setPurgeStayId(null);
+      pulse("purge", "err");
     } finally {
       setBusy(false);
       end();
@@ -581,7 +709,6 @@ export function IpdPage({ openRecordId }: { openRecordId?: number } = {}) {
       setDeleteDepositTarget(null);
       setDeleteDepositStep(1);
       setStay(saved);
-      setOkMsg(t("saved"));
       await refreshList();
     } catch (e) {
       setDeleteDepositError(e instanceof Error ? e.message : t("errGeneric"));
@@ -614,8 +741,11 @@ export function IpdPage({ openRecordId }: { openRecordId?: number } = {}) {
     setPatientName("");
     setChartId(null);
     setDraftPatient(null);
+    setDepositPanelOpen(false);
+    setDepositAmount("");
+    setDepositNote("");
+    setFlashLedgerId(null);
     setError(null);
-    setOkMsg(null);
     clearFieldErrors();
     void refreshList().catch((e) => setError(e instanceof Error ? e.message : t("errGeneric")));
   }
@@ -631,9 +761,16 @@ export function IpdPage({ openRecordId }: { openRecordId?: number } = {}) {
         : t("ipdNoStays");
 
   const purgeTarget = purgeStayId != null ? allStays.find((row) => row.id === purgeStayId) : null;
+  const depositParsed = parseKyat(depositAmount);
+  const depositAfterBalance =
+    stay != null && depositParsed != null ? (stay.balance_mmk ?? 0) + depositParsed : null;
 
   return (
-    <section className={`opd-bill-desk${onForm ? "" : " opd-bill-desk--history"}`}>
+    <DeskChrome>
+      <section
+      ref={deskRef}
+      className={`opd-bill-desk${onForm ? "" : " opd-bill-desk--history"}`}
+    >
       <div className="opd-bill-desk-main">
         <h2 className="opd-bill-desk-title">
           {stay
@@ -890,6 +1027,15 @@ export function IpdPage({ openRecordId }: { openRecordId?: number } = {}) {
               emptyLabel={t("ipdNoLedger")}
               busy={busy || deleteDepositBusy}
               printingId={printingLedgerId}
+              flashId={flashLedgerId}
+              onActivate={
+                (stay.ledger ?? []).some((line) => ledgerBillClickable(line, canReadModule, onOpenRecord))
+                  ? (id) => {
+                      const line = (stay.ledger ?? []).find((row) => row.id === id);
+                      if (line) openLedgerBill(line, canReadModule, onOpenRecord, setError, t);
+                    }
+                  : undefined
+              }
               onPrint={(id) => {
                 const line = (stay.ledger ?? []).find((row) => row.id === id);
                 if (line) void printLedgerLine(line);
@@ -914,40 +1060,9 @@ export function IpdPage({ openRecordId }: { openRecordId?: number } = {}) {
                 canPrint: ledgerCanPrint(line),
                 canDelete:
                   isAdmin && stayOpen && (line.kind === "deposit" || line.kind === "ward"),
+                canActivate: ledgerBillClickable(line, canReadModule, onOpenRecord),
               }))}
             />
-            {stayOpen ? (
-              <div className="opd-bill-header">
-                <div className="opd-bill-header-col">
-                  <span className="opd-bill-label">{t("ipdDeposit")}</span>
-                  <label className={`opd-bill-field${depositAmountError ? " is-invalid" : ""}`}>
-                    <span className="opd-bill-label">{t("amount")}</span>
-                    <input
-                      ref={depositAmountRef}
-                      className="opd-bill-input"
-                      inputMode="numeric"
-                      value={depositAmount}
-                      disabled={busy}
-                      onChange={(e) => {
-                        setDepositAmount(e.target.value);
-                        setDepositAmountError(null);
-                      }}
-                      aria-invalid={depositAmountError ? true : undefined}
-                    />
-                  </label>
-                  <FieldError>{depositAmountError}</FieldError>
-                  <label className="opd-bill-field">
-                    <span className="opd-bill-label">{t("note")}</span>
-                    <input
-                      className="opd-bill-input"
-                      value={depositNote}
-                      disabled={busy}
-                      onChange={(e) => setDepositNote(e.target.value)}
-                    />
-                  </label>
-                </div>
-              </div>
-            ) : null}
           </>
         ) : (
           <>
@@ -1045,156 +1160,146 @@ export function IpdPage({ openRecordId }: { openRecordId?: number } = {}) {
             {error}
           </p>
         ) : null}
-        {okMsg ? (
-          <p ref={okMsgRef} className="form-ok" role="status">
-            {okMsg}
-          </p>
-        ) : null}
       </div>
 
       {onForm ? (
-        <aside className="opd-bill-rail" aria-label={t("ipdStayTitle")}>
+        <aside className="opd-bill-rail ipd-stay-rail" aria-label={t("ipdStayTitle")}>
           <button
             type="button"
-            className="opd-bill-rail-btn opd-bill-rail-btn--accent"
+            className={`opd-bill-rail-btn${stay == null ? " opd-bill-rail-btn--accent" : ""}${isErr("admit") ? " opd-bill-rail-btn--shake" : ""}`}
             disabled={busy || stay != null || chartId == null}
             aria-busy={(pending && pendingAction === "admit") || undefined}
             onClick={() => void admit()}
           >
             <span className="opd-bill-rail-btn-main">
-              <BillBtnIcon name="plus" pending={pending && pendingAction === "admit"} />
+              <BillBtnIcon
+                name="plus"
+                pending={pending && pendingAction === "admit"}
+                success={isOk("admit")}
+              />
               <span className="opd-bill-rail-btn-text">
                 <span className="opd-bill-rail-btn-label">{t("ipdAdmit")}</span>
               </span>
             </span>
           </button>
-          {canActOnStay ? (
-            <>
-              <button
-                type="button"
-                className="opd-bill-rail-btn opd-bill-rail-btn--accent"
-                disabled={busy || parseKyat(depositAmount) == null}
-                data-guide="ipd-take-deposit"
-                aria-busy={(pending && pendingAction === "deposit") || undefined}
-                onClick={() => void takeDeposit()}
+          <button
+            ref={depositBtnRef}
+            type="button"
+            className={`opd-bill-rail-btn${canActOnStay ? " opd-bill-rail-btn--accent" : ""}${isErr("deposit") ? " opd-bill-rail-btn--shake" : ""}`}
+            disabled={busy || !canActOnStay}
+            data-guide="ipd-take-deposit"
+            aria-expanded={depositPanelOpen}
+            aria-controls="ipd-deposit-panel"
+            aria-busy={(pending && pendingAction === "deposit") || undefined}
+            onClick={() => toggleDepositPanel()}
+          >
+            <span className="opd-bill-rail-btn-main">
+              <BillBtnIcon
+                name="plus"
+                pending={pending && pendingAction === "deposit"}
+                success={isOk("deposit")}
+              />
+              <span className="opd-bill-rail-btn-text">
+                <span className="opd-bill-rail-btn-label">{t("ipdTakeDeposit")}</span>
+              </span>
+            </span>
+          </button>
+          <button
+            type="button"
+            className={`opd-bill-rail-btn${isErr("notes") ? " opd-bill-rail-btn--shake" : ""}`}
+            disabled={busy || !canActOnStay}
+            aria-busy={(pending && pendingAction === "notes") || undefined}
+            onClick={() => void saveNotes()}
+          >
+            <span className="opd-bill-rail-btn-main">
+              <BillBtnIcon
+                name="check"
+                pending={pending && pendingAction === "notes"}
+                success={isOk("notes")}
+              />
+              <span
+                className={`opd-bill-rail-btn-label-swap${isOk("notes") ? " opd-bill-rail-btn-label-swap--saved" : ""}`}
+                aria-hidden="true"
               >
-                <span className="opd-bill-rail-btn-main">
-                  <BillBtnIcon name="plus" pending={pending && pendingAction === "deposit"} />
-                  <span className="opd-bill-rail-btn-text">
-                    <span className="opd-bill-rail-btn-label">{t("ipdTakeDeposit")}</span>
+                <span className="opd-bill-rail-btn-label-idle">{t("ipdSaveNotes")}</span>
+                <span className="opd-bill-rail-btn-label-saved">{t("saved")}</span>
+              </span>
+              <span className="visually-hidden">{isOk("notes") ? t("saved") : t("ipdSaveNotes")}</span>
+            </span>
+          </button>
+          <button
+            type="button"
+            className={`opd-bill-rail-btn opd-bill-rail-btn--danger${isErr("discharge") ? " opd-bill-rail-btn--shake" : ""}`}
+            disabled={busy || !canActOnStay}
+            data-guide="ipd-discharge"
+            aria-busy={(pending && pendingAction === "discharge") || undefined}
+            onClick={() => setConfirmDischarge(true)}
+          >
+            <span className="opd-bill-rail-btn-main">
+              <BillBtnIcon
+                name="check"
+                pending={pending && pendingAction === "discharge"}
+                success={isOk("discharge")}
+              />
+              <span className="opd-bill-rail-btn-text">
+                <span className="opd-bill-rail-btn-label">{t("ipdDischarge")}</span>
+                {stay ? (
+                  <span className="opd-bill-rail-btn-sub">
+                    {settlementSub(stay.balance_mmk ?? 0, t)}
                   </span>
-                </span>
-              </button>
-              <button
-                type="button"
-                className="opd-bill-rail-btn"
-                disabled={busy}
-                aria-busy={(pending && pendingAction === "notes") || undefined}
-                onClick={() => void saveNotes()}
-              >
-                <span className="opd-bill-rail-btn-main">
-                  <BillBtnIcon name="check" pending={pending && pendingAction === "notes"} />
-                  <span className="opd-bill-rail-btn-text">
-                    <span className="opd-bill-rail-btn-label">{t("ipdSaveNotes")}</span>
-                  </span>
-                </span>
-              </button>
-              <button
-                type="button"
-                className="opd-bill-rail-btn opd-bill-rail-btn--danger"
-                disabled={busy}
-                data-guide="ipd-discharge"
-                onClick={() => setConfirmDischarge(true)}
-              >
-                <span className="opd-bill-rail-btn-main">
-                  <BillBtnIcon name="check" />
-                  <span className="opd-bill-rail-btn-text">
-                    <span className="opd-bill-rail-btn-label">{t("ipdDischarge")}</span>
-                    <span className="opd-bill-rail-btn-sub">
-                      {settlementSub(stay.balance_mmk ?? 0, t)}
-                    </span>
-                  </span>
-                </span>
-              </button>
-            </>
-          ) : composing ? (
-            <>
-              <button type="button" className="opd-bill-rail-btn" disabled>
-                <span className="opd-bill-rail-btn-main">
-                  <BillBtnIcon name="plus" />
-                  <span className="opd-bill-rail-btn-text">
-                    <span className="opd-bill-rail-btn-label">{t("ipdTakeDeposit")}</span>
-                  </span>
-                </span>
-              </button>
-              <button type="button" className="opd-bill-rail-btn" disabled>
-                <span className="opd-bill-rail-btn-main">
-                  <BillBtnIcon name="check" />
-                  <span className="opd-bill-rail-btn-text">
-                    <span className="opd-bill-rail-btn-label">{t("ipdSaveNotes")}</span>
-                  </span>
-                </span>
-              </button>
-              <button type="button" className="opd-bill-rail-btn opd-bill-rail-btn--danger" disabled>
-                <span className="opd-bill-rail-btn-main">
-                  <BillBtnIcon name="check" />
-                  <span className="opd-bill-rail-btn-text">
-                    <span className="opd-bill-rail-btn-label">{t("ipdDischarge")}</span>
-                  </span>
-                </span>
-              </button>
-            </>
-          ) : null}
-          {stay ? (
-            <>
-              <button
-                type="button"
-                className="opd-bill-rail-btn"
-                disabled={busy}
-                onClick={() => setDailyOpen(true)}
-              >
-                <span className="opd-bill-rail-btn-main">
-                  <BillBtnIcon name="print" />
-                  <span className="opd-bill-rail-btn-text">
-                    <span className="opd-bill-rail-btn-label">{t("ipdPrintDailyStatement")}</span>
-                  </span>
-                </span>
-              </button>
-              <button
-                type="button"
-                className="opd-bill-rail-btn"
-                disabled={busy}
-                aria-busy={(pending && pendingAction === "statement") || undefined}
-                onClick={() => void printStatement()}
-              >
-                <span className="opd-bill-rail-btn-main">
-                  <BillBtnIcon name="print" pending={pending && pendingAction === "statement"} />
-                  <span className="opd-bill-rail-btn-text">
-                    <span className="opd-bill-rail-btn-label">{t("ipdPrintStatement")}</span>
-                  </span>
-                </span>
-              </button>
-            </>
-          ) : (
-            <>
-              <button type="button" className="opd-bill-rail-btn" disabled>
-                <span className="opd-bill-rail-btn-main">
-                  <BillBtnIcon name="print" />
-                  <span className="opd-bill-rail-btn-text">
-                    <span className="opd-bill-rail-btn-label">{t("ipdPrintDailyStatement")}</span>
-                  </span>
-                </span>
-              </button>
-              <button type="button" className="opd-bill-rail-btn" disabled>
-                <span className="opd-bill-rail-btn-main">
-                  <BillBtnIcon name="print" />
-                  <span className="opd-bill-rail-btn-text">
-                    <span className="opd-bill-rail-btn-label">{t("ipdPrintStatement")}</span>
-                  </span>
-                </span>
-              </button>
-            </>
-          )}
+                ) : null}
+              </span>
+            </span>
+          </button>
+          <button
+            type="button"
+            className={`opd-bill-rail-btn${isErr("print") ? " opd-bill-rail-btn--shake" : ""}`}
+            disabled={busy || stay == null || latestDepositLine() == null}
+            aria-busy={(pending && pendingAction === "print") || undefined}
+            onClick={() => void printDepositFee()}
+          >
+            <span className="opd-bill-rail-btn-main">
+              <BillBtnIcon
+                name="print"
+                pending={pending && pendingAction === "print"}
+                success={isOk("print")}
+              />
+              <span className="opd-bill-rail-btn-text">
+                <span className="opd-bill-rail-btn-label">{t("ipdPrintDepositFee")}</span>
+              </span>
+            </span>
+          </button>
+          <button
+            type="button"
+            className="opd-bill-rail-btn"
+            disabled={busy || stay == null}
+            onClick={() => setDailyOpen(true)}
+          >
+            <span className="opd-bill-rail-btn-main">
+              <BillBtnIcon name="print" />
+              <span className="opd-bill-rail-btn-text">
+                <span className="opd-bill-rail-btn-label">{t("ipdPrintDailyStatement")}</span>
+              </span>
+            </span>
+          </button>
+          <button
+            type="button"
+            className={`opd-bill-rail-btn${isErr("statement") ? " opd-bill-rail-btn--shake" : ""}`}
+            disabled={busy || stay == null}
+            aria-busy={(pending && pendingAction === "statement") || undefined}
+            onClick={() => void printStatement()}
+          >
+            <span className="opd-bill-rail-btn-main">
+              <BillBtnIcon
+                name="print"
+                pending={pending && pendingAction === "statement"}
+                success={isOk("statement")}
+              />
+              <span className="opd-bill-rail-btn-text">
+                <span className="opd-bill-rail-btn-label">{t("ipdPrintStatement")}</span>
+              </span>
+            </span>
+          </button>
           <button type="button" className="opd-bill-rail-btn" disabled={busy} onClick={backToList}>
             <span className="opd-bill-rail-btn-main">
               <BillBtnIcon name="history" />
@@ -1204,6 +1309,85 @@ export function IpdPage({ openRecordId }: { openRecordId?: number } = {}) {
             </span>
           </button>
         </aside>
+      ) : null}
+
+      {depositPanelOpen && canActOnStay && stay ? (
+        <div
+          ref={depositPanelRef}
+          id="ipd-deposit-panel"
+          className="ipd-deposit-panel"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="ipd-deposit-panel-title"
+          style={{
+            top: depositPanelPos.top,
+            right: depositPanelPos.right,
+            maxWidth: depositPanelPos.maxWidth,
+          }}
+        >
+          <div className="ipd-deposit-panel-head">
+            <h3 id="ipd-deposit-panel-title" className="ipd-deposit-panel-title">
+              {t("ipdTakeDeposit")}
+            </h3>
+            <DialogCloseButton onClick={closeDepositPanel} disabled={busy} />
+          </div>
+          <label className={`opd-bill-field${depositAmountError ? " is-invalid" : ""}`}>
+            <span className="opd-bill-label">{t("amount")}</span>
+            <input
+              ref={depositAmountRef}
+              className="opd-bill-input"
+              inputMode="numeric"
+              value={depositAmount}
+              disabled={busy}
+              onChange={(e) => {
+                setDepositAmount(e.target.value);
+                setDepositAmountError(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  if (depositParsed != null && !busy) void takeDeposit();
+                }
+              }}
+              aria-invalid={depositAmountError ? true : undefined}
+            />
+          </label>
+          <FieldError>{depositAmountError}</FieldError>
+          <label className="opd-bill-field">
+            <span className="opd-bill-label">{t("note")}</span>
+            <input
+              className="opd-bill-input"
+              value={depositNote}
+              disabled={busy}
+              onChange={(e) => setDepositNote(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  if (depositParsed != null && !busy) void takeDeposit();
+                }
+              }}
+            />
+          </label>
+          {depositAfterBalance != null ? (
+            <p className="ipd-deposit-preview" role="status">
+              <span className="ipd-deposit-preview-label">{t("ipdBalanceAfter")}</span>{" "}
+              <span className="ipd-deposit-preview-value">
+                {settlementSub(depositAfterBalance, t)}
+              </span>
+            </p>
+          ) : null}
+          <div className="ipd-deposit-panel-actions">
+            <button
+              type="button"
+              className="btn primary"
+              disabled={busy || depositParsed == null}
+              aria-busy={(pending && pendingAction === "deposit") || undefined}
+              onClick={() => void takeDeposit()}
+            >
+              {t("ipdTakeDeposit")}
+            </button>
+          </div>
+        </div>
       ) : null}
 
       {dailyOpen && stay ? (
@@ -1218,11 +1402,10 @@ export function IpdPage({ openRecordId }: { openRecordId?: number } = {}) {
       ) : null}
       {confirmDischarge ? (
         <AlertDialog
-          tone="warning"
+          tone="door"
           title={t("ipdDischarge")}
           message={dischargeConfirmMessage(stay, t)}
           busy={busy}
-          danger
           confirmLabel={t("ipdDischarge")}
           onClose={() => {
             if (!busy) setConfirmDischarge(false);
@@ -1233,6 +1416,7 @@ export function IpdPage({ openRecordId }: { openRecordId?: number } = {}) {
       {purgeStayId != null ? (
         <AlertDialog
           tone="warning"
+          icon="trash"
           title={t("ipdDeleteStay")}
           message={t("confirmIpdDeleteStay").replace(
             "{admission}",
@@ -1251,6 +1435,7 @@ export function IpdPage({ openRecordId }: { openRecordId?: number } = {}) {
         <AlertDialog
           key={`ledger-delete-${deleteDepositTarget.id}-${deleteDepositStep}`}
           tone="warning"
+          icon="trash"
           title={t("delete")}
           identity={`${ledgerKindLabel(deleteDepositTarget.kind, deleteDepositTarget.amount_mmk, deleteDepositTarget.source, t)} · ${formatMMK(deleteDepositTarget.amount_mmk)} ${t("mmk")}`}
           message={
@@ -1282,6 +1467,7 @@ export function IpdPage({ openRecordId }: { openRecordId?: number } = {}) {
         />
       ) : null}
     </section>
+    </DeskChrome>
   );
 }
 
@@ -1372,6 +1558,63 @@ function ledgerCanPrint(line: IpdLedgerLine): boolean {
     line.source === "lab" ||
     line.source === "ipd"
   );
+}
+
+function ledgerBillTarget(line: IpdLedgerLine): OpenRecordTarget | null {
+  if (line.kind !== "charge" && line.kind !== "reversal") return null;
+  if (line.source_id == null || line.source_id < 1) return null;
+  const openRecordId = line.source_id;
+  if (line.source === "opd") return { view: "opd", section: "opd", openRecordId };
+  if (line.source === "lab") return { view: "lab", section: "lab", openRecordId };
+  if (line.source === "ot") return { view: "ot", section: "ot_bill", openRecordId };
+  if (line.source === "ipd") return { view: "ipd_bill", section: "ipd_bill", openRecordId };
+  if (line.source === "pharmacy") {
+    const isReturn = line.note.trim().toUpperCase().startsWith("RT-");
+    return isReturn
+      ? { view: "pharmacy_return", section: "pharmacy_return", openRecordId }
+      : { view: "pharmacy_billing", section: "pharmacy", openRecordId };
+  }
+  return null;
+}
+
+function ledgerBillModule(line: IpdLedgerLine): ClinicModule | null {
+  if (line.source === "opd") return "opd";
+  if (line.source === "lab") return "lab";
+  if (line.source === "ot") return "ot";
+  if (line.source === "pharmacy") return "pharmacy";
+  if (line.source === "ipd") return "ipd";
+  return null;
+}
+
+function ledgerBillClickable(
+  line: IpdLedgerLine,
+  canReadModule?: (module: ClinicModule) => boolean,
+  onOpenRecord?: (target: OpenRecordTarget) => void,
+): boolean {
+  if (!onOpenRecord || !canReadModule) return false;
+  const target = ledgerBillTarget(line);
+  const module = ledgerBillModule(line);
+  if (target == null || module == null) return false;
+  return canReadModule(module);
+}
+
+function openLedgerBill(
+  line: IpdLedgerLine,
+  canReadModule: ((module: ClinicModule) => boolean) | undefined,
+  onOpenRecord: ((target: OpenRecordTarget) => void) | undefined,
+  setError: (msg: string | null) => void,
+  t: (key: string) => string,
+): void {
+  if (!onOpenRecord || !canReadModule) return;
+  const target = ledgerBillTarget(line);
+  const module = ledgerBillModule(line);
+  if (target == null || module == null) return;
+  if (!canReadModule(module)) {
+    setError(t("noAccess"));
+    return;
+  }
+  setError(null);
+  onOpenRecord(target);
 }
 
 function settlementSub(balance: number, t: (key: string) => string): string {

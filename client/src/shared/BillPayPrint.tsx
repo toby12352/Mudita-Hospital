@@ -121,6 +121,8 @@ export function BillChargeToIpdButton(props: {
   subLabel?: string;
   /** Idle icon. OPD, OT, and Pharmacy keep the clipboard. */
   icon?: ActionIconName;
+  /** Solid blue like Mark Paid. IPD Bill only; other desks stay outline. */
+  accent?: boolean;
   pending?: boolean;
   success?: boolean;
   fail?: boolean;
@@ -132,6 +134,7 @@ export function BillChargeToIpdButton(props: {
     label,
     subLabel,
     icon = "clipboard",
+    accent = false,
     pending = false,
     success = false,
     fail = false,
@@ -139,7 +142,7 @@ export function BillChargeToIpdButton(props: {
   return (
     <button
       type="button"
-      className={`opd-bill-rail-btn${railFeedbackClass(success, fail)}`}
+      className={`opd-bill-rail-btn${accent ? " opd-bill-rail-btn--accent" : ""}${railFeedbackClass(success, fail)}`}
       disabled={busy}
       onClick={onClick}
       aria-busy={pending || undefined}

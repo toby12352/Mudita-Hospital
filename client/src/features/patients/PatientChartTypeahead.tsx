@@ -27,14 +27,21 @@ export function PatientChartTypeahead({ value, disabled = false, inputRef, onCha
       onChange={onChange}
       loadSuggestions={async (term) => listPatients(term.trim())}
       getKey={(p) => p.id}
-      renderOption={(p) => (
-        <>
-          <span className="typeahead-title">
-            {p.name} · {t("chartLabel")} {p.id}
-          </span>
-          <span className="typeahead-sub">{p.father_mother_name}</span>
-        </>
-      )}
+      renderOption={(p) => {
+        const fatherName = (p.father_mother_name || "").trim();
+        return (
+          <>
+            <span className="typeahead-title">
+              {p.name} · {t("chartLabel")} {p.id}
+            </span>
+            {fatherName ? (
+              <span className="typeahead-sub">
+                {t("fathersName")}: {fatherName}
+              </span>
+            ) : null}
+          </>
+        );
+      }}
       onPick={onPick}
     />
   );

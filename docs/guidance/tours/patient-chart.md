@@ -1,13 +1,13 @@
 # Tour: patient-chart
 
 - Id: patient-chart
-- Roles: Admin and Patients. OPD, OT, Pharmacy, and IPD do not open Patient Charts.
+- Roles: Admin and Patients. OPD, OT, Pharmacy, IPD, and Lab do not open Patient Charts.
 - Depends on: none
-- Opens: view `patients`. The create step uses NavIntent `patientsScreen: "create"`. Search and attach stay on `patientsScreen: "list"`. Do not open a bill desk, Stays, or Settings.
+- Opens: view `patients`. The create step uses NavIntent `patientsScreen: "create"`. Search and attach stay on `patientsScreen: "list"`. Do not open a bill desk, IPD Patients, or Settings.
 - Mode: point and explain. Clicks on the highlighted control stay off. This lesson does not tell staff to press Create or Attach bill.
 - Entry: Help, not automatic
 
-A chart is the patient record. A name typed on a bill is not a chart. This page does not capture function keys. F5 reloads the window.
+A chart is the patient record. A name typed on a bill is not a chart. The detail pane has Info, Timeline (dated notes and visits), and History (bills). This page does not capture function keys. F5 reloads the window.
 
 ## Steps
 
@@ -50,8 +50,8 @@ A chart is the patient record. A name typed on a bill is not a chart. This page 
 - Placement: top
 - Title EN: A transfer slip cannot be attached
 - Title MY: လွှဲစာရွက်ကို တွဲ၍မရပါ။
-- Body EN: A number that starts with TO- is refused with A transfer slip cannot be attached (လွှဲစာရွက်ကို တွဲ၍မရပါ။). OPD-, PH-, RT-, and OTB- can be attached only when that bill has no chart yet; That bill is already on a chart (ဤဘေလ်သည် ဇယားတွင် ရှိပြီးပါပြီ။) refuses one that already has a chart, and any other number is not found. This lesson does not press Attach bill.
-- Body MY: TO- ဖြင့် စသောနံပါတ်ကို A transfer slip cannot be attached (လွှဲစာရွက်ကို တွဲ၍မရပါ။) ဖြင့် ငြင်းသည်။ OPD-၊ PH-၊ RT-၊ OTB- တို့ကို ထိုဘေလ်၌ မှတ်တမ်းမရှိသေးမှသာ တွဲနိုင်ပြီး ရှိပြီးသားကို That bill is already on a chart (ဤဘေလ်သည် ဇယားတွင် ရှိပြီးပါပြီ။) ဖြင့် ငြင်းကာ အခြားနံပါတ်ကို မတွေ့ပါ။ ဤသင်ခန်းစာတွင် Attach bill ကို မနှိပ်ရ။
+- Body EN: A number that starts with TO- is refused with A transfer slip cannot be attached (လွှဲစာရွက်ကို တွဲ၍မရပါ။). OPD-, PH-, RT-, OTB-, and LAB- can be attached only when that bill has no chart yet; That bill is already on a chart (ဤဘေလ်သည် ဇယားတွင် ရှိပြီးပါပြီ။) refuses one that already has a chart, and any other number is not found. This lesson does not press Attach bill.
+- Body MY: TO- ဖြင့် စသောနံပါတ်ကို A transfer slip cannot be attached (လွှဲစာရွက်ကို တွဲ၍မရပါ။) ဖြင့် ငြင်းသည်။ OPD-၊ PH-၊ RT-၊ OTB-၊ LAB- တို့ကို ထိုဘေလ်၌ မှတ်တမ်းမရှိသေးမှသာ တွဲနိုင်ပြီး ရှိပြီးသားကို That bill is already on a chart (ဤဘေလ်သည် ဇယားတွင် ရှိပြီးပါပြီ။) ဖြင့် ငြင်းကာ အခြားနံပါတ်ကို မတွေ့ပါ။ ဤသင်ခန်းစာတွင် Attach bill ကို မနှိပ်ရ။
 - Must not press: Attach bill
 - If the control is missing: skip this step
 
@@ -59,5 +59,5 @@ A chart is the patient record. A name typed on a bill is not a chart. This page 
 - Do not press Create. Do not save a new chart during the lesson.
 - Do not press Attach bill, and do not type a live bill number in order to attach it.
 - Do not edit or delete a chart.
-- Do not admit, take a deposit, open IPD Bill, or discharge. Those belong to ipd-stay and ipd-discharge.
+- Do not admit, take a deposit, open IPD Bill, or discharge. Those belong to ipd-patients and ipd-discharge.
 - Do not press Mark Paid, Charge to IPD, or Seed training data.

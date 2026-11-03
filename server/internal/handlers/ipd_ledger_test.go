@@ -73,6 +73,13 @@ func TestIPDLedger(t *testing.T) {
 	stay := decodeAdmission(t, w)
 	stayPath := "/api/ipd/admissions/" + strconv.FormatInt(stay.ID, 10)
 
+	w = doJSON(h, http.MethodPut, stayPath, ipdTok, `{"notes":"","room_no":"12-A"}`)
+	mustCode(t, w, http.StatusOK)
+	stay = decodeAdmission(t, w)
+	if stay.RoomNo != "12-A" {
+		t.Fatalf("room %+v", stay)
+	}
+
 	w = doJSON(h, http.MethodPost, stayPath+"/deposits", opdTok, `{"amount_mmk":10000}`)
 	mustCode(t, w, http.StatusForbidden)
 	w = doJSON(h, http.MethodPost, stayPath+"/deposits", patientsTok, `{"amount_mmk":10000}`)
@@ -139,7 +146,7 @@ func TestIPDLedger(t *testing.T) {
 		t.Fatalf("content type %s", ct)
 	}
 	body := w.Body.String()
-	for _, want := range []string{"Verify Hospital", "1 Lane", "091000", "IPD DEPOSIT", "Daw Ledger", "10,000", "12,000", "advance", stay.AdmissionNo} {
+	for _, want := range []string{"Verify Hospital", "1 Lane", "091000", "IPD DEPOSIT", "Daw Ledger", "Room", "12-A", "10,000", "12,000", "advance", stay.AdmissionNo} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("receipt missing %q in %s", want, body)
 		}

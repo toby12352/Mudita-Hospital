@@ -1,7 +1,7 @@
 import { billButtonsLesson } from "./lessons/bill-buttons";
 import { chargeToIpdLesson } from "./lessons/charge-to-ipd";
 import { ipdDischargeLesson } from "./lessons/ipd-discharge";
-import { ipdStayLesson } from "./lessons/ipd-stay";
+import { ipdPatientsLesson } from "./lessons/ipd-patients";
 import { otCupboardLesson } from "./lessons/ot-cupboard";
 import { patientChartLesson } from "./lessons/patient-chart";
 import { pharmacyItemLesson } from "./lessons/pharmacy-item";
@@ -22,14 +22,16 @@ export type GuideScreen = {
     | "pharmacy_return"
     | "pharmacy_transfer"
     | "ot"
-    | "opd";
+    | "opd"
+    | "lab";
   patientsScreen?: "list" | "create";
   pharmacyScreen?: "browse" | "form";
   billingMode?: "list" | "edit";
   otMode?: "case" | "stock";
   opdScreen?: "bill";
+  labScreen?: "bill";
   /**
-   * Stay on the sale desk already open (OPD bill, OT bill, or pharmacy sale).
+   * Stay on the sale desk already open (OPD bill, OT bill, pharmacy sale, or lab bill).
    * Does not open Return in, Transfer to OT, an expense bill, or IPD.
    */
   saleStay?: boolean;
@@ -43,7 +45,8 @@ export type GuideScreen = {
     | "pharmacy_transfer"
     | "ot_stock"
     | "ot_bill"
-    | "opd";
+    | "opd"
+    | "lab";
 };
 
 /** Desk snapshot used to avoid remounting a screen the tour is already on. */
@@ -54,6 +57,7 @@ export type GuideDesk = {
   billingMode?: "list" | "edit";
   otMode?: "case" | "stock";
   opdScreen?: "doctors" | "services" | "bill";
+  labScreen?: "bill" | "services";
 };
 
 export type GuideLessonStep = {
@@ -73,6 +77,7 @@ function isChargeSaleDesk(desk: GuideDesk): boolean {
   if (desk.view === "opd" && (desk.opdScreen ?? "bill") === "bill") return true;
   if (desk.view === "ot" && (desk.otMode ?? "case") === "case") return true;
   if (desk.view === "pharmacy_billing" && desk.billingMode === "edit") return true;
+  if (desk.view === "lab" && (desk.labScreen ?? "bill") === "bill") return true;
   return false;
 }
 
@@ -101,6 +106,9 @@ export function guideScreenMatches(desk: GuideDesk, screen: GuideScreen): boolea
   if (screen.view === "opd") {
     return (desk.opdScreen ?? "bill") === (screen.opdScreen ?? "bill");
   }
+  if (screen.view === "lab") {
+    return (desk.labScreen ?? "bill") === (screen.labScreen ?? "bill");
+  }
   return true;
 }
 
@@ -116,20 +124,25 @@ export function guideScreensEqual(a?: GuideScreen, b?: GuideScreen): boolean {
     (a.pharmacyScreen ?? "browse") === (b.pharmacyScreen ?? "browse") &&
     (a.billingMode ?? "edit") === (b.billingMode ?? "edit") &&
     (a.otMode ?? "case") === (b.otMode ?? "case") &&
-    (a.opdScreen ?? "bill") === (b.opdScreen ?? "bill")
+    (a.opdScreen ?? "bill") === (b.opdScreen ?? "bill") &&
+    (a.labScreen ?? "bill") === (b.labScreen ?? "bill")
   );
 }
 
 /**
  * Sale desk for Charge to IPD when the current screen cannot show the button.
- * Pharmacy stays on Pharmacy Bill. OT stays on OT Bill. Other logins open OPD Bill.
+ * Pharmacy stays on Pharmacy Bill. OT stays on OT Bill. Lab stays on Lab Bill.
+ * Other logins open OPD Bill.
  */
 export function saleDeskForRole(role: string, desk: GuideDesk): GuideScreen {
-  if (role === "OT" || (role !== "Pharmacy" && role !== "OPD" && desk.view === "ot")) {
+  if (role === "OT" || (role !== "Pharmacy" && role !== "OPD" && role !== "Lab" && desk.view === "ot")) {
     return { view: "ot", otMode: "case", section: "ot_bill", saleStay: true };
   }
   if (role === "Pharmacy" || desk.view === "pharmacy" || desk.view.startsWith("pharmacy_")) {
     return { view: "pharmacy_billing", billingMode: "edit", section: "pharmacy", saleStay: true };
+  }
+  if (role === "Lab" || desk.view === "lab") {
+    return { view: "lab", labScreen: "bill", billingMode: "edit", section: "lab", saleStay: true };
   }
   return { view: "opd", opdScreen: "bill", billingMode: "edit", section: "opd", saleStay: true };
 }
@@ -144,7 +157,7 @@ export const guideLessons: GuideLesson[] = [
   billButtonsLesson,
   chargeToIpdLesson,
   patientChartLesson,
-  ipdStayLesson,
+  ipdPatientsLesson,
   ipdDischargeLesson,
   pharmacyItemLesson,
   pharmacyReturnLesson,

@@ -245,9 +245,6 @@ func TestOtDraftCaseServicesRoundTrip(t *testing.T) {
 	_, otTok := insertSession(t, sqlDB, "OT", 0)
 	ot := &OT{DB: sqlDB}
 
-	itemID := insertItem(t, sqlDB, "SUT", "Suture", 50, 100)
-	insertOtBatch(t, sqlDB, itemID, "B1", localToday(), 20)
-
 	w := doJSON(ot, http.MethodPost, "/api/ot/services", otTok, `{"code":"OTMAJ","name":"Major Surgery","price_mmk":500000}`)
 	mustCode(t, w, http.StatusCreated)
 	var priced otService
@@ -263,19 +260,18 @@ func TestOtDraftCaseServicesRoundTrip(t *testing.T) {
 
 	body := fmt.Sprintf(`{
 		"patient_name":"Daw Draft",
-		"items":[{"item_id":%d,"qty_issued":2}],
 		"services":[
 			{"ref_id":%d,"unit_price_mmk":850000},
 			{"ref_id":%d,"unit_price_mmk":null}
 		]
-	}`, itemID, priced.ID, blank.ID)
+	}`, priced.ID, blank.ID)
 	w = doJSON(ot, http.MethodPost, "/api/ot/cases", otTok, body)
 	mustCode(t, w, http.StatusCreated)
 	var created otCase
 	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
 		t.Fatal(err)
 	}
-	if len(created.Items) != 1 || created.Items[0].ItemID != itemID || created.Items[0].QtyIssued != 2 {
+	if len(created.Items) != 0 {
 		t.Fatalf("items %+v", created.Items)
 	}
 	if len(created.Services) != 2 {
@@ -294,9 +290,6 @@ func TestOtDraftCaseServicesRoundTrip(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &loaded); err != nil {
 		t.Fatal(err)
 	}
-	if len(loaded.Items) != 1 || loaded.Items[0].QtyIssued != 2 {
-		t.Fatalf("GET items %+v", loaded.Items)
-	}
 	if len(loaded.Services) != 2 {
 		t.Fatalf("GET services %+v", loaded.Services)
 	}
@@ -309,12 +302,11 @@ func TestOtDraftCaseServicesRoundTrip(t *testing.T) {
 
 	updateBody := fmt.Sprintf(`{
 		"patient_name":"Daw Draft",
-		"items":[{"item_id":%d,"qty_issued":2}],
 		"services":[
 			{"ref_id":%d,"unit_price_mmk":900000},
 			{"ref_id":%d,"unit_price_mmk":null}
 		]
-	}`, itemID, priced.ID, blank.ID)
+	}`, priced.ID, blank.ID)
 	w = doJSON(ot, http.MethodPut, fmt.Sprintf("/api/ot/cases/%d", created.ID), otTok, updateBody)
 	mustCode(t, w, http.StatusOK)
 	var updated otCase

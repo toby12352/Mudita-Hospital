@@ -87,6 +87,7 @@ type otCase struct {
 	CreatedAt         string          `json:"created_at"`
 	UpdatedAt         string          `json:"updated_at"`
 	BilledAt          *string         `json:"billed_at,omitempty"`
+	IpdRoomNo         string          `json:"ipd_room_no,omitempty"`
 	Items             []otCaseItem    `json:"items,omitempty"`
 	Services          []otCaseService `json:"services,omitempty"`
 	DoctorOTFeeMMK    int64           `json:"doctor_ot_fee_mmk,omitempty"`
@@ -463,7 +464,7 @@ func (h *OT) listCases(w http.ResponseWriter, r *http.Request) {
 	if len(where) > 0 {
 		query += " WHERE " + strings.Join(where, " AND ")
 	}
-	orderSQL, orderErr := billHistoryOrderBy(r, "c.created_at", "c.id")
+	orderSQL, orderErr := billHistoryOrderBy(r, "c.created_at", "c.id", "c.case_no")
 	if orderErr != "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": orderErr})
 		return
@@ -484,6 +485,23 @@ func (h *OT) listCases(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		out = append(out, c)
+	}
+	ids := make([]*int64, len(out))
+	for i := range out {
+		ids[i] = out[i].PatientID
+	}
+	rooms, err := openStayRoomByPatient(h.DB, collectOptionalPatientIDs(ids))
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "list failed"})
+		return
+	}
+	for i := range out {
+		if out[i].PatientID == nil {
+			continue
+		}
+		if room, ok := rooms[*out[i].PatientID]; ok {
+			out[i].IpdRoomNo = room
+		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"cases": out})
 }
@@ -508,6 +526,10 @@ func (h *OT) createCase(w http.ResponseWriter, r *http.Request) {
 	}
 	services, errMsg := normalizeOtCaseServices(req.Services)
 	if errMsg != "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": errMsg})
+		return
+	}
+	if errMsg := otInventoryServicesMixErr(len(items) > 0, len(services) > 0); errMsg != "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": errMsg})
 		return
 	}
@@ -657,6 +679,10 @@ func (h *OT) updateCase(w http.ResponseWriter, r *http.Request, path string) {
 	}
 	services, errMsg := normalizeOtCaseServices(req.Services)
 	if errMsg != "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": errMsg})
+		return
+	}
+	if errMsg := otInventoryServicesMixErr(len(items) > 0, len(services) > 0); errMsg != "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": errMsg})
 		return
 	}
@@ -823,6 +849,10 @@ func (h *OT) createBillFromCase(w http.ResponseWriter, r *http.Request, path str
 	}
 	if c.OtBillID != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bill already exists for this case"})
+		return
+	}
+	if errMsg := otInventoryServicesMixErr(len(c.Items) > 0, len(req.Services) > 0); errMsg != "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": errMsg})
 		return
 	}
 
@@ -1046,6 +1076,10 @@ func (h *OT) updateBill(w http.ResponseWriter, r *http.Request, path string) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": errMsg})
 		return
 	}
+	if errMsg := otInventoryServicesMixErr(len(c.Items) > 0, len(services) > 0); errMsg != "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": errMsg})
+		return
+	}
 	lines, total, errMsg := buildOtBillLines(tx, c, services)
 	if errMsg != "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": errMsg})
@@ -1200,6 +1234,11 @@ func (h *OT) payBill(w http.ResponseWriter, r *http.Request, path string) {
 	}
 	if len(lines) == 0 {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bill has no lines"})
+		return
+	}
+	hasItem, hasService := otBillLineKinds(lines)
+	if errMsg := otInventoryServicesMixErr(hasItem, hasService); errMsg != "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": errMsg})
 		return
 	}
 	uid := user.ID
@@ -2052,6 +2091,27 @@ func otBillServiceLines(in []otServiceCharge) ([]otServiceCharge, string) {
 	return out, ""
 }
 
+// otInventoryServicesMixErr rejects bills that mix OT cupboard items with OT services.
+// Doctor OT fee is allowed with either kind.
+func otInventoryServicesMixErr(hasItems, hasServices bool) string {
+	if hasItems && hasServices {
+		return "OT inventory and OT services cannot be on the same bill"
+	}
+	return ""
+}
+
+func otBillLineKinds(lines []otBillLine) (hasItem, hasService bool) {
+	for _, l := range lines {
+		switch l.LineType {
+		case "item":
+			hasItem = true
+		case "service":
+			hasService = true
+		}
+	}
+	return hasItem, hasService
+}
+
 // buildOtBillLines prices cupboard item lines and the doctor OT fee from the catalog at bill time.
 // Service lines must reference an active ot_services row. Qty is 1. Price is the case charge.
 func buildOtBillLines(tx *sql.Tx, c otCase, services []otServiceCharge) ([]otBillLine, int64, string) {
@@ -2381,8 +2441,7 @@ func renderOtBillHTML(hosp *hospitalSettings, bill otBill, caseItems []otCaseIte
 	if bill.PrintedAt != nil {
 		printedAt = *bill.PrintedAt
 	}
-	return renderA4ReceiptHTML(hosp, receiptBill{
-		Title:          "OPERATION THEATRE PAYMENT RECEIPT",
+	receipt := receiptBill{
 		BillNo:         bill.BillNo,
 		CaseNo:         bill.CaseNo,
 		Status:         bill.Status,
@@ -2402,5 +2461,14 @@ func renderOtBillHTML(hosp *hospitalSettings, bill otBill, caseItems []otCaseIte
 		DiscountUnit:   bill.DiscountUnit,
 		VoidReason:     bill.VoidReason,
 		Lines:          lines,
-	})
+	}
+	hasItem, hasService := otBillLineKinds(bill.Lines)
+	// Inventory-only (items, optional doctor fee) prints on the 80 mm roll.
+	// Services, fee-only, empty, or a legacy mixed bill stay on A4.
+	if hasItem && !hasService {
+		receipt.Title = "OT RECEIPT"
+		return renderThermalReceiptHTML(hosp, receipt)
+	}
+	receipt.Title = "OPERATION THEATRE PAYMENT RECEIPT"
+	return renderA4ReceiptHTML(hosp, receipt)
 }

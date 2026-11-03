@@ -952,10 +952,18 @@ func buildRevenueByDoctor(db *sql.DB, from, to string) ([]doctorRevenueRow, erro
 			FROM ot_bills
 			WHERE status = 'paid' AND collected_cash = 1 AND date(paid_at) BETWEEN date(?) AND date(?)
 			GROUP BY COALESCE(doctor_id, 0), COALESCE(NULLIF(TRIM(doctor_name), ''), '(unassigned)')
+			UNION ALL
+			SELECT COALESCE(doctor_id, 0),
+			       COALESCE(NULLIF(TRIM(doctor_name), ''), '(unassigned)'),
+			       COUNT(*),
+			       COALESCE(SUM(total_mmk), 0)
+			FROM lab_bills
+			WHERE status = 'paid' AND collected_cash = 1 AND date(paid_at) BETWEEN date(?) AND date(?)
+			GROUP BY COALESCE(doctor_id, 0), COALESCE(NULLIF(TRIM(doctor_name), ''), '(unassigned)')
 		)
 		GROUP BY doctor_id, doctor_name
 		ORDER BY SUM(total_mmk) DESC, doctor_name ASC
-	`, from, to, from, to)
+	`, from, to, from, to, from, to)
 	if err != nil {
 		return nil, err
 	}
@@ -996,10 +1004,21 @@ func buildRevenueByService(db *sql.DB, from, to string) ([]serviceRevenueRow, er
 			WHERE b.status = 'paid' AND b.collected_cash = 1
 			  AND bl.line_type IN ('service', 'ot_fee')
 			  AND date(b.paid_at) BETWEEN date(?) AND date(?)
+			UNION ALL
+			SELECT bl.line_type,
+			       COALESCE(bl.code, ''),
+			       COALESCE(bl.description, ''),
+			       COALESCE(bl.qty, 0),
+			       CASE WHEN bl.foc = 1 THEN 0 ELSE COALESCE(bl.line_total_mmk, 0) END
+			FROM lab_bill_lines bl
+			JOIN lab_bills b ON b.id = bl.bill_id
+			WHERE b.status = 'paid' AND b.collected_cash = 1
+			  AND bl.line_type = 'service'
+			  AND date(b.paid_at) BETWEEN date(?) AND date(?)
 		)
 		GROUP BY line_type, code, description
 		ORDER BY SUM(total_mmk) DESC, code ASC
-	`, from, to, from, to)
+	`, from, to, from, to, from, to)
 	if err != nil {
 		return nil, err
 	}

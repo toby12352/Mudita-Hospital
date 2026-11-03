@@ -77,17 +77,19 @@ type pharmacyBill struct {
 	CreatedAt       string             `json:"created_at"`
 	UpdatedAt       string             `json:"updated_at"`
 	BilledAt        *string            `json:"billed_at,omitempty"`
+	IpdRoomNo       string             `json:"ipd_room_no,omitempty"`
 	Lines           []pharmacyBillLine `json:"lines,omitempty"`
 }
 
 type pharmacyBillWriteRequest struct {
-	PatientName     string             `json:"patient_name"`
-	PatientPhone    string             `json:"patient_phone"`
-	PatientAgeYears *int64             `json:"patient_age_years,omitempty"`
-	PatientGender   string             `json:"patient_gender"`
-	Description     string             `json:"description"`
-	Lines           []pharmacyBillLine `json:"lines"`
-	SavePatient     bool               `json:"save_patient"`
+	PatientName      string             `json:"patient_name"`
+	PatientPhone     string             `json:"patient_phone"`
+	PatientAgeYears  *int64             `json:"patient_age_years,omitempty"`
+	PatientGender    string             `json:"patient_gender"`
+	FatherMotherName *string            `json:"father_mother_name,omitempty"`
+	Description      string             `json:"description"`
+	Lines            []pharmacyBillLine `json:"lines"`
+	SavePatient      bool               `json:"save_patient"`
 	// Kind is "sale" (default), "return", or "transfer".
 	// Returns get RT-###### numbers. Transfers to OT get TO-###### numbers.
 	Kind          string `json:"kind,omitempty"`
@@ -159,7 +161,7 @@ func (h *Pharmacy) listPharmacyBills(w http.ResponseWriter, r *http.Request) {
 	if len(where) > 0 {
 		query += " WHERE " + strings.Join(where, " AND ")
 	}
-	orderSQL, orderErr := billHistoryOrderBy(r, "created_at", "id")
+	orderSQL, orderErr := billHistoryOrderBy(r, "created_at", "id", "bill_no")
 	if orderErr != "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": orderErr})
 		return
@@ -181,6 +183,23 @@ func (h *Pharmacy) listPharmacyBills(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		out = append(out, b)
+	}
+	ids := make([]*int64, len(out))
+	for i := range out {
+		ids[i] = out[i].PatientID
+	}
+	rooms, err := openStayRoomByPatient(h.DB, collectOptionalPatientIDs(ids))
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "list failed"})
+		return
+	}
+	for i := range out {
+		if out[i].PatientID == nil {
+			continue
+		}
+		if room, ok := rooms[*out[i].PatientID]; ok {
+			out[i].IpdRoomNo = room
+		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"bills": out})
 }
@@ -254,7 +273,7 @@ func (h *Pharmacy) createPharmacyBill(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 
-	patientID, err := resolveDeskPatient(tx, req.PatientID, req.SavePatient, req.PatientName, req.PatientPhone, req.PatientGender, req.PatientAgeYears, func() (int64, error) {
+	patientID, err := resolveDeskPatient(tx, req.PatientID, req.SavePatient, req.PatientName, req.PatientPhone, req.PatientGender, req.PatientAgeYears, req.FatherMotherName, func() (int64, error) {
 		return upsertPharmacyPatient(tx, req)
 	})
 	if err == sql.ErrNoRows {
@@ -422,7 +441,7 @@ func (h *Pharmacy) updatePharmacyBill(w http.ResponseWriter, r *http.Request, pa
 		return
 	}
 
-	patientID, err := resolveDeskPatient(tx, req.PatientID, req.SavePatient, req.PatientName, req.PatientPhone, req.PatientGender, req.PatientAgeYears, func() (int64, error) {
+	patientID, err := resolveDeskPatient(tx, req.PatientID, req.SavePatient, req.PatientName, req.PatientPhone, req.PatientGender, req.PatientAgeYears, req.FatherMotherName, func() (int64, error) {
 		return upsertPharmacyPatient(tx, req)
 	})
 	if err == sql.ErrNoRows {
@@ -1160,12 +1179,24 @@ func nextPharmacyBillNo(tx *sql.Tx, prefix string) (string, error) {
 	if prefix == "" {
 		prefix = "PH"
 	}
+	// Table names come only from this switch — never from request text.
+	var seqTable string
+	switch prefix {
+	case "PH":
+		seqTable = "pharmacy_bill_number_seq"
+	case "RT":
+		seqTable = "pharmacy_return_bill_number_seq"
+	case "TO":
+		seqTable = "pharmacy_transfer_bill_number_seq"
+	default:
+		return "", fmt.Errorf("unknown pharmacy bill prefix %q", prefix)
+	}
 	var n int64
-	err := tx.QueryRow(`SELECT next_num FROM pharmacy_bill_number_seq WHERE id = 1`).Scan(&n)
+	err := tx.QueryRow(`SELECT next_num FROM ` + seqTable + ` WHERE id = 1`).Scan(&n)
 	if err != nil {
 		return "", err
 	}
-	if _, err := tx.Exec(`UPDATE pharmacy_bill_number_seq SET next_num = next_num + 1 WHERE id = 1`); err != nil {
+	if _, err := tx.Exec(`UPDATE ` + seqTable + ` SET next_num = next_num + 1 WHERE id = 1`); err != nil {
 		return "", err
 	}
 	return fmt.Sprintf("%s-%06d", prefix, n), nil
@@ -1337,6 +1368,7 @@ func upsertPharmacyPatient(tx *sql.Tx, req pharmacyBillWriteRequest) (int64, err
 	name := strings.TrimSpace(req.PatientName)
 	phone := strings.TrimSpace(req.PatientPhone)
 	gender := strings.TrimSpace(req.PatientGender)
+	fatherArg := optionalStringArg(req.FatherMotherName)
 	if phone != "" {
 		var id int64
 		err := tx.QueryRow(`
@@ -1344,17 +1376,23 @@ func upsertPharmacyPatient(tx *sql.Tx, req pharmacyBillWriteRequest) (int64, err
 		`, name, phone).Scan(&id)
 		if err == nil {
 			_, _ = tx.Exec(`
-				UPDATE patients SET age_years = ?, gender = ?, updated_at = datetime('now') WHERE id = ?
-			`, req.PatientAgeYears, gender, id)
+				UPDATE patients SET age_years = ?, gender = ?,
+					father_mother_name = COALESCE(?, father_mother_name),
+					updated_at = datetime('now') WHERE id = ?
+			`, req.PatientAgeYears, gender, fatherArg, id)
 			return id, nil
 		}
 		if err != sql.ErrNoRows {
 			return 0, err
 		}
 	}
+	father := ""
+	if req.FatherMotherName != nil {
+		father = strings.TrimSpace(*req.FatherMotherName)
+	}
 	res, err := tx.Exec(`
-		INSERT INTO patients (name, phone, age_years, gender) VALUES (?, ?, ?, ?)
-	`, name, phone, req.PatientAgeYears, gender)
+		INSERT INTO patients (name, phone, age_years, gender, father_mother_name) VALUES (?, ?, ?, ?, ?)
+	`, name, phone, req.PatientAgeYears, gender, father)
 	if err != nil {
 		return 0, err
 	}

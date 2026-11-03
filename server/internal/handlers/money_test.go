@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"mudita-hospital/server/internal/auth"
 	"mudita-hospital/server/internal/db"
 )
 
@@ -37,20 +38,40 @@ func openTestDB(t *testing.T) *sql.DB {
 
 func insertSession(t *testing.T, sqlDB *sql.DB, role string, mustChange int) (int64, string) {
 	t.Helper()
+	mode := auth.AccessPortal
+	if role != auth.RoleAdmin {
+		mode = auth.AccessUnified
+	}
 	res, err := sqlDB.Exec(`
-		INSERT INTO users (username, display_name, role, password_hash, must_change_password, active)
-		VALUES (?, 'Tester', ?, 'x', ?, 1)
-	`, fmt.Sprintf("user-%s-%d", role, testDBSeq.Add(1)), role, mustChange)
+		INSERT INTO users (username, display_name, role, password_hash, must_change_password, active, access_mode)
+		VALUES (?, 'Tester', ?, 'x', ?, 1, ?)
+	`, fmt.Sprintf("user-%s-%d", role, testDBSeq.Add(1)), role, mustChange, mode)
 	if err != nil {
 		t.Fatalf("user: %v", err)
 	}
 	id, _ := res.LastInsertId()
+	for _, perm := range auth.GrantsForDeskRole(role) {
+		if _, err := sqlDB.Exec(`INSERT INTO user_grants (user_id, perm) VALUES (?, ?)`, id, perm); err != nil {
+			t.Fatalf("grant %s: %v", perm, err)
+		}
+	}
 	token := fmt.Sprintf("tok-%d", id)
 	exp := time.Now().UTC().Add(2 * time.Hour).Format(time.RFC3339)
 	if _, err := sqlDB.Exec(`INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)`, token, id, exp); err != nil {
 		t.Fatalf("session: %v", err)
 	}
 	return id, token
+}
+
+// asPortal strips grants and stores a non-admin row as a desk login.
+func asPortal(t *testing.T, sqlDB *sql.DB, id int64) {
+	t.Helper()
+	if _, err := sqlDB.Exec(`DELETE FROM user_grants WHERE user_id = ?`, id); err != nil {
+		t.Fatalf("clear grants: %v", err)
+	}
+	if _, err := sqlDB.Exec(`UPDATE users SET access_mode = ? WHERE id = ?`, auth.AccessPortal, id); err != nil {
+		t.Fatalf("portal mode: %v", err)
+	}
 }
 
 func doJSON(h http.Handler, method, path, token, body string) *httptest.ResponseRecorder {

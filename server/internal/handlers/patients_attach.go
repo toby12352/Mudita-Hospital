@@ -104,7 +104,7 @@ func (h *Patients) attach(w http.ResponseWriter, r *http.Request, path string) {
 
 func attachBillPatient(tx *sql.Tx, table, billNo string, patientID int64) attachResult {
 	switch table {
-	case "opd_bills", "pharmacy_bills":
+	case "opd_bills", "pharmacy_bills", "lab_bills":
 	default:
 		return attachResult{code: http.StatusNotFound, msg: "bill not found"}
 	}

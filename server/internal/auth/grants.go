@@ -211,7 +211,7 @@ func hasModuleRead(seen map[string]struct{}) bool {
 }
 
 // FillerRole is the users.role stored for a unified account.
-// It is the first Read module in order OPD, OT, Pharmacy, Patients, IPD.
+// It is the first Read module in order OPD, OT, Pharmacy, Lab, Patients, IPD.
 // A dashboard-only account stores Patients. Authorization must not trust this role.
 func FillerRole(grants []string) string {
 	held := make(map[string]struct{}, len(grants))
@@ -222,6 +222,7 @@ func FillerRole(grants []string) string {
 		{GrantOPDRead, RoleOPD},
 		{GrantOTRead, RoleOT},
 		{GrantPharmacyRead, RolePharmacy},
+		{GrantLabRead, RoleLab},
 		{GrantPatientsRead, RolePatients},
 		{GrantIPDRead, RoleIPD},
 	}
@@ -231,6 +232,28 @@ func FillerRole(grants []string) string {
 		}
 	}
 	return RolePatients
+}
+
+// GrantsForDeskRole is the personal-account grant list for a former desk login.
+// Patients read is included so bill chart search keeps working. Patients create
+// and update stay on the Patients role. Pharmacy update includes stock adjust.
+func GrantsForDeskRole(role string) []string {
+	switch role {
+	case RoleOPD:
+		return []string{GrantOPDRead, GrantOPDCreate, GrantOPDUpdate, GrantOPDDelete, GrantPatientsRead}
+	case RoleOT:
+		return []string{GrantOTRead, GrantOTCreate, GrantOTUpdate, GrantOTDelete, GrantPatientsRead}
+	case RolePharmacy:
+		return []string{GrantPharmacyRead, GrantPharmacyCreate, GrantPharmacyUpdate, GrantPharmacyDelete, GrantPatientsRead}
+	case RoleLab:
+		return []string{GrantLabRead, GrantLabCreate, GrantLabUpdate, GrantLabDelete, GrantPatientsRead}
+	case RoleIPD:
+		return []string{GrantIPDRead, GrantIPDCreate, GrantIPDUpdate, GrantPatientsRead}
+	case RolePatients:
+		return []string{GrantPatientsRead, GrantPatientsCreate, GrantPatientsUpdate}
+	default:
+		return nil
+	}
 }
 
 // LoadAccess reads role and access_mode. Session lookup does not.
@@ -254,7 +277,7 @@ func grantHeld(db *sql.DB, userID int64, perm string) (bool, error) {
 }
 
 // Allow decides one permission for a user id.
-// Admin is allowed. Portal uses the desk role map. Unified is allowed only
+// Admin is allowed. A non-admin portal row is denied. Unified is allowed only
 // when a grantable user_grants row exists; users.role is ignored in that mode.
 // access_mode is loaded here. Session lookup does not read it.
 func Allow(db *sql.DB, userID int64, perm string) (bool, error) {
@@ -267,7 +290,7 @@ func Allow(db *sql.DB, userID int64, perm string) (bool, error) {
 	}
 	switch mode {
 	case AccessPortal:
-		return HasPermission(role, perm), nil
+		return false, nil
 	case AccessUnified:
 		if !Grantable(perm) {
 			return false, nil
@@ -326,7 +349,7 @@ func unifiedHasModule(db *sql.DB, userID int64, perm string) (bool, error) {
 }
 
 // DeskAllowed is the route gate in front of a clinic module.
-// Admin is allowed. Portal uses the role map. Unified is allowed when any
+// Admin is allowed. A non-admin portal row is denied. Unified is allowed when any
 // cell on that module is stored. users.role is ignored for unified accounts.
 // settings and manage_users are never opened by a grant, including dashboard.
 func DeskAllowed(db *sql.DB, userID int64, perm string) (bool, error) {
@@ -339,7 +362,7 @@ func DeskAllowed(db *sql.DB, userID int64, perm string) (bool, error) {
 	}
 	switch mode {
 	case AccessPortal:
-		return HasPermission(role, perm), nil
+		return false, nil
 	case AccessUnified:
 		return unifiedHasModule(db, userID, perm)
 	default:
@@ -347,9 +370,9 @@ func DeskAllowed(db *sql.DB, userID int64, perm string) (bool, error) {
 	}
 }
 
-// AnyDeskAllowed is DeskAllowed across alternate portal permissions.
-// A unified account still needs a grant on one of those modules.
-// It does not treat a pharmacy grant as patients.read.
+// AnyDeskAllowed is DeskAllowed across alternate module permissions.
+// A non-admin portal row is denied. A unified account needs a grant on one
+// of those modules. It does not treat a pharmacy grant as patients.read.
 func AnyDeskAllowed(db *sql.DB, userID int64, perms []string) (bool, error) {
 	role, mode, err := LoadAccess(db, userID)
 	if err != nil {
@@ -360,11 +383,6 @@ func AnyDeskAllowed(db *sql.DB, userID int64, perms []string) (bool, error) {
 	}
 	switch mode {
 	case AccessPortal:
-		for _, perm := range perms {
-			if HasPermission(role, perm) {
-				return true, nil
-			}
-		}
 		return false, nil
 	case AccessUnified:
 		for _, perm := range perms {
@@ -383,9 +401,8 @@ func AnyDeskAllowed(db *sql.DB, userID int64, perms []string) (bool, error) {
 }
 
 // CellAllowed is the action check after the desk gate.
-// Admin is allowed. Portal is allowed: the desk gate already matched today's
-// role. Unified is allowed only when that grant row exists.
-// Stock adjust must use Allow, not CellAllowed, so portal Pharmacy stays denied.
+// Admin is allowed. A non-admin portal row is denied. Unified is allowed
+// only when that grant row exists.
 func CellAllowed(db *sql.DB, userID int64, perm string) (bool, error) {
 	role, mode, err := LoadAccess(db, userID)
 	if err != nil {
@@ -396,7 +413,7 @@ func CellAllowed(db *sql.DB, userID int64, perm string) (bool, error) {
 	}
 	switch mode {
 	case AccessPortal:
-		return true, nil
+		return false, nil
 	case AccessUnified:
 		if !Grantable(perm) {
 			return false, nil
@@ -408,7 +425,7 @@ func CellAllowed(db *sql.DB, userID int64, perm string) (bool, error) {
 }
 
 // ChartReadAllowed is patient search and opening one chart.
-// Portal keeps today's rule: any desk may read. Unified needs patients.read.
+// Admin is allowed. A non-admin portal row is denied. Unified needs patients.read.
 func ChartReadAllowed(db *sql.DB, userID int64) (bool, error) {
 	role, mode, err := LoadAccess(db, userID)
 	if err != nil {
@@ -419,11 +436,6 @@ func ChartReadAllowed(db *sql.DB, userID int64) (bool, error) {
 	}
 	switch mode {
 	case AccessPortal:
-		for _, perm := range []string{PermPatients, PermOPD, PermOT, PermPharmacy, PermIPD} {
-			if HasPermission(role, perm) {
-				return true, nil
-			}
-		}
 		return false, nil
 	case AccessUnified:
 		return grantHeld(db, userID, GrantPatientsRead)
@@ -433,7 +445,7 @@ func ChartReadAllowed(db *sql.DB, userID int64) (bool, error) {
 }
 
 // PatientsCell is create, update, history, and attach on the chart desk.
-// Portal still requires the Patients role. Unified requires the grant.
+// Admin is allowed. A non-admin portal row is denied. Unified requires the grant.
 // Hard delete is not this function; it stays on settings.
 func PatientsCell(db *sql.DB, userID int64, perm string) (bool, error) {
 	role, mode, err := LoadAccess(db, userID)
@@ -445,7 +457,7 @@ func PatientsCell(db *sql.DB, userID int64, perm string) (bool, error) {
 	}
 	switch mode {
 	case AccessPortal:
-		return HasPermission(role, PermPatients), nil
+		return false, nil
 	case AccessUnified:
 		if !Grantable(perm) {
 			return false, nil
@@ -455,4 +467,3 @@ func PatientsCell(db *sql.DB, userID int64, perm string) (bool, error) {
 		return false, nil
 	}
 }
-

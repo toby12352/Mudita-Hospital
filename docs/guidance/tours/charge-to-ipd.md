@@ -1,19 +1,19 @@
 # Tour: charge-to-ipd
 
 - Id: charge-to-ipd
-- Roles: Admin, OPD, OT, and Pharmacy, on a sale desk. IPD Bill has the same label as its first button and is the ipd-stay lesson, not this one. Patients has no bill rail. Do not open this lesson on Return in or on IPD Bill.
-- Depends on: bill-buttons, ipd-stay
-- Opens: a sale desk that can show the button, and stay there. OPD Bill is view `opd` with `opdScreen: "bill"`. OT Bill is view `ot` with `otMode: "case"`. Pharmacy Bill (sale) is view `pharmacy_billing` with `billingMode: "edit"`. Do not open view `ipd`, an expense view, `pharmacy_return`, or `pharmacy_transfer`.
+- Roles: Admin, OPD, OT, Pharmacy, and Lab, on a sale desk. IPD Bill has the same label as its first button and is the ipd-patients lesson, not this one. Patients has no bill rail. Do not open this lesson on Return in or on IPD Bill.
+- Depends on: bill-buttons, ipd-patients
+- Opens: a sale desk that can show the button, and stay there. OPD Bill is view `opd` with `opdScreen: "bill"`. OT Bill is view `ot` with `otMode: "case"`. Pharmacy Bill (sale) is view `pharmacy_billing` with `billingMode: "edit"`. Lab Bill is view `lab` with `labScreen: "bill"`. Do not open view `ipd`, an expense view, `pharmacy_return`, or `pharmacy_transfer`.
 - Mode: point and explain. Clicks on the highlighted control stay off. This lesson does not tell staff to press Charge to IPD or Mark Paid.
 - Entry: Help, not automatic
 
-The chart and the open stay come from the patient-chart and ipd-stay lessons. This lesson does not create either one. `ipd-stay` may not be written yet; the dependency still stands.
+The chart and the open stay come from the patient-chart and ipd-patients lessons. This lesson does not create either one. `ipd-patients` may not be written yet; the dependency still stands.
 
 ## Steps
 
 ### 1. charge-button
 - Anchor to add later: data-guide="bill-charge-ipd"
-- Where the control is now: `client/src/shared/BillPayPrint.tsx` (`BillChargeToIpdButton`), i18n `chargeToIpd`, subtitle `chargeToIpdSub`. No function key. On a sale it is passed in from `client/src/pages/opd/OpdPage.tsx`, `client/src/pages/ot/OtPage.tsx`, and `client/src/pages/pharmacy/PharmacyBillingPage.tsx` when the bill is still a draft and the linked chart has an open stay. Choosing a chart sets that link. Typing in Patient name (`patientName`) clears it. The same component on IPD Bill (`IpdChargeBillPage.tsx`) is the first rail button, with the transfer icon, and that page has no Mark Paid and no F7. The same component on Return in can render `creditToIpd`; if the label is Credit to IPD, this is the wrong screen.
+- Where the control is now: `client/src/shared/BillPayPrint.tsx` (`BillChargeToIpdButton`), i18n `chargeToIpd`, subtitle `chargeToIpdSub`. No function key. On a sale it is passed in from `client/src/pages/opd/OpdPage.tsx`, `client/src/pages/ot/OtPage.tsx`, `client/src/pages/pharmacy/PharmacyBillingPage.tsx`, and `client/src/pages/lab/LabBillForm.tsx` when the bill is still a draft and the linked chart has an open stay. Choosing a chart sets that link. Typing in Patient name (`patientName`) clears it. The same component on IPD Bill (`IpdChargeBillPage.tsx`) is the first rail button, with the transfer icon, and that page has no Mark Paid and no F7. The same component on Return in can render `creditToIpd`; if the label is Credit to IPD, this is the wrong screen.
 - Placement: left
 - Title EN: Charge to IPD
 - Title MY: IPD သို့ တင်
@@ -37,6 +37,6 @@ The chart and the open stay come from the patient-chart and ipd-stay lessons. Th
 - Do not press Charge to IPD. Highlight it only.
 - Do not press Mark Paid. F7 is desk cash. F7 does not charge the stay.
 - Do not press Credit to IPD (IPD သို့ ပြန်ထည့်). That control is on Return in.
-- Do not open IPD Bill. Its Charge to IPD button is named in the body and taught on ipd-stay.
-- Do not admit, take a deposit, or discharge. Those belong to ipd-stay and ipd-discharge.
+- Do not open IPD Bill. Its Charge to IPD button is named in the body and taught on ipd-patients.
+- Do not admit, take a deposit, or discharge. Those belong to ipd-patients and ipd-discharge.
 - Do not void a bill, transfer stock, or seed training data.

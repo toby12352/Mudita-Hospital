@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   fetchDailyCash,
   fetchLowStock,
@@ -11,6 +11,12 @@ import {
   type NearExpiryBatch,
 } from "@/features/reports/api";
 import { formatLocationLabel } from "@/features/pharmacy/api";
+import {
+  DeskChrome,
+  DeskChromePanel,
+  DeskChromeTabs,
+  type DeskChromeTabItem,
+} from "@/shared/DeskChrome";
 import { formatMMK } from "@/shared/format";
 
 export function ReportsPage({
@@ -33,6 +39,30 @@ export function ReportsPage({
   const [expiry, setExpiry] = useState<NearExpiryBatch[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const tabs = useMemo((): DeskChromeTabItem[] => {
+    const items: DeskChromeTabItem[] = [];
+    if (canCash) {
+      items.push({
+        id: "reports-tab-cash",
+        label: t("reportDailyCash"),
+        controls: "reports-panel-cash",
+      });
+    }
+    if (canStock) {
+      items.push({
+        id: "reports-tab-low",
+        label: t("reportLowStock"),
+        controls: "reports-panel-low",
+      });
+      items.push({
+        id: "reports-tab-expiry",
+        label: t("reportNearExpiry"),
+        controls: "reports-panel-expiry",
+      });
+    }
+    return items;
+  }, [canCash, canStock, t]);
 
   async function load() {
     setBusy(true);
@@ -74,8 +104,8 @@ export function ReportsPage({
   }
 
   return (
-    <section className="settings-panel" aria-busy={busy || undefined}>
-      <div className="btn-row">
+    <DeskChrome className="reports-desk" aria-busy={busy || undefined}>
+      <div className="btn-row reports-desk-actions">
         <button type="button" className="btn ghost" onClick={onBack}>
           {t("back")}
         </button>
@@ -83,47 +113,16 @@ export function ReportsPage({
           {t("print")}
         </button>
       </div>
-      <div className="tabs" role="tablist" aria-label={t("reports")}>
-        {canCash ? (
-          <button
-            type="button"
-            id="reports-tab-cash"
-            role="tab"
-            className={`tab${tab === "cash" ? " active" : ""}`}
-            aria-selected={tab === "cash"}
-            aria-controls="reports-panel-cash"
-            onClick={() => setTab("cash")}
-          >
-            {t("reportDailyCash")}
-          </button>
-        ) : null}
-        {canStock ? (
-          <button
-            type="button"
-            id="reports-tab-low"
-            role="tab"
-            className={`tab${tab === "low" ? " active" : ""}`}
-            aria-selected={tab === "low"}
-            aria-controls="reports-panel-low"
-            onClick={() => setTab("low")}
-          >
-            {t("reportLowStock")}
-          </button>
-        ) : null}
-        {canStock ? (
-          <button
-            type="button"
-            id="reports-tab-expiry"
-            role="tab"
-            className={`tab${tab === "expiry" ? " active" : ""}`}
-            aria-selected={tab === "expiry"}
-            aria-controls="reports-panel-expiry"
-            onClick={() => setTab("expiry")}
-          >
-            {t("reportNearExpiry")}
-          </button>
-        ) : null}
-      </div>
+      <DeskChromeTabs
+        ariaLabel={t("reports")}
+        tabs={tabs}
+        activeId={`reports-tab-${tab}`}
+        onSelect={(id) => {
+          if (id === "reports-tab-cash") setTab("cash");
+          else if (id === "reports-tab-low") setTab("low");
+          else setTab("expiry");
+        }}
+      />
 
       {error ? (
         <p className="form-error" role="alert">
@@ -132,11 +131,7 @@ export function ReportsPage({
       ) : null}
 
       {tab === "cash" && canCash ? (
-        <div
-          id="reports-panel-cash"
-          role="tabpanel"
-          aria-labelledby="reports-tab-cash"
-        >
+        <DeskChromePanel id="reports-panel-cash" labelledBy="reports-tab-cash">
           <div className="btn-row report-filters">
             <label className="field inline-field">
               <span>{t("reportDate")}</span>
@@ -165,6 +160,11 @@ export function ReportsPage({
                     {t("otBills")}: {cash.ot_count} · {formatMMK(cash.ot_total_mmk)} {t("mmk")} ·{" "}
                   </>
                 ) : null}
+                {(cash.lab_count ?? 0) > 0 ? (
+                  <>
+                    {t("labBills")}: {cash.lab_count ?? 0} · {formatMMK(cash.lab_total_mmk ?? 0)} {t("mmk")} ·{" "}
+                  </>
+                ) : null}
                 <strong>
                   {t("cashBalance")}: {formatMMK(cash.cash_total_mmk ?? cash.grand_total_mmk)} {t("mmk")}
                   {" · "}
@@ -191,15 +191,11 @@ export function ReportsPage({
               </ul>
             </div>
           ) : null}
-        </div>
+        </DeskChromePanel>
       ) : null}
 
       {tab === "low" && canStock ? (
-        <div
-          id="reports-panel-low"
-          role="tabpanel"
-          aria-labelledby="reports-tab-low"
-        >
+        <DeskChromePanel id="reports-panel-low" labelledBy="reports-tab-low">
           <ul className="data-list" aria-label={t("reportLowStock")}>
             {low.length === 0 ? <li className="empty-row">{t("noLowStock")}</li> : null}
             {low.map((row) => (
@@ -217,15 +213,11 @@ export function ReportsPage({
               </li>
             ))}
           </ul>
-        </div>
+        </DeskChromePanel>
       ) : null}
 
       {tab === "expiry" && canStock ? (
-        <div
-          id="reports-panel-expiry"
-          role="tabpanel"
-          aria-labelledby="reports-tab-expiry"
-        >
+        <DeskChromePanel id="reports-panel-expiry" labelledBy="reports-tab-expiry">
           <div className="btn-row report-filters">
             <label className="field inline-field">
               <span>{t("daysAhead")}</span>
@@ -261,8 +253,8 @@ export function ReportsPage({
               );
             })}
           </ul>
-        </div>
+        </DeskChromePanel>
       ) : null}
-    </section>
+    </DeskChrome>
   );
 }

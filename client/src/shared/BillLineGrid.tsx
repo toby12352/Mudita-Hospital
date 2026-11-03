@@ -280,6 +280,17 @@ export function BillLineGrid({
 
   return (
     <div className={gridClass} ref={gridRef}>
+      <div
+        className="bill-cart-count"
+        aria-live="polite"
+        aria-label={`${t("cartItems")}: ${rows.length}`}
+      >
+        <span>{t("cartItems")}</span>
+        <span className="bill-cart-count-n" aria-hidden="true">
+          ·
+        </span>
+        <span className="bill-cart-count-n">{rows.length}</span>
+      </div>
       <div className="opd-bill-grid-head">
         <span>{itemHeader}</span>
         {showPackColumn ? <span>{t("packingSize")}</span> : null}
@@ -292,31 +303,33 @@ export function BillLineGrid({
         <span />
       </div>
       <div className="opd-bill-grid-body" ref={bodyRef}>
-        {rows.length === 0 ? <p className="empty-row">{emptyLabel}</p> : null}
-        {rows.map((row, index) => (
-          <CommittedRow
-            key={row.key}
-            row={row}
-            draft={draft}
-            showUnitColumn={showUnitColumn}
-            showPackColumn={showPackColumn}
-            showExpiryColumn={showExpiryColumn}
-            showAmountColumn={showAmountColumn}
-            showFoc={showFoc}
-            priceHeader={priceHeader}
-            onQtyCommit={(qty) => onQtyCommit(index, qty)}
-            onPriceCommit={
-              onPriceCommit ? (price) => onPriceCommit(index, price) : undefined
-            }
-            onUnitChange={
-              onUnitChange ? (unitId) => onUnitChange(index, unitId) : undefined
-            }
-            onRemove={() => onRemove(index)}
-            onFocChange={
-              onFocChange ? (foc) => onFocChange(index, foc) : undefined
-            }
-          />
-        ))}
+        <div className="opd-bill-grid-lines">
+          {rows.length === 0 ? <p className="empty-row">{emptyLabel}</p> : null}
+          {rows.map((row, index) => (
+            <CommittedRow
+              key={row.key}
+              row={row}
+              draft={draft}
+              showUnitColumn={showUnitColumn}
+              showPackColumn={showPackColumn}
+              showExpiryColumn={showExpiryColumn}
+              showAmountColumn={showAmountColumn}
+              showFoc={showFoc}
+              priceHeader={priceHeader}
+              onQtyCommit={(qty) => onQtyCommit(index, qty)}
+              onPriceCommit={
+                onPriceCommit ? (price) => onPriceCommit(index, price) : undefined
+              }
+              onUnitChange={
+                onUnitChange ? (unitId) => onUnitChange(index, unitId) : undefined
+              }
+              onRemove={() => onRemove(index)}
+              onFocChange={
+                onFocChange ? (foc) => onFocChange(index, foc) : undefined
+              }
+            />
+          ))}
+        </div>
       </div>
       {showEntries && activeEntry ? (
         <div className="opd-bill-grid-entries" ref={entriesRef}>

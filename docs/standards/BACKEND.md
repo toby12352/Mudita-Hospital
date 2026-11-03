@@ -46,8 +46,8 @@ func (h *OPD) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 ## Auth and permissions
 
 - Permission constants and the portal role map: `server/internal/auth/roles.go`.
-- `users.access_mode` is `portal` (default) or `unified`. Grant rows live in `user_grants(user_id, perm)`. Migration `028_user_grants` adds both. Keys and the resolver are in `server/internal/auth/grants.go`.
-- `auth.Allow` decides one key. Admin is allowed. Portal uses the role map. Unified is allowed only when that grant row exists; `users.role` is ignored. `auth.CellAllowed` lets a portal desk through after the route gate. Stock adjust uses `Allow`, so portal Pharmacy is denied. Unified stock adjust needs `pharmacy.update`.
+- `users.access_mode` is `portal` or `unified`. The column default remains `portal`. Admin is stored as `portal`. Every other account is `unified`. Grant rows live in `user_grants(user_id, perm)`. Migration `028_user_grants` adds both. Migration `048_portal_users_to_grants` converts existing non-admin portal rows and does not rewrite bills or passwords. Keys and the resolver are in `server/internal/auth/grants.go`.
+- `auth.Allow` decides one key. Admin is allowed. A non-admin portal row is denied. Unified is allowed only when that grant row exists; `users.role` is ignored. Stock adjust uses `Allow` and needs `pharmacy.update`.
 - `DeskAllowed` opens a clinic module when any cell on that module is stored. `settings` and `manage_users` are never opened by a grant, including `dashboard`.
 - `/api/dashboard/` and the dashboard report reads (`/api/reports/daily-cash`, its print, `/api/reports/low-stock`, `/api/reports/near-expiry`) accept Admin or the `dashboard` grant. That grant does not satisfy `PermSettings` anywhere else.
 - Saving grants replaces that user's rows in one transaction, deletes their sessions, and writes an audit row with the old and new key lists. Only Admin can save. An Admin row cannot be given grants.

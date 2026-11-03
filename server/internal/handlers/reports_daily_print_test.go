@@ -194,12 +194,21 @@ func TestRenderDashboardDailyHTMLLayout(t *testing.T) {
 	hosp, move := sampleDailyMove()
 	body := renderDashboardDailyHTML(hosp, move, "overall", nil)
 	for _, want := range []string{
-		`class="a4-logo"`,
+		`class="a4-logo daily-cover-logo"`,
 		"data:image/png;base64,",
-		"Mudita Hospital",
-		"Daily Cash Report",
-		"Expenses Cash Report",
+		`class="daily-cover"`,
+		`class="daily-cover-letterhead"`,
+		`class="daily-cover-date"`,
+		`class="daily-cover-cashbook"`,
+		`class="print-credit"`,
+		"Software by TAT",
+		"နေ့စဉ် ဝင်ငွေ",
+		"နေ့စဉ် ထွက်ငွေ",
+		"Daily CashBook - Oct 28, 2026",
 		"Date: Oct 28, 2026",
+		`class="daily-opening"`,
+		"Opening Balance:",
+		`class="daily-opening-box"`,
 		"<h3>OT</h3>",
 		"<h3>IPD</h3>",
 		"<h3>Pharmacy</h3>",
@@ -212,6 +221,13 @@ func TestRenderDashboardDailyHTMLLayout(t *testing.T) {
 		"Total expenses",
 		"Difference",
 		"265,000 MMK",
+		`class="daily-cashbook"`,
+		"ဝင်ငွေ",
+		"ပြန်အင်းငွေ",
+		"ထွက်ငွေ",
+		"အပ်ငွေ",
+		"လက်ကျန်ငွေ",
+		"-5,000 MMK",
 		`class="daily-page-break"`,
 	} {
 		if !strings.Contains(body, want) {
@@ -219,6 +235,10 @@ func TestRenderDashboardDailyHTMLLayout(t *testing.T) {
 		}
 	}
 	for _, hide := range []string{
+		"Printed from Mudita Hospital",
+		"Mudita Dashboard",
+		"Daily Cash Report",
+		"Expenses Cash Report",
 		"<h3>Desk</h3>",
 		"IPD gains",
 		"IPD cash drawer",
@@ -231,6 +251,19 @@ func TestRenderDashboardDailyHTMLLayout(t *testing.T) {
 		if strings.Contains(body, hide) {
 			t.Fatalf("overall print leaked %q", hide)
 		}
+	}
+	if strings.Count(body, `class="daily-cashbook"`) != 1 {
+		t.Fatalf("expected 1 cover cashbook table, got %d", strings.Count(body, `class="daily-cashbook"`))
+	}
+	// Cover: Opening Balance, two ပြန်အင်းငွေ, အပ်ငွေ, လက်ကျန်ငွေ blank.
+	if strings.Count(body, `class="blank"`) != 5 {
+		t.Fatalf("expected 5 blank cashbook cells, got %d", strings.Count(body, `class="blank"`))
+	}
+	if strings.Count(body, "ပြန်အင်းငွေ") != 2 {
+		t.Fatalf("expected 2 ပြန်အင်းငွေ rows, got %d", strings.Count(body, "ပြန်အင်းငွေ"))
+	}
+	if strings.Count(body, `class="daily-page-break"`) != 2 {
+		t.Fatalf("expected 2 page breaks, got %d", strings.Count(body, `class="daily-page-break"`))
 	}
 	// OT, IPD, Pharmacy income + Pharmacy expense.
 	if strings.Count(body, `<section class="block">`) != 4 {
@@ -388,8 +421,15 @@ func TestRenderDashboardDailyDetailsHTML(t *testing.T) {
 	}
 	body := renderDashboardDailyDetailsHTML(nil, hosp, vouchers, "2026-10-28", "")
 	for _, want := range []string{
-		"All Bill Details",
+		`class="daily-cover"`,
+		`class="daily-cover-letterhead"`,
+		`class="daily-cashbook"`,
+		"Software by TAT",
+		"နေ့စဉ် ဝင်ငွေ",
+		"နေ့စဉ် ထွက်ငွေ",
+		"Daily CashBook - Oct 28, 2026",
 		"Date: Oct 28, 2026",
+		"ပြန်အင်းငွေ",
 		`@page{size:A4`,
 		"<h3>OPD</h3>",
 		"OPD-000100",
@@ -399,7 +439,6 @@ func TestRenderDashboardDailyDetailsHTML(t *testing.T) {
 		">1<",
 		"5,000",
 		"Voucher total",
-		"Expense Bill Details",
 		`class="daily-page-break"`,
 		"EXP-000050",
 		"Gloves",
@@ -411,6 +450,9 @@ func TestRenderDashboardDailyDetailsHTML(t *testing.T) {
 		}
 	}
 	for _, hide := range []string{
+		"All Bill Details",
+		"Expense Bill Details",
+		"Total remaining balance",
 		"IPD cash drawer",
 		"IPD open stays",
 		"TO-HIDDEN",
@@ -543,9 +585,23 @@ func TestDetailScopeBalance(t *testing.T) {
 	}
 
 	all := renderDashboardDailyDetailsHTML(nil, hosp, vouchers, "2026-04-20", "all")
-	for _, want := range []string{"All Bill Details", "OPD-SCOPE", "EXP-SCOPE", "Total income", "Total expenses", "Total remaining balance", ">2,000 MMK</td>"} {
+	for _, want := range []string{
+		`class="daily-cover"`,
+		`class="daily-cashbook"`,
+		"နေ့စဉ် ဝင်ငွေ",
+		"နေ့စဉ် ထွက်ငွေ",
+		"OPD-SCOPE",
+		"EXP-SCOPE",
+		"5,000 MMK",
+		"-3,000 MMK",
+	} {
 		if !strings.Contains(all, want) {
 			t.Fatalf("all scope missing %q:\n%s", want, all)
+		}
+	}
+	for _, hide := range []string{"All Bill Details", "Total income", "Total expenses", "Total remaining balance"} {
+		if strings.Contains(all, hide) {
+			t.Fatalf("all scope leaked %q:\n%s", hide, all)
 		}
 	}
 }
@@ -644,6 +700,10 @@ func TestPaidIpdStatementsOnBillDetails(t *testing.T) {
 	mustCode(t, printed, http.StatusOK)
 	body := printed.Body.String()
 	for _, want := range []string{
+		`class="daily-cover"`,
+		`class="daily-cashbook"`,
+		"နေ့စဉ် ဝင်ငွေ",
+		"နေ့စဉ် ထွက်ငွေ",
 		"IPD-PAY-SHORT",
 		"Room 12",
 		"Statement 19 Apr 2026",
@@ -653,12 +713,6 @@ func TestPaidIpdStatementsOnBillDetails(t *testing.T) {
 		"<th>Admission</th>",
 		">Collected</td>",
 		"Subtotal",
-		"Total income",
-		"Total expenses",
-		"Total remaining balance",
-		">7,500 MMK</td>",
-		">1,000 MMK</td>",
-		">6,500 MMK</td>",
 		"OPD-IPD-DAY",
 		"EXP-IPD-DAY",
 	} {
@@ -671,6 +725,8 @@ func TestPaidIpdStatementsOnBillDetails(t *testing.T) {
 		">Detail</th>", ">Time</th>",
 		">Deposited Fee</th>", ">To Pay</th>", ">Difference</th>",
 		">Day deposited</td>", ">Ward</td>",
+		"Total remaining balance",
+		"All Bill Details",
 	} {
 		if strings.Contains(body, hide) {
 			t.Fatalf("all details leaked %q", hide)

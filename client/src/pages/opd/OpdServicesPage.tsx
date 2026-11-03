@@ -34,7 +34,7 @@ function serviceLabel(s: { code: string; name: string }): string {
 }
 
 function emptyListQuery(): BillHistoryQuery {
-  return { q: "", money: "", category: "", unit: "", from: "", to: "", sort: "desc" };
+  return { q: "", money: "", category: "", unit: "", from: "", to: "", sort: "desc", order: "date" };
 }
 
 function activeFromMoney(money: string): ActiveFilterValue {
@@ -702,39 +702,6 @@ export function OpdServicesPage({
               </div>
               <DialogCloseButton onClick={backToList} />
             </div>
-            {error ? (
-              <p className="form-error" role="alert">
-                {error}
-              </p>
-            ) : null}
-            <div className="drug-info-fields">
-              <div className="drug-info-field">
-                <span className="drug-info-label">{t("code")}</span>
-                <span className="drug-info-input">{selected.code || "—"}</span>
-              </div>
-              <div className="drug-info-field">
-                <span className="drug-info-label">{t("name")}</span>
-                <span className="drug-info-input">{selected.name}</span>
-              </div>
-              <div className="drug-info-field">
-                <span className="drug-info-label">{t("category")}</span>
-                <span className="drug-info-input">
-                  {selected.category_name || t("uncategorized")}
-                </span>
-              </div>
-              <div className="drug-info-field">
-                <span className="drug-info-label">{t("priceMmk")}</span>
-                <span className="drug-info-input">
-                  {formatMMK(selected.price_mmk)} {t("mmk")}
-                </span>
-              </div>
-              <div className="drug-info-field">
-                <span className="drug-info-label">{t("active")}</span>
-                <span className="drug-info-input">
-                  {selected.active ? t("active") : t("inactive")}
-                </span>
-              </div>
-            </div>
             <div className="btn-row">
               {opdUpdate ? (
                 <button
@@ -768,6 +735,39 @@ export function OpdServicesPage({
                   {t("delete")}
                 </button>
               ) : null}
+            </div>
+            {error ? (
+              <p className="form-error" role="alert">
+                {error}
+              </p>
+            ) : null}
+            <div className="drug-info-fields">
+              <div className="drug-info-field">
+                <span className="drug-info-label">{t("code")}</span>
+                <span className="drug-info-input">{selected.code || "—"}</span>
+              </div>
+              <div className="drug-info-field">
+                <span className="drug-info-label">{t("name")}</span>
+                <span className="drug-info-input">{selected.name}</span>
+              </div>
+              <div className="drug-info-field">
+                <span className="drug-info-label">{t("category")}</span>
+                <span className="drug-info-input">
+                  {selected.category_name || t("uncategorized")}
+                </span>
+              </div>
+              <div className="drug-info-field">
+                <span className="drug-info-label">{t("priceMmk")}</span>
+                <span className="drug-info-input">
+                  {formatMMK(selected.price_mmk)} {t("mmk")}
+                </span>
+              </div>
+              <div className="drug-info-field">
+                <span className="drug-info-label">{t("active")}</span>
+                <span className="drug-info-input">
+                  {selected.active ? t("active") : t("inactive")}
+                </span>
+              </div>
             </div>
           </div>
         ) : null}

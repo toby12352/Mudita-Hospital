@@ -69,6 +69,15 @@ func (h *Patients) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case strings.HasSuffix(path, "/attach") && r.Method == http.MethodPost:
 		p := path
 		h.servePatients(w, r, auth.GrantPatientsUpdate, func(w http.ResponseWriter, r *http.Request) { h.attach(w, r, p) })
+	case strings.HasSuffix(path, "/notes") && r.Method == http.MethodGet:
+		p := path
+		h.servePatients(w, r, auth.GrantPatientsRead, func(w http.ResponseWriter, r *http.Request) { h.listNotes(w, r, p) })
+	case strings.HasSuffix(path, "/notes") && r.Method == http.MethodPost:
+		p := path
+		h.servePatients(w, r, auth.GrantPatientsUpdate, func(w http.ResponseWriter, r *http.Request) { h.createNote(w, r, p) })
+	case strings.Contains(path, "/notes/") && r.Method == http.MethodPatch:
+		p := path
+		h.servePatients(w, r, auth.GrantPatientsUpdate, func(w http.ResponseWriter, r *http.Request) { h.updateNote(w, r, p) })
 	case strings.HasPrefix(path, "/") && r.Method == http.MethodGet:
 		p := path
 		h.serveRead(w, r, func(w http.ResponseWriter, r *http.Request) { h.get(w, r, p) })

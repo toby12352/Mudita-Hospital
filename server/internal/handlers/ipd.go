@@ -181,7 +181,7 @@ func (h *IPD) get(w http.ResponseWriter, _ *http.Request, path string) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "load failed"})
 		return
 	}
-	writeJSON(w, http.StatusOK, row)
+	writeAdmissionJSON(w, http.StatusOK, h.DB, row)
 }
 
 func (h *IPD) admit(w http.ResponseWriter, r *http.Request) {
@@ -303,7 +303,7 @@ func (h *IPD) admit(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "reload failed"})
 		return
 	}
-	writeJSON(w, http.StatusCreated, row)
+	writeAdmissionJSON(w, http.StatusCreated, h.DB, row)
 }
 
 func (h *IPD) updateNotes(w http.ResponseWriter, r *http.Request, path string) {
@@ -379,7 +379,7 @@ func (h *IPD) updateNotes(w http.ResponseWriter, r *http.Request, path string) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "reload failed"})
 		return
 	}
-	writeJSON(w, http.StatusOK, row)
+	writeAdmissionJSON(w, http.StatusOK, h.DB, row)
 }
 
 // purgeAdmission soft-deletes an open stay. Admin only. Ledger rows stay;
